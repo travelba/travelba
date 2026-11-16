@@ -2452,6 +2452,7 @@ export function BookingEditor({
               currency={booking.currency}
               agencyCommission={booking.agency_commission === true}
               agencyFeeRate={previewFeeRate}
+              costs={[...(accounting?.lines ?? []).flatMap((line) => line.costs), ...(accounting?.unsold ?? [])]}
               onExpenseWrite={onExpenseWrite}
               presets={expensePresets}
             />

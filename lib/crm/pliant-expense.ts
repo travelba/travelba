@@ -1,6 +1,6 @@
 import { pliantExpenseTitle, pliantExpenseTransactionId } from "./pliant-booking";
 import { EXPENSE_QUANTITY_KEY, EXPENSE_UNIT_PRICE_KEY } from "./expense-pricing";
-import { EXPENSE_AWAITING_KEY } from "./expense-validation";
+import { EXPENSE_AWAITING_KEY, expenseAwaitsValidation } from "./expense-validation";
 import type { TripCostDraft } from "./trip-costs";
 import { isActiveItem, isLedgerExpenseKind } from "./types";
 
@@ -135,6 +135,55 @@ export function pliantExpenseSyncPatch(
 export function pliantExpenseRemovable(item: { amount: number | null | undefined; details: unknown }) {
   const origin = pliantExpenseOrigin(item.details, item.amount);
   return Boolean(origin && !origin.edited);
+}
+
+export type PliantCostLink = {
+  source: string;
+  sourceId: string;
+  bookingItemId: string | null;
+};
+
+export type PliantCardRef = {
+  id: string;
+  kind?: string | null;
+  lifecycle?: string | null;
+};
+
+/**
+ * Vrai quand ce débit Pliant est déjà le coût d’une carte du voyage (hôtel, vol, transfert…).
+ * Une dépense, y compris la ligne « à valider » née du débit, n’est pas une carte.
+ */
+export function pliantDebitCoversTripCard(
+  transactionId: string,
+  costs: readonly PliantCostLink[],
+  items: readonly PliantCardRef[]
+) {
+  const cards = new Set(
+    items.filter((item) => isActiveItem(item) && !isLedgerExpenseKind(item.kind)).map((item) => item.id)
+  );
+  if (!cards.size) return false;
+  return costs.some(
+    (cost) =>
+      cost.source === "pliant" &&
+      cost.sourceId === transactionId &&
+      cost.bookingItemId != null &&
+      cards.has(cost.bookingItemId)
+  );
+}
+
+/**
+ * Dépense « à valider » à ne plus afficher : son débit est déjà le coût d’une carte.
+ * La ligne reste en base. Un débit posé seulement sur cette dépense, ou sur aucune carte, reste listé.
+ */
+export function pliantExpenseCoveredByTripCard(
+  item: { kind?: string | null; lifecycle?: string | null; details?: unknown },
+  costs: readonly PliantCostLink[],
+  items: readonly PliantCardRef[]
+) {
+  if (!isActiveItem(item) || !expenseAwaitsValidation(item)) return false;
+  const transactionId = pliantExpenseTransactionId(item.details);
+  if (!transactionId) return false;
+  return pliantDebitCoversTripCard(transactionId, costs, items);
 }
 
 /** La ligne Dépense déjà créée pour cette transaction, parmi les lignes actives du dossier. */

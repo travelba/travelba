@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { refreshBookingLedger } from "./bookings";
 import {
   findPliantExpenseItem,
+  pliantDebitCoversTripCard,
   pliantExpenseDraft,
   pliantExpenseRemovable,
   pliantExpenseSyncPatch,
@@ -33,10 +34,27 @@ function amountOf(row: ItemRow) {
   return Number.isFinite(value) ? value : null;
 }
 
+/** Coûts déjà posés pour ce débit. Une lecture en échec ne bloque pas : on garde l’ancien geste. */
+async function costLinks(admin: SupabaseClient, bookingId: string, sourceId: string) {
+  const { data, error } = await admin
+    .from("crm_trip_costs")
+    .select("booking_item_id")
+    .eq("booking_id", bookingId)
+    .eq("source", "pliant")
+    .eq("source_id", sourceId);
+  if (error) return null;
+  return (data || []).map((row) => ({
+    source: "pliant",
+    sourceId,
+    bookingItemId: row.booking_item_id ? String(row.booking_item_id) : null,
+  }));
+}
+
 /**
  * La ligne Dépense du dossier pour cette transaction Pliant : celle qui existe déjà, sinon une nouvelle,
  * pré-remplie avec le commerçant, le montant Pliant et la date. Une seule ligne par transaction.
  * Un remboursement (coût négatif) ne crée rien. Le grand livre suit ; un séjour caché ne débite pas.
+ * Un débit déjà coût d’une carte du voyage (hôtel, vol…) ne crée pas de dépense « à valider ».
  */
 export async function ensurePliantExpenseItem(
   admin: SupabaseClient,
@@ -45,9 +63,13 @@ export async function ensurePliantExpenseItem(
 ): Promise<{ itemId: string; created: boolean } | null> {
   const expense = pliantExpenseDraft(draft);
   if (!expense) return null;
-  const rows = await bookingItems(admin, bookingId);
+  const [rows, links] = await Promise.all([
+    bookingItems(admin, bookingId),
+    costLinks(admin, bookingId, draft.sourceId),
+  ]);
   const existing = findPliantExpenseItem(rows, draft.sourceId);
   if (existing) return { itemId: existing.id, created: false };
+  if (links && pliantDebitCoversTripCard(draft.sourceId, links, rows)) return null;
   const maxSort = rows.reduce((max, row) => Math.max(max, Number(row.sort_order || 0)), -1);
   const { data, error } = await admin
     .from("crm_booking_items")

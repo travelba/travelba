@@ -18,7 +18,7 @@ import {
   type ExpensePreset,
 } from "@/lib/crm/expense-presets";
 import { expensePricingLabel, parseExpenseQuantity, readExpensePricing } from "@/lib/crm/expense-pricing";
-import { pliantExpenseOrigin } from "@/lib/crm/pliant-expense";
+import { pliantExpenseCoveredByTripCard, pliantExpenseOrigin, type PliantCostLink } from "@/lib/crm/pliant-expense";
 import { expenseAwaitsValidation } from "@/lib/crm/expense-validation";
 import { formatDateFr } from "@/lib/crm/dates";
 import {
@@ -55,6 +55,7 @@ export function BookingExpensesPanel({
   agencyCommission = false,
   agencyFeeRate = 0.1,
   presets = DEFAULT_EXPENSE_PRESETS,
+  costs = [],
   onExpenseWrite,
 }: {
   bookingId: string;
@@ -65,11 +66,14 @@ export function BookingExpensesPanel({
   agencyFeeRate?: number;
   /** Raccourcis actifs. Tableau vide : l’agence les a retirés. */
   presets?: readonly ExpensePreset[];
+  /** Coûts du voyage déjà lus pour l’onglet. Un débit posé sur une carte masque sa dépense « à valider ». */
+  costs?: readonly PliantCostLink[];
   /** Le prix dans Transactions suit tout de suite, sans recharger la page. */
   onExpenseWrite?: (change: ExpenseWrite) => void;
 }) {
   const router = useRouter();
-  const expenses = items.filter((item) => isLedgerExpenseKind(item.kind));
+  const countedItems = items.filter((item) => !pliantExpenseCoveredByTripCard(item, costs, items));
+  const expenses = countedItems.filter((item) => isLedgerExpenseKind(item.kind));
   const awaitingCount = expenses.filter((item) => expenseAwaitsValidation(item)).length;
   const [commissionOn, setCommissionOn] = useState(agencyCommission);
   // Le serveur a changé la commission (router.refresh) : l’interrupteur suit, sans effet.
@@ -318,7 +322,7 @@ export function BookingExpensesPanel({
     router.refresh();
   }
 
-  const commissionAmount = agencyFeeFromGross(agencyFeeBaseFromItems(items), agencyFeeRate);
+  const commissionAmount = agencyFeeFromGross(agencyFeeBaseFromItems(countedItems), agencyFeeRate);
   const commissionPercent = formatAgencyFeePercent(agencyFeeRate);
 
   const form = editingId ? (
