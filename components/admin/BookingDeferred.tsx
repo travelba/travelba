@@ -7,6 +7,10 @@ import type { CrmBookingItem } from "@/lib/crm/types";
 export type DeferredLedgerValue = {
   ledger: ClientLedgerView | null;
   accountLedger: ClientLedgerView | null;
+  /** Début de la lecture. Une lecture d’argent plus récente gagne. */
+  revision?: number;
+  /** 0 : base. 1 : après Stripe. 2 : lecture ciblée après un enregistrement. */
+  layer?: number;
 };
 
 /** Le grand livre déjà affiché reste en place. Celui-ci le remplace quand Stripe a répondu. */

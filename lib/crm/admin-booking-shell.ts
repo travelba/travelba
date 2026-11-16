@@ -8,7 +8,9 @@ export async function shellAdminBooking<T, R, E>(input: {
   enrich: () => Promise<E>;
   repair: () => Promise<unknown>;
   schedule: (task: () => Promise<unknown>) => void;
-}): Promise<{ value: T; reconcile: Promise<R | null>; enrich: Promise<E | null> }> {
+}): Promise<{ value: T; reconcile: Promise<R | null>; enrich: Promise<E | null>; argentStamp: number }> {
+  // Génération de cette page : la base et Stripe la partagent. Une lecture après enregistrement est plus tard.
+  const argentStamp = Date.now();
   const reconcile = input.reconcile().catch((error: unknown) => {
     console.error("[dossier] prélèvement", error instanceof Error ? error.message : error);
     return null;
@@ -23,5 +25,5 @@ export async function shellAdminBooking<T, R, E>(input: {
     })
   );
   const value = await input.critical();
-  return { value, reconcile, enrich };
+  return { value, reconcile, enrich, argentStamp };
 }

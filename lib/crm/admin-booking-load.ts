@@ -576,6 +576,9 @@ function startDossierPanels(input: {
       accountLedger: ledgers.accountLedger,
       accounting,
       revolutExpenses,
+      /** Écrasé par le rendu de la page : même génération que le rapprochement Stripe. */
+      revision: 0,
+      layer: 0,
       mb3m: {
         blocker: mb3mInvoiceBlocker(mb3mContext),
         notice: mb3mContext.notice || null,

@@ -77,9 +77,13 @@ export async function buildTripAccountingView(
   admin: SupabaseClient,
   booking: { id: string; client_settles_stay?: boolean | null },
   items: { id?: string | null; kind?: string | null; details?: Record<string, unknown> | null }[],
-  inputs: DossierAccountingInputs
+  inputs: DossierAccountingInputs,
+  options?: { skipOutgoingQueue?: boolean }
 ): Promise<TripAccountingView> {
-  const proposed = await loadOutgoingQueue({ bookingId: booking.id }, admin).catch(() => []);
+  // La file globale des sorties (toutes les cartes) ne change pas quand un prix est enregistré.
+  const proposed = options?.skipOutgoingQueue
+    ? []
+    : await loadOutgoingQueue({ bookingId: booking.id }, admin).catch(() => []);
   const pending = await loadDossierPendingCosts(
     admin,
     booking.id,

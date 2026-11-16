@@ -57,6 +57,8 @@ export function BookingExpensesPanel({
   presets = DEFAULT_EXPENSE_PRESETS,
   costs = [],
   onExpenseWrite,
+  onCommissionChange,
+  onArgentRefresh,
 }: {
   bookingId: string;
   items: CrmBookingItem[];
@@ -70,6 +72,10 @@ export function BookingExpensesPanel({
   costs?: readonly PliantCostLink[];
   /** Le prix dans Transactions suit tout de suite, sans recharger la page. */
   onExpenseWrite?: (change: ExpenseWrite) => void;
+  /** La case suit tout de suite. La lecture ciblée confirme le montant. */
+  onCommissionChange?: (enabled: boolean) => void;
+  /** Relit les montants du dossier, sans le refresh de toute la fiche. */
+  onArgentRefresh?: () => Promise<void> | void;
 }) {
   const router = useRouter();
   const countedItems = items.filter((item) => !pliantExpenseCoveredByTripCard(item, costs, items));
@@ -205,6 +211,7 @@ export function BookingExpensesPanel({
     setQuantityText("1");
     setUnitPrice(null);
     setAmount(null);
+    await onArgentRefresh?.();
     if (!(id && onExpenseWrite)) router.refresh();
   }
 
@@ -244,6 +251,7 @@ export function BookingExpensesPanel({
     setQuantityText("1");
     setUnitPrice(null);
     setAmount(null);
+    await onArgentRefresh?.();
     if (!(id && onExpenseWrite)) router.refresh();
   }
 
@@ -271,6 +279,7 @@ export function BookingExpensesPanel({
       amount: item.amount == null ? 0 : Number(item.amount),
       validated: true,
     });
+    await onArgentRefresh?.();
     if (!onExpenseWrite) router.refresh();
   }
 
@@ -300,11 +309,13 @@ export function BookingExpensesPanel({
       });
     }
     if (editingId === id) setEditingId(null);
+    await onArgentRefresh?.();
     if (!(current && onExpenseWrite)) router.refresh();
   }
 
   async function toggleCommission(enabled: boolean) {
     setCommissionOn(enabled);
+    onCommissionChange?.(enabled);
     setBusy(true);
     setError(null);
     const res = await fetch(`/api/admin/bookings/${bookingId}`, {
@@ -316,9 +327,11 @@ export function BookingExpensesPanel({
     setBusy(false);
     if (!res.ok) {
       setCommissionOn(!enabled);
+      onCommissionChange?.(!enabled);
       setError(json.error || "Commission non enregistrée.");
       return;
     }
+    await onArgentRefresh?.();
     router.refresh();
   }
 
