@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { refreshTicketingFee } from "@/lib/crm/bookings";
+import { schedulePendingFlightRematch } from "@/lib/crm/email-flight-rematch";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { sameRecordedTraveler } from "@/lib/crm/person-match";
 
@@ -76,6 +77,7 @@ export async function POST(request: Request, ctx: Ctx) {
   if (error) return dbError(error, 400);
   await reconcileCustomerParty(booking.customer_id, auth.supabase);
   await refreshTicketingFee(auth.supabase, id);
+  schedulePendingFlightRematch();
   return NextResponse.json({ traveler: data });
 }
 

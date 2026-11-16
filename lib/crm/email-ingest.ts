@@ -38,8 +38,16 @@ import { openThreadParent, sharesInboxGroup, type ThreadRow } from "@/lib/crm/em
 import { toAuditRow } from "@/lib/crm/audit-events";
 import { scoreExtractFields } from "@/lib/crm/extract-confidence";
 import { buildImportProposal } from "@/lib/crm/import-proposal";
+import {
+  applyFreshFlightParse,
+  decideFlightAutoAttach,
+  FLIGHT_PARSER_REVISION,
+  flightExtractIsStale,
+  hasUsableFlight,
+} from "@/lib/crm/email-flight-deposit";
+import { enterFlightRematch, leaveFlightRematch } from "@/lib/crm/email-flight-rematch";
 import { EMAIL_BODY_MISSING_MARK, bodyBackfillSince, hasBodyMissingMark, markBodyMissing } from "@/lib/crm/email-body-backfill";
-import { reopenFalseSupplierCancellation } from "@/lib/crm/ingest-parse";
+import { parsedItemsFromText, reopenFalseSupplierCancellation } from "@/lib/crm/ingest-parse";
 import {
   aiGatewayConfigured,
   isAllowedIngestType,
@@ -486,10 +494,11 @@ export async function matchAndStoreExtract(
   attachments: EmailIngestAttachment[]
 ) {
   const suggestions = await computeSuggestions(admin, extract);
+  const stamped = { ...extract, parser_revision: FLIGHT_PARSER_REVISION };
   await admin
     .from("crm_email_ingest")
     .update({
-      extract,
+      extract: stamped,
       warnings,
       attachments,
       candidates: suggestions.candidates,
@@ -513,13 +522,34 @@ export async function matchAndStoreExtract(
   return suggestions;
 }
 
-/** Relance les suggestions sur un extract déjà stocké, sans rattacher. */
+async function textOfStoredFlight(row: CrmEmailIngest) {
+  const parts: string[] = [];
+  const body = (row.body_text || "").trim();
+  if (body) parts.push(body);
+  const files = await loadEmailIngestFiles(row);
+  for (const file of files) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const prepared: PreparedIngestFile = { name: file.name, type: file.type, bytes };
+    const text = await preparedFileText(prepared);
+    if (text.trim()) parts.push(text);
+  }
+  return parts.join("\n");
+}
+
+/** Relit un extract ancien avec le parseur courant. Sans texte, on garde les vols déjà lus. */
+export async function refreshStaleFlightExtract(row: CrmEmailIngest) {
+  const current = parseExtractPayloadSafe(row.extract);
+  if (!flightExtractIsStale(row.extract)) return { extract: current, reparsed: false };
+  const source = await textOfStoredFlight(row);
+  const fresh = source.trim() ? parsedItemsFromText(source) : { items: [], travelers: [] };
+  return { extract: applyFreshFlightParse(current, fresh), reparsed: true };
+}
+
+/** Relance les suggestions, relit le parseur si besoin, et rattache un billet certain. */
 export async function rematchEmailIngestRow(row: CrmEmailIngest) {
   if (!row.extract) throw new Error("Extract introuvable");
-  const extract = reopenFalseSupplierCancellation(
-    parseExtractPayloadSafe(row.extract),
-    row.subject || ""
-  );
+  const refreshed = await refreshStaleFlightExtract(row);
+  const extract = reopenFalseSupplierCancellation(refreshed.extract, row.subject || "");
   if (
     extract.document_status !== "identity" &&
     (isBookingCancellationLabel(row.label) ||
@@ -530,44 +560,60 @@ export async function rematchEmailIngestRow(row: CrmEmailIngest) {
     extract.document_status = "cancelled";
   }
   const admin = createServiceClient();
-  return matchAndStoreExtract(
-    admin,
-    row.id,
-    extract,
-    row.warnings || [],
-    row.attachments || []
-  );
-}
-
-/** Rattrapage cron : rafraîchit les suggestions, sans rattacher. */
-export async function rematchStoredEmailIngest(limit = 20) {
-  const admin = createServiceClient();
-  const { data } = await admin
-    .from("crm_email_ingest")
-    .select("*")
-    .in("status", ["parsed", "matched"])
-    .not("extract", "is", null)
-    .is("created_booking_id", null)
-    .order("received_at", { ascending: true, nullsFirst: true })
-    .order("created_at", { ascending: true })
-    .limit(limit);
-  const rows = (data || []) as CrmEmailIngest[];
-  let rematched = 0;
-  let failed = 0;
-  for (const row of rows) {
+  const suggestions = await matchAndStoreExtract(admin, row.id, extract, row.warnings || [], row.attachments || []);
+  const decision = decideFlightAutoAttach(extract, suggestions.candidates);
+  let attached = false;
+  if (decision && hasUsableFlight(extract)) {
     try {
-      await rematchEmailIngestRow(row);
-      rematched += 1;
+      const { autoAttachMatchedFlight } = await import("@/lib/crm/email-flight-deposit-run");
+      const result = await autoAttachMatchedFlight(admin, { ...row, extract }, decision);
+      attached = result.wrote;
     } catch (err) {
-      failed += 1;
-      const message = err instanceof Error ? err.message : "Rapprochement impossible";
-      await admin
-        .from("crm_email_ingest")
-        .update({ error: message })
-        .eq("id", row.id);
+      console.error("[import] rattachement automatique non fait", err instanceof Error ? err.message : "");
     }
   }
-  return { scanned: rows.length, rematched, failed };
+  return { suggestions, attached, reparsed: refreshed.reparsed };
+}
+
+/**
+ * Rattrapage borné des mails déjà en file. Idempotent : un mail déposé n’est pas repris,
+ * un extract déjà relu ne l’est plus. Aucun message au client.
+ */
+export async function rematchStoredEmailIngest(limit = 8) {
+  const bounded = Math.min(20, Math.max(1, limit));
+  enterFlightRematch();
+  const admin = createServiceClient();
+  try {
+    const { data } = await admin
+      .from("crm_email_ingest")
+      .select("*")
+      .in("status", ["parsed", "matched"])
+      .not("extract", "is", null)
+      .is("created_booking_id", null)
+      .order("received_at", { ascending: true, nullsFirst: true })
+      .order("created_at", { ascending: true })
+      .limit(bounded);
+    const rows = (data || []) as CrmEmailIngest[];
+    let rematched = 0;
+    let attached = 0;
+    let reparsed = 0;
+    let failed = 0;
+    for (const row of rows) {
+      try {
+        const result = await rematchEmailIngestRow(row);
+        rematched += 1;
+        if (result.attached) attached += 1;
+        if (result.reparsed) reparsed += 1;
+      } catch (err) {
+        failed += 1;
+        const message = err instanceof Error ? err.message : "Rapprochement impossible";
+        await admin.from("crm_email_ingest").update({ error: message }).eq("id", row.id);
+      }
+    }
+    return { scanned: rows.length, rematched, attached, reparsed, failed };
+  } finally {
+    leaveFlightRematch();
+  }
 }
 
 async function storeAttachment(

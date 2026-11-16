@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { schedulePendingFlightRematch } from "@/lib/crm/email-flight-rematch";
 import { closeIngestSiblings, noteIngestDecision } from "@/lib/crm/email-ingest";
 import {
   attachmentSha256,
@@ -178,7 +179,7 @@ export async function markEmailAttached(
   if (error) throw new Error("E-mail non classé.");
   await closeIngestSiblings(admin, row, "attached", opts.actorId);
   await noteIngestDecision(admin, {
-    actorKind: "human",
+    actorKind: opts.auditAction === "auto_attach" ? "auto" : "human",
     actorId: opts.actorId,
     action: opts.auditAction || (opts.cards ? "apply_cards" : "attach_files"),
     emailIngestId: row.id,
@@ -186,6 +187,7 @@ export async function markEmailAttached(
     customerId: opts.customerId,
     summary: opts.summary,
   });
+  schedulePendingFlightRematch();
 }
 
 export function attachFilesSummary(result: DepositOutcome, linked = false) {

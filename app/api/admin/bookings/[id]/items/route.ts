@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { refreshBookingDerived } from "@/lib/crm/dossier-refresh";
+import { schedulePendingFlightRematch } from "@/lib/crm/email-flight-rematch";
 import { hotelSignatoryName } from "@/lib/crm/hotel-desk";
 import { parseBillingCompanyId } from "@/lib/crm/billing-companies";
 import {
@@ -380,10 +381,13 @@ export async function POST(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
   if (body?.commit === true) {
-    return commitStaySteps(auth.supabase, id, body, hotelSignatoryName(auth.staff.full_name));
+    const saved = await commitStaySteps(auth.supabase, id, body, hotelSignatoryName(auth.staff.full_name));
+    schedulePendingFlightRematch();
+    return saved;
   }
   const saved = await addStaffBookingCard(auth.supabase, id, (body || {}) as Record<string, unknown>);
   if ("error" in saved) return jsonError(saved.error, saved.status);
+  schedulePendingFlightRematch();
   await refreshBookingDerived(id, { signatory: hotelSignatoryName(auth.staff.full_name) });
   revalidatePath(`/admin/reservations/${id}`);
   revalidatePath("/admin/argent");

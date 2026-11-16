@@ -95,7 +95,7 @@ export async function GET(request: Request) {
     const result = await processReceivedEmailIngest(10);
     let rematch = { scanned: 0, rematched: 0, failed: 0 };
     try {
-      rematch = await rematchStoredEmailIngest(20);
+      rematch = await rematchStoredEmailIngest(8);
     } catch (err) {
       console.error(
         "[cron/gmail-ingest] rematch",

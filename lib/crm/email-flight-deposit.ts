@@ -1,5 +1,13 @@
 import { findFlightCard, flightNumbersAlign, statedTicketCount, type MatchableItem } from "@/lib/crm/item-match";
-import { TRAVELER_DATES_REASON } from "@/lib/crm/email-match";
+import {
+  mergeBookingSuggestions,
+  suggestBookingByReference,
+  suggestBookingByTraveler,
+  TRAVELER_DATES_REASON,
+  type TravelerName,
+  type TripBooking,
+} from "@/lib/crm/email-match";
+import type { BookingExtract } from "@/lib/crm/ingest-types";
 
 type FlightExtractItem = MatchableItem & {
   amount?: number | null;
@@ -238,4 +246,62 @@ export function decideFlightAutoAttach(
   const hit = strong.find((row) => row.booking_id === ids[0]);
   if (!hit?.customer_id || !hit.reason) return null;
   return { bookingId: ids[0], customerId: hit.customer_id, reason: hit.reason };
+}
+
+/** Extract stocké avant le correctif PNR / distance / passagers. */
+export const FLIGHT_PARSER_REVISION = 2;
+
+export function flightParserRevision(raw: unknown) {
+  if (!raw || typeof raw !== "object") return 0;
+  const value = (raw as { parser_revision?: unknown }).parser_revision;
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+export function flightExtractIsStale(raw: unknown) {
+  return flightParserRevision(raw) < FLIGHT_PARSER_REVISION;
+}
+
+type FreshParse = {
+  items?: FlightExtractItem[] | null;
+  travelers?: { first_name?: string | null; last_name?: string | null; ticket_last4?: string | null }[] | null;
+};
+
+/**
+ * Remplace les vols d’un extract ancien par une lecture fraîche.
+ * Sans vol relu, l’extract ne change pas : on n’efface pas un billet illisible.
+ */
+export function applyFreshFlightParse<T extends FlightExtract>(current: T, fresh: FreshParse): T & { parser_revision: number } {
+  const flights = (fresh.items || []).filter((item) => (item.kind || "") === "flight");
+  const kept = (current.items || []).filter((item) => (item.kind || "") !== "flight");
+  const travelers =
+    (fresh.travelers || []).some((person) => text(person.first_name) && text(person.last_name))
+      ? fresh.travelers || []
+      : current.travelers || [];
+  return {
+    ...current,
+    items: flights.length ? [...flights, ...kept] : current.items || [],
+    travelers,
+    parser_revision: FLIGHT_PARSER_REVISION,
+  };
+}
+
+/**
+ * File d’attente : un voyageur du billet sur un seul dossier, Visible compris.
+ * La visibilité n’écarte pas le dossier. Les cartes nouvelles restent cachées.
+ */
+export function planQueuedFlightAttach(input: {
+  extract: BookingExtract;
+  bookings: (TripBooking & { visible_to_client?: boolean | null })[];
+  travelers?: TravelerName[];
+  companions?: TravelerName[];
+  customers?: Parameters<typeof suggestBookingByTraveler>[4];
+  itemsByBooking?: Map<string, { confirmation_ref?: string | null; details?: Record<string, unknown> | null }[]>;
+  attachedRefsByBooking?: Map<string, string[]>;
+}): FlightAutoDecision | null {
+  const bookings = input.bookings.filter((booking) => booking.status !== "cancelled");
+  const merged = mergeBookingSuggestions(
+    suggestBookingByReference(input.extract, bookings, input.itemsByBooking || new Map(), input.attachedRefsByBooking),
+    suggestBookingByTraveler(input.extract, bookings, input.travelers || [], input.companions || [], input.customers || [])
+  );
+  return decideFlightAutoAttach(input.extract, merged.candidates);
 }

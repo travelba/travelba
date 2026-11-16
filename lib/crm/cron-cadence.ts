@@ -33,7 +33,7 @@ export const CRON_CADENCE: CronCadence[] = [
     path: "/api/cron/gmail-ingest",
     schedule: "1,6,11,16,21,26,31,36,41,46,51,56 * * * *",
     reason:
-      "Les billets et les annulations restent lus toutes les 5 minutes. Décalé d’une minute pour éviter la minute pile, où plusieurs crons se rejoignaient.",
+      "Les billets et les annulations restent lus toutes les 5 minutes. Le même passage reprend un lot de mails déjà en file. Décalé d’une minute pour éviter la minute pile, où plusieurs crons se rejoignaient.",
   },
   {
     path: "/api/cron/gmail-watch-renew",
