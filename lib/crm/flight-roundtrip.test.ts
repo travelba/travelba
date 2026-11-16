@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { flightLegLine, roundTripMate, roundTripPairs, roundTripPriceLabel, roundTripReturnIds } from "./flight-roundtrip";
+import { flightLegLine, hiddenItineraryIds, itineraryTail, roundTripMate, roundTripPairs, roundTripPriceLabel, roundTripReturnIds } from "./flight-roundtrip";
 import type { CrmBookingItem } from "./types";
 
 function flight(partial: Partial<CrmBookingItem> & Pick<CrmBookingItem, "id" | "title">): CrmBookingItem {
@@ -84,6 +84,26 @@ describe("un aller-retour, une carte", () => {
     });
     assert.equal(roundTripPairs([outbound, other]).length, 0);
     assert.equal(roundTripPairs([outbound, sameWay]).length, 0);
+  });
+
+  it("EK78 et EK209 au même PNR font une carte et une ligne", () => {
+    const first = flight({
+      id: "ek78",
+      title: "Nice → Dubaï",
+      confirmation_ref: "KDP4AS",
+      start_at: "2027-04-13T10:00:00",
+      details: { pnr: "KDP4AS", flight_number: "EK 78", from: "NCE", to: "DXB" },
+    });
+    const second = flight({
+      id: "ek209",
+      title: "Dubaï → Athènes",
+      confirmation_ref: "KDP4AS",
+      start_at: "2027-04-13T18:00:00",
+      details: { pnr: "KDP4AS", flight_number: "EK 209", from: "DXB", to: "ATH" },
+    });
+    assert.equal(itineraryTail(first, [first, second]).map((leg) => leg.id).join(), "ek209");
+    assert.equal(itineraryTail(second, [first, second]).length, 0);
+    assert.deepEqual([...hiddenItineraryIds([first, second])], ["ek209"]);
   });
 
   it("le prix identique s’affiche une fois", () => {

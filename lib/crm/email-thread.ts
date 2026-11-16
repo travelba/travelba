@@ -40,11 +40,53 @@ function refsAlign(a: string[], b: string[]) {
   return a.some((left) => b.some((right) => left === right || hotelRefsShareBooking(left, right)));
 }
 
+function passengerKeys(row: ThreadRow): string[] {
+  const keys = new Set<string>();
+  const subject = String(row.subject || "");
+  for (const match of subject.matchAll(/\b([A-Z][A-Z' -]{1,40})\/([A-Z][A-Z' -]{1,40})\b/g)) {
+    keys.add(`${match[1].replace(/[^A-Z]/g, "")}/${match[2].replace(/[^A-Z]/g, "")}`);
+  }
+  const extract =
+    row.extract && typeof row.extract === "object"
+      ? (row.extract as {
+          travelers?: { first_name?: string | null; last_name?: string | null }[];
+          items?: { kind?: string | null; details?: { passengers?: { first_name?: string | null; last_name?: string | null }[] } }[];
+        })
+      : null;
+  const push = (first?: string | null, last?: string | null) => {
+    const name = `${String(last || "").toUpperCase()}/${String(first || "").toUpperCase()}`.replace(/[^A-Z/]/g, "");
+    if (name.length > 2 && name.includes("/")) keys.add(name);
+  };
+  for (const person of extract?.travelers || []) push(person.first_name, person.last_name);
+  for (const item of extract?.items || []) {
+    for (const person of item.details?.passengers || []) push(person.first_name, person.last_name);
+  }
+  return [...keys];
+}
+
+function hasFlight(row: ThreadRow) {
+  const extract =
+    row.extract && typeof row.extract === "object"
+      ? (row.extract as { items?: { kind?: string | null }[] })
+      : null;
+  return (extract?.items || []).some((item) => item?.kind === "flight");
+}
+
+/** Deux billets du même PNR, pour deux passagers, restent deux mails. */
+export function distinctPassengerTickets(a: ThreadRow, b: ThreadRow) {
+  const left = passengerKeys(a);
+  const right = passengerKeys(b);
+  if (!left.length || !right.length) return hasFlight(a) && hasFlight(b);
+  return !left.some((name) => right.includes(name));
+}
+
 export function sharesInboxGroup(a: ThreadRow, b: ThreadRow) {
   const leftThread = (a.gmail_thread_id || "").trim();
   const rightThread = (b.gmail_thread_id || "").trim();
   if (leftThread && leftThread === rightThread) return true;
-  return refsAlign(confirmationTokens(a), confirmationTokens(b));
+  if (!refsAlign(confirmationTokens(a), confirmationTokens(b))) return false;
+  if (distinctPassengerTickets(a, b)) return false;
+  return true;
 }
 
 export type InboxGroup<T extends ThreadRow> = { primary: T; members: T[] };

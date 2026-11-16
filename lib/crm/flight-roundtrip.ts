@@ -107,6 +107,29 @@ export function roundTripMate<T extends Leg>(item: T, items: T[]): T | null {
   return pair ? pair.inbound : null;
 }
 
+/** Autres segments du même PNR, du plus tôt au plus tard. Le premier reste la carte. */
+export function itineraryTail<T extends Leg>(item: T, items: T[]): T[] {
+  if ((item.kind || "") !== "flight" || !pnrTokens(item).size) return [];
+  const mates = items.filter((other) => {
+    if (other.id === item.id) return false;
+    if ((other.kind || "") !== "flight") return false;
+    if (other.lifecycle === "cancelled" || other.lifecycle === "superseded") return false;
+    return sharesPnr(item, other) && suppliersAgree(item, other);
+  });
+  if (!mates.length) return [];
+  const ordered = [item, ...mates].sort((a, b) => String(a.start_at || "").localeCompare(String(b.start_at || "")));
+  if (ordered[0].id !== item.id) return [];
+  return ordered.slice(1);
+}
+
+export function hiddenItineraryIds<T extends Leg>(items: T[]) {
+  const hidden = new Set<string>();
+  for (const item of items) {
+    for (const leg of itineraryTail(item, items)) hidden.add(leg.id);
+  }
+  return hidden;
+}
+
 function dayLabel(iso: string | null | undefined) {
   const day = (iso || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return "";

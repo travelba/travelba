@@ -1,4 +1,5 @@
 import { shownPersonName } from "./identity";
+import type { BookingExtract } from "./ingest-types";
 import {
   isPlaceholderTraveler,
   sameRecordedTraveler,
@@ -86,4 +87,37 @@ export function peopleNotOnStay(candidates: LoosePerson[], stay: LoosePerson[]):
   return uniquePeople(candidates).filter(
     (person) => !onStay.some((row) => sameRecordedTraveler(row, person))
   );
+}
+
+function guestPerson(value: string): PersonName | null {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return null;
+  if (/^(adulte|adultes|child|children|guest|guests)$/i.test(parts[0] || "")) return null;
+  return { first_name: parts.slice(0, -1).join(" "), last_name: parts[parts.length - 1] || null };
+}
+
+/** Noms imprimés sur le billet ou la confirmation. Les autres compagnons de la fiche n’y entrent pas. */
+export function printedStayTravelers(extract: Pick<BookingExtract, "items">) {
+  const people: PersonName[] = [];
+  const push = (first?: string | null, last?: string | null) => {
+    const person = { first_name: (first || "").trim() || null, last_name: (last || "").trim() || null };
+    if (!person.first_name && !person.last_name) return;
+    if (isPlaceholderTraveler(person.first_name, person.last_name)) return;
+    if (people.some((row) => sameRecordedTraveler(row, person))) return;
+    people.push(person);
+  };
+  for (const item of extract.items || []) {
+    for (const person of passengersFromDetails(item.details as Record<string, unknown>)) {
+      push(person.first_name, person.last_name);
+    }
+    const rooms = Array.isArray(item.details?.rooms) ? item.details.rooms : [];
+    for (const room of rooms) {
+      const guests = room && typeof room === "object" ? String((room as { guests?: unknown }).guests || "") : "";
+      for (const name of guests.split(/[,;]/)) {
+        const person = guestPerson(name);
+        if (person) push(person.first_name, person.last_name);
+      }
+    }
+  }
+  return people;
 }

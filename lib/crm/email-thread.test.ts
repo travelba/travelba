@@ -35,7 +35,28 @@ test("la même confirmation, même sans fil commun, est un seul élément", () =
     { id: "a", received_at: "2026-07-01", confirmation_refs: ["AB12CD"] },
     { id: "b", received_at: "2026-07-02", confirmation_refs: ["ZX98YU"] },
   ];
-  assert.equal(collapseInboxRows(distinct).length, 2);
+    assert.equal(collapseInboxRows(distinct).length, 2);
+});
+
+test("deux billets du même PNR, deux passagers, restent deux mails", () => {
+  const raphael = {
+    id: "raphael",
+    gmail_thread_id: "t-raphael",
+    subject: "Votre reçu de billet électronique : BOUKRIS/RAPHAEL 13APR2027 NICE DUBAI",
+    received_at: "2026-11-16T14:38:45Z",
+    confirmation_refs: ["zu5tco", "kdp4as"],
+    extract: { items: [{ kind: "flight", confirmation_ref: "ZU5TCO" }], travelers: [{ first_name: "Raphael", last_name: "Boukris" }] },
+  };
+  const elon = {
+    id: "elon",
+    gmail_thread_id: "t-elon",
+    subject: "Votre reçu de billet électronique : BOUKRIS/ELON 13APR2027 NICE DUBAI",
+    received_at: "2026-11-16T14:38:45Z",
+    confirmation_refs: ["zu5tco", "kdp4as"],
+    extract: { items: [{ kind: "flight", confirmation_ref: "ZU5TCO" }], travelers: [{ first_name: "Elon", last_name: "Boukris" }] },
+  };
+  assert.equal(collapseInboxRows([raphael, elon]).length, 2);
+  assert.equal(openThreadParent(elon, [raphael]), null);
 });
 
 test("un message nouveau rejoint le parent du fil, il n’ouvre pas une septième ligne", () => {
