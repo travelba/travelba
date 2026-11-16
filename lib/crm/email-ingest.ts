@@ -40,10 +40,12 @@ import { scoreExtractFields } from "@/lib/crm/extract-confidence";
 import { buildImportProposal } from "@/lib/crm/import-proposal";
 import {
   applyFreshFlightParse,
+  autoAttachNotBefore,
   decideFlightAutoAttach,
   FLIGHT_PARSER_REVISION,
   flightExtractIsStale,
   hasUsableFlight,
+  receivedTooOldForAutoAttach,
 } from "@/lib/crm/email-flight-deposit";
 import { enterFlightRematch, leaveFlightRematch } from "@/lib/crm/email-flight-rematch";
 import { EMAIL_BODY_MISSING_MARK, bodyBackfillSince, hasBodyMissingMark, markBodyMissing } from "@/lib/crm/email-body-backfill";
@@ -423,6 +425,9 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
       label: cand.label,
       reason: cand.reason,
       score: cand.score,
+      start_date: cand.start_date,
+      end_date: cand.end_date,
+      covers_passengers: cand.covers_passengers,
     });
   }
 
@@ -561,7 +566,9 @@ export async function rematchEmailIngestRow(row: CrmEmailIngest) {
   }
   const admin = createServiceClient();
   const suggestions = await matchAndStoreExtract(admin, row.id, extract, row.warnings || [], row.attachments || []);
-  const decision = decideFlightAutoAttach(extract, suggestions.candidates);
+  const decision = receivedTooOldForAutoAttach(row.received_at)
+    ? null
+    : decideFlightAutoAttach(extract, suggestions.candidates, { receivedAt: row.received_at });
   let attached = false;
   if (decision && hasUsableFlight(extract)) {
     try {
@@ -590,8 +597,9 @@ export async function rematchStoredEmailIngest(limit = 8) {
       .in("status", ["parsed", "matched"])
       .not("extract", "is", null)
       .is("created_booking_id", null)
-      .order("received_at", { ascending: true, nullsFirst: true })
-      .order("created_at", { ascending: true })
+      .gte("received_at", autoAttachNotBefore())
+      .order("received_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
       .limit(bounded);
     const rows = (data || []) as CrmEmailIngest[];
     let rematched = 0;
@@ -842,7 +850,9 @@ export async function processEmailIngestRow(row: CrmEmailIngest) {
     if (proposalError) console.error("[import] proposition non enregistrée");
   }
   const { decideFlightAutoAttach, hasUsableFlight } = await import("@/lib/crm/email-flight-deposit");
-  const decision = decideFlightAutoAttach(extract, suggestions.candidates);
+  const decision = decideFlightAutoAttach(extract, suggestions.candidates, {
+    receivedAt: message.receivedAt || row.received_at,
+  });
   if (decision && hasUsableFlight(extract)) {
     try {
       const { autoAttachMatchedFlight } = await import("@/lib/crm/email-flight-deposit-run");

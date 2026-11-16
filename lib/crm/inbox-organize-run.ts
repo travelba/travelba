@@ -5,7 +5,8 @@ import { mergeDossierInto } from "@/lib/crm/dossier-merge";
 import { buildImportProposal } from "@/lib/crm/import-proposal";
 import { executeInboxPlan, planInboxOrganization, type InboxHandlers } from "@/lib/crm/inbox-organize";
 import { screenInboundExtract } from "@/lib/crm/ingest-samples";
-import { parseExtractPayloadSafe } from "@/lib/crm/ingest-types";
+import { emptyBookingExtract, parseExtractPayloadSafe } from "@/lib/crm/ingest-types";
+import { clientIsMailTraveler } from "@/lib/crm/email-match";
 import { namesReferToSamePerson } from "@/lib/crm/person-match";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { tripDossierFromRows, type TripDossier, type TripPerson } from "@/lib/crm/trip-match";
@@ -24,10 +25,16 @@ function fold(value: string) {
 async function ensureCompanions(admin: Admin, customerId: string, people: TripPerson[]) {
   const { data: customer } = await admin
     .from("crm_customers")
-    .select("id, first_name, last_name")
+    .select("id, first_name, last_name, email")
     .eq("id", customerId)
     .maybeSingle();
   if (!customer) return;
+  const mail = emptyBookingExtract();
+  mail.travelers = people.map((person) => ({
+    first_name: person.first_name,
+    last_name: person.last_name,
+  }));
+  if (!clientIsMailTraveler(customer, mail)) return;
   const { data } = await admin
     .from("crm_travel_companions")
     .select("id, first_name, last_name")
@@ -115,8 +122,23 @@ export async function organizeInboundMail(id: string) {
   const unreadTicket = warnings.some((warning) => warning.message === "Le billet électronique n’a pas pu être lu.");
   let dossiers: TripDossier[] = [];
   let suppressions: Awaited<ReturnType<typeof loadSuppressions>> = [];
+  let holder: {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    usage_name: string | null;
+    email: string | null;
+  } | null = null;
   try {
     [dossiers, suppressions] = await Promise.all([loadDossiers(admin), loadSuppressions(admin)]);
+    if (row.suggested_customer_id) {
+      const { data: customer } = await admin
+        .from("crm_customers")
+        .select("id, first_name, last_name, usage_name, email")
+        .eq("id", row.suggested_customer_id)
+        .maybeSingle();
+      holder = customer;
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Le séjour n’a pas pu être constitué.";
     await admin.from("crm_email_ingest").update({ error: message }).eq("id", id);
@@ -127,7 +149,8 @@ export async function organizeInboundMail(id: string) {
     fromEmail: row.from_email,
     dossiers,
     suppressions,
-    customerId: row.suggested_customer_id,
+    customerId: holder?.id || null,
+    customer: holder,
     unreadTicket,
   });
   try {

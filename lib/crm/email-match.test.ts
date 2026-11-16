@@ -3,10 +3,12 @@ import { describe, it } from "node:test";
 import { emptyBookingExtract, type BookingExtract } from "./ingest-types";
 import {
   cancellationApplyPlan,
+  clientIsMailTraveler,
   decideEmailIngestAction,
   destinationsOverlap,
   executeEmailIngestDecision,
   extractReferences,
+  isSupplierReference,
   lastNamesClose,
   mergeBookingSuggestions,
   referenceTokens,
@@ -139,6 +141,58 @@ describe("referenceTokens / extractReferences", () => {
     const byMail = suggestBookingByReference(extract, bookings, new Map(), new Map([["b-jeanne", ["KDQ68JS"]]]));
     assert.equal(byMail.autoBookingId, "b-jeanne");
     assert.equal(byMail.candidates[0]?.score, 90);
+  });
+
+  it("une phrase « Réservation pour » n’est pas une référence et n’emprunte pas le client", () => {
+    assert.deepEqual(referenceTokens("Réservation pour LEO PERIOL"), []);
+    assert.equal(isSupplierReference("reservation"), false);
+    assert.equal(isSupplierReference("pour"), false);
+    assert.equal(isSupplierReference("ABC123"), false);
+    assert.equal(isSupplierReference("WFPMHG"), true);
+    assert.equal(isSupplierReference("KDQ68JS"), true);
+    const expedia = extractWith({
+      travelers: [
+        { first_name: "Leo", last_name: "Periol" },
+        { first_name: "Guillian", last_name: "Dupin" },
+      ],
+      items: [
+        {
+          kind: "hotel",
+          title: "Ocean Park",
+          supplier: "Expedia TAAP",
+          confirmation_ref: null,
+          start_at: "2026-11-24",
+          end_at: "2026-11-26",
+          amount: null,
+          details: {
+            rooms: [
+              { confirmation_ref: "Réservation pour LEO PERIOL" },
+              { confirmation_ref: "Réservation pour GUILLIAN DUPIN" },
+            ],
+          },
+        },
+      ],
+    });
+    assert.equal(extractReferences(expedia).size, 0);
+    const bookings = [
+      {
+        id: "b-jeanne",
+        customer_id: "c-jeanne",
+        reference: "TB-2026-0152",
+        title: "Casablanca",
+        destination: "Casablanca",
+        status: "confirmed",
+      },
+    ];
+    const attached = new Map([["b-jeanne", ["reservation", "pour", "Réservation pour Manuel Jeanne"]]]);
+    const res = suggestBookingByReference(expedia, bookings, new Map(), attached);
+    assert.equal(res.autoBookingId, null);
+    assert.equal(res.candidates.length, 0);
+    assert.equal(
+      clientIsMailTraveler({ first_name: "Manuel", last_name: "Jeanne", email: "manuel@example.com" }, expedia),
+      false
+    );
+    assert.equal(clientIsMailTraveler({ first_name: "Leo", last_name: "Periol", email: null }, expedia), true);
   });
 });
 

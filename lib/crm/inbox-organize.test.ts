@@ -182,6 +182,33 @@ test("un séjour déjà Visible ne reçoit pas les cartes du mail", async () => 
   assert.match(calls.hold, /validation/);
 });
 
+test("un client emprunté à un autre dossier ne reçoit pas le séjour", () => {
+  const extract = ticketExtract();
+  extract.customer_first_name = "";
+  extract.customer_last_name = "";
+  extract.travelers = [
+    { first_name: "Leo", last_name: "Periol" },
+    { first_name: "Guillian", last_name: "Dupin" },
+  ];
+  const borrowed = planInboxOrganization({
+    extract,
+    dossiers: [],
+    customerId: "client-jeanne",
+    customer: { first_name: "Manuel", last_name: "Jeanne", email: "manuel@example.com" },
+  });
+  assert.equal(borrowed.action, "create_customer");
+  if (borrowed.action !== "create_customer") return;
+  assert.equal(borrowed.firstName, "Leo");
+  assert.equal(borrowed.lastName, "Periol");
+  const named = planInboxOrganization({
+    extract,
+    dossiers: [],
+    customerId: "client-leo",
+    customer: { first_name: "Leo", last_name: "Periol", email: "leo@example.com" },
+  });
+  assert.deepEqual(named, { action: "create", customerId: "client-leo" });
+});
+
 test("sans dossier, la fiche et un séjour caché sont préparés, sans prix inventé", () => {
   const extract = ticketExtract();
   const plan = planInboxOrganization({

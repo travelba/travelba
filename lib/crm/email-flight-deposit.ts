@@ -8,6 +8,7 @@ import {
   type TripBooking,
 } from "@/lib/crm/email-match";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
+import { isPlaceholderReference } from "@/lib/crm/ingest-samples";
 
 type FlightExtractItem = MatchableItem & {
   amount?: number | null;
@@ -44,7 +45,58 @@ export type FlightAutoCandidate = {
   customer_id?: string | null;
   reason?: string | null;
   score?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  covers_passengers?: boolean;
 };
+
+const DAY_MS = 86_400_000;
+export const MAX_TRAVELER_DOSSIER_DAYS = 60;
+export const AUTO_ATTACH_MAX_AGE_DAYS = 30;
+
+function dayStamp(value: string | null | undefined) {
+  const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})/);
+  if (!match) return null;
+  const [year, month, day] = match[1].split("-").map(Number);
+  return Date.UTC(year, month - 1, day);
+}
+
+/** Un mail en file depuis plus de 30 jours n’est pas déposé tout seul. */
+export function receivedTooOldForAutoAttach(receivedAt: string | null | undefined, now = new Date()) {
+  const received = dayStamp(receivedAt);
+  if (received == null) return false;
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return (today - received) / DAY_MS > AUTO_ATTACH_MAX_AGE_DAYS;
+}
+
+export function autoAttachNotBefore(now = new Date()) {
+  return new Date(now.getTime() - AUTO_ATTACH_MAX_AGE_DAYS * DAY_MS).toISOString();
+}
+
+export function dossierSpansTooLong(start: string | null | undefined, end: string | null | undefined) {
+  const left = dayStamp(start);
+  const right = dayStamp(end);
+  if (left == null || right == null) return false;
+  return Math.abs(right - left) / DAY_MS > MAX_TRAVELER_DOSSIER_DAYS;
+}
+
+export function flightsDatedBeforeMail(extract: FlightExtract | null | undefined, receivedAt: string | null | undefined) {
+  const received = dayStamp(receivedAt);
+  if (received == null) return false;
+  return (extract?.items || []).some((item) => {
+    if ((item.kind || "") !== "flight") return false;
+    const when = dayStamp(item.start_at);
+    return when != null && when < received;
+  });
+}
+
+export function extractHasPlaceholderRef(extract: FlightExtract | null | undefined) {
+  return (extract?.items || []).some((item) => {
+    if (isPlaceholderReference(item.confirmation_ref)) return true;
+    const pnr = item.details?.pnr;
+    return typeof pnr === "string" && isPlaceholderReference(pnr);
+  });
+}
 
 export type FlightAutoDecision = {
   bookingId: string;
@@ -234,18 +286,47 @@ function strongFlightReason(row: FlightAutoCandidate) {
  */
 export function decideFlightAutoAttach(
   extract: FlightExtract | null | undefined,
-  candidates: FlightAutoCandidate[] | null | undefined
+  candidates: FlightAutoCandidate[] | null | undefined,
+  context?: { receivedAt?: string | null }
 ): FlightAutoDecision | null {
   if (!extract || !hasUsableFlight(extract)) return null;
   if (extract.document_status === "cancelled" || extract.document_status === "quote" || extract.document_status === "identity") {
     return null;
   }
-  const strong = (candidates || []).filter((row) => row.booking_id && row.customer_id && strongFlightReason(row));
+  if (extractHasPlaceholderRef(extract)) return null;
+  const rows = candidates || [];
+  const strong = rows.filter((row) => row.booking_id && row.customer_id && strongFlightReason(row));
   const ids = [...new Set(strong.map((row) => row.booking_id as string))];
-  if (ids.length !== 1) return null;
-  const hit = strong.find((row) => row.booking_id === ids[0]);
-  if (!hit?.customer_id || !hit.reason) return null;
-  return { bookingId: ids[0], customerId: hit.customer_id, reason: hit.reason };
+  if (ids.length === 1) {
+    const hit = strong.find((row) => row.booking_id === ids[0]);
+    if (hit?.customer_id && hit.reason && hit.covers_passengers !== false) {
+      if (hit.reason !== TRAVELER_DATES_REASON || !travelerDatesBlocked(extract, hit, context?.receivedAt)) {
+        return { bookingId: ids[0], customerId: hit.customer_id, reason: hit.reason };
+      }
+    }
+  }
+  const covering = rows.filter(
+    (row) =>
+      row.booking_id &&
+      row.customer_id &&
+      row.covers_passengers === true &&
+      Boolean(row.start_date && row.end_date) &&
+      !travelerDatesBlocked(extract, row, context?.receivedAt)
+  );
+  const coverIds = [...new Set(covering.map((row) => row.booking_id as string))];
+  if (coverIds.length !== 1) return null;
+  const hit = covering.find((row) => row.booking_id === coverIds[0]);
+  if (!hit?.customer_id) return null;
+  return { bookingId: coverIds[0], customerId: hit.customer_id, reason: hit.reason || TRAVELER_DATES_REASON };
+}
+
+function travelerDatesBlocked(
+  extract: FlightExtract,
+  hit: FlightAutoCandidate,
+  receivedAt: string | null | undefined
+) {
+  if (flightsDatedBeforeMail(extract, receivedAt)) return true;
+  return dossierSpansTooLong(hit.start_date, hit.end_date);
 }
 
 /** Extract stocké avant le correctif PNR / distance / passagers. */
@@ -297,11 +378,12 @@ export function planQueuedFlightAttach(input: {
   customers?: Parameters<typeof suggestBookingByTraveler>[4];
   itemsByBooking?: Map<string, { confirmation_ref?: string | null; details?: Record<string, unknown> | null }[]>;
   attachedRefsByBooking?: Map<string, string[]>;
+  receivedAt?: string | null;
 }): FlightAutoDecision | null {
   const bookings = input.bookings.filter((booking) => booking.status !== "cancelled");
   const merged = mergeBookingSuggestions(
     suggestBookingByReference(input.extract, bookings, input.itemsByBooking || new Map(), input.attachedRefsByBooking),
     suggestBookingByTraveler(input.extract, bookings, input.travelers || [], input.companions || [], input.customers || [])
   );
-  return decideFlightAutoAttach(input.extract, merged.candidates);
+  return decideFlightAutoAttach(input.extract, merged.candidates, { receivedAt: input.receivedAt });
 }

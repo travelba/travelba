@@ -3,7 +3,7 @@ import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatMoney } from "./money";
 import { McpReadError } from "./mcp-passport";
-import { dossierPayerLine, mcpTripCost, readChercherDossiers, readFicheClient, readFicheDossier, readFormalites, readGrandLivre } from "./mcp-read";
+import { clientCompanionLines, dossierPayerLine, mcpTripCost, readChercherDossiers, readFicheClient, readFicheDossier, readFormalites, readGrandLivre } from "./mcp-read";
 import type { TripCost } from "./trip-costs";
 
 const BOOKING = "22222222-2222-4222-8222-222222222222";
@@ -410,6 +410,24 @@ test("une lecture société ou cartes en échec remonte, elle ne vide pas la fic
     () => readChercherDossiers({ q: "", etat: null }, dossierClient({ fail: "montant" })),
     (err: unknown) => err instanceof McpReadError && err.message === "Lecture du montant impossible."
   );
+});
+
+test("fiche_client nomme les compagnons et les dossiers qui les retiennent", async () => {
+  const lines = clientCompanionLines(
+    [
+      { id: "c-leo", first_name: "Leo", last_name: "Periol" },
+      { id: "c-dupin", first_name: "Guillian", last_name: "Dupin" },
+    ],
+    [
+      { companion_id: "c-dupin", booking_id: "b-203" },
+      { companion_id: "c-leo", booking_id: "b-203" },
+    ],
+    [{ id: "b-203", reference: "TB-2026-0203" }]
+  );
+  assert.equal(lines[0]?.compagnon_id, "c-leo");
+  assert.equal(lines[0]?.nom, "Leo Periol");
+  assert.deepEqual(lines[0]?.dossiers, [{ dossier_id: "b-203", reference: "TB-2026-0203" }]);
+  assert.equal(lines[1]?.dossiers[0]?.reference, "TB-2026-0203");
 });
 
 test("fiche_client et grand_livre retrouvent Prénom Nom", async () => {

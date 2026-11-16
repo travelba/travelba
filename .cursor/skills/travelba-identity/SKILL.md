@@ -15,7 +15,7 @@ description: >-
 
 - Login = **titulaire** `crm_customers` seulement.
 - `crm_travel_companions` : identité du foyer, **pas** d’invitation / pas de session.
-- Voyageurs dossier : `crm_booking_travelers` (Adulte 1 / 2 si l’ingest n’a que « 2 adults »). On peut rattacher un compagnon **plus tard**.
+- Voyageurs dossier : `crm_booking_travelers` (Adulte 1 / 2 si l’ingest n’a que « 2 adults »). On peut rattacher un compagnon **plus tard**. Changer le client du dossier (`changer_client_dossier`, fiche agence) relie les voyageurs : celui qui porte le nom du nouveau titulaire devient le titulaire ; les autres compagnons de l’ancien client le suivent, avec leurs pièces. S’ils restent sur un autre dossier de l’ancien client, la fiche est copiée. `fiche_client` liste `compagnons` (`compagnon_id`, `nom`, dossiers liés).
 - Admin peut **supprimer un client** (`deleteCustomerById`) : dossiers, txs, fichiers, user Auth si non staff. Le client **ne** se supprime **pas** lui-même.
 
 ## Téléphones / WhatsApp
