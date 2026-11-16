@@ -8,6 +8,7 @@
 import { agencyEmailHtml } from "@/lib/crm/email-html";
 import { MB3M_AIRLINE_PROVIDERS, MB3M_PROVIDERS, type Mb3mCatalogProvider } from "@/lib/crm/mb3m-providers";
 import { mb3mVerifiedProviderId } from "@/lib/crm/mb3m-verified-providers";
+import { readMb3mActivityOverride } from "@/lib/crm/mb3m-activity";
 import type { Mb3mAccountLine } from "@/lib/crm/mb3m-account";
 import { mb3mFlightEuroCommissionEnabled, type Mb3mLine } from "@/lib/crm/mb3m";
 import { siteConfig } from "@/lib/site";
@@ -450,6 +451,27 @@ export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mCon
         held: false,
         supplierReason: null,
         label: mb3mFeeLabel(code, line.label),
+      };
+    }
+    if (item && readMb3mActivityOverride(item.details) === "land") {
+      const named = mb3mProviderByName("DIVERS TERRESTRE");
+      const providerName = named?.name || "DIVERS TERRESTRE";
+      const providerId = mb3mVerifiedProviderId(providerName);
+      return {
+        ...line,
+        activityId: MB3M_ACTIVITY.land,
+        providerId,
+        providerName,
+        note: providerId ? line.note : noteWithResolvedProvider(line.note, providerName),
+        refPiece: bookingRef(item) || null,
+        ticketRefs: [],
+        refCommand: null,
+        fareScope: commissionScope(item),
+        held: false,
+        supplierReason: named ? null : "Fournisseur introuvable dans MB3M.",
+        label: line.label,
+        customCode: null,
+        agencyProvider: false,
       };
     }
     const channel = item ? mb3mSaleChannel(item) : kind === "flight" ? "amadeus" : kind === "rail" ? "amadeus" : "direct";

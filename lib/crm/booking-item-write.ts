@@ -8,6 +8,7 @@ import {
   refreshBookingLedger,
 } from "@/lib/crm/bookings";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
+import { readMb3mActivityOverride, withMb3mActivity } from "@/lib/crm/mb3m-activity";
 import { applyExpensePricing, hasExpensePricingInput } from "@/lib/crm/expense-pricing";
 import { awaitingExpenseDetails, validatedExpenseDetails } from "@/lib/crm/expense-validation";
 import { linkedPliantTransactionIds, pliantExpenseTransactionId } from "@/lib/crm/pliant-booking";
@@ -218,6 +219,17 @@ export async function patchStaffBookingCard(
     patch.details = details.details;
   }
   const row = current as { kind?: string | null; amount?: number | string | null; details?: unknown };
+  if ("mb3m_activity" in body || "categorie_mb3m" in body) {
+    const chosen = withMb3mActivity("details" in patch ? patch.details : row.details, body.mb3m_activity ?? body.categorie_mb3m);
+    if ("error" in chosen) return { error: chosen.error, status: 400 };
+    patch.details = chosen.details;
+  } else if ("details" in patch) {
+    const kept = readMb3mActivityOverride(row.details);
+    const next = patch.details;
+    if (kept && next && typeof next === "object" && !Array.isArray(next) && !("mb3m_activity" in next)) {
+      patch.details = { ...(next as Record<string, unknown>), mb3m_activity: "land" };
+    }
+  }
   if (isLedgerExpenseKind(row.kind) && typeof body.validate === "boolean") {
     const base = "details" in patch ? patch.details : row.details;
     patch.details = body.validate ? validatedExpenseDetails(base) : awaitingExpenseDetails(base);

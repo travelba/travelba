@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { InvoiceSendPanel } from "@/components/admin/InvoiceSendPanel";
 import { StatusChip } from "@/components/crm/ui";
 import { formatMoney } from "@/lib/crm/money";
+import type { Mb3mActivityChoice } from "@/lib/crm/mb3m-activity";
 import {
   mb3mAmadeusSentence,
   mb3mAmadeusSuggestionSentence,
@@ -13,6 +14,14 @@ import {
   mb3mReglementNote,
   type Mb3mPreparationView,
 } from "@/lib/crm/mb3m-prep";
+
+export type InvoiceMb3mCard = {
+  id: string;
+  label: string;
+  amount: number | null;
+  currency: string;
+  category: "auto" | Mb3mActivityChoice;
+};
 
 export type InvoiceBlockView = {
   number: string | null;
@@ -36,6 +45,7 @@ export function InvoiceBlock({
   unsaved,
   blocker,
   notice,
+  cards = [],
   view,
   note,
   onBusy,
@@ -48,6 +58,7 @@ export function InvoiceBlock({
   unsaved: boolean;
   blocker: string | null;
   notice?: string | null;
+  cards?: InvoiceMb3mCard[];
   view: InvoiceBlockView;
   note: string | null;
   onBusy: (active: boolean) => void;
@@ -197,6 +208,18 @@ export function InvoiceBlock({
         {reason ? <p className="text-sm text-muted">{reason}</p> : null}
         {held ? <p className="text-sm text-[var(--admin-navy)]">{held}</p> : null}
       </div>
+      {cards.length ? (
+        <div className="space-y-2">
+          <p className="text-xs text-muted">
+            Divers terrestres facture ce vol en activité 22, fournisseur DIVERS TERRESTRE. Le vol reste au carnet.
+          </p>
+          <ul className="space-y-2">
+            {cards.map((card) => (
+              <Mb3mCategoryRow key={`${card.id}:${card.category}`} bookingId={bookingId} card={card} disabled={busy} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {view.number ? <InvoiceSendPanel bookingId={bookingId} /> : null}
 
       {control != null ? (
@@ -228,5 +251,76 @@ export function InvoiceBlock({
         </p>
       ) : null}
     </section>
+  );
+}
+
+function Mb3mCategoryRow({
+  bookingId,
+  card,
+  disabled,
+}: {
+  bookingId: string;
+  card: InvoiceMb3mCard;
+  disabled: boolean;
+}) {
+  const router = useRouter();
+  const [value, setValue] = useState(card.category);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function change(next: InvoiceMb3mCard["category"]) {
+    const previous = value;
+    setValue(next);
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/bookings/${bookingId}/items`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: card.id, mb3m_activity: next === "land" ? "land" : "automatique" }),
+      });
+      const json = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        setValue(previous);
+        setError(json?.error || "La catégorie n’a pas été enregistrée.");
+        return;
+      }
+      router.refresh();
+    } catch {
+      setValue(previous);
+      setError("La catégorie n’a pas été enregistrée.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const price = card.amount == null ? "" : formatMoney(card.amount, card.currency);
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-white px-3 py-2">
+      <p className="min-w-0 text-sm text-[var(--admin-navy)]">
+        <span className="font-semibold">{card.label}</span>
+        {price ? <span className="text-muted"> · {price}</span> : null}
+      </p>
+      <label className="flex items-center gap-2 text-sm text-[var(--admin-navy)]">
+        <span className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold-dark)]">
+          Catégorie MB3M
+        </span>
+        <select
+          aria-label={`Catégorie MB3M · ${card.label}`}
+          value={value}
+          disabled={disabled || saving}
+          onChange={(event) => void change(event.target.value === "land" ? "land" : "auto")}
+          className="rounded-full border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--admin-navy)] disabled:opacity-50"
+        >
+          <option value="auto">Automatique</option>
+          <option value="land">Divers terrestres</option>
+        </select>
+      </label>
+      {error ? (
+        <p role="alert" className="w-full text-sm text-[var(--admin-red)]">
+          {error}
+        </p>
+      ) : null}
+    </li>
   );
 }

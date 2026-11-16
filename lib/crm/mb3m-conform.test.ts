@@ -25,6 +25,7 @@ import {
 import { mb3mInvoiceBlocker, type Mb3mInvoiceContext } from "./mb3m-invoice";
 import type { Mb3mAccountLine } from "./mb3m-account";
 import { MB3M_VERIFIED_PROVIDERS, mb3mVerifiedProviderId } from "./mb3m-verified-providers";
+import { parseMb3mActivityInput, readMb3mActivityOverride, withMb3mActivity } from "./mb3m-activity";
 
 const TRANSAVIA_FRANCE = "11c9b85d-e7fd-4106-be84-5843083d8e81";
 
@@ -394,6 +395,76 @@ describe("lignes de facture", () => {
     assert.equal(mb3mInvoiceBlocker(invoiceContext(tour)), null);
   });
 });
+
+  it("facture un vol en divers terrestres sans le retenir, et laisse le vol un vol", () => {
+    const flight = {
+      id: "flight-tlv",
+      kind: "flight",
+      title: "Paris → Tel Aviv",
+      supplier: "Air France",
+      confirmation_ref: "ABC123",
+      details: { airline_iata: "AF", airline: "Air France", sale_channel: "amadeus", from: "Paris", to: "Tel Aviv" },
+    };
+    const line = {
+      transactionId: "tx-tlv",
+      label: "Paris → Tel Aviv",
+      amount: 2391.01,
+      activityId: 2,
+      itemId: "flight-tlv",
+      chargeKind: "flight",
+      margin: 100,
+    };
+    const previous = process.env.MB3M_FLIGHT_EURO_COMMISSION;
+    process.env.MB3M_FLIGHT_EURO_COMMISSION = "0";
+    try {
+      const held = conformMb3mAccountLines([line], [flight]);
+      assert.equal(held[0]?.held, true);
+      assert.equal(held[0]?.activityId, 2);
+      assert.equal(mb3mSoapLines(held, 0.01).length, 0);
+      assert.match(mb3mInvoiceNotice(held) || "", new RegExp(MB3M_FLIGHT_HOLD_MESSAGE));
+      const forced = conformMb3mAccountLines(
+        [line],
+        [{ ...flight, details: { ...flight.details, mb3m_activity: "land" } }]
+      );
+      assert.equal(flight.kind, "flight");
+      assert.equal(forced[0]?.held, false);
+      assert.equal(forced[0]?.activityId, MB3M_ACTIVITY.land);
+      assert.equal(forced[0]?.providerName, "DIVERS TERRESTRE");
+      const diversId = mb3mVerifiedProviderId("DIVERS TERRESTRE");
+      assert.equal(forced[0]?.providerId, diversId);
+      assert.equal(forced[0]?.supplierReason ?? null, null);
+      assert.equal(forced[0]?.label, "Paris → Tel Aviv");
+      assert.equal(mb3mInvoiceNotice(forced), null);
+      const soap = mb3mSoapLines(forced, 0.01);
+      assert.equal(soap.length, 1);
+      assert.equal(soap[0]?.activityId, 22);
+      assert.equal(soap[0]?.netPriceUnit, 2291.01);
+      const xml = linesXml("InvoiceLine", soap);
+      assert.equal(xml.includes("<ActivityId>22</ActivityId>"), true);
+      assert.equal(xml.includes("Commission"), false);
+      assert.equal(xml.includes(`<ProviderId>${diversId}</ProviderId>`), true);
+    } finally {
+      if (previous === undefined) delete process.env.MB3M_FLIGHT_EURO_COMMISSION;
+      else process.env.MB3M_FLIGHT_EURO_COMMISSION = previous;
+    }
+    const stillFlight = conformMb3mAccountLines(
+      [line],
+      [{ ...flight, details: { ...flight.details, mb3m_activity: "land" } }]
+    );
+    assert.equal(stillFlight[0]?.activityId, 22);
+    assert.equal(stillFlight[0]?.held, false);
+    const kept = withMb3mActivity({ airline_iata: "AF", pnr: "ABC123" }, "divers terrestres");
+    assert.equal("error" in kept, false);
+    if (!("error" in kept)) {
+      assert.equal(kept.details.airline_iata, "AF");
+      assert.equal(kept.details.mb3m_activity, "land");
+      assert.equal(readMb3mActivityOverride(kept.details), "land");
+    }
+    const cleared = withMb3mActivity({ airline_iata: "AF", mb3m_activity: "land" }, "automatique");
+    assert.equal("error" in cleared, false);
+    if (!("error" in cleared)) assert.equal("mb3m_activity" in cleared.details, false);
+    assert.equal("error" in parseMb3mActivityInput("hôtel"), true);
+  });
 
 function invoiceContext(lines: Mb3mAccountLine[]): Mb3mInvoiceContext {
   return {
