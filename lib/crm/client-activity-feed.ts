@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { stayMention } from "./customer-activity";
+import { settleStartedPayDetail, stayMention, type PayCreditHint, type PayOutcome } from "./customer-activity";
 import { hotelActivitySentence, isHotelClientActivity } from "./hotel-activity";
 import { loginMethodLabel } from "./customer-login";
 import { addIsoDays } from "./dates";
@@ -412,6 +412,28 @@ async function readActivity(supabase: SupabaseClient, since: string): Promise<Cl
   return [];
 }
 
+async function readPayCredits(supabase: SupabaseClient, customerIds: string[], since: string): Promise<PayCreditHint[]> {
+  if (!customerIds.length) return [];
+  const { data, error } = await supabase
+    .from("crm_transactions")
+    .select("customer_id, external_id, amount, status, created_at")
+    .eq("source", "stripe")
+    .in("customer_id", customerIds)
+    .gte("created_at", since)
+    .limit(200);
+  if (error || !data) return [];
+  return (data as { customer_id?: string; external_id?: string; amount?: number; status?: string; created_at?: string }[]).flatMap((row) => {
+    if (!row.customer_id || !row.external_id || !row.created_at) return [];
+    return [{
+      customerId: row.customer_id,
+      externalId: row.external_id,
+      amount: Number(row.amount),
+      status: row.status || "",
+      createdAt: row.created_at,
+    }];
+  });
+}
+
 /** Lecture agence. Table absente ou illisible : liste vide, le tableau de bord reste ouvert. */
 export async function loadClientActivityFeed(
   supabase: SupabaseClient,
@@ -452,6 +474,20 @@ export async function loadClientActivityFeed(
       return [];
     }
     const bookingIds = [...new Set(activity.map((row) => row.booking_id).filter((id): id is string => Boolean(id)))];
+    const credits = await readPayCredits(supabase, customerIds, since);
+    const settled = activity.flatMap((row) => {
+      if (row.action !== "pay_settled" || !(row.path || "").startsWith("pi:")) return [];
+      const outcome: PayOutcome = /refus/i.test(row.detail || row.summary)
+        ? "refusé"
+        : /abandon/i.test(row.detail || row.summary)
+          ? "abandonné"
+          : "reçu";
+      return [{ intentId: (row.path || "").slice(3), outcome }];
+    });
+    for (const row of activity) {
+      if (row.action !== "pay") continue;
+      row.detail = settleStartedPayDetail(row, credits, Date.now(), settled);
+    }
     let bookings: ClientActivityBooking[] = [];
     if (bookingIds.length) {
       const bookingRes = await supabase

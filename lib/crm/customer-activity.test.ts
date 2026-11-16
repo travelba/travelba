@@ -12,6 +12,8 @@ import {
   formalitiesActivitySummary,
   payActivitySummary,
   payFailureSummary,
+  paySettledSummary,
+  settleStartedPayDetail,
   openedStaySummary,
   pieceActivityDetail,
   profileActivityDetail,
@@ -94,6 +96,51 @@ test("un service, un règlement et une formalité nomment le séjour", () => {
   assert.equal(visaActivitySummary("TB-1", "IL"), "A validé la formalité pour Israël sur le séjour TB-1");
   assert.equal(formalitiesActivitySummary("TB-1"), "A envoyé des pièces de formalité pour le séjour TB-1");
   assert.equal(shareActivitySummary("Léa"), "A envoyé le lien du séjour à Léa");
+});
+
+test("un règlement commencé prend le statut du paiement, sans réécrire la base", () => {
+  const summary = paySettledSummary({
+    payer: "personal",
+    method: "apple_pay",
+    amount: 4450.55,
+    currency: "EUR",
+    result: "reçu",
+  });
+  assert.match(summary, /A réglé l’encours particulier par Apple Pay/);
+  assert.match(summary, /Paiement reçu/);
+  const started = {
+    summary: "A commencé un règlement par Apple Pay de l’encours particulier",
+    detail: "4 450,55 € · Paiement à confirmer dans le formulaire.",
+    path: "pi:pi_3UcUPVEq8Jx28Xgo1bDIGvEI",
+    created_at: "2026-11-16T18:10:00.000Z",
+    customer_id: "client",
+  };
+  assert.match(
+    settleStartedPayDetail(started, [
+      {
+        customerId: "client",
+        externalId: "pi_3UcUPVEq8Jx28Xgo1bDIGvEI",
+        amount: 4450.55,
+        createdAt: "2026-11-16T18:14:00.000Z",
+        status: "posted",
+      },
+    ]) || "",
+    /Paiement reçu/
+  );
+  assert.match(
+    settleStartedPayDetail(
+      { ...started, path: null, created_at: "2026-11-16T10:00:00.000Z" },
+      [],
+      Date.parse("2026-11-16T18:00:00.000Z")
+    ) || "",
+    /non finalisé/
+  );
+  assert.match(
+    settleStartedPayDetail(started, [], Date.parse("2026-11-16T18:12:00.000Z"), [
+      { intentId: "pi_3UcUPVEq8Jx28Xgo1bDIGvEI", outcome: "refusé" },
+    ]) || "",
+    /Paiement refusé/
+  );
 });
 
 test("un geste de séjour porte toujours son nom", () => {

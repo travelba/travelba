@@ -300,6 +300,97 @@ export function payActivityDetail(amount: number, currency: string, next?: strin
   return `${money} · ${step}`.slice(0, 400);
 }
 
+export type PayOutcome = "reçu" | "refusé" | "abandonné" | "non finalisé";
+
+const PAY_CONFIRM = /Paiement à confirmer dans le formulaire\.?/i;
+const PAY_STALE_MS = 2 * 60 * 60 * 1000;
+
+export function payMethodPhrase(method: string, wallet?: string | null) {
+  if (wallet === "google_pay" || method === "google_pay") return "Google Pay";
+  if (wallet === "apple_pay" || method === "apple_pay") return "Apple Pay";
+  if (method === "sepa_debit") return "prélèvement SEPA";
+  return "carte";
+}
+
+/** Ligne du journal une fois le PaymentIntent terminé. */
+export function paySettledSummary(input: {
+  payer: "company" | "personal";
+  method: string;
+  wallet?: string | null;
+  amount: number;
+  currency: string;
+  reference?: string | null;
+  result: "reçu" | "refusé" | "abandonné";
+}) {
+  const how = payMethodPhrase(input.method, input.wallet);
+  const money = formatMoney(input.amount, input.currency);
+  const target = (input.reference || "").trim()
+    ? `le dossier ${(input.reference || "").trim()}`
+    : `l’encours ${input.payer === "company" ? "société" : "particulier"}`;
+  const end = input.result === "reçu" ? "Paiement reçu" : input.result === "abandonné" ? "Paiement abandonné" : "Paiement refusé";
+  return `A réglé ${target} par ${how} · ${money} · ${end}`.slice(0, 180);
+}
+
+export function payOutcomePhrase(outcome: PayOutcome) {
+  if (outcome === "reçu") return "Paiement reçu";
+  if (outcome === "refusé") return "Paiement refusé";
+  if (outcome === "abandonné") return "Paiement abandonné";
+  return "Paiement non finalisé";
+}
+
+export function payIntentPath(intentId: string) {
+  const id = intentId.trim();
+  return id ? `pi:${id}` : null;
+}
+
+function moneyInDetail(detail: string | null | undefined) {
+  const match = (detail || "").replace(/\s/g, "").match(/(\d{1,3}(?:[.\s]\d{3})*,\d{2}|\d+[.,]\d{2})/);
+  if (!match) return null;
+  const amount = Number(match[1].replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(amount) ? amount : null;
+}
+
+export type PayCreditHint = {
+  customerId: string;
+  externalId: string;
+  amount: number;
+  createdAt: string;
+  status: string;
+};
+
+/** Le « à confirmer » prend le statut déjà connu. Rien n’est réécrit en base. */
+export function settleStartedPayDetail(
+  event: { summary: string; detail?: string | null; path?: string | null; created_at: string; customer_id: string },
+  credits: PayCreditHint[],
+  now = Date.now(),
+  settled: { intentId: string; outcome: PayOutcome }[] = []
+) {
+  const blob = `${event.summary} ${event.detail || ""}`;
+  if (!/commencé un règlement|à confirmer/i.test(blob)) return event.detail || null;
+  const pi = (event.path || "").startsWith("pi:") ? (event.path || "").slice(3) : "";
+  const known = pi ? settled.find((row) => row.intentId === pi) : undefined;
+  const amount = moneyInDetail(event.detail);
+  const credit = credits.find((row) => {
+    if (row.customerId !== event.customer_id) return false;
+    if (pi && row.externalId === pi) return true;
+    if (pi || amount == null) return false;
+    if (Math.abs(row.amount - amount) > 0.02) return false;
+    const delta = Math.abs(Date.parse(row.createdAt) - Date.parse(event.created_at));
+    return Number.isFinite(delta) && delta < 24 * 60 * 60 * 1000;
+  });
+  let outcome: PayOutcome | null = known?.outcome || null;
+  if (!outcome && credit && credit.status === "posted") outcome = "reçu";
+  else if (!outcome && credit && (credit.status === "void" || credit.status === "failed")) outcome = "refusé";
+  else if (!outcome) {
+    const age = now - Date.parse(event.created_at);
+    if (Number.isFinite(age) && age > PAY_STALE_MS) outcome = "non finalisé";
+  }
+  if (!outcome) return event.detail || null;
+  const phrase = payOutcomePhrase(outcome);
+  if (event.detail && PAY_CONFIRM.test(event.detail)) return event.detail.replace(PAY_CONFIRM, phrase);
+  return event.detail ? `${event.detail} · ${phrase}`.slice(0, 400) : phrase;
+}
+
 export function visaActivitySummary(
   reference: string,
   country: string,

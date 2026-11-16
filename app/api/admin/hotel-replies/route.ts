@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { agencyAlerts, type ConciergeChangeAlert } from "@/lib/crm/agency-alerts";
+import { agencyAlerts, type ConciergeChangeAlert, type PaymentAlert } from "@/lib/crm/agency-alerts";
 import { CONCIERGE_WRITE_SOURCE } from "@/lib/crm/concierge-client-write";
 import { shouldNotifyInboundMail } from "@/lib/crm/email-reply-gate";
 import { loadSentMailIndex } from "@/lib/crm/sent-mail";
@@ -115,9 +115,29 @@ export async function GET(request: Request) {
     })),
     chats: [],
     changes: await conciergeChanges(admin, since),
+    payments: await paymentAlerts(admin, since),
   });
 
   return NextResponse.json({ notices: hotelReplyNotices(rows, since), alerts, replied });
+}
+
+async function paymentAlerts(admin: ReturnType<typeof createServiceClient>, since: string): Promise<PaymentAlert[]> {
+  const selected = await admin
+    .from("crm_agency_alerts")
+    .select("id, summary, created_at, entity_id")
+    .eq("kind", "payment")
+    .gt("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(8);
+  if (selected.error) return [];
+  return ((selected.data || []) as { id: string; summary: string | null; created_at: string; entity_id: string | null }[]).map(
+    (row) => ({
+      id: String(row.id),
+      summary: row.summary,
+      createdAt: row.created_at,
+      customerId: row.entity_id,
+    })
+  );
 }
 
 async function conciergeChanges(admin: ReturnType<typeof createServiceClient>, since: string): Promise<ConciergeChangeAlert[]> {

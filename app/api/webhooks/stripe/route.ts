@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/crm/stripe";
-import { stripeCreditFromIntent } from "@/lib/crm/stripe-pay";
+import { stripeCreditFromIntent, stayPayMethodOf } from "@/lib/crm/stripe-pay";
 import { paymentCreditReleased } from "@/lib/crm/unmatch-credit";
 import { autoMatchUnmatchedStripe } from "@/lib/crm/stripe-match";
 import { enrichStripeIntents, snapshotFromPaymentIntent, upsertStripeInbox } from "@/lib/crm/stripe-sync";
 import { alertMandateRevoked, alertSepaReturned, cancelOrphanSepaIntents, syncSepaIntent, viewFromStripeIntent } from "@/lib/crm/sepa-ledger";
+import { notifyClientPayment } from "@/lib/crm/pay-notice";
+import { payerKindOf } from "@/lib/crm/payer";
 import { readSepaIntent } from "@/lib/crm/sepa-hold";
 
 export const runtime = "nodejs";
@@ -86,6 +88,8 @@ export async function POST(request: Request) {
         }
       }
     }
+    if (event.type === "payment_intent.payment_failed") await noteClientPayment(admin, intent, "refusé");
+    if (event.type === "payment_intent.canceled") await noteClientPayment(admin, intent, "abandonné");
   }
 
   if (event.type === "payment_intent.succeeded") {
@@ -119,6 +123,7 @@ export async function POST(request: Request) {
       console.error("[stripe] file", err instanceof Error ? err.message : "file");
       return NextResponse.json({ error: "file" }, { status: 500 });
     }
+    await noteClientPayment(admin, intent, "reçu");
   }
 
   if (event.type === "payment_method.detached") {
@@ -183,4 +188,42 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ received: true });
+}
+
+async function noteClientPayment(
+  admin: ReturnType<typeof createServiceClient>,
+  intent: Stripe.PaymentIntent,
+  result: "reçu" | "refusé" | "abandonné"
+) {
+  try {
+    const meta = intent.metadata || {};
+    if (meta.purpose === "hotel_direct" || meta.pay_method === "revolut") return;
+    const customerId = (meta.crm_customer_id || "").trim();
+    const method = stayPayMethodOf(meta.pay_method) || meta.pay_method || "card";
+    if (!customerId) return;
+    const payer = payerKindOf(meta.payer_kind) || "personal";
+    const { data } = await admin.from("crm_customers").select("first_name, last_name").eq("id", customerId).maybeSingle();
+    const name = [data?.first_name, data?.last_name].filter(Boolean).join(" ");
+    const charge = intent.latest_charge;
+    const wallet =
+      charge && typeof charge !== "string" && charge.payment_method_details?.type === "card"
+        ? charge.payment_method_details.card?.wallet?.type || null
+        : null;
+    const bookingId = (meta.crm_booking_id || "").trim();
+    await notifyClientPayment(admin, {
+      customerId,
+      customerName: name,
+      payer,
+      method: wallet === "google_pay" ? "google_pay" : method,
+      wallet,
+      amountCents: intent.amount,
+      currency: intent.currency,
+      reference: (meta.reference || "").trim() || null,
+      bookingId: bookingId || null,
+      paymentIntentId: intent.id,
+      result,
+    });
+  } catch (err) {
+    console.error("[pay] avis", err instanceof Error ? err.message : "avis");
+  }
 }
