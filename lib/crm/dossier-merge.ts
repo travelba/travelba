@@ -357,10 +357,19 @@ export async function mergeDossierInto(
     await admin.from("crm_booking_travelers").delete().eq("id", traveler.id);
   }
   for (const traveler of moveTravelers) {
-    const { error } = await admin
+    const moved = await admin
       .from("crm_booking_travelers")
-      .update({ booking_id: keepId, is_account_holder: false })
+      .update({ booking_id: keepId, is_account_holder: false, proposed: true })
       .eq("id", traveler.id);
+    const error =
+      moved.error?.code === "42703"
+        ? (
+            await admin
+              .from("crm_booking_travelers")
+              .update({ booking_id: keepId, is_account_holder: false })
+              .eq("id", traveler.id)
+          ).error
+        : moved.error;
     if (error) return { ok: false as const, message: "Les voyageurs n’ont pas pu être réunis." };
   }
   if (held) {

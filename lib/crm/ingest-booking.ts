@@ -46,10 +46,10 @@ import {
   IMPORT_DOCUMENTS_NOTE,
   IMPORT_QUOTE_NOTE,
 } from "@/lib/crm/email-detach";
+import { visibilityAfterImport } from "@/lib/crm/auto-visibility";
 import {
   activeCardDateRange,
   cancellationApplyPlan,
-  cardStaysShown,
   hollowHotelCard,
   replacementPlan,
   stayDatesFromExtract,
@@ -458,7 +458,7 @@ async function upsertItemsAndTravelers(
       end_at: kept ? kept.end_at : emptyToNull(item.end_at),
       amount,
       details: kept?.details || mailDetails,
-      visible_to_client: fromMail ? false : cardStaysShown(match, Boolean(opts?.keepSellingPrice)),
+      visible_to_client: visibilityAfterImport(match?.visible_to_client),
       source_document_id: sourceDocId(details, docs),
       ...(replacing
         ? { include_in_ledger: replacing.includeInLedger }
@@ -566,13 +566,25 @@ async function upsertItemsAndTravelers(
     if (existingTravelers.some((row) => sameRecordedTraveler(row, recorded))) continue;
     const companion =
       linked.companion_id ? companions.find((row) => row.id === linked.companion_id) : null;
-    const { error } = await supabase.from("crm_booking_travelers").insert({
+    const travelerRow = {
       booking_id: bookingId,
       companion_id: companion?.id || null,
       is_account_holder: Boolean(linked.is_account_holder),
       first_name: first || companion?.first_name || null,
       last_name: last || companion?.last_name || null,
-    });
+      proposed: true,
+    };
+    const inserted = await supabase.from("crm_booking_travelers").insert(travelerRow);
+    const missingProposed = inserted.error?.code === "42703";
+    const { error } = missingProposed
+      ? await supabase.from("crm_booking_travelers").insert({
+          booking_id: travelerRow.booking_id,
+          companion_id: travelerRow.companion_id,
+          is_account_holder: travelerRow.is_account_holder,
+          first_name: travelerRow.first_name,
+          last_name: travelerRow.last_name,
+        })
+      : inserted;
     if (error) throw dbFailure(error, "Voyageur non enregistré.");
     existingTravelers.push(recorded);
   }
@@ -602,7 +614,7 @@ export async function persistNewBookingFromExtract(opts: {
   /** Mail source : tamponné sur les cartes créées, pour pouvoir les remettre dans la file. */
   emailIngestId?: string;
 }) {
-  const visibleToClient = opts.emailIngestId ? false : opts.visibleToClient;
+  const visibleToClient = false;
   const admin = createServiceClient();
   const [{ data: customer }, { data: companions }] = await Promise.all([
     admin.from("crm_customers").select("*").eq("id", opts.customerId).maybeSingle(),
@@ -640,9 +652,7 @@ export async function persistNewBookingFromExtract(opts: {
   const title = dossierTitleFromImport(extract);
   const totalAmount = sellingTotalFromExtract(extract);
   const extracted = bookingStatusFromExtract(extract, opts.status);
-  // Une confirmation PDF, un devis ou Little Emperors ne publient pas le dossier.
-  // Visible reste le geste Montrer au client, ou publier_carnet.
-  // Un mail ne rend jamais le séjour Visible.
+  // Rien d’automatique ne montre le dossier. Seul le clic Montrer au client le fait.
   const status = visibleToClient
     ? extracted === "cancelled"
       ? "cancelled"

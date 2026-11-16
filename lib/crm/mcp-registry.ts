@@ -810,7 +810,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "publier_carnet",
     write: true,
     description:
-      "Passe le dossier en Visible : le client le voit, le séjour est confirmé, la carte hôtel peut partir. Il faut au moins une carte. Un dossier archivé reste caché. Un carnet déjà montré n’est pas renvoyé. Sans confirmer, aperçu seulement : rien n’est montré et aucun message ne part.",
+      "Refusé. Seul l’écran de l’agence, bouton Montrer au client, peut rendre un séjour ou une carte visible. Aucun outil, cron ou robot ne le fait. Sans confirmer, rien n’est écrit. confirmer true est refusé aussi : rien n’est montré.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -1426,7 +1426,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "definir_visibilite_carte",
     write: true,
     description:
-      "Montre ou cache une seule carte du dossier (vol, hôtel, frais ou autre prestation), et peut cocher ou décocher « Inclure dans les transactions ». visible vrai la montre au client, faux la cache ; omis, la visibilité ne change pas. inclure_transactions vrai crée ou rétablit le débit, faux l’annule, sur la même ligne. Le prix est le total exact si la carte porte un total de groupe. Ne publie pas le carnet et n’envoie rien : ni e-mail, ni WhatsApp. Sur un carnet déjà montré, un brouillon est préparé ; l’agence l’envoie en un clic. Le grand livre est recalculé comme à l’enregistrement d’une carte dans l’agence, sans doublon. Le séjour caché ne débite pas. Une carte non incluse dans les transactions ne crée pas de ligne.",
+      "Ne change pas la visibilité : seul l’écran de l’agence montre ou cache une carte. inclure_transactions coche ou décoche « Inclure dans les transactions ». visible est refusé. inclure_transactions vrai crée ou rétablit le débit, faux l’annule, sur la même ligne. Le prix est le total exact si la carte porte un total de groupe. Ne publie pas le carnet et n’envoie rien : ni e-mail, ni WhatsApp. Sur un carnet déjà montré, un brouillon est préparé ; l’agence l’envoie en un clic. Le grand livre est recalculé comme à l’enregistrement d’une carte dans l’agence, sans doublon. Le séjour caché ne débite pas. Une carte non incluse dans les transactions ne crée pas de ligne.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),

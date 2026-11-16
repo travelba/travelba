@@ -647,7 +647,9 @@ async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
         .select("id, first_name, last_name, usage_name, birth_date")
         .eq("customer_id", booking.customer_id),
     ]);
-  const party = (travelers || []) as CrmBookingTraveler[];
+  const party = ((travelers || []) as (CrmBookingTraveler & { proposed?: boolean | null })[]).filter(
+    (row) => row.proposed !== true
+  );
   const papers = (docs || []) as CrmTravelDocument[];
   const profile = customer as {
     first_name?: string | null;

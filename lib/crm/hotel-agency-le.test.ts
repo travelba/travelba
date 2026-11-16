@@ -359,7 +359,7 @@ function customer() {
 }
 
 describe("parcours agence simulé", { concurrency: 1 }, () => {
-test("l’agence avance le séjour : carte, publication, messages, un seul passage", async () => {
+test("l’agence avance le séjour : carte cachée, sans publication, un seul passage", async () => {
   await withEnv(async () => {
     const { client, tables } = memory();
     const http = installFetch("ok");
@@ -413,10 +413,9 @@ test("l’agence avance le séjour : carte, publication, messages, un seul passa
 
       const booking = tables.crm_bookings[0];
       const item = tables.crm_booking_items[0];
-      assert.equal(booking?.visible_to_client, true);
-      assert.equal(booking?.prices_visible, true);
+      assert.equal(booking?.visible_to_client, false);
       assert.equal(Number(booking?.total_amount), SALE);
-      assert.equal(item?.visible_to_client, true);
+      assert.equal(item?.visible_to_client, false);
       assert.equal(Number(item?.amount), SALE);
       assert.equal((item?.details as { supplier_net?: unknown } | undefined)?.supplier_net, undefined);
       const card = tables.crm_booking_cards[0];
@@ -432,7 +431,7 @@ test("l’agence avance le séjour : carte, publication, messages, un seul passa
       assert.match(mails[0].text, /142,74/);
       assert.doesNotMatch(mails[0].text, /Little Emperors|4242/);
       const notices = tables.crm_whatsapp_messages.filter((row) => String(row.dedupe_key || "").startsWith("sejour:"));
-      assert.equal(notices.length, 1);
+      assert.equal(notices.length, 0);
       assert.doesNotMatch(JSON.stringify(tables), new RegExp(PAN));
       assert.equal(http.calls.filter((call) => call.url.includes("/cards/holder-1") && call.method === "POST").length, 1);
     } finally {

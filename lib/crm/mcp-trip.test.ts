@@ -27,7 +27,6 @@ import {
   removeCarte,
   removeVoyageur,
   setCarteVisibilite,
-  prepareCarnetMessage,
   retargetCompanionDetails,
   travelerSex,
 } from "@/lib/crm/mcp-trip";
@@ -1719,225 +1718,7 @@ test("changer les voyageurs ne multiplie pas un total de groupe, et prix_total s
   assert.equal((usdRow?.details as Record<string, unknown>).document_amount, 80);
 });
 
-test("definir_visibilite_carte suit l’agence, sans message et sans deuxième ligne", async () => {
-  const hotelId = "44444444-4444-4444-8444-444444444444";
-  const quietId = "66666666-6666-4666-8666-666666666666";
-  const archivedId = "55555555-5555-4555-8555-555555555555";
-  const { db, client } = adminOf({
-    crm_customers: [customer(CLIENT, "Camille", "Martin")],
-    crm_billing_companies: [],
-  });
-  const dossier = await createDossier({ client_id: CLIENT, titre: "Rome", devise: "EUR" }, client);
-  db.tables.crm_bookings[0].visible_to_client = true;
-  db.tables.crm_booking_items.push(
-    {
-      id: hotelId,
-      booking_id: dossier.id,
-      kind: "hotel",
-      title: "Hotel de Russie",
-      amount: 420,
-      lifecycle: "active",
-      visible_to_client: false,
-      include_in_ledger: true,
-      details: { client_hidden: true, city: "Rome" },
-    },
-    {
-      id: quietId,
-      booking_id: dossier.id,
-      kind: "activity",
-      title: "Visite",
-      amount: 80,
-      lifecycle: "active",
-      visible_to_client: false,
-      include_in_ledger: false,
-      details: { client_hidden: true },
-    }
-  );
-  const shown = await setCarteVisibilite({ dossier_id: dossier.id, carte_id: hotelId, visible: true }, client);
-  assert.equal(shown.visible, true);
-  assert.equal(shown.notifie, false);
-  assert.equal(shown.sejour_visible, true);
-  assert.equal(shown.incluse_transactions, true);
-  assert.equal(shown.journal, true);
-  assert.equal(shown.grand_livre.compte, true);
-  assert.equal(shown.grand_livre.statut, "compte");
-  assert.equal(shown.grand_livre.montant, 420);
-  assert.equal(shown.grand_livre.effet, "ajoute");
-  const hotel = db.tables.crm_booking_items.find((item) => item.id === hotelId);
-  assert.equal(hotel?.visible_to_client, true);
-  assert.equal((hotel?.details as Record<string, unknown>).client_hidden, undefined);
-  assert.equal(db.tables.crm_bookings[0].visible_to_client, true);
-  const externalId = `booking:${dossier.id}:item:${hotelId}`;
-  const debits = () => db.tables.crm_transactions.filter((row) => row.external_id === externalId);
-  assert.equal(debits().length, 1);
-  assert.equal(debits()[0]?.status, "posted");
-  assert.equal(debits()[0]?.amount, 420);
-  const audits = () => db.tables.crm_audit_events.filter((row) => row.action === "visibilite_carte");
-  assert.equal(audits().length, 1);
-  assert.equal(audits()[0]?.summary, "Carte montrée au client");
-  assert.equal((audits()[0]?.detail as Record<string, unknown>)?.carte_id, hotelId);
-  assert.equal(db.writes.some((write) => /invite|message|whatsapp|notification/i.test(write.table)), false);
-
-  const again = await setCarteVisibilite({ reference: dossier.reference, carte_id: hotelId, visible: true }, client);
-  assert.equal(again.journal, false);
-  assert.equal(again.notifie, false);
-  assert.equal(again.grand_livre.effet, "inchange");
-  assert.equal(debits().length, 1);
-  assert.equal(audits().length, 1);
-
-  const quiet = await setCarteVisibilite({ dossier_id: dossier.id, carte_id: quietId, visible: true }, client);
-  assert.equal(quiet.visible, true);
-  assert.equal(quiet.incluse_transactions, false);
-  assert.equal(quiet.grand_livre.effet, "hors_livre");
-  assert.equal(quiet.grand_livre.statut, "absent");
-  assert.equal(quiet.notifie, false);
-  assert.equal(db.tables.crm_transactions.some((row) => row.external_id === `booking:${dossier.id}:item:${quietId}`), false);
-
-  const hidden = await setCarteVisibilite({ dossier_id: dossier.id, carte_id: hotelId, visible: false }, client);
-  assert.equal(hidden.visible, false);
-  assert.equal(hidden.notifie, false);
-  assert.equal((db.tables.crm_booking_items.find((item) => item.id === hotelId)?.details as Record<string, unknown>).client_hidden, true);
-  assert.equal(hidden.grand_livre.compte, true);
-  assert.equal(hidden.grand_livre.effet, "inchange");
-  assert.equal(debits()[0]?.status, "posted");
-
-  db.tables.crm_bookings[0].visible_to_client = false;
-  const stayHidden = await setCarteVisibilite({ dossier_id: dossier.id, carte_id: hotelId, visible: true }, client);
-  assert.equal(stayHidden.visible, true);
-  assert.equal(stayHidden.sejour_visible, false);
-  assert.equal(stayHidden.notifie, false);
-  assert.equal(db.tables.crm_bookings[0].visible_to_client, false);
-  assert.equal(stayHidden.grand_livre.compte, false);
-  assert.equal(stayHidden.grand_livre.effet, "annule");
-  assert.equal(debits()[0]?.status, "void");
-
-  db.tables.crm_booking_items.push({
-    id: archivedId,
-    booking_id: dossier.id,
-    kind: "flight",
-    title: "Ancien vol",
-    amount: 100,
-    lifecycle: "cancelled",
-    visible_to_client: false,
-    include_in_ledger: true,
-    details: { client_hidden: true },
-  });
-  await assert.rejects(
-    () => setCarteVisibilite({ dossier_id: dossier.id, carte_id: archivedId, visible: true }, client),
-    /archivée/
-  );
-  await assert.rejects(
-    () => setCarteVisibilite({ dossier_id: dossier.id, carte_id: hotelId, visible: "oui" }, client),
-    /vrai ou faux/
-  );
-  await assert.rejects(
-    () => setCarteVisibilite({ dossier_id: dossier.id, carte_id: CLIENT, visible: true }, client),
-    /Carte introuvable/
-  );
-  assert.equal(shown.message_pret, false);
-  assert.equal(db.tables.crm_concierge_followups?.length || 0, 0);
-});
-
-test("montrer une prestation sur un carnet déjà publié prépare un seul WhatsApp, sans l’envoyer", async () => {
-  const hotelId = "44444444-4444-4444-8444-444444444444";
-  const flightId = "77777777-7777-4777-8777-777777777777";
-  const transferId = "99999999-9999-4999-8999-999999999999";
-  const { db, client } = adminOf({
-    crm_customers: [customer(CLIENT, "Camille", "Martin")],
-    crm_billing_companies: [],
-  });
-  const dossier = await createDossier({ client_id: CLIENT, titre: "Rome", devise: "EUR" }, client);
-  const person = db.tables.crm_customers[0];
-  person.phone = "+33612345678";
-  person.whatsapp_opt_in_at = "2026-10-01T00:00:00.000Z";
-  db.tables.crm_bookings[0].visible_to_client = true;
-  db.tables.crm_booking_items.push(
-    {
-      id: hotelId,
-      booking_id: dossier.id,
-      kind: "hotel",
-      title: "Little Emperors — Hotel de Russie",
-      supplier: "Little Emperors",
-      amount: 420,
-      lifecycle: "active",
-      visible_to_client: false,
-      include_in_ledger: false,
-      details: { client_hidden: true, net: 300, commission: 40 },
-    },
-    {
-      id: flightId,
-      booking_id: dossier.id,
-      kind: "flight",
-      title: "Paris → Rome",
-      supplier: "Expedia",
-      amount: 492.99,
-      lifecycle: "active",
-      visible_to_client: false,
-      include_in_ledger: false,
-      details: { client_hidden: true, amount_is_total: true, ticket_count: 5 },
-    },
-    {
-      id: transferId,
-      booking_id: dossier.id,
-      kind: "transfer",
-      title: "Transfert",
-      amount: 80,
-      lifecycle: "active",
-      visible_to_client: false,
-      include_in_ledger: false,
-      details: { client_hidden: true },
-    }
-  );
-  const link = `https://travelba.fr/mon-compte/reservations/${dossier.reference}`;
-  const shown = await setCarteVisibilite({ dossier_id: dossier.id, carte_id: hotelId, visible: true }, client);
-  assert.equal(shown.notifie, false);
-  assert.equal(shown.message_pret, true);
-  assert.equal(db.writes.some((write) => write.table === "crm_whatsapp_messages"), false);
-  const drafts = () => db.tables.crm_concierge_followups.filter((row) => row.status === "planned");
-  assert.equal(drafts().length, 1);
-  assert.equal(drafts()[0]?.kind, "carnet_ajout");
-  assert.equal(drafts()[0]?.draft_body, `Votre hôtel a été ajouté à votre carnet.\n${link}`);
-  assert.doesNotMatch(String(drafts()[0]?.draft_body), /little|expedia|commission|€|420|492|\bnet\b/i);
-
-  const grouped = await setCarteVisibilite({ dossier_id: dossier.id, carte_id: flightId, visible: true }, client);
-  assert.equal(grouped.notifie, false);
-  assert.equal(grouped.message_pret, true);
-  assert.equal(drafts().length, 1);
-  assert.equal(
-    drafts()[0]?.draft_body,
-    `Votre vol et votre hôtel ont été ajoutés à votre carnet.\n${link}`
-  );
-  assert.equal(db.writes.some((write) => write.table === "crm_whatsapp_messages"), false);
-
-  const sentId = drafts()[0]?.id;
-  drafts()[0].status = "sent";
-  const later = await setCarteVisibilite({ dossier_id: dossier.id, carte_id: transferId, visible: true }, client);
-  assert.equal(later.message_pret, true);
-  assert.equal(later.notifie, false);
-  const planned = db.tables.crm_concierge_followups.filter((row) => row.status === "planned");
-  assert.equal(planned.length, 1);
-  assert.equal(planned[0]?.draft_body, `Votre transfert a été ajouté à votre carnet.\n${link}`);
-  assert.notEqual(planned[0]?.id, sentId);
-
-  const manual = await prepareCarnetMessage({ reference: dossier.reference }, client);
-  assert.equal(manual.envoye, false);
-  assert.equal(manual.notifie, false);
-  assert.equal(manual.prestations, 3);
-  assert.match(String(manual.message), /Votre vol, votre hôtel et votre transfert ont été ajoutés/);
-  assert.equal(db.tables.crm_concierge_followups.filter((row) => row.status === "planned").length, 1);
-  assert.doesNotMatch(String(manual.message), /little|expedia|commission|€|420|\bnet\b/i);
-
-  person.whatsapp_opt_out_at = "2026-10-02T00:00:00.000Z";
-  await assert.rejects(() => prepareCarnetMessage({ dossier_id: dossier.id }, client), /WhatsApp/);
-  db.tables.crm_bookings[0].visible_to_client = false;
-  person.whatsapp_opt_out_at = null;
-  await assert.rejects(
-    () => prepareCarnetMessage({ dossier_id: dossier.id, carte_ids: [hotelId] }, client),
-    /pas encore montré/
-  );
-});
-
-test("un journal indisponible n’empêche pas de montrer la carte", async () => {
+test("un outil ne montre ni ne cache une carte", async () => {
   const hotelId = "44444444-4444-4444-8444-444444444444";
   const { db, client } = adminOf({
     crm_customers: [customer(CLIENT, "Camille", "Martin")],
@@ -1953,27 +1734,22 @@ test("un journal indisponible n’empêche pas de montrer la carte", async () =>
     lifecycle: "active",
     visible_to_client: false,
     include_in_ledger: false,
-    details: { client_hidden: true },
+    details: { client_hidden: true, city: "Rome" },
   });
-  const originalFrom = db.from.bind(db);
-  db.from = (table: string) => {
-    const api = originalFrom(table);
-    if (table !== "crm_audit_events") return api;
-    const done = api.then.bind(api);
-    api.then = (resolve, reject) =>
-      done((_result) => {
-        const failed = { data: null, error: { message: "missing", code: "42P01" } } as unknown as typeof _result;
-        return resolve ? resolve(failed) : failed;
-      }, reject);
-    return api;
-  };
-  const shown = await setCarteVisibilite({ dossier_id: dossier.id, carte_id: hotelId, visible: true }, client);
-  assert.equal(shown.journal, false);
-  assert.equal(shown.visible, true);
-  assert.equal(shown.notifie, false);
-  assert.equal(db.tables.crm_bookings[0].visible_to_client, false);
-  assert.equal(shown.grand_livre.effet, "hors_livre");
+  await assert.rejects(
+    () => setCarteVisibilite({ dossier_id: dossier.id, carte_id: hotelId, visible: true }, client),
+    /Seul l’écran de l’agence/
+  );
+  await assert.rejects(
+    () => setCarteVisibilite({ dossier_id: dossier.id, carte_id: hotelId, visible: false }, client),
+    /Seul l’écran de l’agence/
+  );
+  const hotel = db.tables.crm_booking_items.find((item) => item.id === hotelId);
+  assert.equal(hotel?.visible_to_client, false);
+  assert.equal((hotel?.details as Record<string, unknown>).client_hidden, true);
+  assert.equal(db.tables.crm_concierge_followups?.length || 0, 0);
 });
+
 
 test("inclure_transactions coche la case, reprend la même ligne, et garde 492,99 €", async () => {
   const flightId = "77777777-7777-4777-8777-777777777777";
@@ -2055,19 +1831,23 @@ test("inclure_transactions coche la case, reprend la même ligne, et garde 492,9
   assert.equal(lines()[0]?.status, "void");
   assert.equal(db.tables.crm_audit_events.filter((row) => row.action === "transactions_carte").at(-1)?.summary, "Carte retirée des transactions");
 
+  await assert.rejects(
+    () => setCarteVisibilite({ dossier_id: dossier.id, carte_id: flightId, visible: true, inclure_transactions: true }, client),
+    /Seul l’écran de l’agence/
+  );
   const restored = await setCarteVisibilite(
-    { dossier_id: dossier.id, carte_id: flightId, visible: true, inclure_transactions: true },
+    { dossier_id: dossier.id, carte_id: flightId, inclure_transactions: true },
     client
   );
-  assert.equal(restored.visible, true);
+  assert.equal(restored.visible, false);
   assert.equal(restored.notifie, false);
   assert.equal(restored.grand_livre.effet, "retabli");
   assert.equal(restored.grand_livre.montant, 492.99);
   assert.equal(restored.grand_livre.mouvement_id, lines()[0]?.id);
   assert.equal(lines().length, 1);
   assert.equal(lines()[0]?.status, "posted");
-  assert.equal((db.tables.crm_booking_items.find((item) => item.id === flightId)?.details as Record<string, unknown>).client_hidden, undefined);
-  assert.equal(db.tables.crm_audit_events.filter((row) => row.action === "visibilite_carte").length, 1);
+  assert.equal((db.tables.crm_booking_items.find((item) => item.id === flightId)?.details as Record<string, unknown>).client_hidden, true);
+  assert.equal(db.tables.crm_audit_events.filter((row) => row.action === "visibilite_carte").length, 0);
   assert.equal(db.tables.crm_audit_events.filter((row) => row.action === "transactions_carte").length, 3);
 
   await assert.rejects(

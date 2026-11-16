@@ -19,7 +19,6 @@ import {
 } from "@/lib/crm/cover-provided";
 import {
   bookingMetaPatch,
-  setCarnetPublished,
   syncBookingLedger,
   syncBookingTotalFromItems,
   syncInheritedAgencyFees,
@@ -716,44 +715,9 @@ export async function creditStripePayment(input: Record<string, unknown>, admin?
 }
 
 export async function publishCarnet(input: Record<string, unknown>, admin?: McpAdmin) {
-  const target = prepareCarnetTarget(input);
-  const db = client(admin);
-  const booking = await loadBooking(db, target);
-  const { data: items, error: itemsError } = await db
-    .from("crm_booking_items")
-    .select("kind, lifecycle")
-    .eq("booking_id", booking.id);
-  if (itemsError) failDb(itemsError, "Publication impossible.");
-  const decision = publishBlock(booking, (items || []) as { kind: string; lifecycle?: string | null }[]);
-  if (decision.deja_montre) {
-    return { deja_montre: true, id: booking.id, reference: booking.reference };
-  }
-  try {
-    await setCarnetPublished(db, booking.id, true);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "";
-    console.error("[mcp] publier", message || "error");
-    throw new McpWriteError(message.startsWith("Ajoutez") ? message : "Publication impossible.");
-  }
-  const { notifyStayPublished, remindMissingPieces, safeConcierge } = await import("@/lib/crm/concierge-send");
-  await safeConcierge(() => notifyStayPublished(booking.id));
-  await safeConcierge(() => remindMissingPieces(booking.id));
-  try {
-    await syncBookingTotalFromItems(db, booking.id);
-    const { data: priced, error: pricedError } = await db
-      .from("crm_bookings")
-      .select(MCP_BOOKING_COLUMNS)
-      .eq("id", booking.id)
-      .maybeSingle();
-    if (pricedError) failDb(pricedError, "Le grand livre n’a pas suivi cette écriture.");
-    const next = (priced || { ...booking, visible_to_client: true }) as CrmBooking;
-    await syncBookingLedger(db, next, booking.status);
-  } catch (err) {
-    if (err instanceof McpWriteError) throw err;
-    console.error("[mcp] livre", err instanceof Error ? err.message : "error");
-    throw new McpWriteError("Le carnet est montré, mais le grand livre n’a pas pu être mis à jour.");
-  }
-  return { montre: true, id: booking.id, reference: booking.reference };
+  prepareCarnetTarget(input);
+  void admin;
+  throw new McpWriteError("Seul l’écran de l’agence peut montrer au client.");
 }
 
 function coverPhotoId(booking: CrmBooking, items: { kind?: string | null; title?: string | null; start_at?: string | null; end_at?: string | null; sort_order?: number | null; details?: Record<string, unknown> | null }[]) {
@@ -831,32 +795,8 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
   }
   const faceVisible = nextPatch.visible_to_client === true || nextPatch.status === "confirmed";
   const faceHidden = nextPatch.status === "draft";
-  if ((faceVisible || faceHidden) && prev.archived_at) {
-    throw new McpWriteError("Réactivez le dossier avant de changer sa visibilité.");
-  }
-  if (faceVisible) {
-    const { data: itemRows, error: itemsError } = await db
-      .from("crm_booking_items")
-      .select("kind, lifecycle")
-      .eq("booking_id", prev.id);
-    if (itemsError) failDb(itemsError, "Dossier non enregistré.");
-    publishBlock({ archived_at: null, visible_to_client: false }, (itemRows || []) as { kind: string; lifecycle?: string | null }[]);
-    try {
-      await setCarnetPublished(db, prev.id, true);
-    } catch (err) {
-      throw new McpWriteError(err instanceof Error ? err.message : "Publication impossible.");
-    }
-    delete nextPatch.status;
-    delete nextPatch.visible_to_client;
-  } else if (faceHidden) {
-    try {
-      await setCarnetPublished(db, prev.id, false);
-    } catch (err) {
-      throw new McpWriteError(err instanceof Error ? err.message : "Le carnet n’a pas pu être caché.");
-    }
-    delete nextPatch.status;
-    delete nextPatch.visible_to_client;
-    delete nextPatch.prices_visible;
+  if (faceVisible || faceHidden) {
+    throw new McpWriteError("Seul l’écran de l’agence peut montrer ou cacher le séjour.");
   }
   let booking = prev;
   if (Object.keys(nextPatch).length) {

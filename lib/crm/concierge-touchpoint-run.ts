@@ -155,7 +155,7 @@ export async function draftConciergeTouchpoints(admin: Admin, now = new Date()) 
         end_at: item.end_at,
         amount: null,
         details: item.details || {},
-        visible_to_client: item.visible_to_client !== false,
+        visible_to_client: item.visible_to_client === true,
       })),
       travelDocuments: papers.map((doc) => ({
         doc_type: doc.doc_type,

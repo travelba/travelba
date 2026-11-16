@@ -402,7 +402,7 @@ async function liveApplyTicket(input: Record<string, unknown>): Promise<TicketPl
     bookingId: loaded.dossier_id,
     itemId: carteId,
     kind: "other",
-    visibleToClient: true,
+    visibleToClient: false,
     file: { name: file.name, type: file.type, size: file.bytes.byteLength, bytes: Buffer.from(file.bytes) },
   });
   if ("error" in attached) throw new McpWriteError(attached.error);

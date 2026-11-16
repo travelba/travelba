@@ -1919,6 +1919,7 @@ export async function setCarteVisibilite(input: Record<string, unknown>, admin?:
   const visible = optionalFlag(input.visible, "Visible");
   const include = optionalFlag(input.inclure_transactions, "Inclure dans les transactions");
   if (visible == null && include == null) throw new McpWriteError("Indiquez visible ou inclure_transactions.");
+  if (visible != null) throw new McpWriteError("Seul l’écran de l’agence peut montrer ou cacher une carte.");
   const carteId = uuid(input.carte_id, "Carte");
   const db = client(admin);
   const booking = await loadBooking(db, dossierTarget(input));
