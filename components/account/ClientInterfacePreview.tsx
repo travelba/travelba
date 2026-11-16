@@ -33,7 +33,7 @@ import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { shownClientNote } from "@/lib/crm/public-booking";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
-import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
+import { chargeableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { missingPassportCount } from "@/lib/crm/trip-documents";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
 import type { ShareCompanion } from "@/lib/crm/trip-share-types";
@@ -300,7 +300,6 @@ function ClientScreen({
       title: visibleServiceCopy(item.title),
       amount: item.amount == null ? null : Number(item.amount),
       billing_company_id: item.billing_company_id || null,
-      agencyFee: !isAutoTicketingExpense(item),
     }));
   const ticketCount = ticketingTicketCount({
     hasFlight: allItems.some((item) => item.kind === "flight"),

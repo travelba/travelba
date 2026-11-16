@@ -244,7 +244,7 @@ test("le prix du séjour ajoute les frais d’agence et les dépenses libres", (
       extras: [{ amount: 150 }],
       ticketingFee: 100,
     }),
-    2315
+    2325
   );
   assert.equal(
     stayPriceWithExpenses({

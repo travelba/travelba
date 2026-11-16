@@ -21,7 +21,7 @@ import {
   tripPlaceLine,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
-import { chargeableTicketingFee, isAutoTicketingExpense, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
+import { chargeableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
@@ -130,7 +130,6 @@ export default async function ExampleReservationPage({ params }: Props) {
       id: item.id,
       title: item.title,
       amount: item.amount == null ? null : Number(item.amount),
-      agencyFee: !isAutoTicketingExpense(item),
     }));
   const feeExtras = agencyFeeExtraAmounts(session.items);
   const stayTotal = bookingTotalFromItems(session.items);

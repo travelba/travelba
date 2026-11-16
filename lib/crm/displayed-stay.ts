@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadResolvedAgencyFees } from "@/lib/crm/agency-fee-rate";
 import { bookingTotalFromItems, itemIncludedInLedger, itemSellingAmount } from "@/lib/crm/bookings";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
-import { chargeableTicketingFee, isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
+import { chargeableTicketingFee } from "@/lib/crm/ticketing-fee";
 import { expenseCountsForClient } from "@/lib/crm/expense-validation";
 import { isActiveItem, isExtraItemKind } from "@/lib/crm/types";
 
@@ -28,7 +28,7 @@ type StayItemRow = {
 
 /**
  * Montant lu par le client : cartes + commission d’agence + billetterie + dépenses libres.
- * La commission porte sur les étapes et les dépenses. Une seule formule pour la liste, le détail et l’aperçu.
+ * La commission porte sur le total vendu, billeterie comprise. Une seule formule pour la liste, le détail et l’aperçu.
  */
 export function displayedStayAmount(
   booking: Pick<StayRow, "status" | "total_amount" | "agency_commission" | "fee_mode">,
@@ -40,7 +40,6 @@ export function displayedStayAmount(
   const amounts = (keep: (item: StayItemRow) => boolean) =>
     active.filter(keep).map((item) => ({
       amount: item.amount == null ? null : Number(item.amount),
-      agencyFee: !isAutoTicketingExpense(item),
     }));
   return stayPriceWithExpenses({
     stayTotal: Number(booking.total_amount),
