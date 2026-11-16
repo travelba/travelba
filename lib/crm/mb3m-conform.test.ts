@@ -238,7 +238,10 @@ describe("lignes de facture", () => {
     assert.equal(mb3mVerifiedProviderId("LITTLE EMPERORS"), little);
     assert.notEqual(mb3mVerifiedProviderId("LITTLE EMPERORS"), bolonLittle);
     assert.equal(mb3mVerifiedProviderId("AIR FRANCE"), airFranceId);
+    assert.equal(mb3mVerifiedProviderId("af"), airFranceId);
+    assert.equal(mb3mVerifiedProviderId("AF"), airFranceId);
     assert.notEqual(airFranceId, bolonAirFrance);
+    assert.equal(mb3mVerifiedProviderId("Compagnie inconnue"), null);
     assert.equal(mb3mVerifiedProviderId("HOTELS DIVERS"), null);
     assert.equal(mb3mVerifiedProviderId("Hôtel Divers"), "013428ca-a71c-4d2a-90a7-75c279281f82");
     assert.equal(mb3mVerifiedProviderId("DISTINCT DESTINATIONS"), null);
