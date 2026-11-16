@@ -66,6 +66,8 @@ async function cachedCustomer(stripe: Stripe, cache: StripeCustomerCache, id: st
 export type StripePayerLookup = {
   intentId?: string | null;
   customerId?: string | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
   invoiceId?: string | null;
   billingEmail?: string | null;
   billingName?: string | null;
@@ -89,6 +91,8 @@ export async function lookupStripePayer(
     receiptEmail: input.receiptEmail,
     description: input.description,
     metadata: input.metadata,
+    customerName: input.customerName,
+    customerEmail: input.customerEmail,
     invoiceId: clean(input.invoiceId),
   };
   const intentId = clean(input.intentId);
@@ -114,8 +118,8 @@ export async function lookupStripePayer(
     }
   }
   const customerId = clean(input.customerId);
-  const emailSoFar = knownEmail || clean(sources.sessionEmail);
-  const nameSoFar = knownName || clean(sources.sessionName);
+  const emailSoFar = knownEmail || clean(sources.sessionEmail) || clean(sources.customerEmail);
+  const nameSoFar = knownName || clean(sources.sessionName) || clean(sources.customerName);
   if (customerId && (!emailSoFar || !nameSoFar)) {
     const person = await cachedCustomer(stripe, cache, customerId);
     sources.customerEmail = person.email;

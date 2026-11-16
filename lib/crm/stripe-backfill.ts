@@ -64,7 +64,7 @@ export async function backfillStripePayers(admin: Admin, stripe: Stripe, confirm
     if (!intentId) continue;
     let intent: Stripe.PaymentIntent;
     try {
-      intent = await stripe.paymentIntents.retrieve(intentId, { expand: ["latest_charge"] });
+      intent = await stripe.paymentIntents.retrieve(intentId, { expand: ["latest_charge", "customer"] });
     } catch (err) {
       console.error("[stripe] relecture", err instanceof Error ? err.message : "lecture");
       continue;
@@ -75,6 +75,8 @@ export async function backfillStripePayers(admin: Admin, stripe: Stripe, confirm
       {
         intentId: intent.id,
         customerId: base.customerId,
+        customerName: base.customerName,
+        customerEmail: base.customerEmail,
         invoiceId: null,
         billingEmail: base.charge?.email,
         billingName: base.charge?.name,

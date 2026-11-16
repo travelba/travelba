@@ -14,7 +14,7 @@ import {
   type StripeInboxMethod,
 } from "@/lib/crm/stripe-inbox";
 import { shownPersonName } from "@/lib/crm/identity";
-import { suggestStripePayers, type PayerHistory, type PayerPiece } from "@/lib/crm/stripe-payer";
+import { isAgencyStripeEmail, suggestStripePayers, type PayerHistory, type PayerPiece } from "@/lib/crm/stripe-payer";
 import type { CrmCustomer, CrmStripeTransaction } from "@/lib/crm/types";
 
 export type StripeMatchReason =
@@ -47,6 +47,7 @@ export const STRIPE_MATCH_SELECT =
 
 export type StripeMatchRow = Pick<CrmStripeTransaction, "payer_name" | "payer_email" | "reference"> & {
   raw?: unknown;
+  amount?: number | string | null;
 };
 
 export type StripeMatchHints = {
@@ -105,13 +106,14 @@ export function scoreStripeMatches(
   const metadata = stripeMetadata(row.raw);
   const metaCustomer = (metadata.crm_customer_id || "").trim();
   const stripeCustomer = stripeCustomerId(row.raw);
-  const email = emailKey(row.payer_email);
+  const email = isAgencyStripeEmail(row.payer_email) ? "" : emailKey(row.payer_email);
   const tokens = matchTokens(`${row.payer_name || ""} ${row.reference || ""}`);
 
   const byId = new Map<string, StripeMatchCandidate>();
 
   function upsert(customer: StripeMatchCustomer, score: number, reason: StripeMatchReason) {
     const prev = byId.get(customer.id);
+    if (prev?.reason === "piece" && reason !== "piece") return;
     if (prev && prev.score >= score) return;
     byId.set(customer.id, {
       customer_id: customer.id,
@@ -134,6 +136,8 @@ export function scoreStripeMatches(
 
   const suggestions = suggestStripePayers({
     email: row.payer_email,
+    name: row.payer_name,
+    amount: Number(row.amount),
     stripeCustomerId: stripeCustomer,
     designation: row.reference,
     customers,
