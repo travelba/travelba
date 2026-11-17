@@ -811,6 +811,10 @@ export type CrmEmailIngest = {
   /** Plus faible confiance des champs cités. 1 = certain. */
   field_confidence?: number | null;
   field_quotes?: { key: string; value: string; confidence: number; quote: string }[] | null;
+  /** Dernière reprise automatique. Null : jamais tentée. */
+  rematch_attempted_at?: string | null;
+  /** Nombre de reprises automatiques. */
+  rematch_attempts?: number | null;
   created_at: string;
   updated_at: string;
 };

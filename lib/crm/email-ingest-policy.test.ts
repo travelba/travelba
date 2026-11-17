@@ -49,7 +49,11 @@ describe("pas de rattachement autonome hors billet certain", () => {
     assert.match(rematch, /decideStayAutoCreate/);
     assert.match(rematch, /\["parsed", "matched"\]/);
     assert.match(rematch, /autoAttachNotBefore\(\)/);
-    assert.match(rematch, /ascending: false/);
+    assert.match(rematch, /rematch_attempted_at/);
+    assert.match(rematch, /nullsFirst: true/);
+    assert.match(rematch, /rematchRetryBefore/);
+    assert.match(rematch, /stampRematchAttempt/);
+    assert.equal(rematch.includes('order("received_at", { ascending: false'), false);
   });
 
   it("le premier dossier est un brouillon caché ; seul ce fichier applique un séjour unique", () => {

@@ -112,7 +112,22 @@ describe("création automatique d’un séjour", () => {
       { customerId: "c-raphael" }
     );
     const near = { ...elsewhere, booking_id: "b-mai", start_date: "2027-05-02", end_date: "2027-05-09" };
+    assert.equal(
+      decideStayAutoAttach(flight() as never, [client, near], { receivedAt: "2027-04-01" })?.bookingId,
+      "b-mai"
+    );
     assert.equal(decideStayAutoCreate(flight() as never, [client, near], { receivedAt: "2027-04-01" }), null);
+    const other = { ...near, booking_id: "b-juin", start_date: "2027-04-28", end_date: "2027-05-06" };
+    assert.equal(decideStayAutoAttach(flight() as never, [client, near, other], { receivedAt: "2027-04-01" }), null);
+    assert.equal(decideStayAutoCreate(flight() as never, [client, near, other], { receivedAt: "2027-04-01" }), null);
+    const stranger = { ...near, customer_id: "c-autre" };
+    assert.equal(decideStayAutoAttach(flight() as never, [client, stranger], { receivedAt: "2027-04-01" }), null);
+    assert.deepEqual(decideStayAutoCreate(flight() as never, [client, stranger], { receivedAt: "2027-04-01" }), {
+      customerId: "c-raphael",
+    });
+    const cancelled = { ...near, reason: "Même client, même destination, séjour annulé" };
+    assert.equal(decideStayAutoAttach(flight() as never, [client, cancelled], { receivedAt: "2027-04-01" }), null);
+    assert.equal(decideStayAutoCreate(flight() as never, [client, cancelled], { receivedAt: "2027-04-01" }), null);
   });
 
   it("ouvre le dossier du titulaire pour le billet d’un accompagnant", () => {
@@ -133,6 +148,23 @@ describe("création automatique d’un séjour", () => {
     assert.deepEqual(decideStayAutoCreate(ticket as never, matched.candidates, { receivedAt: "2027-04-01" }), {
       customerId: "c-raphael",
     });
+    const dossier = {
+      booking_id: "b-dubai",
+      customer_id: "c-raphael",
+      score: 80,
+      reason: "Même client, même destination",
+      label: "TB — Dubaï",
+      start_date: "2027-04-14",
+      end_date: "2027-04-21",
+    };
+    assert.equal(
+      decideStayAutoAttach(ticket as never, [...matched.candidates, dossier], { receivedAt: "2027-04-01" })?.bookingId,
+      "b-dubai"
+    );
+    assert.equal(
+      decideStayAutoCreate(ticket as never, [...matched.candidates, dossier], { receivedAt: "2027-04-01" }),
+      null
+    );
   });
 
   it("crée pour un prénom exact malgré un nom partagé, et rien pour un homonyme complet", () => {
