@@ -321,6 +321,18 @@ export type HotelMailClass = {
   body: string;
   link: string | null;
   notice: "send" | "reply" | "auto";
+  /** subject : objet identique. thread : même fil. confirmation / domain : nouveau fil. */
+  via: "subject" | "thread" | "confirmation" | "domain" | "none";
+};
+
+export type HotelReplyCue = {
+  subjectKey: string;
+  /** Une demande, même si plusieurs objets ont été envoyés. */
+  requestId: string;
+  confirmations: string[];
+  guest: string;
+  reference: string;
+  recipients: string[];
 };
 
 /**
@@ -335,12 +347,31 @@ export function classifyHotelMail(input: {
   autoSubmitted?: boolean;
   /** Message lu dans le fil Gmail du courrier parti, même si l’hôtel a changé l’objet. */
   acceptThreadReply?: boolean;
+  /** Demandes ouvertes. Deux correspondances : on ne rattache pas. */
+  cues?: HotelReplyCue[];
+  /** Clé du fil déjà lié, quand le message vient de ce fil. */
+  threadKey?: string | null;
 }): HotelMailClass {
   const subjectKey = hotelMailSubjectKey(input.subject);
   const expected = input.keys.map((key) => hotelMailSubjectKey(key)).filter(Boolean);
-  const subjectMatch = Boolean(subjectKey && expected.includes(subjectKey));
-  /** Même fil Gmail : un objet réécrit par l’hôtel reste la réponse de ce courrier. */
-  const boundKey = subjectMatch ? subjectKey : input.acceptThreadReply ? expected[0] || "" : "";
+  const cues = input.cues?.length
+    ? input.cues
+    : expected.map((key) => ({
+        subjectKey: key,
+        requestId: key,
+        confirmations: [] as string[],
+        guest: "",
+        reference: "",
+        recipients: [] as string[],
+      }));
+  const picked = hotelReplySubjectKey({
+    from: input.from,
+    subject: input.subject,
+    body: input.body,
+    cues,
+    threadKey: input.acceptThreadReply ? input.threadKey || expected[0] || "" : "",
+  });
+  const boundKey = picked?.subjectKey || "";
   const empty = {
     keep: false,
     subjectKey,
@@ -349,6 +380,7 @@ export function classifyHotelMail(input: {
     body: "",
     link: null,
     notice: "reply" as const,
+    via: "none" as const,
   };
   if (!boundKey) return empty;
   const agency = isAgencyMailbox(input.from);
@@ -367,6 +399,7 @@ export function classifyHotelMail(input: {
       body: "Message de l'agence.",
       link: null,
       notice: "send",
+      via: picked?.via || "subject",
     };
   }
   return {
@@ -377,6 +410,7 @@ export function classifyHotelMail(input: {
     body,
     link: direction === "in" ? hotelReplyLink(cleaned || input.body) : null,
     notice: agency ? "send" : automatic ? "auto" : "reply",
+    via: picked?.via || "subject",
   };
 }
 
@@ -408,6 +442,182 @@ export function hotelThreadSearchQuery(subject: string, after: string) {
   const clause = gmailSubjectClause(subject);
   if (!clause) return "";
   return `after:${after} ${clause}`;
+}
+
+const GENERIC_MAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "yahoo.fr",
+  "hotmail.com",
+  "hotmail.fr",
+  "outlook.com",
+  "outlook.fr",
+  "live.com",
+  "live.fr",
+  "icloud.com",
+  "me.com",
+  "aol.com",
+  "proton.me",
+  "protonmail.com",
+  "orange.fr",
+  "wanadoo.fr",
+  "free.fr",
+  "laposte.net",
+  "sfr.fr",
+]);
+
+export function mailDomain(from: string) {
+  return (emailAddress(from).split("@")[1] || "").toLowerCase();
+}
+
+export function isGenericMailDomain(domain: string) {
+  return GENERIC_MAIL_DOMAINS.has(domain.toLowerCase());
+}
+
+/** Numéro de confirmation : lettres et chiffres, assez long. Pas une référence de dossier. */
+export function hotelConfirmationTokens(...sources: (string | null | undefined)[]) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const source of sources) {
+    for (const piece of (source || "").split(/[^A-Za-z0-9]+/)) {
+      if (!isHotelConfirmationToken(piece)) continue;
+      const key = piece.toUpperCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(piece);
+    }
+  }
+  return out;
+}
+
+function isHotelConfirmationToken(token: string) {
+  if (token.length < 6 || token.length > 40) return false;
+  if (/^TB\d{4}\d+$/i.test(token)) return false;
+  return /[A-Za-z]/.test(token) && /\d/.test(token);
+}
+
+const HOTEL_SEND_GAP_MS = 60_000;
+
+/** Un second clic sur la même demande, dans la minute, ne repart pas. Une relance plus tard reste possible. */
+export function hotelSendTooSoon(input: {
+  sentAt?: string | null;
+  lastFollowUpAt?: string | null;
+  status: string;
+  nowMs: number;
+}) {
+  const stamp = input.status === "follow_up" ? input.lastFollowUpAt || null : input.sentAt;
+  if (!stamp) return false;
+  const at = Date.parse(stamp);
+  if (!Number.isFinite(at)) return false;
+  return input.nowMs >= at && input.nowMs - at < HOTEL_SEND_GAP_MS;
+}
+
+/**
+ * Recherches Gmail d’une réponse qui n’a pas repris l’objet.
+ * Numéro de confirmation sans filtre d’objet, puis domaine de l’hôtel, puis l’adresse et le titre.
+ */
+export function hotelLooseSearchQueries(input: {
+  subject: string;
+  emails: string[];
+  confirmations: string[];
+  after: string;
+}) {
+  if (!input.after) return [];
+  const queries: string[] = [];
+  for (const token of input.confirmations.slice(0, 2)) {
+    const safe = token.replace(/[^A-Za-z0-9]/g, "");
+    if (safe.length < 6) continue;
+    queries.push(`after:${input.after} "${safe}"`);
+  }
+  const domains = [
+    ...new Set(
+      input.emails
+        .map((email) => mailDomain(email))
+        .filter((domain) => domain.includes(".") && !isGenericMailDomain(domain) && domain !== "travelba.fr")
+    ),
+  ];
+  if (domains.length) queries.push(`after:${input.after} (${domains.map((domain) => `from:${domain}`).join(" OR ")})`);
+  for (const query of hotelReplySearchQueries({ subject: input.subject, emails: input.emails, after: input.after })) {
+    queries.push(query);
+  }
+  return [...new Set(queries)].slice(0, 4);
+}
+
+function foldMail(value: string) {
+  return value.toLocaleLowerCase("fr").replace(/\s+/g, " ").trim();
+}
+
+function mentionsGuest(hay: string, guest: string) {
+  const name = foldMail(guest);
+  if (name.length < 3) return false;
+  if (hay.includes(name)) return true;
+  const parts = name.split(" ").filter((part) => part.length >= 3);
+  return parts.length >= 2 && parts.every((part) => hay.includes(part));
+}
+
+function mentionsReference(hay: string, reference: string) {
+  const ref = foldMail(reference);
+  return ref.length >= 4 && hay.includes(ref);
+}
+
+function oneRequest(cues: HotelReplyCue[]) {
+  const ids = new Set(cues.map((cue) => cue.requestId || cue.subjectKey));
+  if (ids.size !== 1) return null;
+  return cues[0] || null;
+}
+
+/**
+ * Demande à laquelle rattacher le mail.
+ * Le numéro de confirmation distingue deux séjours au même hôtel.
+ * Deux demandes possibles : rien.
+ */
+export function hotelReplySubjectKey(input: {
+  from: string;
+  subject: string;
+  body: string;
+  cues: HotelReplyCue[];
+  threadKey?: string | null;
+}): { subjectKey: string; via: HotelMailClass["via"] } | null {
+  const cues = input.cues.filter((cue) => cue.subjectKey);
+  if (!cues.length) return null;
+  const incomingKey = hotelMailSubjectKey(input.subject);
+  if (incomingKey) {
+    const exact = cues.filter((cue) => cue.subjectKey === incomingKey);
+    if (exact.length) {
+      const one = oneRequest(exact);
+      return one ? { subjectKey: one.subjectKey, via: "subject" } : null;
+    }
+  }
+  const threadKey = (input.threadKey || "").trim();
+  if (threadKey) {
+    const threaded = cues.filter((cue) => cue.subjectKey === threadKey);
+    if (threaded.length) {
+      const one = oneRequest(threaded);
+      return one ? { subjectKey: one.subjectKey, via: "thread" } : null;
+    }
+  }
+  const hay = foldMail(`${input.subject}\n${input.body}`);
+  const tokens = hotelConfirmationTokens(input.subject, input.body);
+  if (tokens.length) {
+    const owners = cues.filter((cue) =>
+      tokens.some((token) => cue.confirmations.some((item) => item.toUpperCase() === token.toUpperCase()))
+    );
+    if (owners.length) {
+      const one = oneRequest(owners);
+      return one ? { subjectKey: one.subjectKey, via: "confirmation" } : null;
+    }
+  }
+  const domain = mailDomain(input.from);
+  if (!domain || isGenericMailDomain(domain) || domain === "travelba.fr" || domain.endsWith(".travelba.fr")) return null;
+  const named = cues.filter((cue) => {
+    const domains = cue.recipients.map((email) => mailDomain(email));
+    if (!domains.includes(domain)) return false;
+    return mentionsGuest(hay, cue.guest) || mentionsReference(hay, cue.reference);
+  });
+  if (!named.length) return null;
+  const one = oneRequest(named);
+  return one ? { subjectKey: one.subjectKey, via: "domain" } : null;
 }
 
 function detail(item: CrmBookingItem, key: string) {
