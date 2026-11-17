@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { parisIsoDate } from "./hotel-arrival";
 import {
   buildHotelInbox,
+  HOTEL_INBOX_LOAD_ERROR,
   type HotelInbox,
   type HotelInboxCard,
   type HotelInboxLink,
@@ -63,6 +64,16 @@ type MessageRow = {
 const REQUEST_COLUMNS =
   "id, booking_id, booking_item_id, kind, status, sent_at, last_follow_up_at, replied_at, reply_body, follow_up_count";
 
+/** Identifiants seulement. Jamais l’empreinte du code ni le chemin de la carte déposée. */
+const CARD_LINK_COLUMNS = "booking_item_id, hotel_request_id, pliant_card_id";
+
+const TX_COLUMNS = "id, card_id, status, type, billing_cents, billing_currency, booked_at";
+
+/** Même plafond que l’ancienne lecture SQL : 80 séjours par requête. */
+const SPEND_BATCH = 80;
+
+const UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Minuit à Paris, en UTC, pour filtrer `end_at` en SQL. */
 export function parisMidnightIso(nowMs: number) {
   const day = parisIsoDate(new Date(nowMs));
@@ -84,12 +95,12 @@ function text(value: unknown) {
 }
 
 async function idsIn<T>(
-  load: (ids: string[]) => PromiseLike<{ data: T[] | null; error: { message?: string } | null }>
-  ,
-  ids: string[]
+  load: (ids: string[]) => PromiseLike<{ data: T[] | null; error: { message?: string } | null }>,
+  ids: string[],
+  size = 60
 ) {
   const rows: T[] = [];
-  for (const slice of chunks([...new Set(ids)], 60)) {
+  for (const slice of chunks([...new Set(ids)], size)) {
     const { data, error } = await load(slice);
     if (error) throw new Error(error.message || "Lecture impossible");
     rows.push(...(data || []));
@@ -154,44 +165,173 @@ async function loadRequests(supabase: SupabaseClient, itemIds: string[]) {
   return rows;
 }
 
-async function loadSpends(supabase: SupabaseClient, itemIds: string[], requestIds: string[]) {
-  const spends: HotelPliantSpend[] = [];
-  const itemSlices = chunks(itemIds, 80);
-  const requestSlices = chunks(requestIds, 80);
-  const passes = Math.max(itemSlices.length, requestSlices.length, 1);
-  for (let index = 0; index < passes; index += 1) {
-    const { data, error } = await supabase.rpc("crm_hotel_pliant_spend", {
-      item_ids: itemSlices[index] || [],
-      request_ids: requestSlices[index] || [],
-    });
-    if (error || !Array.isArray(data)) return { known: false, spends: [] as HotelPliantSpend[] };
-    for (const row of data as {
-      booking_item_id: string | null;
-      hotel_request_id: string | null;
-      transaction_id: string;
-      status: string | null;
-      type: string | null;
-      billing_cents: number | string | null;
-      billing_currency: string | null;
-      booked_at: string | null;
-    }[]) {
-      if (!row.transaction_id) continue;
-      spends.push({
-        bookingItemId: row.booking_item_id,
-        hotelRequestId: row.hotel_request_id,
-        transactionId: row.transaction_id,
-        status: row.status,
-        type: row.type,
-        billingCents: row.billing_cents,
-        billingCurrency: row.billing_currency,
-        bookedAt: row.booked_at,
-      });
-    }
-  }
-  return { known: true, spends };
+type CardLinkRow = { booking_item_id: string | null; hotel_request_id: string | null; pliant_card_id: string | null };
+
+type ArrivalRow = { booking_item_id: string | null; pliant_card_id: string | null };
+
+type CostRow = { booking_item_id: string | null; source_id: string | null };
+
+type TxRow = {
+  id: string;
+  card_id: string | null;
+  status: string | null;
+  type: string | null;
+  billing_cents: number | string | null;
+  billing_currency: string | null;
+  booked_at: string | null;
+};
+
+function cardText(value: string | null | undefined) {
+  return (value || "").trim();
 }
 
-/** Fils d’hôtel groupés. Aucun appel Gmail, aucune écriture. */
+/** Achats Pliant d’un hôtel : carte du séjour, lien carte, ou coût déjà pointé. */
+export function pliantSpendsForHotels(input: {
+  itemIds: string[];
+  requestIds: string[];
+  arrivals: ArrivalRow[];
+  links: CardLinkRow[];
+  costs: CostRow[];
+  transactions: TxRow[];
+}): HotelPliantSpend[] {
+  const items = new Set(input.itemIds);
+  const requests = new Set(input.requestIds);
+  const byCard = new Map<string, TxRow[]>();
+  const byId = new Map<string, TxRow>();
+  for (const tx of input.transactions) {
+    if (!tx.id) continue;
+    byId.set(tx.id, tx);
+    const cardId = cardText(tx.card_id);
+    if (!cardId) continue;
+    const list = byCard.get(cardId) || [];
+    list.push(tx);
+    byCard.set(cardId, list);
+  }
+  const spends: HotelPliantSpend[] = [];
+  const seen = new Set<string>();
+  const push = (tx: TxRow, itemId: string | null, requestId: string | null) => {
+    const key = `${itemId || ""}|${requestId || ""}|${tx.id}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    spends.push({
+      bookingItemId: itemId,
+      hotelRequestId: requestId,
+      transactionId: tx.id,
+      status: tx.status,
+      type: tx.type,
+      billingCents: tx.billing_cents,
+      billingCurrency: tx.billing_currency,
+      bookedAt: tx.booked_at,
+    });
+  };
+  const bind = (itemId: string | null, requestId: string | null, cardId: string) => {
+    const itemOk = Boolean(itemId && items.has(itemId));
+    const requestOk = Boolean(requestId && requests.has(requestId));
+    if (!itemOk && !requestOk) return;
+    for (const tx of byCard.get(cardId) || []) push(tx, itemOk ? itemId : null, requestOk ? requestId : null);
+  };
+  for (const row of input.arrivals) bind(row.booking_item_id, null, cardText(row.pliant_card_id));
+  for (const row of input.links) bind(row.booking_item_id, row.hotel_request_id, cardText(row.pliant_card_id));
+  for (const row of input.costs) {
+    const sourceId = cardText(row.source_id);
+    const tx = byId.get(sourceId);
+    if (!row.booking_item_id || !items.has(row.booking_item_id) || !tx) continue;
+    push(tx, row.booking_item_id, null);
+  }
+  return spends;
+}
+
+async function readOptional<T>(label: string, load: () => Promise<T[]>): Promise<T[] | null> {
+  try {
+    return await load();
+  } catch (error) {
+    console.error(`[hotel-inbox] ${label}`, error instanceof Error ? error.message : "lecture");
+    return null;
+  }
+}
+
+/** Liens Pliant. Un refus de lecture se dégrade : la boîte ne se vide pas. */
+async function loadCardLinks(supabase: SupabaseClient, itemIds: string[], requestIds: string[]) {
+  const [byItem, byRequest] = await Promise.all([
+    itemIds.length
+      ? readOptional("liens", () =>
+          idsIn(
+            (slice) =>
+              supabase.from("crm_card_links").select(CARD_LINK_COLUMNS).eq("source", "pliant").in("booking_item_id", slice),
+            itemIds,
+            SPEND_BATCH
+          )
+        )
+      : Promise.resolve([] as CardLinkRow[]),
+    requestIds.length
+      ? readOptional("liens", () =>
+          idsIn(
+            (slice) =>
+              supabase.from("crm_card_links").select(CARD_LINK_COLUMNS).eq("source", "pliant").in("hotel_request_id", slice),
+            requestIds,
+            SPEND_BATCH
+          )
+        )
+      : Promise.resolve([] as CardLinkRow[]),
+  ]);
+  return [...(byItem || []), ...(byRequest || [])];
+}
+
+async function loadSpends(
+  supabase: SupabaseClient,
+  itemIds: string[],
+  requestIds: string[],
+  arrivals: ArrivalRow[],
+  links: CardLinkRow[],
+  arrivalsKnown: boolean
+) {
+  try {
+    const costs = itemIds.length
+      ? await idsIn(
+          (slice) =>
+            supabase.from("crm_trip_costs").select("booking_item_id, source_id").eq("source", "pliant").in("booking_item_id", slice),
+          itemIds,
+          SPEND_BATCH
+        )
+      : [];
+    const cardIds = [
+      ...arrivals.map((row) => cardText(row.pliant_card_id)),
+      ...links.map((row) => cardText(row.pliant_card_id)),
+    ].filter(Boolean);
+    const sourceIds = (costs as CostRow[]).map((row) => cardText(row.source_id)).filter((id) => UUID_TEXT.test(id));
+    const [byCard, bySource] = await Promise.all([
+      cardIds.length
+        ? idsIn(
+            (slice) => supabase.from("crm_pliant_transactions").select(TX_COLUMNS).in("card_id", slice),
+            cardIds,
+            SPEND_BATCH
+          )
+        : Promise.resolve([] as TxRow[]),
+      sourceIds.length
+        ? idsIn((slice) => supabase.from("crm_pliant_transactions").select(TX_COLUMNS).in("id", slice), sourceIds, SPEND_BATCH)
+        : Promise.resolve([] as TxRow[]),
+    ]);
+    return {
+      known: arrivalsKnown,
+      spends: pliantSpendsForHotels({
+        itemIds,
+        requestIds,
+        arrivals,
+        links,
+        costs: costs as CostRow[],
+        transactions: [...(byCard as TxRow[]), ...(bySource as TxRow[])],
+      }),
+    };
+  } catch (error) {
+    console.error("[hotel-inbox] paiements", error instanceof Error ? error.message : "lecture");
+    return { known: false, spends: [] as HotelPliantSpend[] };
+  }
+}
+
+/**
+ * Fils d’hôtel groupés. Aucun appel Gmail, aucune écriture.
+ * Le client est le service role : les liens de carte et les coûts ne sont pas lisibles par la session agence.
+ */
 export async function loadHotelInbox(supabase: SupabaseClient, nowMs = Date.now()): Promise<HotelInbox> {
   try {
     const activeIds = await activeItemIds(supabase, nowMs);
@@ -206,7 +346,7 @@ export async function loadHotelInbox(supabase: SupabaseClient, nowMs = Date.now(
     const requestIds = requests.map((row) => row.id);
     const usedItems = [...new Set(requests.map((row) => row.booking_item_id))];
     const bookingIds = [...new Set(requests.map((row) => row.booking_id))];
-    const [items, bookings, messages, spends, cards, cardLinks, arrivals] = await Promise.all([
+    const [items, bookings, messages, cards, arrivalRows] = await Promise.all([
       idsIn(
         (slice) => supabase.from("crm_booking_items").select("id, booking_id, title, details, lifecycle, start_at, end_at").in("id", slice),
         usedItems
@@ -224,7 +364,6 @@ export async function loadHotelInbox(supabase: SupabaseClient, nowMs = Date.now(
             .in("booking_item_id", slice),
         usedItems
       ),
-      loadSpends(supabase, usedItems, requestIds),
       idsIn(
         (slice) =>
           supabase
@@ -233,20 +372,17 @@ export async function loadHotelInbox(supabase: SupabaseClient, nowMs = Date.now(
             .in("booking_id", slice),
         bookingIds
       ),
-      idsIn(
-        (slice) =>
-          supabase
-            .from("crm_card_links")
-            .select("booking_item_id, hotel_request_id, pliant_card_id")
-            .eq("source", "pliant")
-            .in("booking_item_id", slice),
-        usedItems
-      ),
-      idsIn(
-        (slice) => supabase.from("crm_hotel_arrivals").select("booking_item_id, pliant_card_id").in("booking_item_id", slice),
-        usedItems
+      readOptional("arrivées", () =>
+        idsIn(
+          (slice) => supabase.from("crm_hotel_arrivals").select("booking_item_id, pliant_card_id").in("booking_item_id", slice),
+          usedItems,
+          SPEND_BATCH
+        )
       ),
     ]);
+    const arrivals = (arrivalRows || []) as ArrivalRow[];
+    const cardLinks = await loadCardLinks(supabase, usedItems, requestIds);
+    const spends = await loadSpends(supabase, usedItems, requestIds, arrivals, cardLinks, arrivalRows != null);
     const customers = await idsIn(
       (slice) => supabase.from("crm_customers").select("id, first_name, last_name").in("id", slice),
       (bookings as BookingRow[]).map((row) => row.customer_id || "").filter(Boolean)
@@ -365,7 +501,7 @@ export async function loadHotelInbox(supabase: SupabaseClient, nowMs = Date.now(
     return buildHotelInbox(sources, spends.spends, spends.known, inboxCards, inboxLinks, nowMs);
   } catch (error) {
     console.error("[hotel-inbox]", error instanceof Error ? error.message : "lecture");
-    return EMPTY;
+    return { ...EMPTY, loadError: HOTEL_INBOX_LOAD_ERROR };
   }
 }
 

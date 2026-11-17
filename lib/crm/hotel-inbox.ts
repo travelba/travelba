@@ -109,7 +109,11 @@ export type HotelInbox = {
   waiting: HotelInboxRow[];
   rest: HotelInboxRow[];
   endedUnpaid: HotelInboxRow[];
+  /** Lecture principale en échec. Les listes sont vides, le bandeau le dit. */
+  loadError?: string | null;
 };
+
+export const HOTEL_INBOX_LOAD_ERROR = "Lecture des courriers impossible, réessayez";
 
 const SIGNAL_RULES: { signal: HotelPaymentSignal; pattern: RegExp }[] = [
   { signal: "Demande de carte", pattern: /card authorization form|credit card authorization|virtual card|carte virtuelle/i },
@@ -553,7 +557,8 @@ function sectionOf(reading: Reading, ended: boolean, nowMs: number): HotelInboxR
     if (!Number.isFinite(at)) return null;
     return nowMs - at >= UNANSWERED_AFTER_MS ? "unanswered" : "waiting";
   }
-  return null;
+  // L’agence a écrit après une vraie réponse : le fil reste dans Le reste, replié.
+  return "rest";
 }
 
 function choose(list: Reading[], ended: boolean, nowMs: number) {

@@ -1,4 +1,3 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { HotelSearchDesk, type HotelRequestView } from "@/components/admin/HotelSearchDesk";
 import { HotelInbox } from "@/components/admin/HotelInbox";
 import { ViewPills } from "@/components/admin/TabLinks";
@@ -8,6 +7,7 @@ import { loadHotelInbox } from "@/lib/crm/hotel-inbox-load";
 import { roomsFromStored, stayPartyLabel } from "@/lib/crm/hotel-search";
 import { listHotelRequests, loadOfferPhotos, loadRequestCustomers } from "@/lib/crm/hotel-search-store";
 import { pliantConfigured } from "@/lib/crm/pliant";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 function originOf(account: string) {
   if (account === "little_emperors") return "Little Emperors";
@@ -54,11 +54,9 @@ function viewHref(view: HotelsView) {
 
 /** Hôtels : une file de courriers, et à part les demandes de l’espace client. */
 export async function HotelsPanel({
-  supabase,
   params,
   counts,
 }: {
-  supabase: SupabaseClient;
   params: Record<string, SearchParamValue>;
   counts: { reponses: number };
 }) {
@@ -90,7 +88,7 @@ export async function HotelsPanel({
     );
   }
 
-  const inbox = await loadHotelInbox(supabase);
+  const inbox = await loadHotelInbox(createServiceClient());
   return (
     <div className="space-y-6">
       {pills}

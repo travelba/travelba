@@ -32,7 +32,7 @@ export default async function BoitePage({ searchParams }: { searchParams: Promis
         {tab === "fournisseurs" ? (
           <FournisseursPanel supabase={supabase} params={params} />
         ) : tab === "hotels" ? (
-          <HotelsPanel supabase={supabase} params={params} counts={{ reponses: badges.hotels }} />
+          <HotelsPanel params={params} counts={{ reponses: badges.hotels }} />
         ) : (
           <WhatsappPanel params={params} />
         )}
