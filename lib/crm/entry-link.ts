@@ -12,6 +12,15 @@ import {
   isEntryCode,
 } from "./entry-code";
 import { detectInAppBrowser } from "./in-app-browser";
+import {
+  BRAND_APPLE_TOUCH_ICON,
+  BRAND_ICON,
+  BRAND_OG_IMAGE,
+  BRAND_OG_IMAGE_HEIGHT,
+  BRAND_OG_IMAGE_WIDTH,
+  BRAND_OG_SQUARE,
+  BRAND_OG_SQUARE_SIZE,
+} from "../site";
 
 export { detectInAppBrowser, externalBrowserUrl, inAppHandoffDecision, inAppHandoffHtml } from "./in-app-browser";
 
@@ -359,7 +368,56 @@ function escapeHtml(value: string) {
     .replace(/"/g, "&quot;");
 }
 
-/** Couverture du séjour uniquement. Pas de monogramme à la place. */
+/** Les fichiers publics restent en https, sauf le serveur local. */
+function assetBase(origin: string) {
+  const base = origin.replace(/\/$/, "");
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(base)) return base;
+  return base.replace(/^http:\/\//i, "https://");
+}
+
+function absoluteAsset(base: string, path: string) {
+  return escapeHtml(`${assetBase(base)}${path}`);
+}
+
+function secureUrlTag(url: string) {
+  return url.startsWith("https://") ? `\n<meta property="og:image:secure_url" content="${url}">` : "";
+}
+
+/** Icônes nettes, en plus du favicon.ico que les anciens clients connaissent. */
+function shareIconLinks(base: string) {
+  const png = absoluteAsset(base, BRAND_ICON);
+  const apple = absoluteAsset(base, BRAND_APPLE_TOUCH_ICON);
+  const ico = absoluteAsset(base, "/favicon.ico");
+  return `<link rel="icon" href="${png}" type="image/png" sizes="512x512">
+<link rel="apple-touch-icon" href="${apple}" type="image/png" sizes="180x180">
+<link rel="icon" href="${ico}" type="image/x-icon" sizes="any">`;
+}
+
+/** Logo TBA sur fond marine. URL absolue, dimensions lues par WhatsApp. */
+function brandImageTags(base: string, alt: string) {
+  const image = absoluteAsset(base, BRAND_OG_IMAGE);
+  const square = absoluteAsset(base, BRAND_OG_SQUARE);
+  const safeAlt = escapeHtml(alt);
+  const wide = `<meta property="og:image" content="${image}">${secureUrlTag(image)}
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="${BRAND_OG_IMAGE_WIDTH}">
+<meta property="og:image:height" content="${BRAND_OG_IMAGE_HEIGHT}">
+<meta property="og:image:alt" content="${safeAlt}">`;
+  const tile = `<meta property="og:image" content="${square}">${secureUrlTag(square)}
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="${BRAND_OG_SQUARE_SIZE}">
+<meta property="og:image:height" content="${BRAND_OG_SQUARE_SIZE}">
+<meta property="og:image:alt" content="${safeAlt}">`;
+  return `${wide}
+${tile}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${image}">`;
+}
+
+/**
+ * Couverture du séjour uniquement. Le logo TBA n’y est pas substitué :
+ * sans photo, la carte du Concierge sert l’image (`brandImageTags`).
+ */
 function previewImage(image: string | null | undefined) {
   if (!image || /og-concierge|tba-mark/i.test(image)) return null;
   try {
@@ -391,6 +449,16 @@ export function entryInstantHtml(origin: string, code: string, door: EntryDoor =
 <title>${title}</title>
 <meta name="description" content="${description}">
 <meta name="robots" content="noindex">
+<meta property="og:locale" content="${door.locale}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="${mark}">
+<meta property="og:title" content="${title}">
+<meta property="og:description" content="${description}">
+<meta property="og:url" content="${action}">
+${door.lang === "fr" ? brandImageTags(base, door.title) : `<meta name="twitter:card" content="summary">`}
+<meta name="twitter:title" content="${title}">
+<meta name="twitter:description" content="${description}">
+${shareIconLinks(base)}
 </head>
 <body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0B192C;color:#F3EDE2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <main style="width:min(100%,420px);padding:28px 22px">
@@ -432,8 +500,10 @@ export function entryPreviewHtml(
 <meta property="og:image:alt" content="${title}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="${imageUrl}">`
-    : `<meta name="twitter:card" content="summary">`;
-  const icon = escapeHtml(`${base}/favicon.ico`);
+    : door.lang === "fr"
+      ? brandImageTags(base, rawTitle)
+      : `<meta name="twitter:card" content="summary">`;
+  const icons = shareIconLinks(base);
   const action = escapeHtml(page);
   const hero = image
     ? `<div class="hero"><img src="${imageUrl}" alt="" onerror="this.closest('main').className='door plain';this.parentElement.remove()"></div>`
@@ -463,7 +533,7 @@ export function entryPreviewHtml(
 ${imageTags}
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${description}">
-<link rel="icon" href="${icon}" type="image/x-icon" sizes="any">
+${icons}
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; min-height: 100%; }
