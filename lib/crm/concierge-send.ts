@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
+import { clientStayFace } from "@/lib/crm/client-stay-face";
 import { cityCoverCached, ensureCityCover } from "@/lib/crm/cover-generate";
 import { cityCoverAuthFailed } from "@/lib/crm/cover-retouch";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
@@ -348,20 +349,41 @@ async function deliverTemplate(admin: Admin, input: {
  * Photo du lieu déjà là, ou à générer.
  * `generate` reste faux au moment où l’on montre le dossier : la requête admin ne lance pas l’image.
  */
+function clientCoverBooking(
+  booking: { destination: string | null; title: string | null; cover_image_path: string | null },
+  items?: Parameters<typeof clientStayFace>[0]["items"],
+  homeCity?: string | null
+) {
+  const face = clientStayFace({
+    title: booking.title,
+    destination: booking.destination,
+    items,
+    homeCity,
+  });
+  return {
+    destination: face.destination || booking.destination,
+    title: face.title || booking.title,
+    cover_image_path: booking.cover_image_path,
+  };
+}
+
 async function openStayNotice(
   booking: { destination: string | null; title: string | null; cover_image_path: string | null },
   waits: number,
-  generate: boolean
+  generate: boolean,
+  items?: Parameters<typeof clientStayFace>[0]["items"],
+  homeCity?: string | null
 ) {
-  if (!stayHasPublishedCover(booking)) return "text" as const;
-  const photo = generatedStayPhotoId(booking);
+  const shown = clientCoverBooking(booking, items, homeCity);
+  if (!stayHasPublishedCover(shown)) return "text" as const;
+  const photo = generatedStayPhotoId(shown);
   let coverReady = !photo || (await cityCoverCached(photo));
   if (photo && !coverReady && generate) {
     const made = await ensureCityCover(photo);
     coverReady = Boolean(made?.byteLength);
     if (!coverReady && cityCoverAuthFailed()) return "text" as const;
   }
-  if (booking.cover_image_path) coverReady = true;
+  if (shown.cover_image_path) coverReady = true;
   return stayNoticeDispatch({
     hasCover: true,
     coverReady,
@@ -379,7 +401,7 @@ async function noteCoverWait(admin: Admin, row: QueueRow) {
 async function loadStaySteps(admin: Admin, bookingId: string) {
   const { data } = await admin
     .from("crm_booking_items")
-    .select("kind, title, start_at, end_at, sort_order, details, lifecycle")
+    .select("kind, title, start_at, end_at, sort_order, details, lifecycle, visible_to_client")
     .eq("booking_id", bookingId);
   return (data || []) as TripStep[];
 }
@@ -489,14 +511,14 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       title: booking.title,
       items: steps,
       homeCity,
-      hasCover: stayHasPublishedCover(booking),
+      hasCover: stayHasPublishedCover(clientCoverBooking(booking, steps, homeCity)),
     });
     if (!preview) {
       await dropQueue(admin, row.id);
       return;
     }
     const waits = row.payload?.coverWaits || 0;
-    const dispatch = await openStayNotice(booking, waits, true);
+    const dispatch = await openStayNotice(booking, waits, true, steps, homeCity);
     if (dispatch === "wait") {
       await noteCoverWait(admin, row);
       return;
@@ -738,7 +760,7 @@ export async function notifyStayPublished(bookingId: string, admin: Admin = crea
     title: booking.title,
     items: steps,
     homeCity: customer?.city || null,
-    hasCover: stayHasPublishedCover(booking),
+    hasCover: stayHasPublishedCover(clientCoverBooking(booking, steps, customer?.city || null)),
   });
   if (!plan) return;
   const dedupeKey = `sejour:${booking.id}`;
@@ -752,7 +774,7 @@ export async function notifyStayPublished(bookingId: string, admin: Admin = crea
     payload: previous?.payload?.coverWaits ? { coverWaits: previous.payload.coverWaits } : {},
   });
   if (row.status === "sent") return;
-  const dispatch = await openStayNotice(booking, row.payload?.coverWaits || 0, false);
+  const dispatch = await openStayNotice(booking, row.payload?.coverWaits || 0, false, steps, customer?.city || null);
   if (dispatch === "wait") return;
   await deliverRow(admin, row, new Date());
 }

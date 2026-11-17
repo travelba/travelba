@@ -11,6 +11,7 @@ import { recordCustomerLogin } from "@/lib/crm/customer-login";
 import { PASSWORD_SETUP_COOKIE, mustSetPassword } from "@/lib/crm/session";
 import { deskOpenDecision, deskSetCookie } from "@/lib/crm/desk-mode";
 import { isStaffAccount } from "@/lib/crm/desk-open";
+import { clientStayFace } from "./client-stay-face";
 import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
 import {
   entryDestination,
@@ -101,13 +102,25 @@ async function stayBehindCode(origin: string, code: string): Promise<{ stay: Ent
     if (!booking?.reference || booking.archived_at) return { stay: null, nextPath: link.next_path };
     const { data: items } = await admin
       .from("crm_booking_items")
-      .select("kind, title, start_at, end_at, sort_order, details, lifecycle")
+      .select("kind, title, start_at, end_at, sort_order, details, lifecycle, visible_to_client")
       .eq("booking_id", booking.id);
     const now = new Date();
     const alive = !link.revoked_at && now.getTime() <= entryLinkExpiresAt(link).getTime();
-    const place = stayPlaceName(booking.destination, booking.title, items || []);
+    const face = clientStayFace({
+      title: booking.title,
+      destination: booking.destination,
+      items: items || [],
+    });
+    const place = stayPlaceName(face.destination || booking.destination, face.title || booking.title, face.fromCards ? face.items : items || []);
     const hasCover =
-      alive && link.show_cover === true && Boolean(booking.visible_to_client) && stayHasPublishedCover(booking);
+      alive &&
+      link.show_cover === true &&
+      Boolean(booking.visible_to_client) &&
+      stayHasPublishedCover({
+        destination: face.destination || booking.destination,
+        title: face.title || booking.title,
+        cover_image_path: booking.cover_image_path,
+      });
     return {
       stay: stayPreviewCopy({ origin, reference: booking.reference, place, hasCover, entryCode: code }),
       nextPath: link.next_path,

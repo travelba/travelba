@@ -6,7 +6,8 @@ import { redirect } from "next/navigation";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { AccountPage } from "@/components/account/AccountPage";
-import { HIDDEN_PRICE_LABEL, listStayTitle } from "@/lib/crm/carnet";
+import { HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
+import { applyClientStayFace } from "@/lib/crm/client-stay-face";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { isClientPastStay, isClientUpcomingStay } from "@/lib/crm/client-stays";
 import {
@@ -18,7 +19,7 @@ import {
 import { createServiceClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/crm/ui";
 import { resolveListCovers } from "@/lib/crm/cover-resolve";
-import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
+import { loadClientStayFaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { clientTripOwnerIds } from "@/lib/crm/company-peers";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { BoardingReadyNote } from "@/components/account/BoardingPassStack";
@@ -40,9 +41,11 @@ export default async function ReservationsPage({
   if (!customer) redirect("/connexion");
 
   console.time("[espace] reservations");
-  const all = await loadVisibleCarnets(supabase, customer.id, await clientTripOwnerIds(customer));
+  const loaded = await loadVisibleCarnets(supabase, customer.id, await clientTripOwnerIds(customer));
+  const faces = await loadClientStayFaces(supabase, loaded, customer.city);
+  const all = loaded.map((booking) => applyClientStayFace(booking, faces[booking.id]));
   const walletIds = [...new Set(all.map((row) => row.billing_customer_id || row.customer_id))];
-  const [displayedAmounts, payerResult, places, boardingReady] = await Promise.all([
+  const [displayedAmounts, payerResult, boardingReady] = await Promise.all([
     loadDisplayedStayAmounts(createServiceClient(), all).catch(() => new Map<string, number>()),
     walletIds.length
       ? supabase
@@ -50,11 +53,6 @@ export default async function ReservationsPage({
           .select("id, customer_id, company_name, funding, sort_order")
           .in("customer_id", walletIds)
       : Promise.resolve({ data: [] as (FundingCompany & { customer_id: string })[] }),
-    loadStayMaps(
-      supabase,
-      all.map((row) => row.id),
-      { visibleOnly: true }
-    ),
     boardingPassBookingIds(all.map((row) => row.id)),
   ]);
   const payerCompanies = payerResult.data;
@@ -68,7 +66,12 @@ export default async function ReservationsPage({
   const past = sortBookingsByStart(all.filter((b) => isClientPastStay(b)), "desc");
   const showPast = tab === "passes";
   const list = showPast ? past : upcoming;
-  const coverRows = list.map((row) => ({ id: row.id, booking: row, places: places.arrival[row.id] }));
+  const coverRows = list.map((row) => ({
+    id: row.id,
+    booking: row,
+    places: faces[row.id]?.places,
+    items: faces[row.id]?.items,
+  }));
   const covers = await resolveListCovers(coverRows, { geocode: false });
   console.timeEnd("[espace] reservations");
   after(() => {
@@ -155,7 +158,8 @@ export default async function ReservationsPage({
               <article className="account-press relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
                 <BookingHero
                   booking={toPublicBooking(b)}
-                  places={places.arrival[b.id]}
+                  places={faces[b.id]?.places}
+                  items={faces[b.id]?.items}
                   width={800}
                   list
                   resolvedSrc={covers[b.id] ?? null}
@@ -177,7 +181,7 @@ export default async function ReservationsPage({
                       {nights ? ` (${nights} jour${nights > 1 ? "s" : ""})` : ""}
                     </p>
                     <h2 className="font-display text-2xl font-bold leading-tight">
-                      {listStayTitle(b.title, b.destination, places.arrival[b.id], places.route[b.id], places.layovers[b.id], "Séjour", customer.city)}
+                      {faces[b.id]?.title || b.title || "Séjour"}
                     </h2>
                   </div>
                 </BookingHero>

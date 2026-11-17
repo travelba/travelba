@@ -3,14 +3,13 @@
  * Le bouton WhatsApp « Voir le voyage » donne cet exemple à Meta : {{3}} = exemple.
  */
 import type { Metadata } from "next";
-import { clientVisibleItems } from "./carnet";
 import { googlePhoneMap } from "./calendar-ics";
 import { bookingCoverUrl } from "./covers";
 import { formatDateFr } from "./dates";
 import { withoutHotelRosterItems } from "./hotel-contact";
 import { toPublicBooking } from "./public-booking";
 import { brandShareImages, siteConfig } from "../site";
-import { stayTitleFromItems } from "./staff-stay";
+import { clientStayFace } from "./client-stay-face";
 import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "./types";
 
 export const EXAMPLE_TRIP_CODE = "exemple";
@@ -131,9 +130,20 @@ export function publicTripMetadata(code: string, trip: ExamplePublishedTrip | nu
   if (!trip) {
     return { title: "Voyage", robots: hidden, openGraph: { images: brandShareImages(siteConfig.name) } };
   }
-  const title = stayTitleFromItems(trip.booking.title, trip.booking.destination, clientVisibleItems(trip.items));
-  const description = tripDescription(trip.booking.start_date, trip.booking.end_date);
-  const cover = bookingCoverUrl(trip.booking, 1200, { partage: code, items: trip.items });
+  const face = clientStayFace({
+    title: trip.booking.title,
+    destination: trip.booking.destination,
+    startDate: trip.booking.start_date,
+    endDate: trip.booking.end_date,
+    items: trip.items,
+  });
+  const title = face.title;
+  const description = tripDescription(face.start, face.end);
+  const cover = bookingCoverUrl(
+    { ...trip.booking, title: face.title, destination: face.destination },
+    1200,
+    { partage: code, items: face.items, places: face.places }
+  );
   return {
     title,
     description,

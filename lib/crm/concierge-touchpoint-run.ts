@@ -169,8 +169,8 @@ export async function draftConciergeTouchpoints(admin: Admin, now = new Date()) 
     const planned = planFollowups({
       now,
       lastInbound: lastInbound.get(phone) ? new Date(lastInbound.get(phone) as string) : null,
-      stayStart: booking.start_date,
-      stayEnd: booking.end_date,
+      stayStart: touch.stay.startDate,
+      stayEnd: touch.stay.endDate,
       briefOpen: false,
       firstName: touch.firstName,
       stay: touch.stay,

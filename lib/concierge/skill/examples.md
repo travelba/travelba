@@ -26,7 +26,7 @@ Votre accueil à l'arrivée est prévu jeudi 22 octobre à 11h40.
 ## Dernier voyage
 Client : Quel était mon dernier voyage ?
 Concierge :
-Votre dernier voyage à Marrakech s’est achevé le 12 octobre.
+Votre dernier voyage à Marrakech s’est achevé le 8 octobre.
 
 ## Retour
 Client : À quelle heure est mon vol de retour ?

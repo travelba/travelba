@@ -7,6 +7,7 @@ import {
   hotelStayLabel,
   itemClock,
 } from "./carnet";
+import { clientStayFace } from "./client-stay-face";
 import { placeWithPreposition, stayDestinationLine, stayDestinationNames } from "./stay-phrase";
 import { timezoneForIata } from "./airport-time";
 import { inferAirlineIata } from "./brand-marks";
@@ -577,19 +578,31 @@ export function buildConciergeDossier(input: {
 
   const stays: ConciergeStay[] = visible.map((booking) => {
     const prices = booking.prices_visible === true;
-    const items = (itemsByBooking.get(booking.id) || []).map((item) => itemLines(item, prices));
-    return {
-      id: booking.id,
-      reference: booking.reference,
+    const rawItems = (input.items || []).filter((item) => item.booking_id === booking.id);
+    const face = clientStayFace({
       title: booking.title,
       destination: booking.destination,
       startDate: booking.start_date,
       endDate: booking.end_date,
+      items: rawItems,
+    });
+    const items = (itemsByBooking.get(booking.id) || []).map((item) => itemLines(item, prices));
+    return {
+      id: booking.id,
+      reference: booking.reference,
+      title: face.title,
+      destination: face.destination || booking.destination,
+      startDate: face.start,
+      endDate: face.end,
       totalAmount:
         prices && Number.isFinite(Number(booking.total_amount)) ? Number(booking.total_amount) : null,
       currency: booking.currency || "EUR",
       notesClient: scrubClientText(shownClientNote(booking.notes_client) || "") || null,
-      cover: publishedCover(booking),
+      cover: publishedCover({
+        ...booking,
+        title: face.title,
+        destination: face.destination || booking.destination,
+      }),
       shareCode: typeof booking.share_code === "string" && booking.share_code ? booking.share_code : null,
       items,
       documents: docsByBooking.get(booking.id) || [],

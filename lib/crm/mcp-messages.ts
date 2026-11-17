@@ -176,11 +176,24 @@ async function liveSharePreview(request: ShareRequest): Promise<SharePreview> {
   if (!plan.ok) {
     throw new McpWriteError(plan.reason === "no_phone" ? "Cet accompagnateur n’a pas de téléphone." : "Accompagnateur introuvable sur ce voyage.");
   }
+  const { data: itemRows } = await admin
+    .from("crm_booking_items")
+    .select("kind, title, start_at, end_at, sort_order, details, lifecycle, visible_to_client")
+    .eq("booking_id", booking.id);
+  const { data: customer } = await admin.from("crm_customers").select("city").eq("id", booking.customer_id).maybeSingle();
+  const { clientStayFace } = await import("@/lib/crm/client-stay-face");
+  const titre = clientStayFace({
+    title: booking.title,
+    destination: booking.destination,
+    items: itemRows || [],
+    homeCity: typeof customer?.city === "string" ? customer.city : null,
+    fallback: "Séjour",
+  }).title;
   return {
     prenom: plan.firstName,
-    titre: String(booking.title || booking.destination || "Séjour"),
+    titre,
     destinataire: maskPhone(plan.phone),
-    corps: sharePreviewBody({ prenom: plan.firstName, titre: String(booking.title || booking.destination || "Séjour") }),
+    corps: sharePreviewBody({ prenom: plan.firstName, titre }),
     envoie: true,
   };
 }
@@ -192,8 +205,7 @@ async function liveShareSend(request: ShareRequest) {
   const { ensureTripShareCode } = await import("@/lib/crm/trip-share-load");
   const { planTripShareSend, tripShareUrl } = await import("@/lib/crm/trip-share");
   const { deliverTripShareWhatsapp } = await import("@/lib/crm/trip-share-send");
-  const { stayTitleFromItems } = await import("@/lib/crm/staff-stay");
-  const { clientVisibleItems } = await import("@/lib/crm/carnet");
+  const { clientStayFace } = await import("@/lib/crm/client-stay-face");
   const { siteConfig } = await import("@/lib/site");
   const { currentMcpAccess } = await import("@/lib/crm/mcp-auth");
   const admin = createServiceClient();
@@ -213,13 +225,13 @@ async function liveShareSend(request: ShareRequest) {
     companionId: request.compagnonId,
     phone: plan.phone,
     firstName: plan.firstName,
-    title: stayTitleFromItems(
-      booking.title,
-      booking.destination,
-      clientVisibleItems(items || []),
-      "Séjour",
-      typeof customer?.city === "string" ? customer.city : null
-    ),
+    title: clientStayFace({
+      title: booking.title,
+      destination: booking.destination,
+      items: items || [],
+      homeCity: typeof customer?.city === "string" ? customer.city : null,
+      fallback: "Séjour",
+    }).title,
     url: tripShareUrl(siteConfig.url, code),
     audience: "staff",
     staffId: currentMcpAccess().staff?.id || null,

@@ -10,11 +10,14 @@ export function stayDestinationNames(input: {
   title?: string | null;
   destination?: string | null;
   homeCity?: string | null;
-  items?: TripStep[] | null;
+  items?: (TripStep & { visible_to_client?: boolean | null })[] | null;
 }) {
   if (input.items?.length) {
-    const found = tripCityPlan(input.items, undefined, input.homeCity).destinations;
-    if (found.length) return found;
+    const visible = input.items.filter((item) => item.visible_to_client !== false);
+    if (visible.length) {
+      const found = tripCityPlan(visible, undefined, input.homeCity).destinations;
+      if (found.length) return found;
+    }
   }
   const fromDestination = namesFromLabel(input.destination);
   if (fromDestination.length) return fromDestination;
