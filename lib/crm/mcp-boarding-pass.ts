@@ -28,6 +28,7 @@ import {
 import { boardingPassSignedPath } from "./boarding-pass-link";
 import { deliverWalletNotice } from "./wallet-pass-notify";
 import { findWalletDocumentId } from "./pkpass";
+import { pieceEstRetiree, piecesActives } from "./dossier-piece";
 import { queryWithOptionalColumn } from "./optional-column";
 import { McpWriteError } from "./mcp-write";
 import { resolveContentSid, whatsappContentApproved } from "./twilio-content-sid";
@@ -123,15 +124,26 @@ export async function notifyBoardingPass(
 ): Promise<BoardingPassNotice> {
   const documentId = documentIdOf(input.document_id);
   const db = client(admin);
-  const { data: doc, error: docError } = await db
-    .from("crm_booking_documents")
-    .select("id, booking_id, booking_item_id, kind, mime_type, file_name, storage_path")
-    .eq("id", documentId)
-    .maybeSingle();
-  if (docError) throw new McpWriteError("Document introuvable.");
+  const loadedDoc = await queryWithOptionalColumn(
+    (columns) => db.from("crm_booking_documents").select(columns).eq("id", documentId).maybeSingle(),
+    "id, booking_id, booking_item_id, kind, mime_type, file_name, storage_path",
+    "extracted"
+  );
+  if (loadedDoc.error) throw new McpWriteError("Document introuvable.");
+  const doc = loadedDoc.data as {
+    id: string;
+    booking_id?: string | null;
+    booking_item_id?: string | null;
+    kind?: string | null;
+    mime_type?: string | null;
+    file_name?: string | null;
+    storage_path?: string | null;
+    extracted?: unknown;
+  } | null;
   if (!doc || !isBoardingPassFile(doc) || !doc.storage_path) {
     throw new McpWriteError("La pièce n’est pas une carte d’embarquement PDF de ce dossier.");
   }
+  if (pieceEstRetiree(doc.extracted)) throw new McpWriteError("Cette pièce est retirée.");
   const bookingId = String(doc.booking_id || "");
   const { data: booking, error: bookingError } = await db
     .from("crm_bookings")
@@ -206,12 +218,14 @@ export async function notifyBoardingPass(
     "id, file_name, mime_type",
     "extracted"
   ).catch(() => ({ data: [], error: null }));
-  const walletDocs = (walletRows.error ? [] : walletRows.data || []) as unknown as {
-    id: string;
-    file_name?: string | null;
-    mime_type?: string | null;
-    extracted?: unknown;
-  }[];
+  const walletDocs = piecesActives(
+    (walletRows.error ? [] : walletRows.data || []) as unknown as {
+      id: string;
+      file_name?: string | null;
+      mime_type?: string | null;
+      extracted?: unknown;
+    }[]
+  );
   const storedName = typeof doc.file_name === "string" ? doc.file_name : null;
   for (const passenger of pending) {
     const key = boardingPassSendKey(documentId, passenger.page, passengers.length);

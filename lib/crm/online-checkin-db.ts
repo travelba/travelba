@@ -12,6 +12,8 @@ import {
   type OnlineCheckinStatus,
   type StoredFlightCheckin,
 } from "./online-checkin";
+import { piecesActives } from "./dossier-piece";
+import { queryWithOptionalColumn } from "./optional-column";
 import type { CrmBookingDocument, CrmBookingItem } from "./types";
 
 const MISSING_TABLE = new Set(["42P01", "PGRST205", "PGRST204"]);
@@ -39,16 +41,23 @@ export async function loadCheckinContext(db: SupabaseClient, bookingId: string):
       .from("crm_booking_items")
       .select("id, kind, title, supplier, start_at, details, lifecycle, source_document_id")
       .eq("booking_id", bookingId),
-    db.from("crm_booking_documents").select("id, kind, file_name, booking_item_id").eq("booking_id", bookingId),
+    queryWithOptionalColumn(
+      (columns) => db.from("crm_booking_documents").select(columns).eq("booking_id", bookingId),
+      "id, kind, file_name, booking_item_id",
+      "extracted"
+    ),
     db.from("crm_flight_checkins").select("booking_item_id, status, actor").eq("booking_id", bookingId),
   ]);
   if (items.error) logCheckin(items.error);
   if (documents.error) logCheckin(documents.error);
   const tableReady = !checkins.error && !missingTable(checkins.error);
   if (checkins.error && !missingTable(checkins.error)) logCheckin(checkins.error);
+  const pieceRows = ((documents.data || []) as unknown) as (CheckinContext["documents"][number] & {
+    extracted?: unknown;
+  })[];
   return {
     items: (items.data || []) as CrmBookingItem[],
-    documents: (documents.data || []) as CheckinContext["documents"],
+    documents: piecesActives(pieceRows),
     rows: tableReady ? ((checkins.data || []) as StoredFlightCheckin[]) : [],
     tableReady: !checkins.error,
   };

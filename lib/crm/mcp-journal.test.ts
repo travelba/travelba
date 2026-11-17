@@ -33,6 +33,16 @@ test("une écriture de clé nominative est au nom du membre sur le dossier", () 
   assert.equal(JSON.stringify(renamed).includes("12AB34567"), false);
   const passport = mcpWriteJournalDraft("modifier_titulaire", { numero: "24CD67890" }, "Raphael");
   assert.equal(JSON.stringify(passport).includes("24CD67890"), false);
+  const piece = mcpWriteJournalDraft("retirer_piece_dossier", { dossier_id: DOSSIER, confirmer: true }, "Raphael");
+  assert.equal(piece.action, "delete");
+  assert.match(piece.summary, /Pièce retirée du dossier par Raphael/);
+  const back = mcpWriteJournalDraft(
+    "retirer_piece_dossier",
+    { dossier_id: DOSSIER, confirmer: true, restaurer: true },
+    "Raphael"
+  );
+  assert.equal(back.action, "update");
+  assert.match(back.summary, /Pièce remise sur le dossier par Raphael/);
   const changed = mcpWriteJournalDraft("changer_client_dossier", { dossier_id: DOSSIER }, "Raphael");
   assert.equal(changed.action, "update");
   assert.equal(changed.entityId, DOSSIER);

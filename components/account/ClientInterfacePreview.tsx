@@ -15,6 +15,7 @@ import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { TripPassportGroup } from "@/components/crm/TripPassportGroup";
 import { ReceivedVisasFold } from "@/components/crm/TripVisaUploads";
 import { VisaSection } from "@/components/crm/VisaSection";
+import { piecesActives } from "@/lib/crm/dossier-piece";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import {
   carnetVisible,
@@ -127,9 +128,10 @@ export function ClientInterfacePreview({
   const liveItems = clientVisibleItems(items);
   const shownItems = published ? liveItems : items.filter((item) => reveal.has(item.id));
   const hiddenIds = new Set(items.map((item) => item.id).filter((id) => !reveal.has(id)));
+  const liveDocuments = piecesActives(documents);
   const shownDocs = published
-    ? documents.filter((doc) => doc.visible_to_client)
-    : documents.filter((doc) => !doc.booking_item_id || !hiddenIds.has(doc.booking_item_id));
+    ? liveDocuments.filter((doc) => doc.visible_to_client)
+    : liveDocuments.filter((doc) => !doc.booking_item_id || !hiddenIds.has(doc.booking_item_id));
   const screenBooking: CrmBooking = published
     ? booking
     : { ...booking, visible_to_client: true, prices_visible: true };

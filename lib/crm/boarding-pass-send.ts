@@ -19,6 +19,7 @@ import {
 } from "./boarding-pass-whatsapp";
 import { boardingPassSignedPath } from "./boarding-pass-link";
 import { findWalletDocumentId } from "./pkpass";
+import { piecesActives } from "./dossier-piece";
 import { queryWithOptionalColumn } from "./optional-column";
 import { deliverWalletNotice } from "./wallet-pass-notify";
 import { syncCheckinSent } from "./online-checkin-db";
@@ -57,7 +58,9 @@ async function walletDocuments(supabase: SupabaseClient, bookingId: string) {
       "extracted"
     );
     if (result.error || !Array.isArray(result.data)) return [];
-    return result.data as unknown as { id: string; file_name?: string | null; mime_type?: string | null; extracted?: unknown }[];
+    return piecesActives(
+      result.data as unknown as { id: string; file_name?: string | null; mime_type?: string | null; extracted?: unknown }[]
+    );
   } catch {
     return [];
   }

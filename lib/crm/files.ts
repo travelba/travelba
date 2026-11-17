@@ -90,6 +90,33 @@ export async function removeCrmFiles(paths: string[]) {
   if (error) console.error("[crm-files] remove", error.message);
 }
 
+/** Taille des objets déjà en bucket. Un chemin absent ou une liste en échec reste hors de la map. */
+export async function crmFileSizes(paths: string[]): Promise<Map<string, number>> {
+  const wanted = new Set(paths.filter(Boolean));
+  const sizes = new Map<string, number>();
+  if (!wanted.size) return sizes;
+  const supabase = createServiceClient();
+  const prefixes = new Set([...wanted].map((path) => path.split("/").slice(0, -1).join("/")).filter(Boolean));
+  for (const prefix of prefixes) {
+    try {
+      const { data, error } = await supabase.storage.from(CRM_BUCKET).list(prefix, { limit: 1000 });
+      if (error || !data) continue;
+      for (const entry of data) {
+        if (!entry?.name) continue;
+        const path = `${prefix}/${entry.name}`;
+        if (!wanted.has(path)) continue;
+        const raw =
+          entry.metadata && typeof entry.metadata === "object" ? (entry.metadata as { size?: unknown }).size : null;
+        const size = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() ? Number(raw) : Number.NaN;
+        if (Number.isFinite(size) && size >= 0) sizes.set(path, size);
+      }
+    } catch {
+      continue;
+    }
+  }
+  return sizes;
+}
+
 export async function listCrmFiles(prefix: string): Promise<string[]> {
   const supabase = createServiceClient();
   const { data, error } = await supabase.storage.from(CRM_BUCKET).list(prefix, {

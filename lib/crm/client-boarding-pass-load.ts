@@ -10,6 +10,7 @@ import {
   type ClientBoardingOffer,
 } from "./client-boarding-pass";
 import type { BoardingTravelerName } from "./boarding-pass-groups";
+import { pieceEstRetiree } from "./dossier-piece";
 import { queryWithOptionalColumn } from "./optional-column";
 import { isWalletPassName } from "./pkpass";
 import { clientTripOwnerIds } from "./company-peers";
@@ -110,6 +111,7 @@ export const loadClientBoardingOffer = cache(async (bookingId: string): Promise<
     const wallets: (BoardingDocRef & { mime_type?: string | null; extracted?: unknown })[] = [];
     for (const row of docsRes.data || []) {
       const doc = row as unknown as BoardingDocRef & { mime_type?: string | null; storage_path?: string | null; extracted?: unknown };
+      if (pieceEstRetiree(doc.extracted)) continue;
       if (isWalletPassName(doc.file_name, doc.mime_type)) {
         wallets.push(doc);
         continue;
@@ -166,13 +168,15 @@ export async function boardingPassBookingIds(bookingIds: string[]) {
   if (!bookingIds.length) return ready;
   try {
     const admin = createServiceClient();
-    const { data, error } = await admin
-      .from("crm_booking_documents")
-      .select("booking_id, kind")
-      .in("booking_id", bookingIds)
-      .in("kind", KINDS);
-    if (error || !data) return ready;
-    for (const row of data as { booking_id?: string }[]) {
+    const result = await queryWithOptionalColumn(
+      (columns) =>
+        admin.from("crm_booking_documents").select(columns).in("booking_id", bookingIds).in("kind", KINDS),
+      "booking_id, kind",
+      "extracted"
+    );
+    if (result.error || !result.data) return ready;
+    for (const row of result.data as { booking_id?: string; extracted?: unknown }[]) {
+      if (pieceEstRetiree(row.extracted)) continue;
       if (row.booking_id) ready.add(row.booking_id);
     }
   } catch {
