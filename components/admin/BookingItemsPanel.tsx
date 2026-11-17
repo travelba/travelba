@@ -41,6 +41,7 @@ import { documentMoney, leStayAmount, printedStayAmount } from "@/lib/crm/hotel-
 import { HotelChecklistGlance, HotelDesk } from "@/components/admin/HotelDesk";
 import { ProposedDuplicates } from "@/components/admin/ProposedDuplicates";
 import type { CrmBookingTraveler, CrmHotelArrival, CrmHotelMessage, CrmHotelRequest, CrmHotelThreadMessage, CrmTravelDocument } from "@/lib/crm/types";
+import { MovePieceButton } from "@/components/admin/MovePieceButton";
 import { FilePreviewGrid } from "@/components/crm/FilePreview";
 import { attachmentPreviews } from "@/lib/crm/preview-files";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
@@ -248,6 +249,7 @@ function ReorderStep({
 
 export function BookingItemsPanel({
   bookingId,
+  customerId = "",
   items,
   documents = [],
   household = [],
@@ -277,6 +279,7 @@ export function BookingItemsPanel({
   tripEnd = null,
 }: {
   bookingId: string;
+  customerId?: string;
   items: CrmBookingItem[];
   /** Dates du dossier : une nouvelle carte hôtel les reprend. Sans dates : demain et après-demain. */
   tripStart?: string | null;
@@ -767,6 +770,7 @@ export function BookingItemsPanel({
                 {item.id.startsWith(DRAFT_STEP_PREFIX) ? null : (
                 <ItemAttachments
                   bookingId={bookingId}
+                  customerId={customerId}
                   itemId={item.id}
                   docs={docs}
                   items={rows}
@@ -986,6 +990,7 @@ export function BookingItemsPanel({
                   {item.kind === "hotel" ? <HotelStayFacts item={item} /> : null}
                   <ItemAttachments
                     bookingId={bookingId}
+                    customerId={customerId}
                     itemId={item.id}
                     docs={docs}
                     items={rows}
@@ -1091,6 +1096,7 @@ function TicketMailForm({ bookingId, itemId }: { bookingId: string; itemId?: str
 
 function ItemAttachments({
   bookingId,
+  customerId = "",
   itemId,
   docs,
   items,
@@ -1100,6 +1106,7 @@ function ItemAttachments({
   ticket = false,
 }: {
   bookingId: string;
+  customerId?: string;
   itemId: string;
   docs: CrmBookingDocument[];
   items: CrmBookingItem[];
@@ -1156,6 +1163,18 @@ function ItemAttachments({
           files={files}
           onRemove={(file) => removeDoc(file.id)}
           removeQuestion={(file) => `${file.label} quitte le dossier et son fichier est supprimé.`}
+          aside={
+            customerId
+              ? (file) => (
+                  <MovePieceButton
+                    pieceId={file.id}
+                    label={file.label}
+                    customerId={customerId}
+                    sourceBookingId={bookingId}
+                  />
+                )
+              : undefined
+          }
         />
       ) : filesOnly ? (
         <p className="text-xs text-muted">Aucun justificatif sur cette étape.</p>

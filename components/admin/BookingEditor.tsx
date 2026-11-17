@@ -101,6 +101,7 @@ import { OnlineCheckinChecklist } from "@/components/admin/OnlineCheckinChecklis
 import { DateFrInput, fieldControlClass } from "@/components/crm/fields";
 import { PlaceField } from "@/components/crm/PlaceField";
 import { BoardingPassGroups, boardingGroupsEmpty } from "@/components/account/BoardingPassGroups";
+import { MovePieceButton } from "@/components/admin/MovePieceButton";
 import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { passportPreviewsForStay, splitBoardingAttachments } from "@/lib/crm/preview-files";
 import { TripPassportPicker } from "@/components/crm/TripPassportPicker";
@@ -2259,6 +2260,7 @@ export function BookingEditor({
       <div className="order-2">
       <BookingItemsPanel
         bookingId={booking.id}
+        customerId={booking.customer_id}
         items={items}
         documents={documents}
         household={householdMembers(account || holderName, companions)}
@@ -2313,11 +2315,27 @@ export function BookingEditor({
               groups={boardingAttachments.groups}
               onRemove={(file) => removeDocument(file.id)}
               removeQuestion={(file) => `${file.label} quitte le dossier et son fichier est supprimé.`}
+              aside={(file) => (
+                <MovePieceButton
+                  pieceId={file.id}
+                  label={file.label}
+                  customerId={booking.customer_id}
+                  sourceBookingId={booking.id}
+                />
+              )}
             />
           )
         }
         onRemoveAttachment={(file) => removeDocument(file.id)}
         removeQuestion={(file) => `${file.label} quitte le dossier et son fichier est supprimé.`}
+        aside={(file) => (
+          <MovePieceButton
+            pieceId={file.id}
+            label={file.label}
+            customerId={booking.customer_id}
+            sourceBookingId={booking.id}
+          />
+        )}
       />
       {mailGroups.sources.length ? (
         <ul className="admin-af-card space-y-1 rounded-3xl p-5 text-sm text-[var(--admin-navy)]">

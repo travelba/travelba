@@ -118,6 +118,7 @@ import {
 } from "@/lib/crm/mcp-desk";
 import {
   changerVisibilitePiece,
+  deplacerPieceDossier,
   lirePieceDossier,
   listerPiecesDossier,
   rattacherPieceCarte,
@@ -140,7 +141,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 141;
+export const MCP_TOOL_CAP = 142;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -932,7 +933,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "traiter_email",
     write: true,
     description:
-      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher dépose les pièces sur la carte qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le dossier. cartes true, si le billet a un vol (numéro et date), crée ou complète aussi la carte vol : une carte par trajet, le même vol le même jour et le même PNR ajoute le voyageur, cartes nouvelles cachées, prix de vente 0, coût seulement s’il est imprimé. Sans cartes, aucune carte n’est créée. mettre_a_jour met à jour les étapes du dossier : sans confirmer, aperçu (étapes à créer ou à compléter, confirmation, dates, vols, prix fournisseur, voyageurs, écarts). confirmer true écrit. Une étape vide du même type est remplie. Chaque trajet reste une carte, même s’il partage le PNR. Le prix de vente n’est pas pris dans le mail. Une annulation ne met pas les étapes à jour. creer_dossier est le bouton Créer un dossier : il trouve ou crée la fiche (client_id, ou email, ou le nom du billet ; sans e-mail si le billet n’en a pas), crée le dossier caché, les cartes du billet (une carte par trajet, le PNR sur chacune) et dépose les fichiers. Une annulation ne crée pas de dossier. Aucune invitation.",
+      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher dépose les pièces sur la carte qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le dossier. cartes true, si le billet a un vol (numéro et date), crée ou complète aussi la carte vol : une carte par trajet, le même vol le même jour et le même PNR ajoute le voyageur, cartes nouvelles cachées, prix de vente 0, coût seulement s’il est imprimé. Sans cartes, aucune carte n’est créée. Un mail déjà traité (déposé) est refusé, sauf repartir true : les pièces sont copiées sur un autre dossier, le premier dossier les garde, le mail reste traité, aucun message. mettre_a_jour met à jour les étapes du dossier : sans confirmer, aperçu (étapes à créer ou à compléter, confirmation, dates, vols, prix fournisseur, voyageurs, écarts). confirmer true écrit. Une étape vide du même type est remplie. Chaque trajet reste une carte, même s’il partage le PNR. Le prix de vente n’est pas pris dans le mail. Une annulation ne met pas les étapes à jour. creer_dossier est le bouton Créer un dossier : il trouve ou crée la fiche (client_id, ou email, ou le nom du billet ; sans e-mail si le billet n’en a pas), crée le dossier caché, les cartes du billet (une carte par trajet, le PNR sur chacune) et dépose les fichiers. Une annulation ne crée pas de dossier. Aucune invitation.",
     input: {
       id: z.string().trim().describe("Identifiant de l’e-mail en attente"),
       action: z
@@ -947,6 +948,10 @@ export const MCP_TOOLS: ToolDef[] = [
         .boolean()
         .optional()
         .describe("rattacher seulement : true crée ou complète les cartes vol du billet, cachées, sans message"),
+      repartir: z
+        .boolean()
+        .optional()
+        .describe("rattacher seulement : true redépose un mail déjà traité sur un autre dossier. Les pièces du premier restent"),
       confirmer: confirmOpt,
       client_id: z
         .string()
@@ -2227,6 +2232,25 @@ export const MCP_TOOLS: ToolDef[] = [
       visible: z.boolean().describe("true montre au client, false masque"),
     },
     run: (args) => changerVisibilitePiece(args),
+  },
+  {
+    name: "deplacer_piece_dossier",
+    write: true,
+    selfJournal: true,
+    description:
+      "Déplace une pièce d’un dossier vers un autre (piece_id, ou document_id). Le dossier source : dossier_id ou reference. Le dossier cible : dossier_cible (identifiant ou référence TB-AAAA-NNNN). carte_id facultative : une seule carte, sur le dossier cible ; sans carte, la pièce reste sur le dossier. La visibilité est conservée (masquée reste masquée). Sans confirmer, aperçu. confirmer true déplace la pièce : le même fichier de stockage, sans copie. Le rattachement du mail suit la pièce s’il ne reste plus de pièce de ce mail sur le dossier source. Deux dossiers de clients différents : refus, sauf accepter_client true. Une pièce retirée, ou déjà sur la cible, est refusée. Aucun message.",
+    input: {
+      piece_id: z.string().trim().max(80).optional().describe("Identifiant de la pièce du dossier"),
+      document_id: z.string().trim().max(80).optional().describe("Même identifiant que piece_id"),
+      dossier_id: z.string().trim().max(80).optional().describe("Dossier source"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier source"),
+      dossier_cible: z.string().trim().max(80).optional().describe("Dossier cible : identifiant ou référence"),
+      reference_cible: z.string().trim().max(80).optional().describe("Référence du dossier cible, si dossier_cible est vide"),
+      carte_id: z.string().trim().max(80).optional().describe("Carte du dossier cible. Une seule. Vide : la pièce n’est pas sur une carte"),
+      confirmer: confirmOpt,
+      accepter_client: z.boolean().optional().describe("true si les deux dossiers ne sont pas au même client"),
+    },
+    run: (args) => deplacerPieceDossier(args),
   },
   {
     name: "supprimer_piece_client",

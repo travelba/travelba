@@ -350,3 +350,25 @@ test("un e-mail fournisseur ou incomplet ne crée pas la fiche", async () => {
   );
   assert.equal(store.inserts.some((row) => row.table === "crm_customers"), false);
 });
+
+test("un mail déjà traité ne se rattache pas sans repartir", async () => {
+  const store = memoryAdmin({
+    crm_email_ingest: [mailRow({ status: "attached", created_booking_id: BOOKING })],
+  });
+  const other = "55555555-5555-4555-8555-555555555555";
+  await assert.rejects(
+    () => settleEmail({ id: MAIL, action: "rattacher", dossier_id: other }, store.client),
+    /déjà traité/
+  );
+  assert.equal(store.tables.crm_email_ingest[0]?.created_booking_id, BOOKING);
+  await assert.rejects(
+    () => settleEmail({ id: MAIL, action: "rattacher", dossier_id: BOOKING, repartir: true }, store.client),
+    /autre dossier/
+  );
+  await assert.rejects(
+    () => settleEmail({ id: MAIL, action: "rattacher", dossier_id: other, repartir: true }, store.client),
+    /introuvable/
+  );
+  assert.equal(store.tables.crm_email_ingest[0]?.status, "attached");
+  assert.equal(store.tables.crm_email_ingest[0]?.created_booking_id, BOOKING);
+});

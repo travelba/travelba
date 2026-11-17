@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { toAuditRow } from "@/lib/crm/audit-events";
 import {
   PIECE_URL_SECONDS,
   pieceEstRetiree,
@@ -9,6 +10,7 @@ import {
   type DossierPieceRow,
 } from "@/lib/crm/dossier-piece";
 import { crmFileSizes, downloadCrmFile, signedCrmUrl } from "@/lib/crm/files";
+import { currentMcpAccess } from "@/lib/crm/mcp-auth";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { McpWriteError } from "@/lib/crm/mcp-write";
 import { missingDbColumn, queryWithOptionalColumn } from "@/lib/crm/optional-column";
@@ -37,12 +39,16 @@ const PIECE_COLUMNS =
 
 type BookingHit = { id: string; reference: string };
 
+type BookingMove = BookingHit & { customer_id: string | null };
+
 type ItemRow = {
   id: string;
   kind?: string | null;
   title?: string | null;
   source_document_id?: string | null;
 };
+
+export type PieceMoveActor = { id: string; name: string };
 
 export type DossierPieceDeps = {
   admin?: SupabaseClient;
@@ -52,6 +58,8 @@ export type DossierPieceDeps = {
   readBytes?: (path: string) => Promise<{ bytes: Uint8Array; contentType: string }>;
   pdfText?: (bytes: Uint8Array) => Promise<{ text: string }>;
   signedUrl?: (path: string, expiresIn: number) => Promise<string>;
+  /** Collègue qui déplace la pièce depuis l’admin. Le jeton MCP est lu à part. */
+  actor?: PieceMoveActor | null;
 };
 
 function text(value: unknown, max = 80) {
@@ -322,4 +330,202 @@ export async function retirerPieceDossier(input: Record<string, unknown>, deps: 
     }),
   });
   return { retiree: true, document_id: documentId, dossier_id: booking.id, reference: booking.reference };
+}
+
+function pieceIdOf(input: Record<string, unknown>) {
+  const id = text(input.piece_id, 80) || text(input.document_id, 80);
+  if (!UUID.test(id)) throw new McpWriteError("Pièce invalide.");
+  return id;
+}
+
+function targetDossier(input: Record<string, unknown>) {
+  const raw = text(input.dossier_cible, 80) || text(input.reference_cible, 80);
+  if (!raw) throw new McpWriteError("Indiquez le dossier cible.");
+  if (UUID.test(raw)) return { id: raw, reference: "" };
+  return { id: "", reference: raw };
+}
+
+async function loadBookingMove(admin: SupabaseClient, target: { id: string; reference: string }): Promise<BookingMove> {
+  let query = admin.from("crm_bookings").select("id, reference, customer_id");
+  query = target.id ? query.eq("id", target.id) : query.eq("reference", target.reference);
+  const { data, error } = await query.limit(2);
+  if (error) throw new McpWriteError("Dossier introuvable.");
+  const rows = (data || []) as BookingMove[];
+  if (!rows.length) throw new McpWriteError("Dossier introuvable.");
+  if (rows.length > 1) throw new McpWriteError("Plusieurs dossiers portent cette référence. Indiquez l’identifiant.");
+  return rows[0];
+}
+
+function visibiliteOf(piece: DossierPieceRow) {
+  return piece.visible_to_client === true ? "visible" : "masquee";
+}
+
+async function journalPieceMove(
+  admin: SupabaseClient,
+  deps: DossierPieceDeps,
+  row: {
+    pieceId: string;
+    nom: string;
+    source: BookingMove;
+    target: BookingMove;
+    visibilite: "visible" | "masquee";
+    carteId: string | null;
+    emailId: string | null;
+    mail: "deplace" | "partage" | null;
+  }
+) {
+  const summary = `Pièce « ${row.nom} » déplacée de ${row.source.reference || "l’ancien dossier"} vers ${row.target.reference || "le dossier cible"}.`;
+  const actor = deps.actor || currentMcpAccess().staff || null;
+  const { error } = await admin.from("crm_audit_events").insert(
+    toAuditRow({
+      actorKind: actor ? "human" : "auto",
+      actorId: actor?.id || null,
+      action: "deplacer_piece",
+      emailIngestId: row.emailId,
+      bookingId: row.target.id,
+      customerId: row.target.customer_id,
+      summary,
+      source: "dossier",
+      detail: {
+        piece_id: row.pieceId,
+        de: row.source.id,
+        vers: row.target.id,
+        visibilite: row.visibilite,
+        carte_id: row.carteId,
+        mail: row.mail,
+        message: false,
+        fichier: "conserve",
+      },
+    })
+  );
+  if (error) throw new McpWriteError("Le déplacement n’est pas journalisé.");
+  if (!actor?.id) return;
+  try {
+    const { recordAgencyJournal } = await import("@/lib/crm/agency-log");
+    await recordAgencyJournal({
+      staffId: actor.id,
+      action: "update",
+      entityType: "dossier",
+      entityId: row.target.id,
+      summary: `${summary} par ${actor.name}.`.slice(0, 500),
+      path: "/api/mcp",
+    });
+  } catch {
+    // Le journal d’agence n’arrête pas un déplacement déjà écrit.
+  }
+}
+
+/**
+ * Déplace une pièce vers un autre dossier. Le fichier de stockage reste le même.
+ * Sans confirmer : aperçu. La visibilité ne change pas. Aucun message.
+ */
+export async function deplacerPieceDossier(input: Record<string, unknown>, deps: DossierPieceDeps = {}) {
+  if (input.confirmer != null && input.confirmer !== true && input.confirmer !== false) {
+    throw new McpWriteError("confirmer est vrai ou faux.");
+  }
+  const pieceId = pieceIdOf(input);
+  const admin = clientOf(deps);
+  const source = await loadBookingMove(admin, dossierTarget(input));
+  const target = await loadBookingMove(admin, targetDossier(input));
+  const piece = pieceOnBooking(await loadPiece(admin, pieceId), source.id, false);
+  if (source.id === target.id) throw new McpWriteError("La pièce est déjà sur ce dossier.");
+  const sameClient = Boolean(source.customer_id) && source.customer_id === target.customer_id;
+  const carteRaw = text(input.carte_id, 80);
+  const carteId = carteRaw ? requireUuid(carteRaw, "Carte") : null;
+  if (carteId) {
+    const { data, error } = await admin
+      .from("crm_booking_items")
+      .select("id")
+      .eq("id", carteId)
+      .eq("booking_id", target.id)
+      .maybeSingle();
+    if (error || !data) throw new McpWriteError("Cette carte n’est pas sur le dossier cible.");
+  }
+  const visibilite = visibiliteOf(piece);
+  const nom = (piece.file_name || "").trim() || "fichier";
+  const preview = {
+    apercu: true as const,
+    ecrit: false as const,
+    envoye: false as const,
+    piece_id: pieceId,
+    nom,
+    visibilite,
+    source: { dossier_id: source.id, reference: source.reference, client_id: source.customer_id },
+    cible: { dossier_id: target.id, reference: target.reference, client_id: target.customer_id },
+    meme_client: sameClient,
+    accepter_client_requis: !sameClient,
+    carte_id: carteId,
+    email_id: piece.email_ingest_id || null,
+    fichier: "conserve" as const,
+    message: false as const,
+    mail: null as "deplace" | "partage" | null,
+  };
+  if (input.confirmer !== true) return preview;
+  if (!sameClient && input.accepter_client !== true) {
+    throw new McpWriteError("Les deux dossiers ne sont pas au même client. Confirmez avec accepter_client.");
+  }
+  if (piece.content_sha256) {
+    const { data, error } = await admin
+      .from("crm_booking_documents")
+      .select("id")
+      .eq("booking_id", target.id)
+      .eq("content_sha256", piece.content_sha256);
+    if (error) throw new McpWriteError("Pièces du dossier illisibles.");
+    if ((data || []).some((row) => (row as { id: string }).id !== pieceId)) {
+      throw new McpWriteError("Cette pièce est déjà sur le dossier cible.");
+    }
+  }
+  await savePiece(admin, pieceId, source.id, {
+    booking_id: target.id,
+    booking_item_id: carteId,
+  });
+  const { data: linked, error: linkError } = await admin
+    .from("crm_booking_items")
+    .select("id")
+    .eq("booking_id", source.id)
+    .eq("source_document_id", pieceId);
+  if (linkError) throw new McpWriteError("Cartes du dossier illisibles.");
+  for (const item of (linked || []) as { id: string }[]) {
+    const { error } = await admin.from("crm_booking_items").update({ source_document_id: null }).eq("id", item.id);
+    if (error) throw new McpWriteError("Le lien de la carte n’a pas suivi.");
+  }
+  let mail: "deplace" | "partage" | null = null;
+  if (piece.email_ingest_id) {
+    const { data: email, error: emailError } = await admin
+      .from("crm_email_ingest")
+      .select("id, created_booking_id")
+      .eq("id", piece.email_ingest_id)
+      .maybeSingle();
+    if (emailError) throw new McpWriteError("Le rattachement du mail n’a pas suivi.");
+    const link = email as { id: string; created_booking_id: string | null } | null;
+    if (link && link.created_booking_id === source.id) {
+      const { data: left, error: leftError } = await admin
+        .from("crm_booking_documents")
+        .select("id")
+        .eq("booking_id", source.id)
+        .eq("email_ingest_id", piece.email_ingest_id);
+      if (leftError) throw new McpWriteError("Le rattachement du mail n’a pas suivi.");
+      if (!(left || []).length) {
+        const { error } = await admin
+          .from("crm_email_ingest")
+          .update({ status: "attached", created_booking_id: target.id })
+          .eq("id", link.id);
+        if (error) throw new McpWriteError("Le rattachement du mail n’a pas suivi.");
+        mail = "deplace";
+      } else {
+        mail = "partage";
+      }
+    }
+  }
+  await journalPieceMove(admin, deps, {
+    pieceId,
+    nom,
+    source,
+    target,
+    visibilite,
+    carteId,
+    emailId: piece.email_ingest_id || null,
+    mail,
+  });
+  return { ...preview, apercu: false as const, ecrit: true as const, mail };
 }

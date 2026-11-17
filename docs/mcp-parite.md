@@ -72,6 +72,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Rattacher une pièce à une carte | `rattacher_piece_carte` — ajouté. Même dossier. `detacher` true retire le lien. Aucun message |
 | Montrer ou masquer une pièce | `changer_visibilite_piece` — ajouté. Ne publie pas le séjour. Aucun message |
 | Retirer cette pièce | `retirer_piece_dossier` — le geste MCP archive sans effacer le fichier (`restaurer` true remet la pièce). Le bouton admin supprime encore le fichier. |
+| Déplacer une pièce vers un autre dossier | `deplacer_piece_dossier` — ajouté. Sans `confirmer`, aperçu. Le même fichier, visibilité conservée. Client différent : `accepter_client`. Aucun message. Le bouton admin « Déplacer vers un autre dossier » fait le même geste, dossiers du même client. |
 | Retirer une pièce d’identité de la fiche (titulaire ou compagnon) | `supprimer_piece_client` (`confirmer` true) — ajouté. Réservé aux administrateurs. Le fichier part avec la ligne. Jamais le numéro, au plus les trois derniers caractères (`fin`) |
 | Lecture du numéro ou du scan de passeport | `passeport_voyageur`, `scan_passeport` — jeton passeport seulement. `scan_passeport` accepte un dossier, ou `client_id` avec `voyageur_id` ou `compagnon_id` sans dossier. URL signée dix minutes. Lecture seule, aucun message |
 | OCR « Mal lu » sur la fiche | hors API |

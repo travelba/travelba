@@ -126,6 +126,7 @@ const PHRASES: Record<string, string> = {
   retirer_piece_dossier: "Pièce retirée du dossier",
   rattacher_piece_carte: "Pièce rattachée à une carte",
   changer_visibilite_piece: "Visibilité de pièce modifiée",
+  deplacer_piece_dossier: "Pièce déplacée vers un autre dossier",
   reprendre_facture_mb3m: "Facture MB3M reprise",
   creer_fiche_mb3m: "Fiche envoyée à MB3M",
   comptabilite_sortie: "Sortie fournisseur rapprochée",

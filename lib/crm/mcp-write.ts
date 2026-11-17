@@ -34,7 +34,6 @@ import { bookingBelongsToCustomer, revolutExpenseError } from "@/lib/crm/revolut
 import { applyRevolutToCustomer } from "@/lib/crm/revolut-match";
 import { applyStripeToCustomer } from "@/lib/crm/stripe-match";
 import {
-  EMAIL_INBOX_QUEUE_STATUSES,
   customerFullName,
   isActiveItem,
   isLedgerExpenseKind,
@@ -1024,9 +1023,14 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
   if (error) failDb(error, "E-mail introuvable.");
   const row = data as CrmEmailIngest | null;
   if (!row) throw new McpWriteError("E-mail introuvable.");
-  if (!(EMAIL_INBOX_QUEUE_STATUSES as readonly string[]).includes(row.status)) {
-    throw new McpWriteError("Cet e-mail est déjà traité.");
-  }
+  const { treatedEmailGate } = await import("@/lib/crm/email-reattach");
+  const gate = treatedEmailGate(
+    row.status,
+    row.created_booking_id,
+    action.dossierId,
+    action.action === "rattacher" && input.repartir === true
+  );
+  if ("error" in gate) throw new McpWriteError(gate.error);
   if (action.action === "refuser") {
     const { error: updateError } = await db.from("crm_email_ingest").update({ status: "refused" }).eq("id", row.id);
     if (updateError) failDb(updateError, "E-mail non traité.");
@@ -1094,6 +1098,16 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
         try {
           const flown = await depositFlightsOnBooking(db, row, booking.id, booking.customer_id, null);
           if (flown.wrote) {
+            if (gate.repartir) {
+              const { noteEmailRepartition } = await import("@/lib/crm/email-attach-run");
+              await noteEmailRepartition(db, {
+                emailId: row.id,
+                sourceBookingId: gate.conserver,
+                targetBookingId: booking.id,
+                customerId: booking.customer_id,
+                actorId: null,
+              });
+            }
             return {
               id: row.id,
               statut: "attached" as const,
@@ -1101,6 +1115,7 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
               pieces: flown.pieces,
               cartes: true as const,
               message: flown.message,
+              repartir: gate.repartir,
             };
           }
         } catch (err) {
@@ -1120,13 +1135,24 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
     }
     const message = attachFilesSummary(deposited, Boolean(cardId));
     try {
-      await markEmailAttached(db, row, {
-        bookingId: booking.id,
-        customerId: booking.customer_id,
-        actorId: null,
-        summary: message,
-        cards: false,
-      });
+      if (gate.repartir) {
+        const { noteEmailRepartition } = await import("@/lib/crm/email-attach-run");
+        await noteEmailRepartition(db, {
+          emailId: row.id,
+          sourceBookingId: gate.conserver,
+          targetBookingId: booking.id,
+          customerId: booking.customer_id,
+          actorId: null,
+        });
+      } else {
+        await markEmailAttached(db, row, {
+          bookingId: booking.id,
+          customerId: booking.customer_id,
+          actorId: null,
+          summary: message,
+          cards: false,
+        });
+      }
     } catch (err) {
       raise(err, "E-mail non traité.");
     }
@@ -1138,6 +1164,7 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
       sans_piece: deposited.empty,
       carte_id: cardId,
       cartes: false as const,
+      repartir: gate.repartir,
     };
   }
   throw new McpWriteError("Action inconnue.");

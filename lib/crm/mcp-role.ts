@@ -124,6 +124,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   lire_piece_dossier: "agency",
   rattacher_piece_carte: "edit_dossiers",
   changer_visibilite_piece: "edit_dossiers",
+  deplacer_piece_dossier: "edit_dossiers",
   supprimer_piece_client: "admin",
   lire_journal: "agency",
   reactiver_membre: "admin",

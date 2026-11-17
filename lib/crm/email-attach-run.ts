@@ -193,3 +193,35 @@ export async function markEmailAttached(
 export function attachFilesSummary(result: DepositOutcome, linked = false) {
   return emailDepositMessage(result, linked);
 }
+
+/**
+ * Après une copie vers un autre dossier : le mail reste traité sur le premier.
+ * Les pièces copiées gardent email_ingest_id. Aucun message.
+ */
+export async function noteEmailRepartition(
+  admin: SupabaseClient,
+  opts: {
+    emailId: string;
+    sourceBookingId: string | null;
+    targetBookingId: string;
+    customerId: string | null;
+    actorId: string | null;
+  }
+) {
+  if (opts.sourceBookingId) {
+    const { error } = await admin
+      .from("crm_email_ingest")
+      .update({ status: "attached", created_booking_id: opts.sourceBookingId })
+      .eq("id", opts.emailId);
+    if (error) throw new Error("Le rattachement du mail n’a pas été conservé.");
+  }
+  await noteIngestDecision(admin, {
+    actorKind: opts.actorId ? "human" : "auto",
+    actorId: opts.actorId,
+    action: "attach_files",
+    emailIngestId: opts.emailId,
+    bookingId: opts.targetBookingId,
+    customerId: opts.customerId,
+    summary: "Pièces déposées aussi sur un autre dossier. Le premier dossier les garde.",
+  });
+}

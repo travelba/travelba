@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { pieceEstRetiree, pieceSource, piecesActives, withPieceArchive } from "./dossier-piece";
 import {
   changerVisibilitePiece,
+  deplacerPieceDossier,
   lirePieceDossier,
   listerPiecesDossier,
   pieceReadText,
@@ -16,6 +17,8 @@ const DOSSIER = "22222222-2222-4222-8222-222222222222";
 const AUTRE = "33333333-3333-4333-8333-333333333333";
 const CARTE = "44444444-4444-4444-8444-444444444444";
 const CARTE_AUTRE = "55555555-5555-4555-8555-555555555555";
+const CLIENT = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
+const CLIENT_2 = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb";
 const DOC = "66666666-6666-4666-8666-666666666666";
 const DOC_MAIL = "77777777-7777-4777-8777-777777777777";
 const DOC_IMPORT = "88888888-8888-4888-8888-888888888888";
@@ -26,9 +29,11 @@ type Row = Record<string, unknown>;
 function memory(options: { failExtracted?: boolean } = {}) {
   const tables: Record<string, Row[]> = {
     crm_bookings: [
-      { id: DOSSIER, reference: "TB-2026-0148", visible_to_client: false },
-      { id: AUTRE, reference: "TB-2026-0001", visible_to_client: true },
+      { id: DOSSIER, reference: "TB-2026-0148", visible_to_client: false, customer_id: CLIENT },
+      { id: AUTRE, reference: "TB-2026-0001", visible_to_client: true, customer_id: CLIENT },
     ],
+    crm_email_ingest: [],
+    crm_audit_events: [],
     crm_booking_items: [
       { id: CARTE, booking_id: DOSSIER, kind: "flight", title: "Rome → Paris", source_document_id: DOC_IMPORT },
       { id: CARTE_AUTRE, booking_id: AUTRE, kind: "hotel", title: "Hôtel", source_document_id: null },
@@ -95,7 +100,7 @@ function memory(options: { failExtracted?: boolean } = {}) {
   const removed: string[] = [];
   function from(table: string) {
     const filters: [string, unknown][] = [];
-    let op: "select" | "update" | "delete" = "select";
+    let op: "select" | "update" | "delete" | "insert" = "select";
     let payload: Row = {};
     let capped = Number.POSITIVE_INFINITY;
     const api = {
@@ -104,6 +109,11 @@ function memory(options: { failExtracted?: boolean } = {}) {
       },
       update(value: Row) {
         op = "update";
+        payload = { ...value };
+        return api;
+      },
+      insert(value: Row) {
+        op = "insert";
         payload = { ...value };
         return api;
       },
@@ -137,6 +147,11 @@ function memory(options: { failExtracted?: boolean } = {}) {
         removed.push(...found.map((row) => String(row.id)));
         tables[table] = (tables[table] || []).filter((row) => !found.includes(row));
         return { data: single ? found[0] || null : found, error: null };
+      }
+      if (op === "insert") {
+        if (!tables[table]) tables[table] = [];
+        tables[table].push(payload);
+        return { data: single ? payload : [payload], error: null };
       }
       if (op === "update") {
         if (options.failExtracted && Object.prototype.hasOwnProperty.call(payload, "extracted")) {
@@ -437,4 +452,118 @@ test("sans la colonne de classement, le retrait n’efface rien", async () => {
   assert.equal((row?.extracted as { firstName?: string }).firstName, "Camille");
   assert.equal(db.removed.length, 0);
   assert.equal(db.tables.crm_booking_documents.some((item) => item.id === DOC_MAIL), true);
+});
+
+test("déplacer une pièce : aperçu, puis le même fichier, visibilité conservée", async () => {
+  const db = memory();
+  const preview = await deplacerPieceDossier(
+    { piece_id: DOC, dossier_id: DOSSIER, dossier_cible: "TB-2026-0001" },
+    { admin: db.client }
+  );
+  assert.equal(preview.apercu, true);
+  assert.equal(preview.ecrit, false);
+  assert.equal(preview.envoye, false);
+  assert.equal(preview.message, false);
+  assert.equal(preview.visibilite, "masquee");
+  assert.equal(preview.meme_client, true);
+  assert.equal(preview.accepter_client_requis, false);
+  assert.equal(preview.fichier, "conserve");
+  assert.equal(preview.cible.dossier_id, AUTRE);
+  const still = db.tables.crm_booking_documents.find((item) => item.id === DOC);
+  assert.equal(still?.booking_id, DOSSIER);
+  assert.equal(still?.storage_path, "bookings/222/note.txt");
+
+  const moved = await deplacerPieceDossier(
+    { piece_id: DOC, reference: "TB-2026-0148", dossier_cible: AUTRE, confirmer: true },
+    { admin: db.client }
+  );
+  assert.equal(moved.ecrit, true);
+  assert.equal(moved.apercu, false);
+  assert.equal(moved.visibilite, "masquee");
+  assert.equal(moved.message, false);
+  assert.equal(still?.booking_id, AUTRE);
+  assert.equal(still?.booking_item_id, null);
+  assert.equal(still?.visible_to_client, false);
+  assert.equal(still?.storage_path, "bookings/222/note.txt");
+  assert.equal(db.tables.crm_audit_events.length, 1);
+  assert.equal(db.tables.crm_audit_events[0]?.action, "deplacer_piece");
+  assert.equal(db.removed.length, 0);
+});
+
+test("la carte cible est sur le dossier d’arrivée, et une carte ailleurs est refusée", async () => {
+  const db = memory();
+  await assert.rejects(
+    () =>
+      deplacerPieceDossier(
+        { piece_id: DOC, dossier_id: DOSSIER, dossier_cible: AUTRE, carte_id: CARTE, confirmer: true },
+        { admin: db.client }
+      ),
+    /n’est pas sur le dossier cible/
+  );
+  const row = db.tables.crm_booking_documents.find((item) => item.id === DOC);
+  assert.equal(row?.booking_id, DOSSIER);
+  const moved = await deplacerPieceDossier(
+    { piece_id: DOC, dossier_id: DOSSIER, dossier_cible: AUTRE, carte_id: CARTE_AUTRE, confirmer: true },
+    { admin: db.client }
+  );
+  assert.equal(moved.carte_id, CARTE_AUTRE);
+  assert.equal(row?.booking_id, AUTRE);
+  assert.equal(row?.booking_item_id, CARTE_AUTRE);
+  assert.equal(row?.visible_to_client, false);
+});
+
+test("un autre client est refusé sans accepter_client, et la pièce visible le reste", async () => {
+  const tiers = "cccccccc-3333-4333-8333-cccccccccccc";
+  const db = memory();
+  db.tables.crm_bookings.push({
+    id: tiers,
+    reference: "TB-2026-0099",
+    customer_id: CLIENT_2,
+    visible_to_client: false,
+  });
+  const visible = db.tables.crm_booking_documents.find((item) => item.id === DOC_MAIL);
+  const preview = await deplacerPieceDossier(
+    { piece_id: DOC_MAIL, dossier_id: DOSSIER, dossier_cible: tiers },
+    { admin: db.client }
+  );
+  assert.equal(preview.ecrit, false);
+  assert.equal(preview.accepter_client_requis, true);
+  assert.equal(preview.meme_client, false);
+  assert.equal(preview.visibilite, "visible");
+  await assert.rejects(
+    () =>
+      deplacerPieceDossier(
+        { piece_id: DOC_MAIL, dossier_id: DOSSIER, dossier_cible: tiers, confirmer: true },
+        { admin: db.client }
+      ),
+    /accepter_client/
+  );
+  assert.equal(visible?.booking_id, DOSSIER);
+  assert.equal(visible?.visible_to_client, true);
+  const moved = await deplacerPieceDossier(
+    { piece_id: DOC_MAIL, dossier_id: DOSSIER, dossier_cible: tiers, confirmer: true, accepter_client: true },
+    { admin: db.client }
+  );
+  assert.equal(moved.ecrit, true);
+  assert.equal(moved.visibilite, "visible");
+  assert.equal(visible?.booking_id, tiers);
+  assert.equal(visible?.visible_to_client, true);
+  assert.equal(String(visible?.storage_path || "").includes("billet.pdf"), true);
+});
+
+test("le mail suit la pièce quand il ne reste plus de pièce de ce mail", async () => {
+  const db = memory();
+  db.tables.crm_email_ingest.push({ id: MAIL, status: "attached", created_booking_id: DOSSIER });
+  const moved = await deplacerPieceDossier(
+    { document_id: DOC_MAIL, dossier_id: DOSSIER, reference_cible: "TB-2026-0001", confirmer: true },
+    { admin: db.client }
+  );
+  assert.equal(moved.mail, "deplace");
+  assert.equal(moved.visibilite, "visible");
+  const mail = db.tables.crm_email_ingest[0];
+  assert.equal(mail?.created_booking_id, AUTRE);
+  assert.equal(mail?.status, "attached");
+  const piece = db.tables.crm_booking_documents.find((item) => item.id === DOC_MAIL);
+  assert.equal(piece?.email_ingest_id, MAIL);
+  assert.equal(piece?.booking_id, AUTRE);
 });
