@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
+import { piecesActives } from "@/lib/crm/dossier-piece";
 import { carnetVisible, clientVisibleItems, tripPlaceLine } from "@/lib/crm/carnet";
 import { HiddenStayNotice } from "@/components/account/HiddenStayNotice";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
@@ -153,7 +154,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
             allItems={allItems}
             rawItems={rawItems}
             travelers={(travelers || []) as CrmBookingTraveler[]}
-            docs={(docs || []) as CrmBookingDocument[]}
+            docs={piecesActives((docs || []) as CrmBookingDocument[])}
             identityDocs={(identityDocs || []) as CrmTravelDocument[]}
             companions={(companions || []) as CrmCompanion[]}
             refusals={refusals}

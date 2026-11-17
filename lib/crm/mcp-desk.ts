@@ -21,7 +21,7 @@ import type { StaffRole } from "@/lib/crm/staff-team";
 import { BOOKING_ITEM_KINDS, customerFullName, type BookingItemKind, type CrmBooking } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { MCP_BOOKING_COLUMNS } from "@/lib/crm/mcp-columns";
-import { attachBookingDocument, removeBookingDocument } from "@/lib/crm/booking-document-write";
+import { attachBookingDocument } from "@/lib/crm/booking-document-write";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -95,7 +95,6 @@ export type DeskDeps = {
   patchCard?: typeof patchStaffBookingCard;
   reorder?: typeof persistBookingCardOrder;
   attach?: typeof attachBookingDocument;
-  removeDoc?: typeof removeBookingDocument;
   readJournal?: (query: JournalQuery) => Promise<JournalPage>;
 };
 
@@ -603,15 +602,7 @@ export async function deposerPieceDossier(input: Record<string, unknown>, deps: 
   };
 }
 
-export async function retirerPieceDossier(input: Record<string, unknown>, deps: DeskDeps = {}) {
-  confirmed(input);
-  const documentId = requireUuid(input.document_id, "Pièce");
-  const booking = await bookingOf(input, deps);
-  const remove = deps.removeDoc ?? removeBookingDocument;
-  const result = await remove(clientOf(deps, Boolean(deps.removeDoc)), booking.id, documentId);
-  if ("error" in result) throw new McpWriteError(result.error);
-  return { retiree: true, document_id: documentId, dossier_id: booking.id };
-}
+export { retirerPieceDossier } from "@/lib/crm/mcp-dossier-pieces";
 
 function journalEntity(value: unknown): JournalEntity | null {
   const raw = text(value, 40);

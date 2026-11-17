@@ -2,6 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { piecesActives } from "@/lib/crm/dossier-piece";
 import { carnetVisible } from "@/lib/crm/carnet";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "@/lib/crm/types";
@@ -35,7 +36,7 @@ export const loadPublishedTripShare = cache(async (code: string): Promise<Publis
   ]);
   const items = (itemRows || []) as CrmBookingItem[];
   if (!carnetVisible(booking, items)) return null;
-  const docs = ((docRows || []) as CrmBookingDocument[]).filter(
+  const docs = piecesActives((docRows || []) as CrmBookingDocument[]).filter(
     (doc) =>
       doc.visible_to_client &&
       Boolean(doc.storage_path) &&

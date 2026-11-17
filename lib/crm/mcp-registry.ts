@@ -114,9 +114,15 @@ import {
   reglerAccesHotels,
   reordonnerCartes,
   restaurerDossier,
-  retirerPieceDossier,
   supprimerClient,
 } from "@/lib/crm/mcp-desk";
+import {
+  changerVisibilitePiece,
+  lirePieceDossier,
+  listerPiecesDossier,
+  rattacherPieceCarte,
+  retirerPieceDossier,
+} from "@/lib/crm/mcp-dossier-pieces";
 import { supprimerCompagnon, supprimerPieceClient } from "@/lib/crm/remove-companion";
 import { currentMcpAccess } from "@/lib/crm/mcp-auth";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
@@ -134,7 +140,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 137;
+export const MCP_TOOL_CAP = 141;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -2152,14 +2158,63 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     destructive: true,
     description:
-      "Retire une pièce du dossier et son fichier. document_id et le dossier. confirmer true. N’efface pas une pièce du coffre client.",
+      "Retire une pièce du dossier sans effacer le fichier. document_id et le dossier (dossier_id ou reference). confirmer true. La pièce sort de la liste et reste masquée au client. restaurer true la remet, avec la visibilité d’avant. Une pièce d’un autre dossier est refusée. N’efface pas une pièce du coffre client.",
     input: {
       dossier_id: z.string().trim().max(80).optional(),
       reference: z.string().trim().max(80).optional(),
       document_id: z.string().trim().max(80).describe("Identifiant de la pièce du dossier"),
-      confirmer: z.boolean().describe("true pour retirer"),
+      confirmer: z.boolean().describe("true pour retirer ou restaurer"),
+      restaurer: z.boolean().optional().describe("true remet la pièce retirée, sans la montrer si elle était masquée"),
     },
     run: (args) => retirerPieceDossier(args),
+  },
+  {
+    name: "lister_pieces_dossier",
+    description:
+      "Liste les pièces d’un dossier (dossier_id ou reference TB-AAAA-NNNN). Pour chaque pièce : id, nom, type_mime, taille en octets (null si inconnue), ajoute_le, source (mail, upload ou import), carte rattachée (carte_id, type, libelle, titre) ou null, visibilite (visible ou masquee), email_id du mail d’origine ou null. Pas de contenu, pas d’URL signée. Les pièces retirées sont absentes, sauf inclure_retirees true. Une pièce importée ou déposée reste masquée tant qu’elle n’est pas montrée.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional().describe("Référence TB-AAAA-NNNN"),
+      inclure_retirees: z.boolean().optional().describe("true inclut les pièces retirées, marquées retiree"),
+    },
+    run: (args) => listerPiecesDossier(args),
+  },
+  {
+    name: "lire_piece_dossier",
+    signedUrl: true,
+    description:
+      "Lit une pièce de dossier (document_id), y compris une pièce retirée. Un PDF ou un texte renvoie le texte extrait, numéros de carte et de passeport masqués. Sans texte lisible, une URL signée de dix minutes (url_signee), pas de fichier binaire. Pas d’URL quand le texte est là.",
+    input: {
+      document_id: z.string().trim().max(80).describe("Identifiant de la pièce du dossier"),
+    },
+    run: (args) => lirePieceDossier(args),
+  },
+  {
+    name: "rattacher_piece_carte",
+    write: true,
+    description:
+      "Rattache une pièce à une carte du même dossier (document_id, carte_id, dossier_id ou reference). detacher true retire le lien. La visibilité ne change pas. Aucun message. Une pièce ou une carte d’un autre dossier est refusée. Une pièce retirée est refusée.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      document_id: z.string().trim().max(80).describe("Identifiant de la pièce"),
+      carte_id: z.string().trim().max(80).optional().describe("Carte du même dossier"),
+      detacher: z.boolean().optional().describe("true retire le lien avec la carte"),
+    },
+    run: (args) => rattacherPieceCarte(args),
+  },
+  {
+    name: "changer_visibilite_piece",
+    write: true,
+    description:
+      "Montre ou masque une pièce au client (document_id, visible, dossier_id ou reference). visible true la montre, false la masque. Ne publie pas le séjour et n’envoie rien. Une pièce importée ou déposée reste masquée tant que visible n’est pas true. Une pièce d’un autre dossier, ou retirée, est refusée.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional(),
+      reference: z.string().trim().max(80).optional(),
+      document_id: z.string().trim().max(80).describe("Identifiant de la pièce"),
+      visible: z.boolean().describe("true montre au client, false masque"),
+    },
+    run: (args) => changerVisibilitePiece(args),
   },
   {
     name: "supprimer_piece_client",

@@ -67,7 +67,11 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Pièce du coffre client (visa, ETA, passeport, assurance) | `ajouter_piece`, `requalifier_piece`, `notifier_piece` — couvert. Un passeport écrit la délivrance quand elle est fournie ou lue sur le fichier |
 | Carte d’embarquement déjà déposée | `notifier_carte_embarquement` — couvert |
 | Fichier sur le dossier ou sur une carte | `deposer_piece_dossier` — ajouté |
-| Retirer cette pièce | `retirer_piece_dossier` — ajouté |
+| Liste des pièces d’un dossier | `lister_pieces_dossier` — ajouté. id, nom, type, taille, date, source, carte, visibilité, mail. Pas de contenu, pas d’URL |
+| Lire une pièce | `lire_piece_dossier` — ajouté. Texte extrait, ou URL signée dix minutes s’il n’y a pas de texte |
+| Rattacher une pièce à une carte | `rattacher_piece_carte` — ajouté. Même dossier. `detacher` true retire le lien. Aucun message |
+| Montrer ou masquer une pièce | `changer_visibilite_piece` — ajouté. Ne publie pas le séjour. Aucun message |
+| Retirer cette pièce | `retirer_piece_dossier` — le geste MCP archive sans effacer le fichier (`restaurer` true remet la pièce). Le bouton admin supprime encore le fichier. |
 | Retirer une pièce d’identité de la fiche (titulaire ou compagnon) | `supprimer_piece_client` (`confirmer` true) — ajouté. Réservé aux administrateurs. Le fichier part avec la ligne. Jamais le numéro, au plus les trois derniers caractères (`fin`) |
 | Lecture du numéro ou du scan de passeport | `passeport_voyageur`, `scan_passeport` — jeton passeport seulement. `scan_passeport` accepte un dossier, ou `client_id` avec `voyageur_id` ou `compagnon_id` sans dossier. URL signée dix minutes. Lecture seule, aucun message |
 | OCR « Mal lu » sur la fiche | hors API |

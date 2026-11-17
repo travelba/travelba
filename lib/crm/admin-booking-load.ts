@@ -10,6 +10,7 @@ import { frenchPassportTrip } from "@/lib/crm/visa-trip";
 import { readEstaAnswers, type ClientVisaStep, type EstaAnswers } from "@/lib/crm/visa-flow";
 import { pliantConfigured } from "@/lib/crm/pliant";
 import { pliantCardForBooking, pliantSpendsForCards, withPliantSpendBookings } from "@/lib/crm/pliant-card-run";
+import { piecesActives } from "@/lib/crm/dossier-piece";
 import { hotelDisplayName } from "@/lib/crm/carnet";
 import type { PliantCardDraft, PliantSpendLine } from "@/lib/crm/pliant-cards";
 import { pliantBookingCards, pliantCardRecaps, type PliantCardRecap } from "@/lib/crm/pliant-booking";
@@ -357,7 +358,7 @@ export async function loadAdminBookingCritical(input: {
     expensePresets: first.presetLoad ? presetsForDossier(first.presetLoad) : [...DEFAULT_EXPENSE_PRESETS],
     items: bookingItems,
     travelers: bookingTravelers,
-    documents: (first.documents.data || []) as CrmBookingDocument[],
+    documents: piecesActives((first.documents.data || []) as CrmBookingDocument[]),
     identityDocs: allIdentity.map((doc) => redactVaultDocument(doc, first.revealPassports)),
     showMargins: first.showMargins,
     ownership: {

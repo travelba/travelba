@@ -124,6 +124,8 @@ const PHRASES: Record<string, string> = {
   reordonner_cartes: "Cartes réordonnées",
   deposer_piece_dossier: "Pièce déposée sur le dossier",
   retirer_piece_dossier: "Pièce retirée du dossier",
+  rattacher_piece_carte: "Pièce rattachée à une carte",
+  changer_visibilite_piece: "Visibilité de pièce modifiée",
   reprendre_facture_mb3m: "Facture MB3M reprise",
   creer_fiche_mb3m: "Fiche envoyée à MB3M",
   comptabilite_sortie: "Sortie fournisseur rapprochée",
@@ -151,11 +153,15 @@ export type McpJournalDraft = {
 export function mcpWriteJournalDraft(tool: string, args: Record<string, unknown>, name: string): McpJournalDraft {
   const dossierId = firstUuid(args, ["dossier_id", "booking_id"]);
   const clientId = firstUuid(args, ["client_id", "customer_id"]);
-  const phrase = PHRASES[tool] || "Action MCP";
+  let phrase = PHRASES[tool] || "Action MCP";
   let action: JournalAction = "update";
   if (SEND.has(tool)) action = "send";
   else if (CREATE.has(tool)) action = "create";
   else if (REMOVE.has(tool)) action = "delete";
+  if (tool === "retirer_piece_dossier" && args.restaurer === true) {
+    phrase = "Pièce remise sur le dossier";
+    action = "update";
+  }
   let entityType: JournalEntity = "dossier";
   let entityId: string | null = dossierId;
   if (!dossierId && clientId) {

@@ -108,6 +108,10 @@ const EXPECTED = [
   "reordonner_cartes",
   "deposer_piece_dossier",
   "retirer_piece_dossier",
+  "lister_pieces_dossier",
+  "lire_piece_dossier",
+  "rattacher_piece_carte",
+  "changer_visibilite_piece",
   "supprimer_piece_client",
   "lire_journal",
   "reactiver_membre",
@@ -218,6 +222,8 @@ const WRITE_TOOLS = [
   "reordonner_cartes",
   "deposer_piece_dossier",
   "retirer_piece_dossier",
+  "rattacher_piece_carte",
+  "changer_visibilite_piece",
   "supprimer_piece_client",
   "reactiver_membre",
   "reprendre_facture_mb3m",
@@ -276,7 +282,7 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "passeport_voyageur")?.write, undefined);
   assert.deepEqual(
     MCP_TOOLS.filter((tool) => tool.signedUrl).map((tool) => tool.name),
-    ["scan_passeport"]
+    ["scan_passeport", "lire_piece_dossier"]
   );
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "scan_passeport")?.pieceNumbers, undefined);
   assert.deepEqual(
@@ -499,9 +505,12 @@ test("only scan_passeport keeps the signed file url", () => {
     storage_path: "customers/11111111-1111-4111-8111-111111111111/documents/a.jpg",
   };
   const scan = JSON.parse(previewMcpTool("scan_passeport", payload).content[0].text) as Record<string, unknown>;
+  const piece = JSON.parse(previewMcpTool("lire_piece_dossier", payload).content[0].text) as Record<string, unknown>;
   const passport = JSON.parse(previewMcpTool("passeport_voyageur", payload).content[0].text) as Record<string, unknown>;
   const fiche = JSON.parse(previewMcpTool("fiche_client", payload).content[0].text) as Record<string, unknown>;
   assert.equal(scan.url_signee, url);
+  assert.equal(piece.url_signee, url);
+  assert.equal(piece.autre, "retiré");
   assert.equal(scan.autre, "retiré");
   assert.equal("numero_piece" in scan, false);
   assert.equal("storage_path" in scan, false);
