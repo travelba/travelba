@@ -30,7 +30,17 @@ const buttonClass =
 const quietClass =
   "inline-flex min-h-11 items-center justify-center rounded-full border border-[#0B192C] px-4 text-sm font-semibold text-[#0B192C]";
 
-function HotelLine({ row, ended = false }: { row: HotelInboxRow; ended?: boolean }) {
+function paidClass(state: HotelInboxRow["paymentState"]) {
+  if (state === "authorized") {
+    return "inline-block max-w-full break-words rounded-full bg-white px-2.5 py-1 text-xs font-semibold leading-snug text-[#0B192C] ring-1 ring-[#0B192C]";
+  }
+  if (state === "probable") {
+    return "inline-block max-w-full break-words rounded-full bg-[#f8f4ed] px-2.5 py-1 text-xs font-semibold leading-snug text-[#9e7e51] ring-1 ring-[var(--admin-gold)]";
+  }
+  return "inline-block max-w-full break-words rounded-full bg-[#f8f4ed] px-2.5 py-1 text-xs font-semibold leading-snug text-[#0B192C] ring-1 ring-[var(--admin-gold)]/40";
+}
+
+function HotelLine({ row, ended = false, filed = false }: { row: HotelInboxRow; ended?: boolean; filed?: boolean }) {
   const when = formatDateTimeFr(row.activityAt);
   const place = [row.hotel, row.city].filter(Boolean).join(" · ");
   const who = [row.reference, row.clientName].filter(Boolean).join(" · ");
@@ -47,13 +57,14 @@ function HotelLine({ row, ended = false }: { row: HotelInboxRow; ended?: boolean
       {who ? <p className="mt-1 break-words text-sm text-[#3d4654]">{who}</p> : null}
       {stay ? <p className="mt-0.5 text-sm text-[#0B192C]">{stay}</p> : null}
       <div className="mt-2">
-        <span className={statusClass(row.status)}>{row.status}</span>
+        <span className={filed ? paidClass(row.paymentState) : statusClass(row.status)}>{row.status}</span>
       </div>
       {row.excerpt ? (
         <p className="mt-2 line-clamp-2 whitespace-pre-line text-sm leading-relaxed text-[#0B192C]">{row.excerpt}</p>
       ) : null}
-      {ended ? (
-        <div className="mt-3">
+      {ended || filed ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {filed ? <Classify row={row} /> : null}
           <Link href={row.dossierHref} className={quietClass}>
             Ouvrir le dossier
           </Link>
@@ -280,7 +291,14 @@ function Block({
 
 /** Une liste : paiement, autres réponses, envois sans réponse, puis le reste. */
 export function HotelInbox({ inbox }: { inbox: HotelInboxModel }) {
-  const empty = !inbox.payment.length && !inbox.replies.length && !inbox.unanswered.length && !inbox.waiting.length && !inbox.rest.length && !inbox.endedUnpaid.length;
+  const empty =
+    !inbox.payment.length &&
+    !inbox.replies.length &&
+    !inbox.unanswered.length &&
+    !inbox.waiting.length &&
+    !inbox.rest.length &&
+    !inbox.paid.length &&
+    !inbox.endedUnpaid.length;
   const failed = Boolean(inbox.loadError);
   const showSilence = !failed || inbox.unanswered.length > 0 || inbox.waiting.length > 0;
   return (
@@ -340,6 +358,20 @@ export function HotelInbox({ inbox }: { inbox: HotelInboxModel }) {
           <ul className="divide-y divide-[#e5e0d4] border-t border-[#e5e0d4]">
             {inbox.rest.map((row) => (
               <HotelLine key={row.id} row={row} />
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      {inbox.paid.length ? (
+        <details className="group/paid overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-[#0B192C] [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+            <span>Payé · {inbox.paid.length}</span>
+            <Icon name="expand_more" className="h-4 w-4 shrink-0 transition-transform group-open/paid:rotate-180" />
+          </summary>
+          <p className="border-t border-[#e5e0d4] px-4 py-2 text-sm text-[#3d4654]">Le paiement est vu. Aucune relance.</p>
+          <ul className="divide-y divide-[#e5e0d4] border-t border-[#e5e0d4]">
+            {inbox.paid.map((row) => (
+              <HotelLine key={row.id} row={row} filed />
             ))}
           </ul>
         </details>
