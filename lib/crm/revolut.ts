@@ -257,6 +257,16 @@ export async function upsertRevolutInbox(txs: RevolutTx[], opts?: { stripeRefres
     console.error("[revolut] file débits", err instanceof Error ? err.message : "échec");
   }
   let inserted = 0;
+  const wires: {
+    id: string;
+    direction: string;
+    category: string | null;
+    amount: number;
+    currency: string;
+    payer: string;
+    reference: string | null;
+    iban: string | null;
+  }[] = [];
   for (const tx of txs) {
     const draft = revolutInboxDraft(tx);
     if (!draft || !tx.id) continue;
@@ -279,7 +289,21 @@ export async function upsertRevolutInbox(txs: RevolutTx[], opts?: { stripeRefres
           { onConflict: "revolut_transaction_id", ignoreDuplicates: true }
         )
         .select("id");
-      if (!error && data?.length) inserted += data.length;
+      if (!error && data?.length) {
+        inserted += data.length;
+        if (draft.direction === "credit" && (draft.category || "client") === "client") {
+          wires.push({
+            id: tx.id,
+            direction: draft.direction,
+            category: draft.category,
+            amount: draft.amount,
+            currency: draft.currency,
+            payer: draft.counterparty_name || "",
+            reference: draft.reference,
+            iban: draft.counterparty_iban,
+          });
+        }
+      }
       continue;
     }
     if (revolutInboxMatches(existing, payload.update)) continue;
@@ -301,7 +325,7 @@ export async function upsertRevolutInbox(txs: RevolutTx[], opts?: { stripeRefres
   } catch (err) {
     console.error("[revolut] stripe", err instanceof Error ? err.message : "échec");
   }
-  return inserted;
+  return { inserted, wires };
 }
 
 export class RevolutHttpError extends Error {

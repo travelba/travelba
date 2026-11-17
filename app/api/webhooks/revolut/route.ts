@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { announceIncomingWires } from "@/lib/crm/pay-notice";
 import { verifyRevolutWebhook, upsertRevolutInbox, type RevolutTx } from "@/lib/crm/revolut";
+import { createServiceClient } from "@/lib/supabase/admin";
 import { changedRevolutTransactions } from "@/lib/crm/revolut-delta";
 import { autoMatchUnmatchedRevolut } from "@/lib/crm/revolut-match";
 import { isRevolutTimestampFresh } from "@/lib/crm/revolut-webhook";
@@ -33,7 +35,8 @@ export async function POST(request: Request) {
       fresh = [payload.data];
     }
     if (!fresh.length) return NextResponse.json({ ok: true, auto_matched: 0 });
-    await upsertRevolutInbox(fresh);
+    const saved = await upsertRevolutInbox(fresh);
+    await announceIncomingWires(createServiceClient(), saved.wires);
     const auto = await autoMatchUnmatchedRevolut(50);
     return NextResponse.json({ ok: true, auto_matched: auto.matched });
   }

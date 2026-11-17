@@ -55,6 +55,7 @@ async function notePay(input: {
   currency: string;
   ok: boolean;
   next: string;
+  intentId?: string | null;
 }) {
   await recordCustomerActivity({
     customerId: input.customerId,
@@ -62,6 +63,7 @@ async function notePay(input: {
     action: "pay",
     summary: input.ok ? payActivitySummary(input.method, input.payer) : payFailureSummary(input.method, input.payer),
     detail: payActivityDetail(input.amount, input.currency, input.next),
+    path: input.intentId ? `pi:${input.intentId}` : null,
   });
 }
 
@@ -443,6 +445,7 @@ export async function POST(request: Request) {
       currency: view.currency,
       ok: true,
       next: "Paiement à confirmer dans le formulaire.",
+      intentId: intent.id,
     });
     return NextResponse.json({ clientSecret: intent.client_secret, amountLabel });
   } catch (err) {

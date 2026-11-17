@@ -34,11 +34,21 @@ function clip(value: string, max = 140) {
   return flat.length <= max ? flat : `${flat.slice(0, max).trimEnd()}…`;
 }
 
-/** Un e-mail de la file, un message client, une modification du concierge, du plus ancien au plus récent. */
+export type PaymentAlert = {
+  id: string;
+  summary: string | null;
+  createdAt: string;
+  customerId: string | null;
+  /** revolut ou stripe sans client : À encaisser. Sinon la fiche. */
+  queue?: boolean;
+};
+
+/** Un e-mail de la file, un message client, une modification du concierge, un paiement, du plus ancien au plus récent. */
 export function agencyAlerts(input: {
   emails: InboundMailAlert[];
   chats: InboundChatAlert[];
   changes?: ConciergeChangeAlert[];
+  payments?: PaymentAlert[];
 }): AgencyAlert[] {
   const emails = input.emails.flatMap((row) => {
     if (!row.id || !row.receivedAt) return [];
@@ -80,5 +90,18 @@ export function agencyAlerts(input: {
       },
     ];
   });
-  return [...emails, ...chats, ...changes].sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
+  const payments = (input.payments || []).flatMap((row) => {
+    if (!row.id || !row.createdAt) return [];
+    return [
+      {
+        id: `pay:${row.id}`,
+        at: row.createdAt,
+        title: "Paiement client",
+        body: clip(row.summary || "") || "Un client a payé.",
+        href: row.queue || !row.customerId ? "/admin/argent?onglet=a-encaisser" : `/admin/clients/${row.customerId}`,
+        kicker: "Paiement",
+      },
+    ];
+  });
+  return [...emails, ...chats, ...changes, ...payments].sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
 }

@@ -4,6 +4,7 @@ import { stripeInboxFromIntent, type StripeInboxDraft, type StripeIntentInput } 
 import { stripeClientEmail } from "@/lib/crm/stripe-payer";
 import { createStripeCustomerCache, lookupStripePayer } from "@/lib/crm/stripe-payer-fetch";
 import { snapshotFromPaymentIntent } from "@/lib/crm/stripe-snapshot";
+import { noticeCaughtStripePayments } from "@/lib/crm/pay-notice";
 import { autoMatchUnmatchedStripe } from "@/lib/crm/stripe-match";
 import { syncSepaIntents } from "@/lib/crm/sepa-ledger";
 import {
@@ -170,6 +171,7 @@ export async function upsertStripeInbox(admin: StripeAdmin, intents: StripeInten
   const ids = drafts.map((draft) => draft.stripe_payment_intent_id);
   const [linked, inbox] = await Promise.all([ledgerByIntent(admin, ids), inboxByIntent(admin, ids)]);
   let inserted = 0;
+  const created: string[] = [];
   for (const draft of drafts) {
     const existing = linked.get(draft.stripe_payment_intent_id);
     const row = inbox.get(draft.stripe_payment_intent_id) || null;
@@ -182,7 +184,10 @@ export async function upsertStripeInbox(admin: StripeAdmin, intents: StripeInten
           { onConflict: "stripe_payment_intent_id", ignoreDuplicates: true }
         )
         .select("id");
-      if (!error && data?.length) inserted += data.length;
+      if (!error && data?.length) {
+        inserted += data.length;
+        created.push(draft.stripe_payment_intent_id);
+      }
       else if (!stripeStoredMatches(row, fields)) {
         await admin.from("crm_stripe_transactions").update(fields).eq("stripe_payment_intent_id", draft.stripe_payment_intent_id);
       }
@@ -201,7 +206,7 @@ export async function upsertStripeInbox(admin: StripeAdmin, intents: StripeInten
         .eq("status", "unmatched");
     }
   }
-  return inserted;
+  return { inserted, ids: created };
 }
 
 export async function syncStripeInbox(admin: StripeAdmin, now = Date.now()) {
@@ -216,11 +221,14 @@ export async function syncStripeInbox(admin: StripeAdmin, now = Date.now()) {
   const sepa = await syncSepaIntents(admin, intents);
   if (!sepa.ok) throw new Error("prélèvement");
   const succeeded = intents.filter((intent) => intent.status === "succeeded");
-  const inserted = await upsertStripeInbox(admin, await enrichStripeIntents(succeeded));
+  const enriched = await enrichStripeIntents(succeeded);
+  const written = await upsertStripeInbox(admin, enriched);
+  const fresh = enriched.filter((intent) => written.ids.includes((intent.id || "").trim()));
+  await noticeCaughtStripePayments(admin, fresh);
   await enrichStaleStripePayers(admin);
   await writeSyncWatermark(SYNC_WATERMARK.stripe, new Date(now).toISOString());
   const auto = await autoMatchUnmatchedStripe();
-  return { fetched: intents.length, inserted, auto_matched: auto.matched, since };
+  return { fetched: intents.length, inserted: written.inserted, auto_matched: auto.matched, since };
 }
 
 /** Relit les paiements ouverts sans nom, hors du curseur. N’écrit que les champs vides. Ne crédite pas. */

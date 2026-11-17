@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServiceClient } from "@/lib/supabase/admin";
+import { announceIncomingWires } from "@/lib/crm/pay-notice";
 import { fetchRevolutTransactions, upsertRevolutInbox, type RevolutTx } from "@/lib/crm/revolut";
 import {
   REVOLUT_FIRST_LOOKBACK_MS,
@@ -55,7 +56,8 @@ export async function syncRevolutWindow(
   });
   const txs = await fetchRevolutTransactions(from);
   const fresh = await changedRevolutTransactions(txs);
-  const inserted = await upsertRevolutInbox(fresh, opts);
+  const saved = await upsertRevolutInbox(fresh, opts);
+  await announceIncomingWires(createServiceClient(), saved.wires);
   await writeSyncWatermark(SYNC_WATERMARK.revolut, new Date(now).toISOString());
-  return { fetched: txs.length, inserted, from, written: fresh.length };
+  return { fetched: txs.length, inserted: saved.inserted, from, written: fresh.length };
 }
