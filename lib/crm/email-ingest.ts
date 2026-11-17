@@ -50,6 +50,7 @@ import {
   receivedTooOldForAutoAttach,
 } from "@/lib/crm/email-flight-deposit";
 import { enterFlightRematch, leaveFlightRematch } from "@/lib/crm/email-flight-rematch";
+import { missingRematchColumn, rematchRetryBefore } from "@/lib/crm/email-rematch-queue";
 import { EMAIL_BODY_MISSING_MARK, bodyBackfillSince, hasBodyMissingMark, markBodyMissing } from "@/lib/crm/email-body-backfill";
 import { parsedItemsFromText, reopenFalseSupplierCancellation } from "@/lib/crm/ingest-parse";
 import {
@@ -632,6 +633,51 @@ export async function rematchEmailIngestRow(row: CrmEmailIngest) {
   return { suggestions, attached, reparsed: refreshed.reparsed };
 }
 
+function rematchQueueQuery(admin: Admin) {
+  return admin
+    .from("crm_email_ingest")
+    .select("*")
+    .in("status", ["parsed", "matched"])
+    .not("extract", "is", null)
+    .is("created_booking_id", null)
+    .gte("received_at", autoAttachNotBefore());
+}
+
+/**
+ * Huit mails au plus : jamais tentés d’abord (les plus anciens), sinon la
+ * tentative la plus ancienne, pas avant le délai. Sans les colonnes de reprise,
+ * `updated_at` fait avancer la file quand même.
+ */
+async function loadRematchBatch(admin: Admin, bounded: number) {
+  const retryBefore = rematchRetryBefore();
+  const primary = await rematchQueueQuery(admin)
+    .or(`rematch_attempted_at.is.null,rematch_attempted_at.lt.${retryBefore}`)
+    .order("rematch_attempted_at", { ascending: true, nullsFirst: true })
+    .order("received_at", { ascending: true })
+    .limit(bounded);
+  if (!primary.error) return { rows: (primary.data || []) as CrmEmailIngest[], stamp: true };
+  if (!missingRematchColumn(primary.error)) throw new Error(primary.error.message);
+  const fallback = await rematchQueueQuery(admin)
+    .lt("updated_at", retryBefore)
+    .order("updated_at", { ascending: true })
+    .order("received_at", { ascending: true })
+    .limit(bounded);
+  if (fallback.error) throw new Error(fallback.error.message);
+  return { rows: (fallback.data || []) as CrmEmailIngest[], stamp: false };
+}
+
+async function stampRematchAttempt(admin: Admin, row: CrmEmailIngest) {
+  const attempts = typeof row.rematch_attempts === "number" ? row.rematch_attempts : 0;
+  const { error } = await admin
+    .from("crm_email_ingest")
+    .update({
+      rematch_attempted_at: new Date().toISOString(),
+      rematch_attempts: attempts + 1,
+    })
+    .eq("id", row.id);
+  if (error && !missingRematchColumn(error)) console.error("[import] tentative de reprise non notée");
+}
+
 /**
  * Rattrapage borné des mails déjà en file. Idempotent : un mail déposé n’est pas repris,
  * un extract déjà relu ne l’est plus. Aucun message au client.
@@ -641,22 +687,13 @@ export async function rematchStoredEmailIngest(limit = 8) {
   enterFlightRematch();
   const admin = createServiceClient();
   try {
-    const { data } = await admin
-      .from("crm_email_ingest")
-      .select("*")
-      .in("status", ["parsed", "matched"])
-      .not("extract", "is", null)
-      .is("created_booking_id", null)
-      .gte("received_at", autoAttachNotBefore())
-      .order("received_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .limit(bounded);
-    const rows = (data || []) as CrmEmailIngest[];
+    const { rows, stamp } = await loadRematchBatch(admin, bounded);
     let rematched = 0;
     let attached = 0;
     let reparsed = 0;
     let failed = 0;
     for (const row of rows) {
+      if (stamp) await stampRematchAttempt(admin, row);
       try {
         const result = await rematchEmailIngestRow(row);
         rematched += 1;

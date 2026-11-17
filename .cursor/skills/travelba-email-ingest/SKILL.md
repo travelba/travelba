@@ -74,8 +74,10 @@ Gmail label (little-emperors | expedia-taap | billet-avion | booking-cancellatio
 ```
 
 `matchAndStoreExtract` enregistre l’extract et les suggestions. Il n’applique
-rien. Le parse ne crée pas le dossier et n’applique pas les cartes. Le rematch
-non plus. `received` et `error` restent dans la file, pas seulement `parsed` /
+rien. Le parse et le rematch appliquent ensuite la même décision : ranger le
+mail dans le seul dossier compatible du client connu (titulaire ou
+accompagnant), ou ouvrir un séjour caché. Ils ne créent pas de fiche.
+`received` et `error` restent dans la file, pas seulement `parsed` /
 `matched`.
 
 Le clic **Déposer les pièces** sur une annulation ne fait qu’attacher les fichiers. Il n’appelle pas `applyCancellationToBooking`. **Mettre à jour les étapes** refuse une annulation.
@@ -183,7 +185,7 @@ n’est pas la destination : le titre ne garde que la ville du séjour, pas le d
 
 Le clic **Créer un dossier** reste disponible (`persistNewBookingFromExtract`).
 
-Le parse constitue le séjour après `matchAndStoreExtract`. Le rematch ne le refait pas. E-mail
+Le parse constitue le séjour après `matchAndStoreExtract`. Le rematch reprend cette décision, sans créer de fiche. E-mail
 extract seulement s’il n’est **pas** une boîte agence (`contact@travelba.fr`,
 `crm@travelba.fr`, `agence@`, `hello@`, `info@`, `CONTACT_FROM_EMAIL`), **pas** l’expéditeur du
 mail, **pas** un domaine fournisseur (Little Emperors, Expedia, Amadeus).
@@ -274,7 +276,7 @@ Une réponse dans un nouveau fil (autre objet, autre adresse du même hôtel) se
 
 ## Relancer une ligne déjà parsée
 
-Sans re-télécharger Gmail (ne pas remettre `received`). Le cron `gmail-ingest` (toutes les 5 minutes) reprend les 8 mails `parsed` / `matched` les plus récents, reçus depuis 30 jours. Un mail plus ancien reste en file avec sa suggestion : il n’est pas déposé tout seul. Le rematch ne crée ni fiche ni dossier. Un extract antérieur au correctif billet est relu sur les pièces déjà stockées, puis le même rattachement qu’à l’ingestion : une référence entière (au moins un chiffre, ou un PNR de 5 à 8 lettres, jamais un mot ni un nom), ou un seul dossier dont les voyageurs couvrent les passagers et dont les dates tiennent dans 60 jours. Cartes cachées, prix de vente 0, aucun message, journal `auto_attach`. Un vol antérieur au mail, un PNR d’exemple, ou plusieurs dossiers restent en file. Un voyageur, une carte ou un mail déposé relance le même lot après la réponse, sans attendre l’affichage. Le geste est idempotent.
+Sans re-télécharger Gmail (ne pas remettre `received`). Le cron `gmail-ingest` (toutes les 5 minutes) reprend 8 mails `parsed` / `matched` reçus depuis 30 jours : d’abord les jamais tentés, du plus ancien au plus récent, sinon ceux tentés il y a le plus longtemps. Une tentative de moins d’une heure n’est pas reprise. Chaque passage note `rematch_attempted_at` et `rematch_attempts` (migration `20261117160000_email_rematch_attempt.sql`, à jouer à la main). Sans ces colonnes, la file avance quand même par `updated_at`. La décision est la même qu’à l’ingestion. Un seul dossier du client connu, titulaire ou accompagnant, aux dates compatibles, reçoit le mail. Sinon un séjour caché est ouvert, prix de vente 0, sans invitation ni fiche nouvelle. Deux dossiers, un homonyme, une annulation ou un doute : rien n’est rattaché. Un extract antérieur au correctif billet est relu sur les pièces déjà stockées, puis le même rattachement : une référence entière (au moins un chiffre, ou un PNR de 5 à 8 lettres, jamais un mot ni un nom), ou un seul dossier dont les voyageurs couvrent les passagers et dont les dates tiennent dans 60 jours. Cartes cachées, prix de vente 0, aucun message, journal `auto_attach` ou `auto_create`. Un vol antérieur au mail, un PNR d’exemple, ou plusieurs dossiers restent en file. Un voyageur, une carte ou un mail déposé relance le même lot après la réponse, sans attendre l’affichage. Le geste est idempotent.
 
 - Cron : `rematchStoredEmailIngest`
 - Staff : `POST /api/admin/email-ingest/[id]` `{ "action": "rematch" }`

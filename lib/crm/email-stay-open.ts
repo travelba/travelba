@@ -1,5 +1,6 @@
 import {
   decideFlightAutoAttach,
+  dossierSpansTooLong,
   extractHasPlaceholderRef,
   flightsDatedBeforeMail,
   hasUsableFlight,
@@ -45,9 +46,45 @@ export function decideStayAutoAttach(
   candidates: FlightAutoCandidate[] | null | undefined,
   context?: { receivedAt?: string | null }
 ): FlightAutoDecision | null {
-  if (blockedStay(extract, context?.receivedAt)) return null;
-  if (hasUsableFlight(extract)) return decideFlightAutoAttach(extract, candidates, context);
-  return decideFlightAutoAttach({ ...extract, items: flightStandIn(extract) }, candidates, context);
+  if (!extract || blockedStay(extract, context?.receivedAt)) return null;
+  const flightDecision = hasUsableFlight(extract)
+    ? decideFlightAutoAttach(extract, candidates, context)
+    : decideFlightAutoAttach({ ...extract, items: flightStandIn(extract) }, candidates, context);
+  if (flightDecision) return flightDecision;
+  return decideKnownClientStay(extract, candidates);
+}
+
+/**
+ * Un seul dossier du client connu (titulaire ou accompagnant), aux dates
+ * compatibles : le mail y est rangé. Deux dossiers, un séjour annulé ou un
+ * dossier trop long : rien, la file garde la proposition.
+ */
+function decideKnownClientStay(
+  extract: StayExtract,
+  candidates: FlightAutoCandidate[] | null | undefined
+): FlightAutoDecision | null {
+  const customerId = knownClientId(candidates || []);
+  if (!customerId) return null;
+  const rows = compatibleClientStays(extract, candidates || [], customerId);
+  if (rows.length !== 1) return null;
+  const hit = rows[0];
+  if (!hit?.booking_id) return null;
+  return { bookingId: hit.booking_id, customerId, reason: hit.reason || "Dates compatibles" };
+}
+
+function compatibleClientStays(extract: StayExtract, candidates: FlightAutoCandidate[], customerId: string) {
+  const seen = new Set<string>();
+  const rows: FlightAutoCandidate[] = [];
+  for (const row of candidates) {
+    if (!row.booking_id || row.customer_id !== customerId) continue;
+    if (/annul/i.test(row.reason || "")) continue;
+    if (dossierSpansTooLong(row.start_date, row.end_date)) continue;
+    if (!compatibleOpenDossier(row, extract)) continue;
+    if (seen.has(row.booking_id)) continue;
+    seen.add(row.booking_id);
+    rows.push(row);
+  }
+  return rows;
 }
 
 function flightStandIn(extract: StayExtract | null | undefined): StayExtract["items"] {
