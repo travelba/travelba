@@ -118,8 +118,9 @@ describe("Boîte de réception : trois onglets, une file par source", () => {
     const home = readFileSync(join(root, "app/admin/page.tsx"), "utf8");
     assert.equal(home.includes("RecentMails"), false);
     const hotels = readFileSync(join(root, "components/admin/boite/HotelsPanel.tsx"), "utf8");
-    assert.match(hotels, /RecentMails/);
-    assert.match(hotels, /UnansweredMails/);
+    assert.match(hotels, /HotelInbox/);
+    assert.equal(hotels.includes("InboundReplies"), false);
+    assert.equal(hotels.includes("refreshStaleHotelThreads"), false);
     assert.match(hotels, /HotelSearchDesk/);
   });
 });

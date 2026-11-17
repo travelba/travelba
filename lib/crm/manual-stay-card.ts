@@ -1,6 +1,6 @@
 import { pliantCardNomination, pliantStayCaption } from "./eta-il-fee";
 import { addIsoDays, cardCloseDate, isoDate, parseEurosToCents } from "./hotel-arrival";
-import { pliantCardForTransactionCount } from "./pliant-controls";
+import { parsePliantTransactionCount, pliantCardForTransactionCount } from "./pliant-controls";
 
 /** Marque une carte dont le montant a été choisi sur le dossier. Le cron ne la réécrit pas. */
 export const MANUAL_CARD_NOTE = "Saisie agence";
@@ -129,7 +129,7 @@ export function manualStayCardDraft(input: {
   hotels?: Array<string | null | undefined>;
   reference?: string | null;
   transactionAmount?: string;
-  /** Ignoré sur ce brouillon : le formulaire n’envoie pas de nombre. L’émission choisit le produit. */
+  /** 1 ou vide : usage unique. Un nombre plus grand est envoyé tel quel. */
   transactionCount?: string;
   currency?: string;
 }): { error: string } | { body: ReturnType<typeof manualStayCardBody> } {
@@ -146,6 +146,8 @@ export function manualStayCardDraft(input: {
         })
       : null;
   if (rules && "error" in rules) return { error: rules.error };
+  const count = parsePliantTransactionCount(input.transactionCount);
+  if (!count.ok) return { error: "Indiquez un nombre de transactions." };
   return {
     body: manualStayCardBody({
       firstName,
@@ -161,6 +163,7 @@ export function manualStayCardDraft(input: {
       hotels: input.hotels,
       reference: input.reference,
       transactionLimitCents: rules?.transactionLimitCents,
+      transactionCount: count.count,
       currency: input.currency,
     }),
   };

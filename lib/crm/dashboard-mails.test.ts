@@ -486,8 +486,33 @@ test("confirmation, annulation, paiement dit et séjour passé sortent le courri
     true,
     now
   );
-  assert.equal(fresh[0]?.replyLabel, "Réponse à traiter");
-  assert.equal(fresh[0]?.lastWriter, "L'hôtel");
+  assert.deepEqual(fresh, []);
+  const stillThere = dashboardCourriers(
+    [
+      courrier({
+        itemEnd: "2026-10-29T11:00:00+01:00",
+        bookingEnd: "2026-10-01",
+        replies: [{ id: "late", body: "Nous avons une question sur l’arrivée.", receivedAt: "2026-10-28T12:00:00.000Z" }],
+      }),
+    ],
+    [],
+    true,
+    now
+  );
+  assert.equal(stillThere[0]?.replyLabel, "Réponse à traiter");
+  const nextMorning = dashboardCourriers(
+    [
+      courrier({
+        itemEnd: "2026-10-29T11:00:00+01:00",
+        bookingEnd: "2026-11-20",
+        replies: [{ id: "late", body: "Nous avons une question sur l’arrivée.", receivedAt: "2026-10-28T12:00:00.000Z" }],
+      }),
+    ],
+    [],
+    true,
+    Date.parse("2026-10-30T08:00:00+01:00")
+  );
+  assert.deepEqual(nextMorning, []);
 });
 
 test("un classement manuel prime jusqu’au message entrant suivant", () => {

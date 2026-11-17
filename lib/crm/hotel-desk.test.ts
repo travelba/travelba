@@ -957,13 +957,14 @@ test("le tableau sonde aussi l’onglet en arrière-plan", () => {
   assert.match(src, /askBrowserAlerts/);
 });
 
-test("la Boîte › Hôtels et le cron relisent le fil Gmail, et le connecteur expose le statut", () => {
+test("le cron relit le fil Gmail, la Boîte ne le fait plus au rendu", () => {
   const page = readFileSync(join(process.cwd(), "components/admin/boite/HotelsPanel.tsx"), "utf8");
   const cron = readFileSync(join(process.cwd(), "app/api/cron/gmail-ingest/route.ts"), "utf8");
   const mcp = readFileSync(join(process.cwd(), "lib/crm/mcp-read.ts"), "utf8");
   const registry = readFileSync(join(process.cwd(), "lib/crm/mcp-registry.ts"), "utf8");
-  assert.match(page, /refreshStaleHotelThreads/);
-  assert.match(page, /budgetMs: 1500/);
+  const load = readFileSync(join(process.cwd(), "lib/crm/dashboard-mails.ts"), "utf8");
+  assert.equal(page.includes("refreshStaleHotelThreads"), false);
+  assert.equal(load.includes("HOTEL_COURRIER_CLASS_CLEAR"), false);
   assert.match(cron, /refreshStaleHotelThreads/);
   assert.match(mcp, /courriers_hotel/);
   assert.match(registry, /courriers_hotel/);
@@ -1042,6 +1043,24 @@ test("Hyatt : un nouveau fil avec le numéro rejoint la bonne demande, un homony
       subject: "Park Hyatt Saigon - Mr. David Berda",
       body: "Hello, about the stay.",
       cues,
+    }),
+    null
+  );
+  assert.equal(
+    hotelReplySubjectKey({
+      from: "Reservations <stay@marriott.com>",
+      subject: "Your stay is confirmed",
+      body: "Confirmation XYZ999RA000001 for Mr. David Berda.",
+      cues: [
+        {
+          subjectKey: hotelMailSubjectKey(sent),
+          requestId: "dec-18",
+          confirmations: hotelConfirmationTokens(sent),
+          guest: "David Berda",
+          reference: "TB-2026-0148",
+          recipients: ["stay@marriott.com"],
+        },
+      ],
     }),
     null
   );
@@ -1146,6 +1165,19 @@ test("une absence ou un bounce ne passe pas le courrier à Répondu", () => {
   });
   assert.equal(bounce.countsAsReply, false);
   assert.equal(isAutomaticHotelMail("postmaster@hotel.test", "hello"), true);
+  assert.equal(isAutomaticHotelMail("newsletter@leadinghotels.com", "View in browser"), true);
+  assert.equal(isAutomaticHotelMail("news@hilton.com", "Unsubscribe from this list"), true);
+  assert.equal(isAutomaticHotelMail("Marriott Bonvoy <noreply@marriott.com>", "Your one-time code is 123456"), true);
+  assert.equal(isAutomaticHotelMail("info@click.e.hilton.com", "Hello"), true);
+  assert.equal(
+    classifyHotelMail({
+      from: "Marriott Bonvoy <noreply@marriott.com>",
+      subject: "Re: Payment link — Le Bristol — HB-9",
+      body: "Your one-time code is 483920. It expires in 10 minutes.",
+      keys,
+    }).countsAsReply,
+    false
+  );
   assert.equal(nextLetterStatus("sent", false), "sent");
   assert.equal(nextLetterStatus("follow_up", true), "replied");
   assert.equal(nextLetterStatus("skipped", true), "skipped");

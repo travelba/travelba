@@ -51,6 +51,8 @@ export type HotelCourrierSource = {
   itemLifecycle?: string | null;
   /** Classement manuel. Il prime tant qu’aucun message entrant n’est plus récent. */
   classifiedAt?: string | null;
+  /** Lien ou mots de paiement lus sur le fil. Le type de demande ne suffit pas. */
+  paymentAsked?: boolean;
 };
 
 /** Efface le classement. Aucun e-mail. */
@@ -98,10 +100,31 @@ export type DashboardCourrier = {
   paymentLabel: string | null;
 };
 
-/** Fil sans nouveau message, et séjour déjà terminé : on retire le courrier. */
-export const HOTEL_THREAD_INACTIVE_MS = 14 * 24 * 60 * 60 * 1000;
-
 const SENT = new Set(["sent", "follow_up", "replied"]);
+
+/** Jour calendaire Europe/Paris. Une date seule (10 caractères) n'est pas décalée. */
+export function parisStayDay(value: string | null | undefined) {
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return "";
+  return parisDay(ms);
+}
+
+/**
+ * Départ de la carte hôtel, puis repli sur la fin du dossier.
+ * Le jour est celui de Paris pour un horodatage.
+ */
+export function stayDepartureDay(itemEnd: string | null | undefined, bookingEnd: string | null | undefined) {
+  return parisStayDay(itemEnd) || parisStayDay(bookingEnd);
+}
+
+/** Vrai le lendemain du départ. Le jour du départ reste visible. */
+export function stayEndedBeforeToday(itemEnd: string | null | undefined, bookingEnd: string | null | undefined, nowMs: number) {
+  const end = stayDepartureDay(itemEnd, bookingEnd);
+  if (!end) return false;
+  return end < parisDay(nowMs);
+}
 
 function deskKindLabel(kind: string) {
   if (!(kind in HOTEL_DESK_LABELS)) return "";
@@ -169,7 +192,7 @@ export function latestHotelPliantPayment(spends: HotelPliantSpend[]): HotelPlian
 }
 
 function spendsForCourrier(row: HotelCourrierSource, spends: HotelPliantSpend[]) {
-  if (row.kind !== "payment_link") return [];
+  if (row.kind !== "payment_link" && !row.paymentAsked) return [];
   const seen = new Set<string>();
   const hits: HotelPliantSpend[] = [];
   for (const spend of spends) {
@@ -206,11 +229,7 @@ function parisDay(ms: number) {
 }
 
 function stayEndOf(row: HotelCourrierSource) {
-  for (const value of [row.bookingEnd, row.itemEnd]) {
-    const day = (value || "").slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(day)) return day;
-  }
-  return "";
+  return stayDepartureDay(row.itemEnd, row.bookingEnd);
 }
 
 function turnsOf(row: HotelCourrierSource): HotelCourrierTurn[] {
@@ -294,7 +313,7 @@ export type CourrierCloseReason = "payment" | "confirmed" | "cancelled" | "past"
 /**
  * Le besoin est réglé : on retire le courrier de la liste d’action.
  * Paiement Pliant ou lien payé, confirmation de l’hôtel, dossier annulé,
- * ou fil muet sur un séjour déjà passé.
+ * ou départ de la carte hôtel déjà passé (visible le jour du départ).
  * Un lien déjà payé reste ouvert seulement si l’hôtel a posé une question après le paiement.
  */
 export function courrierCloseReason(input: {
@@ -311,11 +330,14 @@ export function courrierCloseReason(input: {
   latestHotelAt: string;
   lastActivityMs: number;
   nowMs: number;
+  /** Vrai si le fil porte un lien ou des mots de paiement, même hors demande « lien ». */
+  paymentAsked?: boolean;
 }): CourrierCloseReason | null {
   if (input.bookingStatus === "cancelled" || input.bookingArchived || input.itemLifecycle === "cancelled") {
     return "cancelled";
   }
-  if (input.kind === "payment_link" && input.paymentsKnown && input.payment) {
+  const asked = input.kind === "payment_link" || Boolean(input.paymentAsked);
+  if (asked && input.paymentsKnown && input.payment) {
     const paymentAt = time(input.payment.bookedAt);
     const hotelAt = time(input.latestHotelAt);
     const askedAfterPayment =
@@ -325,14 +347,12 @@ export function courrierCloseReason(input: {
       (!Number.isFinite(paymentAt) || (Number.isFinite(hotelAt) && hotelAt > paymentAt));
     if (!askedAfterPayment) return "payment";
   }
-  if (input.kind === "payment_link" && paymentSettledText(input.latestHotelText)) return "payment";
-  if (input.kind !== "payment_link" && input.hotelWroteLast && hotelConfirmedText(input.latestHotelText)) {
+  if (asked && paymentSettledText(input.latestHotelText)) return "payment";
+  if (!asked && input.hotelWroteLast && hotelConfirmedText(input.latestHotelText)) {
     return "confirmed";
   }
   const today = parisDay(input.nowMs);
-  if (input.stayEnd && input.stayEnd < today && Number.isFinite(input.lastActivityMs)) {
-    if (input.nowMs - input.lastActivityMs >= HOTEL_THREAD_INACTIVE_MS) return "past";
-  }
+  if (input.stayEnd && input.stayEnd < today) return "past";
   return null;
 }
 
@@ -365,8 +385,8 @@ export function dashboardCourriers(
     const latestHotelText = meaningfulMailExcerpt(latestHotel?.body || "", 400);
     const moment = last?.at || latestMoment([row.repliedAt, row.lastFollowUpAt, row.sentAt]);
     if (!moment) continue;
-    const payment =
-      row.kind === "payment_link" && paymentsKnown ? latestHotelPliantPayment(spendsForCourrier(row, spends)) : null;
+    const asked = row.kind === "payment_link" || Boolean(row.paymentAsked);
+    const payment = asked && paymentsKnown ? latestHotelPliantPayment(spendsForCourrier(row, spends)) : null;
     const closed = courrierCloseReason({
       kind: row.kind,
       bookingStatus: row.bookingStatus || "",
@@ -380,9 +400,10 @@ export function dashboardCourriers(
       latestHotelAt: latestHotel?.at || "",
       lastActivityMs: time(moment),
       nowMs,
+      paymentAsked: asked,
     });
     if (closed || agencyAfterHotel) continue;
-    const showPayment = row.kind === "payment_link" && paymentsKnown;
+    const showPayment = asked && paymentsKnown;
     const silent = !hotelWroteLast && isUnanswered({
       status: row.status === "replied" ? "sent" : row.status,
       sentAt: row.sentAt,

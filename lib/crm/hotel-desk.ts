@@ -302,13 +302,18 @@ export function nextLetterStatus(status: HotelDeskStatus, hasRealReply: boolean)
   return status;
 }
 
-/** Absence, bounce ou en-tête Auto-Submitted. Pas une réponse de l'hôtel. */
+/** Absence, bounce, newsletter, code ou en-tête Auto-Submitted. Pas une réponse de l'hôtel. */
 export function isAutomaticHotelMail(from: string, body: string, autoSubmitted = false) {
   if (autoSubmitted) return true;
-  const local = emailAddress(from).split("@")[0] || "";
-  if (/^(mailer-daemon|postmaster|mail-daemon)$/i.test(local)) return true;
-  const head = body.slice(0, 600);
-  return /out of (the )?office|absence du bureau|r[eé]ponse automatique|automatic reply|je suis absent|i am (currently )?out of the office|message d'absence|undeliverable|delivery status notification|mail delivery failed/i.test(
+  const email = emailAddress(from);
+  const local = (email.split("@")[0] || "").replace(/[._-]/g, "");
+  if (/^(mailerdaemon|postmaster|maildaemon|noreply|donotreply|news|newsletter|marketing)$/i.test(local)) return true;
+  const domain = (email.split("@")[1] || "").toLowerCase();
+  if (domain.startsWith("click.e.") || domain.startsWith("links.") || domain.includes(".click.e.") || domain.includes(".links.")) {
+    return true;
+  }
+  const head = body.slice(0, 1500);
+  return /out of (the )?office|absence du bureau|r[eé]ponse automatique|automatic reply|je suis absent|i am (currently )?out of the office|message d'absence|undeliverable|delivery status notification|mail delivery failed|unsubscribe|se d[eé]sinscrire|view in browser|one-time code|temporary code|code de v[eé]rification/i.test(
     head
   );
 }
@@ -556,11 +561,6 @@ function mentionsGuest(hay: string, guest: string) {
   return parts.length >= 2 && parts.every((part) => hay.includes(part));
 }
 
-function mentionsReference(hay: string, reference: string) {
-  const ref = foldMail(reference);
-  return ref.length >= 4 && hay.includes(ref);
-}
-
 function oneRequest(cues: HotelReplyCue[]) {
   const ids = new Set(cues.map((cue) => cue.requestId || cue.subjectKey));
   if (ids.size !== 1) return null;
@@ -603,17 +603,17 @@ export function hotelReplySubjectKey(input: {
     const owners = cues.filter((cue) =>
       tokens.some((token) => cue.confirmations.some((item) => item.toUpperCase() === token.toUpperCase()))
     );
-    if (owners.length) {
-      const one = oneRequest(owners);
-      return one ? { subjectKey: one.subjectKey, via: "confirmation" } : null;
-    }
+    // Un numéro qui n'est à aucune demande : une autre réservation de la même chaîne. On ne rattache pas.
+    if (!owners.length) return null;
+    const one = oneRequest(owners);
+    return one ? { subjectKey: one.subjectKey, via: "confirmation" } : null;
   }
   const domain = mailDomain(input.from);
   if (!domain || isGenericMailDomain(domain) || domain === "travelba.fr" || domain.endsWith(".travelba.fr")) return null;
   const named = cues.filter((cue) => {
     const domains = cue.recipients.map((email) => mailDomain(email));
     if (!domains.includes(domain)) return false;
-    return mentionsGuest(hay, cue.guest) || mentionsReference(hay, cue.reference);
+    return mentionsGuest(hay, cue.guest);
   });
   if (!named.length) return null;
   const one = oneRequest(named);

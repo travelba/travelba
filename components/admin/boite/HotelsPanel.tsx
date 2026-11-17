@@ -1,18 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { HotelSearchDesk, type HotelRequestView } from "@/components/admin/HotelSearchDesk";
-import { InboundReplies } from "@/components/admin/InboundReplies";
-import { RecentMails } from "@/components/admin/RecentMails";
+import { HotelInbox } from "@/components/admin/HotelInbox";
 import { ViewPills } from "@/components/admin/TabLinks";
-import { UnansweredMails } from "@/components/admin/UnansweredMails";
 import type { SearchParamValue } from "@/lib/crm/admin-list";
 import { boiteHref, HOTELS_VIEW_LABELS, HOTELS_VIEWS, hotelsViewFromParam, type HotelsView } from "@/lib/crm/boite-tabs";
-import { loadDashboardMails } from "@/lib/crm/dashboard-mails";
-import { refreshStaleHotelThreads } from "@/lib/crm/hotel-desk-run";
-import { loadInboundReplies, loadUnansweredMails } from "@/lib/crm/hotel-boite-load";
+import { loadHotelInbox } from "@/lib/crm/hotel-inbox-load";
 import { roomsFromStored, stayPartyLabel } from "@/lib/crm/hotel-search";
 import { listHotelRequests, loadOfferPhotos, loadRequestCustomers } from "@/lib/crm/hotel-search-store";
 import { pliantConfigured } from "@/lib/crm/pliant";
-import { createServiceClient } from "@/lib/supabase/admin";
 
 function originOf(account: string) {
   if (account === "little_emperors") return "Little Emperors";
@@ -53,21 +48,11 @@ async function loadHotelRequests(): Promise<HotelRequestView[]> {
   }
 }
 
-/** Quatre fils au plus, 1,5 s : le téléphone n’attend pas Gmail. Le cron reprend le reste. */
-async function loadFreshCourriers(supabase: SupabaseClient) {
-  try {
-    await refreshStaleHotelThreads(createServiceClient(), { limit: 4, budgetMs: 1500 });
-  } catch {
-    // La liste s’affiche avec le dernier fil déjà enregistré.
-  }
-  return loadDashboardMails(supabase);
-}
-
 function viewHref(view: HotelsView) {
   return boiteHref("hotels", { vue: view === "reponses" ? null : view });
 }
 
-/** Hôtels : les courriers et leurs réponses, les courriers sans réponse à relancer, les demandes de séjour. */
+/** Hôtels : une file de courriers, et à part les demandes de l’espace client. */
 export async function HotelsPanel({
   supabase,
   params,
@@ -82,20 +67,14 @@ export async function HotelsPanel({
     <ViewPills
       ariaLabel="Vues d’Hôtels"
       active={view}
-      views={HOTELS_VIEWS.map((id) => ({ id, href: viewHref(id), label: HOTELS_VIEW_LABELS[id], count: id === "reponses" ? counts.reponses : 0 }))}
+      views={HOTELS_VIEWS.map((id) => ({
+        id,
+        href: viewHref(id),
+        label: HOTELS_VIEW_LABELS[id],
+        count: id === "reponses" ? counts.reponses : 0,
+      }))}
     />
   );
-
-  if (view === "sans-reponse") {
-    const rows = await loadUnansweredMails(supabase);
-    return (
-      <div className="space-y-4">
-        {pills}
-        <p className="text-sm text-muted">Messages envoyés sans réponse depuis 48 heures. Relancer ouvre le brouillon : il part seulement après confirmation.</p>
-        <UnansweredMails rows={rows} />
-      </div>
-    );
-  }
 
   if (view === "demandes") {
     const sandbox = process.env.PLIANT_SANDBOX === "1";
@@ -111,18 +90,11 @@ export async function HotelsPanel({
     );
   }
 
-  const [courriers, replies] = await Promise.all([loadFreshCourriers(supabase), loadInboundReplies(supabase)]);
+  const inbox = await loadHotelInbox(supabase);
   return (
     <div className="space-y-6">
       {pills}
-      <RecentMails mails={courriers} />
-      <section aria-labelledby="hotels-recus">
-        <h2 id="hotels-recus" className="font-display text-lg font-bold text-[var(--admin-navy)]">
-          Messages reçus
-        </h2>
-        <p className="mt-1 text-sm text-muted">Les derniers messages des hôtels, du plus récent au plus ancien. Répondre ouvre le brouillon sur le dossier.</p>
-        <InboundReplies rows={replies} />
-      </section>
+      <HotelInbox inbox={inbox} />
     </div>
   );
 }

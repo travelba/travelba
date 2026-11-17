@@ -33,7 +33,7 @@ test("carte manuelle : plafond reçu, usage unique, aucun blocage", () => {
   assert.equal(Object.hasOwn(body, "cardControls"), false);
 });
 
-test("carte manuelle : le montant par achat reste sous le plafond, sans nombre de transactions", () => {
+test("carte manuelle : le montant par achat reste sous le plafond, le nombre est envoyé", () => {
   const over = cardTransactionRules({ limitCents: 10000, transactionAmount: "200" });
   assert.equal("error" in over, true);
   const missing = cardTransactionRules({ limitCents: 50000, transactionAmount: "" });
@@ -54,8 +54,8 @@ test("carte manuelle : le montant par achat reste sous le plafond, sans nombre d
   }
   assert.equal(ready.body.limit.value, 50000);
   assert.equal(ready.body.transactionLimit.value, 20000);
-  assert.equal(ready.body.cardConfig, PLIANT_SINGLE_USE);
-  assert.equal(Object.hasOwn(ready.body, "maxTransactionCount"), false);
+  assert.equal(ready.body.cardConfig, "PLIANT_VIRTUAL");
+  assert.equal(ready.body.maxTransactionCount, 3);
   assert.equal(ready.body.transactionLimit.value <= ready.body.limit.value, true);
   const blankCount = manualStayCardDraft({
     amount: "500",
