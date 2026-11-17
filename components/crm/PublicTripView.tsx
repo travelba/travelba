@@ -3,7 +3,7 @@ import { ReservationFiles } from "@/components/crm/ReservationFiles";
 import { BrandMark } from "@/components/crm/ui";
 import { CarnetItinerary } from "@/components/account/CarnetItinerary";
 import { tripPlaceLine } from "@/lib/crm/carnet";
-import { nextStayLabels } from "@/lib/crm/staff-stay";
+import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { formatDateFr } from "@/lib/crm/money";
 import { attachmentPreviews } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
@@ -27,11 +27,18 @@ export function PublicTripView({
   calendarBase?: string | null;
   phones?: PhoneCalendarLinks | null;
 }) {
+  const face = clientStayFace({
+    title: booking.title,
+    destination: booking.destination,
+    startDate: booking.start_date,
+    endDate: booking.end_date,
+    items,
+  });
+  const shownBooking = applyClientStayFace(booking, face);
   const shown = items.map((item) => ({ ...item, amount: null }));
-  const labels = nextStayLabels(booking.title, booking.destination, items);
-  const headline = labels.title || "Séjour";
+  const headline = face.title || "Séjour";
   const clientNote = shownClientNote(booking.notes_client);
-  const placeLine = tripPlaceLine(headline, labels.destination);
+  const placeLine = tripPlaceLine(headline, face.destination);
   const attachments = attachmentPreviews(docs, shown, booking.reference).map((file) => ({
     ...file,
     partage,
@@ -45,8 +52,9 @@ export function PublicTripView({
       </header>
 
       <BookingHero
-        booking={booking}
-        items={items}
+        booking={shownBooking}
+        places={face.places}
+        items={shown}
         partage={partage}
         priority
         className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
@@ -61,7 +69,7 @@ export function PublicTripView({
             <h1 className="font-display text-[1.7rem] font-extrabold leading-tight">{headline}</h1>
             {placeLine ? <p className="text-sm text-white/75">{placeLine}</p> : null}
             <p className="text-sm text-white/75">
-              {formatDateFr(booking.start_date)} — {formatDateFr(booking.end_date)}
+              {formatDateFr(shownBooking.start_date)} — {formatDateFr(shownBooking.end_date)}
             </p>
           </div>
         </div>
@@ -75,7 +83,7 @@ export function PublicTripView({
 
       <div className="mt-5">
         <CarnetItinerary
-          booking={booking}
+          booking={shownBooking}
           items={shown}
           docs={docs}
           partage={partage}

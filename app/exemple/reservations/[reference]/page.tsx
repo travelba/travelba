@@ -22,7 +22,7 @@ import {
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
 import { chargeableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
-import { nextStayLabels } from "@/lib/crm/staff-stay";
+import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
@@ -85,7 +85,16 @@ export default async function ExampleReservationPage({ params }: Props) {
   const { reference } = await params;
   if (reference !== EXAMPLE_REFERENCE) notFound();
   const session = readExample();
-  const b = session.booking;
+  const stored = session.booking;
+  const face = clientStayFace({
+    title: stored.title,
+    destination: stored.destination,
+    startDate: stored.start_date,
+    endDate: stored.end_date,
+    items: session.items,
+    homeCity: session.customer.city,
+  });
+  const b = applyClientStayFace(stored, face);
   const pub = toPublicBooking(b);
   const visibleItems = withoutHotelRosterItems(clientVisibleItems(session.items));
   if (!carnetVisible(b, visibleItems)) notFound();
@@ -109,9 +118,8 @@ export default async function ExampleReservationPage({ params }: Props) {
     homeCity: session.customer.city,
     items: visibleItems,
   });
-  const labels = nextStayLabels(b.title, b.destination, visibleItems, "Séjour", session.customer.city);
-  const headline = labels.title || "Séjour";
-  const placeLine = tripPlaceLine(headline, labels.destination);
+  const headline = face.title || "Séjour";
+  const placeLine = tripPlaceLine(headline, face.destination);
   const formalities = frenchPassportTrip(visibleItems, party.length);
   // Même formule que la page réelle : commission + billetterie + dépenses.
   const ticketCount = ticketingTicketCount({
@@ -159,7 +167,8 @@ export default async function ExampleReservationPage({ params }: Props) {
 
           <BookingHero
             booking={pub}
-            items={withoutHotelRosterItems(session.items)}
+            places={face.places}
+            items={withoutHotelRosterItems(face.items)}
             priority
             className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
             transitionName={stayTransitionName(b.reference)}

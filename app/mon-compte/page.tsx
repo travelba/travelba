@@ -8,8 +8,9 @@ import { isClientUpcomingStay } from "@/lib/crm/client-stays";
 import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { clientTripOwnerIds } from "@/lib/crm/company-peers";
-import { listStayDestination, listStayTitle, tripPlaceLine } from "@/lib/crm/carnet";
-import { loadStayMaps, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
+import { tripPlaceLine } from "@/lib/crm/carnet";
+import { applyClientStayFace } from "@/lib/crm/client-stay-face";
+import { loadClientStayFaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { AccountPage } from "@/components/account/AccountPage";
@@ -20,7 +21,6 @@ import {
   BoardingPassSkeleton,
   HomeBoardingPass,
   HomeDepartureWord,
-  HomeTripHeading,
   HomeWeatherChip,
   WeatherChipSkeleton,
 } from "@/components/account/HomeTripExtras";
@@ -153,12 +153,13 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
   const { supabase } = await getSessionUser();
   const ownerIds = await clientTripOwnerIds(customer);
   const bookings = await loadVisibleCarnets(supabase, customer.id, ownerIds);
+  const faces = await loadClientStayFaces(supabase, bookings, customer.city);
+  const shown = bookings.map((booking) => applyClientStayFace(booking, faces[booking.id]));
   const nextTrip =
     sortBookingsByStart(
-      bookings.filter((b) => isClientUpcomingStay(b)),
+      shown.filter((b) => isClientUpcomingStay(b)),
       "asc"
     )[0] || null;
-  const places = nextTrip ? await loadStayMaps(supabase, [nextTrip.id]) : null;
 
   if (!nextTrip) {
     return (
@@ -169,31 +170,19 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
     );
   }
 
+  const face = faces[nextTrip.id];
   const countdown = jMinusLabel(nextTrip.start_date);
   const tripHref = `/mon-compte/reservations/${nextTrip.reference}`;
-  const arrival = places?.arrival[nextTrip.id];
-  const route = places?.route[nextTrip.id];
-  const layovers = places?.layovers[nextTrip.id];
-  const tripName = listStayTitle(
-    nextTrip.title,
-    nextTrip.destination,
-    arrival,
-    route,
-    layovers,
-    "Prochain séjour",
-    customer.city
-  );
-  const tripPlace = tripPlaceLine(
-    tripName,
-    listStayDestination(nextTrip.destination, arrival, route, layovers, customer.city)
-  );
+  const tripName = face?.title || nextTrip.title || "Prochain séjour";
+  const tripPlace = tripPlaceLine(tripName, face?.destination || nextTrip.destination);
 
   return (
     <>
       <article className="account-press overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
         <BookingHero
           booking={toPublicBooking(nextTrip)}
-          places={places?.arrival[nextTrip.id]}
+          places={face?.places}
+          items={face?.items}
           priority
           frameClassName="relative h-[22rem] w-full"
           transitionName={stayTransitionName(nextTrip.reference)}
@@ -212,7 +201,7 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
                 </p>
               ) : null}
               <Suspense fallback={<WeatherChipSkeleton />}>
-                <HomeWeatherChip destination={nextTrip.destination} title={nextTrip.title} />
+                <HomeWeatherChip destination={face?.destination || nextTrip.destination} title={tripName} />
               </Suspense>
             </div>
             <div className="flex min-w-0 flex-col gap-3">
@@ -221,20 +210,8 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
                   <Icon name="flight_takeoff" className="h-3.5 w-3.5" />
                   {formatDateRangeShort(nextTrip.start_date, nextTrip.end_date)}
                 </p>
-                <Suspense
-                  fallback={
-                    <>
-                      <h2 className="mt-1 font-display text-2xl font-bold leading-tight text-white">{tripName}</h2>
-                      {tripPlace ? <p className="line-clamp-2 text-[13px] text-white/80">{tripPlace}</p> : null}
-                    </>
-                  }
-                >
-                  <HomeTripHeading
-                    bookingId={nextTrip.id}
-                    title={nextTrip.title}
-                    destination={nextTrip.destination}
-                  />
-                </Suspense>
+                <h2 className="mt-1 font-display text-2xl font-bold leading-tight text-white">{tripName}</h2>
+                {tripPlace ? <p className="line-clamp-2 text-[13px] text-white/80">{tripPlace}</p> : null}
               </div>
               <Link
                 href={tripHref}

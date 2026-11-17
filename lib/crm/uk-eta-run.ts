@@ -294,7 +294,7 @@ async function loadStay(admin: Admin, bookingId: string) {
   if (error || !booking) return null;
   const row = booking as StayBooking & { customer_id: string; reference: string };
   const [items, travelers, documents, customer] = await Promise.all([
-    admin.from("crm_booking_items").select("kind, lifecycle, title, details, start_at, end_at").eq("booking_id", bookingId),
+    admin.from("crm_booking_items").select("kind, lifecycle, title, details, start_at, end_at, visible_to_client").eq("booking_id", bookingId),
     admin.from("crm_booking_travelers").select("*").eq("booking_id", bookingId),
     admin.from("crm_travel_documents").select("*").eq("customer_id", row.customer_id),
     admin

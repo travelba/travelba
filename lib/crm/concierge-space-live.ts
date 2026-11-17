@@ -1,9 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
-import { carnetVisible, clientVisibleItems } from "@/lib/crm/carnet";
+import { carnetVisible } from "@/lib/crm/carnet";
+import { clientStayFace } from "@/lib/crm/client-stay-face";
 import { pickShareCompanions, type SpaceDeps, type SpacePerformInput } from "@/lib/crm/concierge-space";
 import { RATE_LIMITED_MESSAGE, rateLimit, rateLimitKey } from "@/lib/crm/rate-limit";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { planTripShareSend, tripShareUrl } from "@/lib/crm/trip-share";
 import { deliverTripShareWhatsapp } from "@/lib/crm/trip-share-send";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-code";
@@ -212,13 +212,15 @@ async function shareStay(admin: SupabaseClient, input: SpacePerformInput, stayId
     companionId: who.companionId,
     phone: plan.ok ? plan.phone : null,
     firstName: plan.ok ? plan.firstName : who.label,
-    title: stayTitleFromItems(
-      stay.booking.title,
-      stay.booking.destination,
-      clientVisibleItems(stay.items),
-      "Séjour",
-      typeof customer?.city === "string" ? customer.city : null
-    ),
+    title: clientStayFace({
+      title: stay.booking.title,
+      destination: stay.booking.destination,
+      startDate: stay.booking.start_date,
+      endDate: stay.booking.end_date,
+      items: stay.items,
+      homeCity: typeof customer?.city === "string" ? customer.city : null,
+      fallback: "Séjour",
+    }).title,
     url: tripShareUrl(siteConfig.url, code),
     mediaUrl,
     audience: input.staff ? "staff" : "client",

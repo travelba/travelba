@@ -18,8 +18,8 @@ import {
   jMinusLabel,
   tripDurationDays,
 } from "@/lib/crm/money";
-import { clientVisibleItems, HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
+import { HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
+import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { displayedStayAmount } from "@/lib/crm/displayed-stay";
 import { formatMoney } from "@/lib/crm/money";
 
@@ -30,7 +30,20 @@ export default async function ExampleReservationsPage({
 }) {
   const { tab } = await searchParams;
   const session = readExample();
-  const all = session.bookings;
+  const faces = new Map(
+    session.bookings.map((booking) => [
+      booking.id,
+      clientStayFace({
+        title: booking.title,
+        destination: booking.destination,
+        startDate: booking.start_date,
+        endDate: booking.end_date,
+        items: booking.id === session.booking.id ? session.items : [],
+        homeCity: session.customer.city,
+      }),
+    ])
+  );
+  const all = session.bookings.map((booking) => applyClientStayFace(booking, faces.get(booking.id)!));
   const upcoming = all.filter((b) => isClientUpcomingStay(b));
   const past = all.filter((b) => isClientPastStay(b));
   const showPast = tab === "passes";
@@ -38,7 +51,8 @@ export default async function ExampleReservationsPage({
   const coverRows = list.map((row) => ({
     id: row.id,
     booking: row,
-    items: row.id === session.booking.id ? session.items : undefined,
+    places: faces.get(row.id)?.places,
+    items: faces.get(row.id)?.items,
   }));
   const covers = await resolveListCovers(coverRows, { geocode: false });
   after(() => {
@@ -124,7 +138,8 @@ export default async function ExampleReservationsPage({
               <article className="account-press relative overflow-hidden rounded-xl border border-[#c5c6cd]/35 bg-white shadow-sm">
                 <BookingHero
                   booking={toPublicBooking(b)}
-                  items={b.id === session.booking.id ? session.items : undefined}
+                  places={faces.get(b.id)?.places}
+                  items={faces.get(b.id)?.items}
                   width={800}
                   list
                   resolvedSrc={covers[b.id] ?? null}
@@ -146,9 +161,7 @@ export default async function ExampleReservationsPage({
                       {nights ? ` (${nights} jour${nights > 1 ? "s" : ""})` : ""}
                     </p>
                     <h2 className="font-display text-2xl font-bold leading-tight">
-                      {b.id === session.booking.id
-                        ? stayTitleFromItems(b.title, b.destination, clientVisibleItems(session.items), "Séjour", session.customer.city)
-                        : stayTitleFromItems(b.title, b.destination, [], "Séjour", session.customer.city)}
+                      {faces.get(b.id)?.title || b.title || "Séjour"}
                     </h2>
                   </div>
                 </BookingHero>

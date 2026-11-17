@@ -7,7 +7,7 @@ import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { piecesActives } from "@/lib/crm/dossier-piece";
 import { carnetVisible, clientVisibleItems, tripPlaceLine } from "@/lib/crm/carnet";
 import { HiddenStayNotice } from "@/components/account/HiddenStayNotice";
-import { nextStayLabels } from "@/lib/crm/staff-stay";
+import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { siteConfig } from "@/lib/site";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { AccountPage } from "@/components/account/AccountPage";
@@ -36,10 +36,22 @@ type Props = { params: Promise<{ reference: string }>; searchParams: Promise<{ c
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { reference } = await params;
   const neutral = { title: `Réservation · ${reference} — ${siteConfig.shortName}` };
-  const { user, customer, booking } = await loadClientStay(reference);
+  const { supabase, user, customer, booking } = await loadClientStay(reference);
   if (!user || !customer || !booking || !booking.visible_to_client || booking.archived_at) return neutral;
-  const name = (booking.title || "").trim() || (booking.destination || "").trim() || "Réservation";
-  return { title: `${name} · ${booking.reference || reference} — ${siteConfig.shortName}` };
+  const { data: itemRows } = await supabase
+    .from("crm_booking_items")
+    .select("kind, title, start_at, end_at, sort_order, details, lifecycle, visible_to_client")
+    .eq("booking_id", booking.id);
+  const face = clientStayFace({
+    title: booking.title,
+    destination: booking.destination,
+    startDate: booking.start_date,
+    endDate: booking.end_date,
+    items: itemRows || [],
+    homeCity: customer.city,
+    fallback: "Réservation",
+  });
+  return { title: `${face.title} · ${booking.reference || reference} — ${siteConfig.shortName}` };
 }
 
 /** Le dossier est bien à ce client mais la RLS le cache (dépublié, archivé) : on l’explique, pas un 404. */
@@ -68,29 +80,35 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
     if (await stayExistsForCustomer(customer.id, reference)) return <HiddenStayNotice reference={reference} />;
     notFound();
   }
-  const b = booking;
-  if (b.archived_at) return <HiddenStayNotice reference={b.reference} />;
-  const pub = toPublicBooking(b);
+  if (booking.archived_at) return <HiddenStayNotice reference={booking.reference} />;
 
   const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }, { data: visaRows }] =
     await Promise.all([
-      supabase.from("crm_booking_items").select("*").eq("booking_id", b.id).order("sort_order"),
-      supabase.from("crm_booking_travelers").select("*").eq("booking_id", b.id),
-      supabase.from("crm_booking_documents").select("*").eq("booking_id", b.id).eq("visible_to_client", true),
+      supabase.from("crm_booking_items").select("*").eq("booking_id", booking.id).order("sort_order"),
+      supabase.from("crm_booking_travelers").select("*").eq("booking_id", booking.id),
+      supabase.from("crm_booking_documents").select("*").eq("booking_id", booking.id).eq("visible_to_client", true),
       supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
       supabase.from("crm_travel_companions").select("*").eq("customer_id", customer.id),
-      supabase.from("crm_declined_services").select("kind, service_leg, place, moment").eq("booking_id", b.id),
-      supabase.from("crm_visa_requests").select("country, step, status, accepted_at").eq("booking_id", b.id),
+      supabase.from("crm_declined_services").select("kind, service_leg, place, moment").eq("booking_id", booking.id),
+      supabase.from("crm_visa_requests").select("country, step, status, accepted_at").eq("booking_id", booking.id),
     ]);
 
   const allItems = (items || []) as CrmBookingItem[];
   const rawItems = clientVisibleItems(allItems);
-  if (!carnetVisible(b, rawItems)) return <HiddenStayNotice reference={b.reference} />;
+  if (!carnetVisible(booking, rawItems)) return <HiddenStayNotice reference={booking.reference} />;
 
-  const headerItems = withoutHotelRosterItems(rawItems);
-  const labels = nextStayLabels(b.title, b.destination, headerItems, "Séjour", customer.city);
-  const headline = labels.title || "Séjour";
-  const placeLine = tripPlaceLine(headline, labels.destination);
+  const face = clientStayFace({
+    title: booking.title,
+    destination: booking.destination,
+    startDate: booking.start_date,
+    endDate: booking.end_date,
+    items: allItems,
+    homeCity: customer.city,
+  });
+  const b = applyClientStayFace(booking, face);
+  const pub = toPublicBooking(b);
+  const headline = face.title || "Séjour";
+  const placeLine = tripPlaceLine(headline, face.destination);
   const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null; moment?: string | null }[])
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
@@ -118,7 +136,8 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
 
         <BookingHero
           booking={pub}
-          items={withoutHotelRosterItems(allItems)}
+          places={face.places}
+          items={withoutHotelRosterItems(face.items)}
           priority
           className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
           transitionName={stayTransitionName(b.reference)}

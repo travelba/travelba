@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { publicCoverPath, toCoverJpeg } from "@/lib/crm/cover-file";
 import { catalogCachePath, isCatalogPhotoId } from "@/lib/crm/cover-retouch";
+import { clientStayFace } from "@/lib/crm/client-stay-face";
 import { bookingCoverPlan, catalogPhotoId } from "@/lib/crm/covers";
 import { downloadCrmFile } from "@/lib/crm/files";
 import { isBookingReference } from "@/lib/crm/concierge-notices";
@@ -11,7 +12,7 @@ import { isTripShareCode } from "@/lib/crm/trip-share";
 
 type Ctx = { params: Promise<{ reference: string }> };
 
-type CoverBooking = { destination: string | null; title: string | null; cover_image_path: string | null };
+type CoverBooking = { id: string; destination: string | null; title: string | null; cover_image_path: string | null };
 
 /**
  * JPEG de la couverture déjà publiée.
@@ -39,7 +40,7 @@ export async function GET(request: Request, ctx: Ctx) {
       if (!entryCoverAllowed({ link, reference, now: new Date() })) return new NextResponse(null, { status: 404 });
       const { data } = await admin
         .from("crm_bookings")
-        .select("destination, title, cover_image_path")
+        .select("id, destination, title, cover_image_path")
         .eq("reference", reference)
         .eq("visible_to_client", true)
         .is("archived_at", null)
@@ -48,7 +49,7 @@ export async function GET(request: Request, ctx: Ctx) {
     } else {
       const { data } = await admin
         .from("crm_bookings")
-        .select("destination, title, cover_image_path")
+        .select("id, destination, title, cover_image_path")
         .eq("reference", reference)
         .eq("share_code", partage)
         .eq("visible_to_client", true)
@@ -71,11 +72,30 @@ export async function GET(request: Request, ctx: Ctx) {
     }
   }
   if (!bytes) {
-    const plan = bookingCoverPlan({
+    let itemRows: Parameters<typeof clientStayFace>[0]["items"] = [];
+    try {
+      const admin = createServiceClient();
+      const { data } = await admin
+        .from("crm_booking_items")
+        .select("kind, title, start_at, end_at, sort_order, details, lifecycle, visible_to_client")
+        .eq("booking_id", booking.id);
+      itemRows = data || [];
+    } catch {
+      itemRows = [];
+    }
+    const face = clientStayFace({
+      title: booking.title,
       destination: booking.destination,
-      title: booking.title || "",
-      cover_image_path: null,
+      items: itemRows || [],
     });
+    const plan = bookingCoverPlan(
+      {
+        destination: face.destination || booking.destination,
+        title: face.title || booking.title || "",
+        cover_image_path: null,
+      },
+      { items: face.items, places: face.places }
+    );
     const photo = plan.mode === "none" ? null : catalogPhotoId(plan.src);
     if (photo && isCatalogPhotoId(photo)) {
       try {

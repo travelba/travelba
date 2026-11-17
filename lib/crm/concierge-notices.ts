@@ -1,5 +1,6 @@
 import { isTripShareCode } from "./trip-share-check";
 import { isEntryCode } from "./entry-code";
+import { clientStayFace } from "./client-stay-face";
 import { stayDestinationPhrase, stayPhrase } from "./stay-phrase";
 import type { TripStep } from "./layover";
 import { generatedCityCoverSpec } from "./cover-catalog";
@@ -329,7 +330,18 @@ export function planStayNotice(input: {
   if (!input.published) return null;
   const path = reservationPath(input.reference);
   if (!path) return null;
-  const place = stayPlaceName(input.destination, input.title, input.items, input.homeCity);
+  const face = clientStayFace({
+    title: input.title,
+    destination: input.destination,
+    items: input.items,
+    homeCity: input.homeCity,
+  });
+  const place = stayPlaceName(
+    face.destination || input.destination,
+    face.title || input.title,
+    face.fromCards ? face.items : input.items,
+    input.homeCity
+  );
   if (!place) return null;
   const mediaUrl = stayCoverUrl(input.reference, input.hasCover, input.coverAccess);
   return {
@@ -479,7 +491,18 @@ export function planPiecesNotices(input: {
   if (!input.published) return [];
   const path = reservationPath(input.reference);
   if (!path) return [];
-  const place = stayPlaceName(input.destination ?? null, input.title ?? null, input.items, input.homeCity);
+  const face = clientStayFace({
+    title: input.title,
+    destination: input.destination,
+    items: input.items,
+    homeCity: input.homeCity,
+  });
+  const place = stayPlaceName(
+    face.destination || input.destination || null,
+    face.title || input.title || null,
+    face.fromCards ? face.items : input.items,
+    input.homeCity
+  );
   const plans: PiecesPlan[] = [];
   for (const group of clusterPieces(input.pieces)) {
     const sentence = piecesSentence(group.map((piece) => piece.kind), input.reference, place);

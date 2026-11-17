@@ -9,8 +9,8 @@ import { Icon } from "@/components/crm/icons";
 import { BoardingPass } from "@/components/account/BoardingPass";
 import type { ClientBoardingCard } from "@/lib/crm/client-boarding-pass";
 import { clientVisibleItems, nextTimelineFlight, tripPlaceLine } from "@/lib/crm/carnet";
+import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { buildLiveFlight } from "@/lib/crm/next-flight-model";
-import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { destinationWeather } from "@/lib/crm/destination-weather";
 import { EXAMPLE_BASE } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
@@ -54,21 +54,23 @@ import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "
 
 export default async function ExampleHomePage() {
   const session = readExample();
-  const nextTrip = session.booking;
+  const face = clientStayFace({
+    title: session.booking.title,
+    destination: session.booking.destination,
+    startDate: session.booking.start_date,
+    endDate: session.booking.end_date,
+    items: session.items,
+    homeCity: session.customer.city,
+    fallback: "Prochain séjour",
+  });
+  const nextTrip = applyClientStayFace(session.booking, face);
   const balance = session.ledger.balanceValue;
   const firstName = greetingGivenName(session.customer.first_name) || "Camille";
   const countdown = jMinusLabel(nextTrip.start_date);
-  const labels = nextStayLabels(
-    nextTrip.title,
-    nextTrip.destination,
-    clientVisibleItems(session.items),
-    "Prochain séjour",
-    session.customer.city
-  );
-  const tripName = labels.title || "Prochain séjour";
-  const tripPlace = tripPlaceLine(tripName, labels.destination);
+  const tripName = face.title || "Prochain séjour";
+  const tripPlace = tripPlaceLine(tripName, face.destination);
   const tripHref = `${EXAMPLE_BASE}/reservations/${nextTrip.reference}`;
-  const weather = await destinationWeather(nextTrip.destination, nextTrip.title);
+  const weather = await destinationWeather(face.destination, face.title);
   const visibleItems = clientVisibleItems(session.items);
   const homeFlight = nextTimelineFlight(visibleItems);
   const flightItem = visibleItems.find((row) => row.id === homeFlight?.itemId) || null;
@@ -124,7 +126,8 @@ export default async function ExampleHomePage() {
       <article className="account-press overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
         <BookingHero
           booking={toPublicBooking(nextTrip)}
-          items={session.items}
+          places={face.places}
+          items={face.items}
           priority
           frameClassName="relative h-[22rem] w-full"
           transitionName={stayTransitionName(nextTrip.reference)}

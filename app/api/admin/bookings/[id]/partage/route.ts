@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { clientVisibleItems } from "@/lib/crm/carnet";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
+import { clientStayFace } from "@/lib/crm/client-stay-face";
 import { liveConciergeImage, whatsappTypeImageUrl } from "@/lib/crm/concierge-notices";
 import { deliverTripShareWhatsapp } from "@/lib/crm/trip-share-send";
 import { planTripShareSend, tripShareUrl } from "@/lib/crm/trip-share";
@@ -72,13 +71,13 @@ export async function POST(request: Request, ctx: Ctx) {
     companionId,
     phone: plan.ok ? plan.phone : null,
     firstName: plan.ok ? plan.firstName : "",
-    title: stayTitleFromItems(
-      booking.title,
-      booking.destination,
-      clientVisibleItems(itemRows || []),
-      "Séjour",
-      typeof customer?.city === "string" ? customer.city : null
-    ),
+    title: clientStayFace({
+      title: booking.title,
+      destination: booking.destination,
+      items: itemRows || [],
+      homeCity: typeof customer?.city === "string" ? customer.city : null,
+      fallback: "Séjour",
+    }).title,
     url: tripShareUrl(siteConfig.url, code),
     mediaUrl,
     audience: "staff",
