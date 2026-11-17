@@ -12,7 +12,6 @@ import { completeFlightRoutes } from "@/lib/crm/flight-route";
 import {
   countsAsCarnetCard,
   isActiveItem,
-  isLedgerExpenseKind,
   type CrmBooking,
   type CrmBookingCard,
   type CrmBookingDocument,
@@ -60,10 +59,12 @@ import { chargeableTicketingFee } from "@/lib/crm/ticketing-fee";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
 import {
   canConfirmCarnetPublish,
+  clientShowList,
   publishConfirmHold,
+  publishRevealIds,
   coverQuery,
   hotelDisplayName,
-  keptHiddenFromClient,
+  showClientCardCountCopy,
   stayNameField,
 } from "@/lib/crm/carnet";
 import { bookingCoverPlan, catalogPhotoId } from "@/lib/crm/covers";
@@ -1174,22 +1175,16 @@ export function BookingEditor({
     router.refresh();
   }
 
-  const revealItems = items.filter(
-    (item) =>
-      !keptHiddenFromClient(item.details) &&
-      item.kind !== "fee" &&
-      !isLedgerExpenseKind(item.kind) &&
-      (!booking.visible_to_client || !item.visible_to_client)
-  );
+  const revealIds = new Set(publishRevealIds(items, { includeKeptHidden: true }));
+  const revealItems = clientShowList(items, booking.visible_to_client);
+  const becomingVisible = revealItems.filter((item) => item.visible_to_client !== true);
   const revealDocs = documents.filter((doc) => {
     if (booking.visible_to_client && doc.visible_to_client) return false;
     if (!doc.booking_item_id) return true;
-    const linked = items.find((item) => item.id === doc.booking_item_id);
-    if (!linked) return true;
-    return !keptHiddenFromClient(linked.details) && !isLedgerExpenseKind(linked.kind);
+    return revealIds.has(doc.booking_item_id);
   });
   const hiddenFromClient = items.filter(
-    (item) => isActiveItem(item) && countsAsCarnetCard(item.kind) && keptHiddenFromClient(item.details)
+    (item) => isActiveItem(item) && countsAsCarnetCard(item.kind) && !revealIds.has(item.id)
   );
   const publishReady = canConfirmCarnetPublish({
     stayVisible: booking.visible_to_client,
@@ -1753,6 +1748,11 @@ export function BookingEditor({
           ) : confirm === "publish" ? (
             <>
               <p className="text-sm text-muted">Le client verra ces éléments.</p>
+              {becomingVisible.length ? (
+                <p className="text-sm font-semibold text-[var(--admin-navy)]">
+                  {showClientCardCountCopy(becomingVisible.length)}
+                </p>
+              ) : null}
               <ul className="space-y-1 text-sm text-[var(--admin-navy)]">
                 {revealItems.map((item) => (
                   <li key={item.id}>{reviewStepLabel(item)}</li>
@@ -1761,7 +1761,7 @@ export function BookingEditor({
                   <li key={doc.id}>{doc.file_name || "Document"}</li>
                 ))}
                 {!revealItems.length && !revealDocs.length ? (
-                  <li>Aucune étape à montrer. Retirez un masquage ou ajoutez une étape.</li>
+                  <li>Aucune étape à montrer. Ajoutez une étape.</li>
                 ) : null}
               </ul>
             </>

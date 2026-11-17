@@ -124,7 +124,7 @@ export function ClientInterfacePreview({
   const [screen, setScreen] = useState<ClientPreviewScreen>(initialScreen);
   const items = withoutHotelRosterItems(sourceItems);
   const published = booking.visible_to_client === true;
-  const reveal = new Set(publishRevealIds(items));
+  const reveal = new Set(publishRevealIds(items, { includeKeptHidden: !published }));
   const liveItems = clientVisibleItems(items);
   const shownItems = published ? liveItems : items.filter((item) => reveal.has(item.id));
   const hiddenIds = new Set(items.map((item) => item.id).filter((id) => !reveal.has(id)));

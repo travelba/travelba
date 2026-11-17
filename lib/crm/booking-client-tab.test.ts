@@ -50,6 +50,10 @@ test("le geste principal du dossier ne disparaît jamais", () => {
   assert.match(primary, /stayAction === "cacher"/);
   assert.match(primary, /Cacher au client/);
   assert.match(primary, /Mettre à jour le carnet/);
+  assert.match(editor, /showClientCardCountCopy\(becomingVisible\.length\)/);
+  assert.match(editor, /clientShowList\(items, booking\.visible_to_client\)/);
+  const route = readFileSync(join(root, "app/api/admin/bookings/[id]/route.ts"), "utf8");
+  assert.match(route, /includeKeptHidden: showing/);
   assert.equal(/\) : null;\s*$/.test(primary.trim()), false);
   assert.match(editor, /← Dossiers/);
   assert.equal(editor.includes("← Réservations"), false);
