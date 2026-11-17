@@ -99,7 +99,9 @@ export type HotelInboxRow = {
   cardLabel: string | null;
   ceilingEuros: string;
   followUpLabel: string | null;
-  section: "payment" | "reply" | "unanswered" | "waiting" | "rest" | "paid" | "ended";
+  /** Début du séjour, pour trier les séjours à venir. */
+  arrivalAt: string;
+  section: "payment" | "reply" | "unanswered" | "waiting" | "rest" | "upcoming" | "paid" | "ended";
 };
 
 export type HotelInbox = {
@@ -108,7 +110,9 @@ export type HotelInbox = {
   unanswered: HotelInboxRow[];
   waiting: HotelInboxRow[];
   rest: HotelInboxRow[];
-  /** Fils déjà payés, autorisés ou probablement payés. Replié, sans relance. */
+  /** Séjours à venir ou en cours, visibles, avec le badge de paiement. */
+  upcoming: HotelInboxRow[];
+  /** Séjours terminés déjà payés. Replié, sans relance. */
   paid: HotelInboxRow[];
   endedUnpaid: HotelInboxRow[];
   /** Lecture principale en échec. Les listes sont vides, le bandeau le dit. */
@@ -138,6 +142,8 @@ export type HotelPaymentEvidence = {
   at: string | null;
   merchant: string | null;
   cardLabel: string | null;
+  /** Quatre derniers chiffres de la carte qui a payé, si on les a. */
+  last4?: string | null;
   confidence?: "haute" | "moyenne" | "basse" | null;
 };
 
@@ -149,6 +155,7 @@ type PaymentHit = {
   currency: string;
   at: string;
   id: string;
+  last4: string | null;
 };
 
 const SIGNAL_RULES: { signal: HotelPaymentSignal; pattern: RegExp }[] = [
@@ -395,7 +402,14 @@ function recognizePayment(request: HotelInboxRequest, evidence: HotelPaymentEvid
     if (row.place === "proposal") {
       if (row.confidence !== "haute" || row.bookingId !== request.bookingId) continue;
       if (!merchantResemblesHotel(row.merchant, request.hotelName) || !money || money.amount <= 0) continue;
-      hits.push({ outcome: "probable", amount: money.amount, currency: money.currency, at: row.at || "", id: row.id });
+      hits.push({
+        outcome: "probable",
+        amount: money.amount,
+        currency: money.currency,
+        at: row.at || "",
+        id: row.id,
+        last4: fourDigits(row.last4),
+      });
       continue;
     }
     const mode = settlementOf(row, money);
@@ -408,10 +422,23 @@ function recognizePayment(request: HotelInboxRequest, evidence: HotelPaymentEvid
     const dossier = row.place === "dossier" && row.bookingId === request.bookingId && named;
     const card = row.place === "card" && row.bookingId === request.bookingId && named;
     if (!stay && !dossier && !card) continue;
-    hits.push({ outcome: mode, amount: money.amount, currency: money.currency, at: row.at || "", id: row.id });
+    hits.push({
+      outcome: mode,
+      amount: money.amount,
+      currency: money.currency,
+      at: row.at || "",
+      id: row.id,
+      last4: fourDigits(row.last4),
+    });
   }
   const rank = { paid: 0, authorized: 1, probable: 2 };
-  hits.sort((a, b) => rank[a.outcome] - rank[b.outcome] || time(b.at) - time(a.at) || a.id.localeCompare(b.id));
+  hits.sort(
+    (a, b) =>
+      rank[a.outcome] - rank[b.outcome] ||
+      time(b.at) - time(a.at) ||
+      Number(Boolean(b.last4)) - Number(Boolean(a.last4)) ||
+      a.id.localeCompare(b.id)
+  );
   return hits[0] || null;
 }
 
@@ -447,6 +474,26 @@ function formatFrenchDay(day: string) {
   const date = new Date(`${day}T12:00:00`);
   if (Number.isNaN(date.getTime())) return day;
   return date.toLocaleDateString("fr-FR", { dateStyle: "medium", timeZone: "Europe/Paris" });
+}
+
+/** JJ/MM, pour le badge « Payé le ». */
+function formatDayMonth(day: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!match) return day;
+  return `${match[3]}/${match[2]}`;
+}
+
+function fourDigits(value: string | null | undefined) {
+  const digits = (value || "").replace(/\D/g, "").slice(-4);
+  return digits.length === 4 ? digits : null;
+}
+
+function paidCaption(payment: PaymentHit, nowMs: number) {
+  if (payment.outcome === "authorized") return "Paiement autorisé, en attente Pliant";
+  if (payment.outcome === "probable") return "Payé probablement, à pointer";
+  const day = formatDayMonth(stayDepartureDay(payment.at, null) || parisIsoDate(new Date(time(payment.at) || nowMs)));
+  const tail = payment.last4 ? ` · ••${payment.last4}` : "";
+  return `Payé le ${day} · ${formatMoney(payment.amount, payment.currency)}${tail}`;
 }
 
 export function unansweredDaysLabel(sentAt: string, nowMs: number) {
@@ -541,14 +588,7 @@ function readRequest(
     payUrl: safePayUrl(link) || safePayUrl(hotelReplyLink(text)),
     amountCents,
     outcome,
-    paidLabel:
-      outcome === "authorized"
-        ? "Paiement autorisé, en attente Pliant"
-        : outcome === "probable"
-          ? "Payé probablement, à pointer"
-          : payment
-            ? `Payé le ${formatFrenchDay(stayDepartureDay(payment.at, null) || parisIsoDate(new Date(time(payment.at) || nowMs)))} · ${formatMoney(payment.amount, payment.currency)}`
-            : null,
+    paidLabel: payment ? paidCaption(payment, nowMs) : null,
     askedAfter,
     confirmed,
     settledText,
@@ -567,16 +607,24 @@ function rowOf(
   paymentsKnown: boolean
 ): HotelInboxRow {
   const request = reading.request;
+  const silent =
+    !reading.real && Number.isFinite(time(reading.outboundAt)) && nowMs - time(reading.outboundAt) >= UNANSWERED_AFTER_MS;
   const status =
-    section === "unanswered"
-      ? unansweredDaysLabel(reading.outboundAt, nowMs)
-      : section === "waiting"
-        ? "En attente"
-        : section === "rest"
-          ? reading.hotelWroteLast
-            ? "Réponse à traiter"
-            : "En attente"
-          : "Réponse à traiter";
+    (section === "upcoming" || section === "paid") && reading.paidLabel
+      ? reading.paidLabel
+      : section === "upcoming" && !reading.real
+        ? silent
+          ? unansweredDaysLabel(reading.outboundAt, nowMs)
+          : "En attente"
+        : section === "unanswered"
+          ? unansweredDaysLabel(reading.outboundAt, nowMs)
+          : section === "waiting"
+            ? "En attente"
+            : section === "rest"
+              ? reading.hotelWroteLast
+                ? "Réponse à traiter"
+                : "En attente"
+              : "Réponse à traiter";
   const replyTurn = [...request.turns].reverse().find((turn) => turn.direction === "in" && !isNoiseHotelTurn(turn));
   const href = reading.hotelWroteLast
     ? replyHref(request.bookingId, request.itemId, replyTurn?.id || request.id)
@@ -587,6 +635,7 @@ function rowOf(
     : card && card.limitCents > 0
       ? formatMoney(card.limitCents / 100, card.currency || "EUR")
       : null;
+  const asksPayment = Boolean(reading.signal) || request.kind === "payment_link";
   const paymentState: HotelInboxRow["paymentState"] =
     reading.outcome === "paid"
       ? "paid"
@@ -594,7 +643,7 @@ function rowOf(
         ? "authorized"
         : reading.outcome === "probable"
           ? "probable"
-          : !reading.signal
+          : !asksPayment
             ? "hidden"
             : !paymentsKnown
               ? "unknown"
@@ -604,6 +653,11 @@ function rowOf(
     : card && card.limitCents > 0
       ? (card.limitCents / 100).toFixed(2).replace(".", ",")
       : "";
+  const digits = reading.outcome === "paid" ? fourDigits(card?.last4) : null;
+  const paidLabel =
+    reading.paidLabel && digits && !reading.paidLabel.includes("••") ? `${reading.paidLabel} · ••${digits}` : reading.paidLabel;
+  const lineStatus = (section === "upcoming" || section === "paid") && paidLabel ? paidLabel : section === "paid" ? "Payé" : status;
+  const showCard = Boolean(card && card.status === "active" && (section === "payment" || section === "ended"));
   return {
     id: `${request.bookingId}:${request.itemId}`,
     requestId: request.id,
@@ -618,7 +672,7 @@ function rowOf(
     clientFirst: request.clientFirst,
     clientLast: request.clientLast,
     stayLabel: stayLabel(request.stayStart, request.itemEnd || request.bookingEnd),
-    status: section === "paid" ? reading.paidLabel || "Payé" : status,
+    status: lineStatus,
     lastWriter: reading.hotelWroteLast ? "L'hôtel" : "L'agence",
     activityAt: reading.activityAt,
     excerpt: reading.excerpt,
@@ -628,19 +682,22 @@ function rowOf(
     payUrl: reading.payUrl,
     amountLabel,
     paymentState,
-    paidLabel: reading.paidLabel,
-    cardLabel: card && card.status === "active" ? pliantCardCaption(card) : null,
+    paidLabel,
+    cardLabel: showCard && card ? pliantCardCaption(card) : null,
     ceilingEuros: ceiling,
     followUpLabel: followUpCountLabel(request.followUpCount),
+    arrivalAt: request.stayStart || "",
     section,
   };
 }
 
-const SECTION_RANK = { payment: 0, reply: 1, unanswered: 2, waiting: 3, rest: 4, paid: 5, ended: 6 } as const;
+const SECTION_RANK = { payment: 0, reply: 1, upcoming: 2, unanswered: 3, waiting: 4, rest: 5, paid: 6, ended: 7 } as const;
 
 /**
  * Une ligne par dossier et par hôtel.
- * (a) paiement à faire, (b) autre réponse, (c) sans réponse, (d) le reste, puis les séjours terminés impayés.
+ * En haut : paiement à faire et réponse non payée.
+ * Puis les séjours à venir ou en cours, visibles.
+ * Les séjours terminés payés, et ceux au paiement jamais réglé, restent repliés.
  */
 export function buildHotelInbox(
   requests: HotelInboxRequest[],
@@ -668,12 +725,12 @@ export function buildHotelInbox(
     list.push(reading);
     groups.set(key, list);
   }
-  const inbox: HotelInbox = { payment: [], replies: [], unanswered: [], waiting: [], rest: [], paid: [], endedUnpaid: [] };
+  const inbox: HotelInbox = { payment: [], replies: [], unanswered: [], waiting: [], rest: [], upcoming: [], paid: [], endedUnpaid: [] };
   for (const list of groups.values()) {
     if (list.every((reading) => reading.cancelled)) continue;
     const open = list.filter((reading) => !reading.cancelled);
     const ended = open.every((reading) => reading.ended);
-    const picked = choose(open, ended, nowMs);
+    const picked = choose(open, ended);
     if (!picked) continue;
     const pick = picked.reading;
     const section = picked.section;
@@ -686,7 +743,7 @@ export function buildHotelInbox(
       )
       .map((link) => link.pliantCardId);
     const card =
-      section === "payment" || section === "ended"
+      section === "payment" || section === "ended" || pick.outcome === "paid"
         ? matchHotelInboxCard({
             bookingId: pick.request.bookingId,
             hotelName: pick.request.hotelName,
@@ -703,32 +760,34 @@ export function buildHotelInbox(
     else if (section === "unanswered") inbox.unanswered.push(row);
     else if (section === "waiting") inbox.waiting.push(row);
     else if (section === "rest") inbox.rest.push(row);
+    else if (section === "upcoming") inbox.upcoming.push(row);
     else if (section === "paid") inbox.paid.push(row);
     else inbox.endedUnpaid.push(row);
   }
   const oldest = (a: HotelInboxRow, b: HotelInboxRow) => a.activityAt.localeCompare(b.activityAt) || a.id.localeCompare(b.id);
+  const byArrival = (a: HotelInboxRow, b: HotelInboxRow) =>
+    (a.arrivalAt || "9999").localeCompare(b.arrivalAt || "9999") || a.hotel.localeCompare(b.hotel) || a.id.localeCompare(b.id);
   inbox.payment.sort(oldest);
   inbox.replies.sort(oldest);
   inbox.unanswered.sort(oldest);
   inbox.waiting.sort(oldest);
   inbox.rest.sort(oldest);
+  inbox.upcoming.sort(byArrival);
   inbox.paid.sort(oldest);
   inbox.endedUnpaid.sort(oldest);
   return inbox;
 }
 
-function sectionOf(reading: Reading, ended: boolean, nowMs: number): HotelInboxRow["section"] | null {
+function sectionOf(reading: Reading, ended: boolean): HotelInboxRow["section"] | null {
   if (ended) {
-    if (reading.signal && reading.real && !reading.noise && reading.outcome === "none" && !reading.settledText && !reading.askedAfter) {
-      return "ended";
-    }
+    if (reading.outcome !== "none" && !reading.askedAfter) return "paid";
+    if (reading.signal && reading.real && !reading.noise && reading.outcome === "none" && !reading.settledText) return "ended";
     return null;
   }
-  // Le paiement passe avant le classement, le bruit, le silence et le reste.
-  if (reading.outcome === "paid" && reading.classified) return null;
+  // À venir ou en cours : le paiement reste visible, y compris un fil classé.
   if (reading.outcome !== "none") {
-    if (reading.askedAfter) return "reply";
-    return "paid";
+    if (reading.askedAfter && !reading.classified && !reading.noise) return "reply";
+    return "upcoming";
   }
   if (reading.classified || reading.noise) return "rest";
   const payable = Boolean(reading.signal) && reading.real && reading.hotelWroteLast && !reading.settledText;
@@ -736,19 +795,23 @@ function sectionOf(reading: Reading, ended: boolean, nowMs: number): HotelInboxR
   if (reading.settledText || reading.confirmed) return null;
   if (reading.hotelWroteLast && reading.real) return "reply";
   if (!reading.real) {
-    const at = time(reading.outboundAt);
-    if (!Number.isFinite(at)) return null;
-    return nowMs - at >= UNANSWERED_AFTER_MS ? "unanswered" : "waiting";
+    if (!Number.isFinite(time(reading.outboundAt))) return null;
+    return "upcoming";
   }
   // L’agence a écrit après une vraie réponse : le fil reste dans Le reste, replié.
   return "rest";
 }
 
-function choose(list: Reading[], ended: boolean, nowMs: number) {
+function choose(list: Reading[], ended: boolean) {
   const ranked = list
-    .map((reading) => ({ reading, section: sectionOf(reading, ended, nowMs) }))
+    .map((reading) => ({ reading, section: sectionOf(reading, ended) }))
     .filter((item): item is { reading: Reading; section: HotelInboxRow["section"] } => Boolean(item.section));
   if (ended) {
+    const paid = ranked.filter((item) => item.section === "paid");
+    if (paid.length) {
+      paid.sort((a, b) => time(b.reading.activityAt) - time(a.reading.activityAt));
+      return paid[0];
+    }
     const unpaid = ranked.filter((item) => item.section === "ended");
     unpaid.sort((a, b) => time(a.reading.activityAt) - time(b.reading.activityAt));
     return unpaid[0] || null;
