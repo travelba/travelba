@@ -18,7 +18,16 @@ import { missingDbColumn } from "./optional-column";
 import { pliantSpendSettlement, suggestCostTargets } from "./trip-costs";
 import { loadCostTargets } from "./trip-costs-db";
 
-const EMPTY: HotelInbox = { payment: [], replies: [], unanswered: [], waiting: [], rest: [], paid: [], endedUnpaid: [] };
+const EMPTY: HotelInbox = {
+  payment: [],
+  replies: [],
+  unanswered: [],
+  waiting: [],
+  rest: [],
+  upcoming: [],
+  paid: [],
+  endedUnpaid: [],
+};
 
 type ItemRow = {
   id: string;
@@ -654,10 +663,10 @@ async function loadPaymentEvidence(
       );
       for (const row of items as { id: string; kind: string | null }[]) kinds.set(row.id, row.kind || "");
     }
-    const cardByPliant = new Map<string, { bookingId: string; label: string }>();
+    const cardByPliant = new Map<string, { bookingId: string; label: string; last4: string | null }>();
     for (const card of input.cards) {
       if (!card.pliantCardId) continue;
-      cardByPliant.set(card.pliantCardId, { bookingId: card.bookingId, label: card.label });
+      cardByPliant.set(card.pliantCardId, { bookingId: card.bookingId, label: card.label, last4: card.last4 });
     }
     const sourceIds = costs.filter((row) => row.source === "pliant" && row.source_id).map((row) => row.source_id as string);
     const spends = await readEvidenceSpends(supabase, sourceIds, [...cardByPliant.keys()]);
@@ -684,6 +693,7 @@ async function loadPaymentEvidence(
           at: cost.occurred_on,
           merchant: cost.supplier,
           cardLabel: null,
+          last4: null,
           confidence: null,
         });
         continue;
@@ -705,6 +715,7 @@ async function loadPaymentEvidence(
         at: spend?.booked_at || cost.occurred_on,
         merchant: spend?.merchant || cost.supplier,
         cardLabel: card?.label || spend?.card_label || null,
+        last4: card?.last4 || null,
         confidence: null,
       });
     }
@@ -727,6 +738,7 @@ async function loadPaymentEvidence(
         at: spend.booked_at,
         merchant: spend.merchant,
         cardLabel: card.label || spend.card_label,
+        last4: card.last4,
         confidence: null,
       });
     }
@@ -794,7 +806,7 @@ async function readEvidenceSpends(supabase: SupabaseClient, sourceIds: string[],
 async function readProposals(
   supabase: SupabaseClient,
   hotelsByBooking: Map<string, string[]>,
-  cardByPliant: Map<string, { bookingId: string; label: string }>,
+  cardByPliant: Map<string, { bookingId: string; label: string; last4: string | null }>,
   attached: Set<string>
 ) {
   const names = [...hotelsByBooking.values()].flat();
@@ -859,6 +871,7 @@ async function readProposals(
         at: spend.booked_at,
         merchant: spend.merchant,
         cardLabel: card?.label || spend.card_label,
+        last4: card?.last4 || null,
         confidence: "haute",
       });
       break;
