@@ -7,7 +7,7 @@ import {
   type FlightAutoCandidate,
   type FlightAutoDecision,
 } from "@/lib/crm/email-flight-deposit";
-import { clientIsMailTraveler } from "@/lib/crm/email-match";
+import { clientIsMailTraveler, stayDatesCompatible } from "@/lib/crm/email-match";
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
 
 type StayExtract = BookingExtract;
@@ -73,15 +73,27 @@ function knownClientId(candidates: FlightAutoCandidate[]) {
     const reason = row.reason || "";
     const score = row.score || 0;
     if (score >= 100 && /e-mail du client/i.test(reason)) return true;
-    return score >= 92 && /nom et prénom|prénom et nom invers/i.test(reason);
+    return score >= 92 && /nom et prénom|prénom et nom invers|accompagnant de/i.test(reason);
   });
   const ids = [...new Set(rows.map((row) => row.customer_id as string))];
   return ids.length === 1 ? ids[0] : null;
 }
 
+const DATE_BOUND_REASON =
+  /voyageur et dates|même séjour|ajouter au dossier|nom, destination et dates|hôtel, dates/i;
+
+/** Référence, PNR, ou dates qui se croisent ou sont proches. La même ville seule ne compte pas. */
+function compatibleOpenDossier(row: FlightAutoCandidate, extract: StayExtract) {
+  const reason = row.reason || "";
+  if (/référence/i.test(reason)) return true;
+  if (row.start_date || row.end_date) return stayDatesCompatible(extract, row.start_date, row.end_date);
+  return DATE_BOUND_REASON.test(reason);
+}
+
 /**
- * Un seul client connu, aucun dossier du même voyage : ouvrir un séjour caché.
- * Un client inconnu ou un homonyme ne crée rien.
+ * Un seul client connu, aucun dossier compatible : ouvrir un séjour caché.
+ * Compatible : référence, PNR, ou dates qui se croisent ou sont proches.
+ * Un client inconnu, un homonyme, ou plusieurs fiches identiques : rien.
  */
 export function decideStayAutoCreate(
   extract: StayExtract | null | undefined,
@@ -95,6 +107,12 @@ export function decideStayAutoCreate(
   const customerId = knownClientId(rows);
   if (!customerId) return null;
   if (context?.customer && !clientIsMailTraveler(context.customer, extract)) return null;
-  if (rows.some((row) => row.booking_id && row.customer_id === customerId)) return null;
+  if (
+    rows.some(
+      (row) => row.booking_id && row.customer_id === customerId && compatibleOpenDossier(row, extract)
+    )
+  ) {
+    return null;
+  }
   return { customerId };
 }

@@ -19,6 +19,7 @@ import {
   suggestBookingByTraveler,
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
+  soleCompatibleDestinationId,
   usableCustomerEmail,
 } from "./email-match";
 import { detectCancellationDocument, detectRemovedPassengers, isCancellationExtract, parseRefundAmount } from "./ingest-types";
@@ -82,6 +83,74 @@ describe("suggestCustomerFromExtract", () => {
     const res = suggestCustomerFromExtract(customers, extractWith({}));
     assert.equal(res.autoCustomerId, null);
     assert.equal(res.candidates.length, 0);
+  });
+
+  it("garde 92 pour un prénom exact même si le nom de famille est partagé", () => {
+    const res = suggestCustomerFromExtract(
+      customers,
+      extractWith({ customer_first_name: "Marie", customer_last_name: "Dupont" })
+    );
+    const marie = res.candidates.find((row) => row.customer_id === "c2");
+    const paul = res.candidates.find((row) => row.customer_id === "c3");
+    assert.equal(res.autoCustomerId, "c2");
+    assert.equal(marie?.score, 92);
+    assert.equal(marie?.reason, "Nom et prénom");
+    assert.equal(paul?.score, 60);
+  });
+
+  it("un homonyme complet ne choisit personne", () => {
+    const twins = [
+      { id: "a", first_name: "Amin", last_name: "Khiari", company_name: null, email: "a@example.com" },
+      { id: "b", first_name: "Amin", last_name: "Khiari", company_name: null, email: "b@example.com" },
+    ];
+    const res = suggestCustomerFromExtract(
+      twins,
+      extractWith({ travelers: [{ first_name: "Amin", last_name: "Khiari" }] })
+    );
+    assert.equal(res.autoCustomerId, null);
+    assert.deepEqual(
+      res.candidates.map((row) => row.score).sort(),
+      [85, 85]
+    );
+  });
+
+  it("un accompagnant exact pointe vers la fiche du titulaire", () => {
+    const holder = {
+      id: "c-raphael",
+      first_name: "Raphaël",
+      last_name: "Fettaya",
+      company_name: null,
+      email: "raphael@example.com",
+    };
+    const swapped = suggestCustomerFromExtract(
+      [holder],
+      extractWith({ travelers: [{ first_name: "BECACHE", last_name: "NOEMIE" }] }),
+      [{ id: "comp-noe", customer_id: "c-raphael", first_name: "Noémie", last_name: "Becache" }]
+    );
+    assert.equal(swapped.autoCustomerId, "c-raphael");
+    assert.equal(swapped.candidates[0]?.score, 92);
+    assert.equal(swapped.candidates[0]?.reason, "Accompagnant de Raphaël Fettaya");
+    const straight = suggestCustomerFromExtract(
+      [holder],
+      extractWith({ travelers: [{ first_name: "Noémie", last_name: "Becache" }] }),
+      [{ id: "comp-noe", customer_id: "c-raphael", first_name: "Becache", last_name: "Noémie", usage_name: null }]
+    );
+    assert.equal(straight.autoCustomerId, "c-raphael");
+    assert.equal(straight.candidates[0]?.score, 92);
+  });
+
+  it("un titulaire et l’accompagnant identique d’une autre fiche ne créent rien", () => {
+    const holders = [
+      { id: "c-raphael", first_name: "Raphaël", last_name: "Fettaya", company_name: null, email: "r@example.com" },
+      { id: "c-autre", first_name: "Paul", last_name: "Martin", company_name: null, email: "p@example.com" },
+    ];
+    const res = suggestCustomerFromExtract(
+      holders,
+      extractWith({ travelers: [{ first_name: "Raphaël", last_name: "Fettaya" }] }),
+      [{ id: "comp", customer_id: "c-autre", first_name: "Raphaël", last_name: "Fettaya" }]
+    );
+    assert.equal(res.autoCustomerId, null);
+    assert.ok(res.candidates.every((row) => row.score < 92));
   });
 });
 
@@ -914,6 +983,7 @@ describe("suggestBookingByDestination", () => {
     assert.equal(one.autoBookingId, null);
     assert.equal(one.candidates.length, 1);
     assert.equal(one.candidates[0].booking_id, "b-old");
+    assert.equal(one.candidates[0].start_date, "2026-04-01");
     assert.match(one.candidates[0].reason, /annulé/);
 
     const two = suggestBookingByDestination(extract, [openRome, cancelledRome], people);
@@ -930,6 +1000,72 @@ describe("suggestBookingByDestination", () => {
     });
     const res = suggestBookingByDestination(extract, [lisbon], people);
     assert.deepEqual(res.candidates, []);
+  });
+
+  it("ne propose le dossier de la même ville que si les dates se croisent ou sont proches", () => {
+    const extract = extractWith({
+      document_status: "confirmed",
+      destination: "Rome",
+      start_date: "2026-12-16",
+      end_date: "2026-12-21",
+      customer_first_name: "Léa",
+      customer_last_name: "Bernard",
+    });
+    const far = suggestBookingByDestination(extract, [openRome], people);
+    assert.equal(far.candidates.length, 1);
+    assert.equal(
+      soleCompatibleDestinationId("human", 0, far.candidates, extract),
+      null
+    );
+    const nearStay = {
+      ...openRome,
+      start_date: "2026-12-10",
+      end_date: "2026-12-18",
+    };
+    const near = suggestBookingByDestination(extract, [nearStay], people);
+    assert.equal(soleCompatibleDestinationId("human", 0, near.candidates, extract), "b-rome");
+    assert.equal(soleCompatibleDestinationId("human", 1, near.candidates, extract), null);
+    assert.equal(soleCompatibleDestinationId("reference", 0, near.candidates, extract), null);
+  });
+
+  it("le second billet du même PNR retrouve le dossier déjà créé", () => {
+    const first = extractWith({
+      travelers: [{ first_name: "Raphaël", last_name: "Fettaya" }],
+      items: [
+        {
+          kind: "flight",
+          title: "Tel Aviv → Addis-Abeba",
+          supplier: "Ethiopian",
+          confirmation_ref: "LQ7M2P",
+          start_at: "2026-12-16T22:00:00",
+          end_at: null,
+          amount: null,
+          details: { pnr: "LQ7M2P", flight_number: "ET 800" },
+        },
+      ],
+    });
+    const bookings = [
+      {
+        id: "b-lagos",
+        customer_id: "c-raphael",
+        reference: "TB-2026-0400",
+        title: "Lagos",
+        destination: "Lagos",
+        status: "draft",
+      },
+    ];
+    const second = extractWith({
+      travelers: [{ first_name: "Noémie", last_name: "Becache" }],
+      items: first.items,
+    });
+    const res = suggestBookingByReference(
+      second,
+      bookings,
+      new Map([["b-lagos", [{ confirmation_ref: "LQ7M2P", details: { pnr: "LQ7M2P" } }]]])
+    );
+    assert.equal(res.autoBookingId, "b-lagos");
+    assert.equal(res.candidates[0]?.reason, "Référence fournisseur");
+    assert.equal(res.candidates[0]?.score, 90);
   });
 });
 
