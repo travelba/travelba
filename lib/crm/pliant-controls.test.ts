@@ -5,6 +5,7 @@ import {
   parsePliantTransactionCount,
   PLIANT_SINGLE_USE,
   PLIANT_VIRTUAL,
+  PLIANT_VIRTUAL_TRAVEL,
   pliantCardForTransactionCount,
   pliantControlsAreOpen,
   pliantIssuePayload,
@@ -114,10 +115,12 @@ test("un nombre d’achats : 1 reste à usage unique, davantage part en carte vi
   assert.deepEqual(pliantCardForTransactionCount(1), {
     cardConfig: PLIANT_SINGLE_USE,
     maxTransactionCount: null,
+    transactions: 1,
   });
   assert.deepEqual(pliantCardForTransactionCount(5), {
     cardConfig: PLIANT_VIRTUAL,
     maxTransactionCount: 5,
+    transactions: 5,
   });
 
   const reusable = manualStayCardBody({
@@ -172,4 +175,48 @@ test("une carte virtuelle de formalité garde le nombre d’autorisations saisi"
   assert.equal(body.cardConfig, "PLIANT_VIRTUAL");
   assert.equal(body.maxTransactionCount, 4);
   assert.equal(body.cardControls.currencies, null);
+});
+
+test("une carte voyage envoie le nombre, le plafond total, et aucun contrôle", () => {
+  const once = pliantIssuePayload(
+    {
+      label: "Hôtel",
+      limit: { value: 150000, currency: "EUR" },
+      transactionLimit: { value: 40000, currency: "EUR" },
+      limitRenewFrequency: "MONTHLY",
+      cardControls: {
+        merchants: { type: "MID", restriction: "ALLOWED", values: ["123"] },
+        categories: { type: "MCC", restriction: "BLOCKED", values: ["4829"] },
+      },
+    },
+    { organizationId: "org", cardConfig: PLIANT_VIRTUAL_TRAVEL }
+  );
+  assert.equal(once.cardConfig, PLIANT_VIRTUAL_TRAVEL);
+  assert.equal(once.maxTransactionCount, 1);
+  assert.equal(once.limitRenewFrequency, "TOTAL");
+  assert.deepEqual(once.limit, { value: 150000, currency: "EUR" });
+  assert.deepEqual(once.transactionLimit, { value: 150000, currency: "EUR" });
+  assert.deepEqual(once.cardControls, emptyPliantCardControls());
+  assert.equal(Object.values(once.cardControls).every((value) => value == null), true);
+
+  const several = pliantIssuePayload(
+    {
+      label: "Hôtel",
+      limit: { value: 150000, currency: "EUR" },
+      transactionLimit: { value: 40000, currency: "EUR" },
+      maxTransactionCount: 5,
+    },
+    { organizationId: "org", cardConfig: PLIANT_VIRTUAL_TRAVEL }
+  );
+  assert.equal(several.maxTransactionCount, 5);
+  assert.deepEqual(several.transactionLimit, several.limit);
+  assert.equal(several.cardControls.merchants, null);
+  assert.throws(
+    () => pliantIssuePayload({ limit: { value: 100, currency: "EUR" } }, { organizationId: "org", cardConfig: "PLIANT_VIRTUAL_TRAVEL_CC" }),
+    /Commercial Choice/
+  );
+  assert.throws(
+    () => pliantIssuePayload({ limit: { value: 100, currency: "EUR" } }, { organizationId: "org", cardConfig: "PLIANT_VIRTUAL_TRAVEL_CC_150" }),
+    /Commercial Choice/
+  );
 });

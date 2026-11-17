@@ -66,7 +66,7 @@ import { staffLedgerCaption, staffStayLabel } from "@/lib/crm/staff-stay";
 import { stayToday } from "@/lib/crm/stay-moment";
 import { buildTripAccountingView, loadDossierAccountingInputs } from "@/lib/crm/trip-accounting-view";
 import { costSuggestionSummary, dossierClientLabel, TRIP_ACCOUNTING_LABELS, type OutgoingLine, type TripCost } from "@/lib/crm/trip-costs";
-import { pliantAuthorizationAt } from "@/lib/crm/pliant-tx";
+import { pliantAuthorizationAt, pliantDebitState, pliantDeclineMotif } from "@/lib/crm/pliant-tx";
 import { loadOutgoingQueue } from "@/lib/crm/trip-costs-db";
 import { reviewIdentityPieces } from "@/lib/crm/trip-documents";
 import {
@@ -1312,70 +1312,133 @@ export function mcpTripCost(cost: TripCost, eur: (value: number) => string = (va
   };
 }
 
-const PLIANT_DEBIT_STATE: Record<string, string> = {
-  unmatched: "à pointer",
-  matched: "rattachée",
-  ignored: "hors voyage",
+type PliantDebitRow = {
+  id: string;
+  merchant: string | null;
+  billing_cents: number | null;
+  billing_currency: string | null;
+  transaction_cents: number | null;
+  transaction_currency: string | null;
+  type: string | null;
+  status: string | null;
+  match_status: string | null;
+  booked_at: string | null;
+  raw: unknown;
+  card_last4: string | null;
+  card_id?: string | null;
 };
 
-/** Dépenses Pliant, comme revolut_debits. La date est l’autorisation. La proposition ne rattache pas. */
-export async function readPliantDebits(input: { page?: number; limite?: number } = {}) {
-  const admin = db();
-  const window = mcpWindow(input, INBOX_LIMIT);
-  const { data, error } = await admin
-    .from("crm_pliant_transactions")
-    .select("id, merchant, billing_cents, billing_currency, transaction_cents, transaction_currency, type, status, match_status, booked_at, raw, card_last4")
-    .in("type", ["PURCHASE", "CASH_WITHDRAWAL", "REFUND", "CHARGEBACK"])
-    .order("booked_at", { ascending: false, nullsFirst: false })
-    .limit(window.from + window.limite + 1);
+function pliantDebitLine(row: PliantDebitRow, suggestion: ReturnType<typeof proposedMatch> | null, covered: string | null) {
+  const currency = (row.transaction_currency || row.billing_currency || "EUR").toUpperCase();
+  const cents = row.transaction_cents ?? row.billing_cents;
+  const amount = cents == null ? null : Math.abs(cents) / 100;
+  const state = pliantDebitState(row.status, row.match_status);
+  const refused = !state.proposable && state.etat === "refusé";
+  return {
+    id: row.id,
+    date_autorisation: formatDateFr(pliantAuthorizationAt(row.raw, row.booked_at)),
+    carte: (row.card_last4 || "").replace(/\D/g, "").slice(-4) || null,
+    commercant: row.merchant,
+    montant: amount == null ? null : formatMoney(row.type === "REFUND" || row.type === "CHARGEBACK" ? amount : -amount, currency),
+    devise: currency,
+    etat: state.etat,
+    motif: refused ? pliantDeclineMotif(row.raw) || "Motif non précisé" : null,
+    suggestion: state.proposable ? suggestion : null,
+    couverte: state.proposable ? covered : null,
+  };
+}
+
+async function pliantCardOnDossier(
+  admin: SupabaseClient,
+  input: { dossier_id?: string; reference?: string; carte_id?: string }
+) {
+  const dossierId = (input.dossier_id || "").trim();
+  const reference = (input.reference || "").trim();
+  const carteId = (input.carte_id || "").trim();
+  if (!dossierId && !reference && !carteId) return null;
+  if (!carteId || (!dossierId && !reference)) {
+    return { message: "Indiquez le dossier (dossier_id ou reference) et carte_id." as const };
+  }
+  if (carteId.length > 80 || reference.length > 80) return { message: "Identifiant inconnu." as const };
+  if (dossierId && !UUID.test(dossierId)) return { message: "Identifiant inconnu." as const };
+  let query = admin.from("crm_bookings").select("id, reference");
+  query = dossierId ? query.eq("id", dossierId) : query.eq("reference", reference);
+  const { data, error } = await query.limit(2);
   if (error) {
     logRead("pliant-debits", error);
     throw new Error("Lecture impossible.");
   }
-  const page = mcpSlice(
-    (data || []) as {
-      id: string;
-      merchant: string | null;
-      billing_cents: number | null;
-      billing_currency: string | null;
-      transaction_cents: number | null;
-      transaction_currency: string | null;
-      type: string | null;
-      status: string | null;
-      match_status: string | null;
-      booked_at: string | null;
-      raw: unknown;
-      card_last4: string | null;
-    }[],
-    window
-  );
-  const queue = page.rows.some((row) => (row.match_status || "unmatched") === "unmatched")
+  const stays = (data || []) as { id: string; reference: string | null }[];
+  if (!stays.length) return { introuvable: true as const };
+  if (stays.length > 1) {
+    return { message: "Plusieurs dossiers correspondent. Précisez l’identifiant." as const, choix: stays };
+  }
+  const stay = stays[0];
+  const [{ data: bookingCards, error: cardError }, { data: registry, error: registryError }] = await Promise.all([
+    admin.from("crm_booking_cards").select("id, pliant_card_id").eq("booking_id", stay.id),
+    admin.from("crm_pliant_cards").select("pliant_card_id").eq("booking_id", stay.id),
+  ]);
+  if (cardError || registryError) {
+    logRead("pliant-debits", cardError || registryError || { message: "cartes" });
+    throw new Error("Lecture impossible.");
+  }
+  const cards = (bookingCards || []) as { id: string; pliant_card_id: string | null }[];
+  const registered = ((registry || []) as { pliant_card_id: string | null }[])
+    .map((row) => (row.pliant_card_id || "").trim())
+    .filter(Boolean);
+  const same = (value: string | null | undefined) => (value || "").trim().toLowerCase() === carteId.toLowerCase();
+  const chosen = cards.find((row) => same(row.id) || same(row.pliant_card_id)) || null;
+  const pliantCardId = chosen?.pliant_card_id || registered.find((id) => same(id)) || null;
+  if (!pliantCardId) return { introuvable: true as const, message: "Cette carte n’est pas sur ce dossier." as const };
+  return { bookingId: stay.id, reference: stay.reference, pliantCardId, carteId: chosen?.id || carteId };
+}
+
+/** Dépenses Pliant, comme revolut_debits. La date est l’autorisation. La proposition ne rattache pas. Un refus n’est jamais proposé. */
+export async function readPliantDebits(
+  input: { page?: number; limite?: number; dossier_id?: string; reference?: string; carte_id?: string } = {},
+  admin: SupabaseClient = db()
+) {
+  const scoped = await pliantCardOnDossier(admin, input);
+  if (scoped && ("message" in scoped || "introuvable" in scoped) && !("pliantCardId" in scoped)) return scoped;
+  const window = mcpWindow(input, INBOX_LIMIT);
+  let query = admin
+    .from("crm_pliant_transactions")
+    .select("id, card_id, merchant, billing_cents, billing_currency, transaction_cents, transaction_currency, type, status, match_status, booked_at, raw, card_last4");
+  if (scoped && "pliantCardId" in scoped) {
+    query = query.eq("card_id", scoped.pliantCardId).eq("status", "DECLINED");
+  } else {
+    query = query.or("type.in.(PURCHASE,CASH_WITHDRAWAL,REFUND,CHARGEBACK),status.eq.DECLINED");
+  }
+  const { data, error } = await query.order("booked_at", { ascending: false, nullsFirst: false }).limit(window.from + window.limite + 1);
+  if (error) {
+    logRead("pliant-debits", error);
+    throw new Error("Lecture impossible.");
+  }
+  const page = mcpSlice((data || []) as PliantDebitRow[], window);
+  const queue = page.rows.some((row) => pliantDebitState(row.status, row.match_status).proposable)
     ? await loadOutgoingQueue({ source: "pliant", limit: 500 }, admin).catch(() => [])
     : [];
   const suggestions = new Map(queue.map((line) => [line.id, line]));
+  const debits = page.rows.map((row) => {
+    const line = suggestions.get(row.id);
+    return pliantDebitLine(row, line?.suggestions[0] ? proposedMatch(line.suggestions[0]) : null, line?.coveredNote || null);
+  });
   return {
-    lien: "/admin/argent?onglet=a-pointer&vue=pliant",
+    lien: scoped && "bookingId" in scoped ? `/admin/reservations/${scoped.bookingId}?tab=argent` : "/admin/argent?onglet=a-pointer&vue=pliant",
+    ...(scoped && "pliantCardId" in scoped
+      ? {
+          porte_sur: {
+            dossier_id: scoped.bookingId,
+            reference: scoped.reference,
+            carte_id: scoped.carteId,
+          },
+        }
+      : {}),
     page: page.page,
     limite: page.limite,
     suite: page.suite,
     page_suivante: page.page_suivante,
-    debits: page.rows.map((row) => {
-      const currency = (row.transaction_currency || row.billing_currency || "EUR").toUpperCase();
-      const cents = row.transaction_cents ?? row.billing_cents;
-      const amount = cents == null ? null : Math.abs(cents) / 100;
-      const hit = suggestions.get(row.id)?.suggestions[0] || null;
-      return {
-        id: row.id,
-        date_autorisation: formatDateFr(pliantAuthorizationAt(row.raw, row.booked_at)),
-        carte: (row.card_last4 || "").replace(/\D/g, "").slice(-4) || null,
-        commercant: row.merchant,
-        montant: amount == null ? null : formatMoney(row.type === "REFUND" || row.type === "CHARGEBACK" ? amount : -amount, currency),
-        devise: currency,
-        etat: PLIANT_DEBIT_STATE[row.match_status || "unmatched"] || "à pointer",
-        suggestion: hit ? proposedMatch(hit) : null,
-        couverte: suggestions.get(row.id)?.coveredNote || null,
-      };
-    }),
+    debits,
   };
 }
 

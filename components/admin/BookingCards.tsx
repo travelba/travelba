@@ -45,6 +45,7 @@ export function BookingCards({
   const [last, setLast] = useState(lastName);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function act(cardRowId: string, action: "lock" | "unlock" | "terminate", failure: string) {
     if (busy) return;
@@ -74,6 +75,7 @@ export function BookingCards({
     if (busy) return;
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const res = await fetch(`/api/admin/bookings/${bookingId}/cards`, {
         method: "POST",
@@ -87,11 +89,13 @@ export function BookingCards({
           transactionAmount,
         }),
       });
-      const json = (await res.json().catch(() => null)) as { error?: string } | null;
+      const json = (await res.json().catch(() => null)) as { error?: string; cardConfig?: string; avertissement?: string | null } | null;
       if (!res.ok) {
         setError(json?.error || "La carte n’a pas pu être créée.");
         return;
       }
+      const product = json?.cardConfig ? `Carte créée · ${json.cardConfig}` : "Carte créée.";
+      setNotice([product, json?.avertissement || ""].filter(Boolean).join(" "));
       setAmount("");
       setTransactionAmount("");
       setDesignation("");
@@ -116,7 +120,8 @@ export function BookingCards({
             Autant de cartes que le dossier en a besoin. Le plafond, le montant de l’achat, le nom de la carte et le
             titulaire sont ceux saisis ici. Carte à usage unique : un seul règlement, un contrôle de passerelle ne
             compte pas. La carte accepte tous les commerçants, toutes les catégories, toutes les devises et tous les
-            pays, jusqu’au plafond en euros. La carte est émise sur le compte Pliant de l’agence.
+            pays, jusqu’au plafond en euros. Le produit utilisé s’affiche après la création.
+            La carte est émise sur le compte Pliant de l’agence.
           </p>
         </div>
         <form className="space-y-3" onSubmit={submit}>
@@ -192,6 +197,7 @@ export function BookingCards({
           >
             {busy ? "Génération…" : "Générer la carte"}
           </button>
+          {notice ? <p className="text-sm text-[var(--admin-navy)]">{notice}</p> : null}
         </form>
       </section>
       {tiles.length ? (

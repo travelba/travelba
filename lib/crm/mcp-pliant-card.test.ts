@@ -232,6 +232,7 @@ test("creer_carte_pliant émet une carte à usage unique rattachée au dossier, 
   assert.equal(value.reference, "TB-2026-0082");
   assert.equal(value.quatre_derniers, "4242");
   assert.equal(value.carte_id, state.cards[0]?.id);
+  assert.equal(value.card_config, "PLIANT_SINGLE_USE");
 
   const body = state.issued[0] as {
     label: string;
@@ -794,4 +795,24 @@ test("bloquer_carte_pliant accepte la carte connue seulement par le séjour", as
   );
   assert.equal("introuvable" in byId, false);
   assert.deepEqual(again.locks, ["5057d8a7-02d1-4afd-b792-f936f4e7c3bc"]);
+});
+
+test("creer_carte_pliant renvoie le cardConfig réellement émis", async () => {
+  const state = baseState();
+  const custom = deps(state);
+  custom.issue = async (body) => {
+    state.issued.push(body);
+    return {
+      cardId: "pliant-visa-1",
+      cardConfig: "PLIANT_VIRTUAL_TRAVEL",
+      avertissement: "Cartes voyage non activées sur le compte Pliant : 3DS possible.",
+    };
+  };
+  const value = await runWithMcpAccess(CARDS, () =>
+    createPliantCard({ reference: "TB-2026-0082", nom: "Visa", plafond: "10" }, fakeAdmin(state), custom)
+  );
+  if (!("cree" in value) || !value.cree) assert.fail("carte non créée");
+  assert.equal(value.card_config, "PLIANT_VIRTUAL_TRAVEL");
+  assert.match(String(value.avertissement), /3DS possible/);
+  assert.equal("pan" in value, false);
 });
