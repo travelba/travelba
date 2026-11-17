@@ -222,9 +222,10 @@ un geste à part (`applyCancellationToBooking`, hors de ce clic) :
 ## Remplacement
 
 Un mail de confirmation ne crée pas un deuxième dossier si le client a déjà un
-séjour (ouvert ou annulé, non archivé) vers la même destination. Les dates
-peuvent avoir changé. Milano = Milan. Deux séjours vers la même ville restent
-tous les deux proposés.
+séjour compatible : même référence ou même PNR, ou des dates qui se croisent
+ou sont proches. La même ville à d’autres dates ouvre un séjour caché.
+Milano = Milan. Deux séjours vers la même ville restent tous les deux proposés
+quand les dates ne se croisent pas.
 
 Le parse ne l’applique pas. Le clic sur un dossier déjà ouvert non plus : il
 attache les fichiers à la carte qui correspond et n’en crée pas. Le
@@ -321,7 +322,7 @@ L’API (cron toutes les 30 minutes et webhook) crée le dossier, ou l’ajoute 
 
 - Rattachement, remplacement ou annulation **ambigu** sans clic agence (deux séjours, deux cartes, annulation sans référence)
 - Créer un dossier (ou un client) depuis un mail d’annulation, un devis, ou sans carte ni date
-- Créer un deuxième dossier quand le client a déjà un séjour vers la même destination
+- Créer un deuxième dossier quand un séjour compatible existe déjà (référence, PNR, ou dates qui se croisent ou sont proches)
 - Écrire le montant du mail comme prix vendu sur une carte déjà tarifée
 - Inviter le client, ou publier le carnet, dans la création automatique
 - Publier le carnet / `visible_to_client=true`

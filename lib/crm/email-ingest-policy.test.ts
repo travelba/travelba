@@ -46,6 +46,9 @@ describe("pas de rattachement autonome hors billet certain", () => {
     assert.equal(rematch.includes("createCustomer"), false);
     assert.equal(rematch.includes("persistNewBookingFromExtract"), false);
     assert.match(rematch, /receivedTooOldForAutoAttach/);
+    assert.match(rematch, /decideStayAutoCreate/);
+    assert.match(rematch, /\["parsed", "matched"\]/);
+    assert.match(rematch, /autoAttachNotBefore\(\)/);
     assert.match(rematch, /ascending: false/);
   });
 

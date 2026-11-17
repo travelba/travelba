@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { sumFlightTicketCounts } from "./email-flight-deposit";
+import { suggestBookingByReference, suggestCustomerFromExtract } from "./email-match";
 import { decideStayAutoAttach, decideStayAutoCreate } from "./email-stay-open";
 
 const client = { customer_id: "c-raphael", booking_id: null, score: 92, reason: "Nom et prénom", label: "Raphaël Boukris" };
@@ -93,6 +95,158 @@ describe("création automatique d’un séjour", () => {
       reason: "Référence fournisseur",
     };
     assert.equal(decideStayAutoAttach(flight() as never, [client, byPnr], { receivedAt: "2027-04-01" })?.bookingId, "b-0204");
+  });
+
+  it("crée si le même client a déjà un séjour vers la même ville, à d’autres dates", () => {
+    const elsewhere = {
+      booking_id: "b-juin",
+      customer_id: "c-raphael",
+      score: 80,
+      reason: "Même client, même destination",
+      label: "TB — Dubaï",
+      start_date: "2026-06-01",
+      end_date: "2026-06-08",
+    };
+    assert.deepEqual(
+      decideStayAutoCreate(flight() as never, [client, elsewhere], { receivedAt: "2027-04-01" }),
+      { customerId: "c-raphael" }
+    );
+    const near = { ...elsewhere, booking_id: "b-mai", start_date: "2027-05-02", end_date: "2027-05-09" };
+    assert.equal(decideStayAutoCreate(flight() as never, [client, near], { receivedAt: "2027-04-01" }), null);
+  });
+
+  it("ouvre le dossier du titulaire pour le billet d’un accompagnant", () => {
+    const holder = {
+      id: "c-raphael",
+      first_name: "Raphaël",
+      last_name: "Fettaya",
+      company_name: null,
+      email: "raphael@example.com",
+    };
+    const ticket = flight();
+    ticket.travelers = [{ first_name: "Noémie", last_name: "Becache" }];
+    ticket.items[0].details.passengers = [{ first_name: "Noémie", last_name: "Becache" }];
+    const matched = suggestCustomerFromExtract([holder], ticket as never, [
+      { id: "comp-noe", customer_id: "c-raphael", first_name: "Noémie", last_name: "Becache" },
+    ]);
+    assert.equal(matched.candidates[0]?.reason, "Accompagnant de Raphaël Fettaya");
+    assert.deepEqual(decideStayAutoCreate(ticket as never, matched.candidates, { receivedAt: "2027-04-01" }), {
+      customerId: "c-raphael",
+    });
+  });
+
+  it("crée pour un prénom exact malgré un nom partagé, et rien pour un homonyme complet", () => {
+    const family = [
+      { id: "amin", first_name: "Amin", last_name: "Khiari", company_name: null, email: "amin@example.com" },
+      { id: "tahar", first_name: "Tahar", last_name: "Khiari", company_name: null, email: "tahar@example.com" },
+    ];
+    const amin = flight();
+    amin.travelers = [{ first_name: "Amin", last_name: "Khiari" }];
+    const shared = suggestCustomerFromExtract(family, amin as never);
+    assert.equal(shared.candidates.find((row) => row.customer_id === "amin")?.score, 92);
+    assert.equal(
+      decideStayAutoCreate(amin as never, shared.candidates, { receivedAt: "2027-04-01" })?.customerId,
+      "amin"
+    );
+    const twins = [
+      { id: "a", first_name: "Amin", last_name: "Khiari", company_name: null, email: "a@example.com" },
+      { id: "b", first_name: "Amin", last_name: "Khiari", company_name: null, email: "b@example.com" },
+    ];
+    const homonym = suggestCustomerFromExtract(twins, amin as never);
+    assert.equal(homonym.autoCustomerId, null);
+    assert.equal(decideStayAutoCreate(amin as never, homonym.candidates, { receivedAt: "2027-04-01" }), null);
+  });
+
+  it("rattache le second billet du même PNR, une carte par trajet avec les deux voyageurs", () => {
+    const holder = {
+      id: "c-raphael",
+      first_name: "Raphaël",
+      last_name: "Fettaya",
+      company_name: null,
+      email: "raphael@example.com",
+    };
+    const segment = (number: string, at: string, first: string, last: string, title: string) => ({
+      kind: "flight" as const,
+      title,
+      supplier: "Ethiopian",
+      confirmation_ref: "LQ7M2P",
+      start_at: at,
+      end_at: null,
+      amount: 900,
+      details: { flight_number: number, pnr: "LQ7M2P", passengers: [{ first_name: first, last_name: last }] },
+    });
+    const ticket = (first: string, last: string) => ({
+      document_status: "confirmed" as const,
+      start_date: "2026-12-16",
+      end_date: "2026-12-21",
+      travelers: [{ first_name: first, last_name: last }],
+      items: [
+        segment("ET 800", "2026-12-16T22:00:00", first, last, "Tel Aviv → Addis-Abeba"),
+        segment("ET 901", "2026-12-17T08:00:00", first, last, "Addis-Abeba → Lagos"),
+      ],
+    });
+    const first = ticket("Raphaël", "Fettaya");
+    const matched = suggestCustomerFromExtract([holder], first as never);
+    assert.deepEqual(decideStayAutoCreate(first as never, matched.candidates, { receivedAt: "2026-12-01" }), {
+      customerId: "c-raphael",
+    });
+    const second = ticket("Noémie", "Becache");
+    const byPnr = suggestBookingByReference(
+      second as never,
+      [
+        {
+          id: "b-lagos",
+          customer_id: "c-raphael",
+          reference: "TB-2026-0400",
+          title: "Lagos",
+          destination: "Lagos",
+          status: "draft",
+        },
+      ],
+      new Map([
+        [
+          "b-lagos",
+          [
+            { confirmation_ref: "LQ7M2P", details: { pnr: "LQ7M2P", flight_number: "ET 800" } },
+            { confirmation_ref: "LQ7M2P", details: { pnr: "LQ7M2P", flight_number: "ET 901" } },
+          ],
+        ],
+      ])
+    );
+    assert.equal(byPnr.autoBookingId, "b-lagos");
+    const companion = suggestCustomerFromExtract([holder], second as never, [
+      { id: "comp-noe", customer_id: "c-raphael", first_name: "Noémie", last_name: "Becache" },
+    ]);
+    const candidates = [
+      ...companion.candidates,
+      {
+        booking_id: "b-lagos",
+        customer_id: "c-raphael",
+        score: 90,
+        reason: "Référence fournisseur",
+        label: "TB-2026-0400 — Lagos",
+      },
+    ];
+    assert.equal(
+      decideStayAutoAttach(second as never, candidates, { receivedAt: "2026-12-01" })?.bookingId,
+      "b-lagos"
+    );
+    assert.equal(decideStayAutoCreate(second as never, candidates, { receivedAt: "2026-12-01" }), null);
+    const summed = sumFlightTicketCounts(
+      second,
+      [
+        segment("ET 800", "2026-12-16T22:00:00", "Raphaël", "Fettaya", "Tel Aviv → Addis-Abeba"),
+        segment("ET 901", "2026-12-17T08:00:00", "Raphaël", "Fettaya", "Addis-Abeba → Lagos"),
+      ],
+      "mail-noemie"
+    );
+    assert.equal(summed.items?.length, 2);
+    for (const item of summed.items || []) {
+      const names = ((item.details as { passengers?: { first_name?: string }[] }).passengers || []).map(
+        (row) => row.first_name
+      );
+      assert.deepEqual(names, ["Raphaël", "Noémie"]);
+    }
   });
 
   it("la création est cachée, au prix de vente 0, journal auto_create, sans invitation", () => {
