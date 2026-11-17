@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
 import {
   BOARDING_LEG_LABEL,
@@ -27,10 +28,12 @@ function PassLines({
   passes,
   onRemove,
   removeQuestion,
+  aside,
 }: {
   passes: BoardingShownPass[];
   onRemove?: (file: FilePreviewModel) => RemoveResult | Promise<RemoveResult>;
   removeQuestion?: string | ((file: FilePreviewModel) => string);
+  aside?: (file: FilePreviewModel) => ReactNode;
 }) {
   if (!passes.length) return null;
   return (
@@ -43,6 +46,7 @@ function PassLines({
               file={file}
               onRemove={onRemove ? () => onRemove(file) : undefined}
               removeQuestion={typeof removeQuestion === "function" ? removeQuestion(file) : removeQuestion}
+              aside={aside ? aside(file) : undefined}
             />
           </li>
         );
@@ -74,10 +78,12 @@ function FlightGroup({
   group,
   onRemove,
   removeQuestion,
+  aside,
 }: {
   group: BoardingPassGrouping<BoardingShownPass>["upcoming"][number];
   onRemove?: (file: FilePreviewModel) => RemoveResult | Promise<RemoveResult>;
   removeQuestion?: string | ((file: FilePreviewModel) => string);
+  aside?: (file: FilePreviewModel) => ReactNode;
 }) {
   const title = [group.airline, group.number].filter(Boolean).join(" · ");
   const meta = [group.route, group.when].filter(Boolean).join(" · ");
@@ -96,7 +102,7 @@ function FlightGroup({
           </span>
         ) : null}
       </div>
-      <PassLines passes={group.passes} onRemove={onRemove} removeQuestion={removeQuestion} />
+      <PassLines passes={group.passes} onRemove={onRemove} removeQuestion={removeQuestion} aside={aside} />
       <FileLinks files={group.files} />
     </section>
   );
@@ -116,11 +122,13 @@ export function BoardingPassGroups({
   foldPast = true,
   onRemove,
   removeQuestion,
+  aside,
 }: {
   groups: BoardingPassGrouping<BoardingShownPass>;
   foldPast?: boolean;
   onRemove?: (file: FilePreviewModel) => RemoveResult | Promise<RemoveResult>;
   removeQuestion?: string | ((file: FilePreviewModel) => string);
+  aside?: (file: FilePreviewModel) => ReactNode;
 }) {
   if (boardingGroupsEmpty(groups)) return null;
   const fold = foldPast && groups.past.length > 0 && groups.upcoming.length > 0;
@@ -128,7 +136,7 @@ export function BoardingPassGroups({
   return (
     <div className="space-y-4">
       {groups.upcoming.map((group) => (
-        <FlightGroup key={group.id} group={group} onRemove={onRemove} removeQuestion={removeQuestion} />
+        <FlightGroup key={group.id} group={group} onRemove={onRemove} removeQuestion={removeQuestion} aside={aside} />
       ))}
       {fold ? (
         <details className="space-y-3">
@@ -138,7 +146,7 @@ export function BoardingPassGroups({
           </summary>
           <div className="space-y-4 pt-1">
             {groups.past.map((group) => (
-              <FlightGroup key={group.id} group={group} onRemove={onRemove} removeQuestion={removeQuestion} />
+              <FlightGroup key={group.id} group={group} onRemove={onRemove} removeQuestion={removeQuestion} aside={aside} />
             ))}
           </div>
         </details>
@@ -150,19 +158,19 @@ export function BoardingPassGroups({
           </summary>
           <div className="space-y-4 pt-1">
             {groups.past.map((group) => (
-              <FlightGroup key={group.id} group={group} onRemove={onRemove} removeQuestion={removeQuestion} />
+              <FlightGroup key={group.id} group={group} onRemove={onRemove} removeQuestion={removeQuestion} aside={aside} />
             ))}
           </div>
         </details>
       ) : (
         groups.past.map((group) => (
-          <FlightGroup key={group.id} group={group} onRemove={onRemove} removeQuestion={removeQuestion} />
+          <FlightGroup key={group.id} group={group} onRemove={onRemove} removeQuestion={removeQuestion} aside={aside} />
         ))
       )}
       {groups.other ? (
         <section className="space-y-2">
           <p className="px-0.5 text-sm font-semibold text-[var(--admin-navy)]">Autres cartes d’embarquement</p>
-          <PassLines passes={groups.other.passes} onRemove={onRemove} removeQuestion={removeQuestion} />
+          <PassLines passes={groups.other.passes} onRemove={onRemove} removeQuestion={removeQuestion} aside={aside} />
           <FileLinks files={groups.other.files} />
         </section>
       ) : null}

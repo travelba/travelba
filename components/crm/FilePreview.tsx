@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AddToAppleWallet } from "@/components/account/AddToAppleWallet";
 import { fileDownloadHref, fileInlineHref, fileThumbHref } from "@/lib/crm/file-href";
@@ -84,11 +84,13 @@ export function FilePreviewTile({
   file,
   onRemove,
   removeQuestion,
+  aside,
 }: {
   file: FilePreviewModel;
   /** Renvoie une phrase d’erreur pour l’afficher sous le bouton. */
   onRemove?: () => RemoveResult | Promise<RemoveResult>;
   removeQuestion?: string;
+  aside?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const direct = Boolean(file.href) && !file.path;
@@ -124,6 +126,7 @@ export function FilePreviewTile({
             }}
           />
         ) : null}
+        {aside}
       </div>
     );
   }
@@ -155,12 +158,13 @@ export function FilePreviewTile({
           confirmLabel="Retirer"
           ariaLabel={`Retirer ${file.label}`}
           question={removeQuestion || `${file.label} quitte le dossier et son fichier est supprimé.`}
-          onConfirm={async () => {
-            const result = await onRemove();
-            return typeof result === "string" ? result : undefined;
-          }}
-        />
-      ) : null}
+            onConfirm={async () => {
+              const result = await onRemove();
+              return typeof result === "string" ? result : undefined;
+            }}
+          />
+        ) : null}
+      {aside}
       {open ? <FilePreviewDialog file={file} onClose={() => setOpen(false)} /> : null}
     </div>
   );
@@ -194,10 +198,12 @@ export function FilePreviewGrid({
   files,
   onRemove,
   removeQuestion,
+  aside,
 }: {
   files: FilePreviewModel[];
   onRemove?: (file: FilePreviewModel) => RemoveResult | Promise<RemoveResult>;
   removeQuestion?: string | ((file: FilePreviewModel) => string);
+  aside?: (file: FilePreviewModel) => ReactNode;
 }) {
   if (!files.length) return null;
   return (
@@ -208,6 +214,7 @@ export function FilePreviewGrid({
             file={file}
             onRemove={onRemove ? () => onRemove(file) : undefined}
             removeQuestion={typeof removeQuestion === "function" ? removeQuestion(file) : removeQuestion}
+            aside={aside ? aside(file) : undefined}
           />
         </li>
       ))}

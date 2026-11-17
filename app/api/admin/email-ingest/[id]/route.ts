@@ -12,8 +12,10 @@ import {
   attachFilesSummary,
   depositEmailAttachments,
   markEmailAttached,
+  noteEmailRepartition,
   resolveEmailCardId,
 } from "@/lib/crm/email-attach-run";
+import { treatedEmailGate } from "@/lib/crm/email-reattach";
 import { applyBookingSteps, EmailStepError, previewBookingSteps } from "@/lib/crm/email-step-run";
 import { hasUsableFlight } from "@/lib/crm/email-flight-deposit";
 import { depositFlightsOnBooking } from "@/lib/crm/email-flight-deposit-run";
@@ -60,6 +62,7 @@ export async function POST(request: Request, ctx: Ctx) {
     item_id?: string;
     confirmer?: boolean;
     cartes?: boolean;
+    repartir?: boolean;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -203,6 +206,8 @@ export async function POST(request: Request, ctx: Ctx) {
     if (action === "attach_booking") {
       const bookingId = String(body.booking_id || "");
       if (!bookingId) return jsonError("Choisissez un voyage");
+      const gate = treatedEmailGate(row.status, row.created_booking_id, bookingId, body.repartir === true);
+      if ("error" in gate) return jsonError(gate.error);
       const { data: booking } = await admin
         .from("crm_bookings")
         .select("id, customer_id")
@@ -212,12 +217,22 @@ export async function POST(request: Request, ctx: Ctx) {
       if (body.cartes !== false && extract && hasUsableFlight(extract) && !isCancellationExtract(extract)) {
         const flown = await depositFlightsOnBooking(admin, row, bookingId, booking.customer_id, auth.user.id);
         if (flown.wrote) {
+          if (gate.repartir) {
+            await noteEmailRepartition(admin, {
+              emailId: id,
+              sourceBookingId: gate.conserver,
+              targetBookingId: bookingId,
+              customerId: booking.customer_id,
+              actorId: auth.user.id,
+            });
+          }
           return NextResponse.json({
             ok: true,
             booking_id: bookingId,
             pieces: flown.pieces,
             cartes: flown.cartes,
             message: flown.message,
+            repartir: gate.repartir,
           });
         }
       }
@@ -228,25 +243,38 @@ export async function POST(request: Request, ctx: Ctx) {
         html: row.body_html,
       });
       const message = attachFilesSummary(deposited, Boolean(cardId));
-      await markEmailAttached(admin, row, {
-        bookingId,
-        customerId: booking.customer_id,
-        actorId: auth.user.id,
-        summary: message,
-        cards: false,
-      });
+      if (gate.repartir) {
+        await noteEmailRepartition(admin, {
+          emailId: id,
+          sourceBookingId: gate.conserver,
+          targetBookingId: bookingId,
+          customerId: booking.customer_id,
+          actorId: auth.user.id,
+        });
+      } else {
+        await markEmailAttached(admin, row, {
+          bookingId,
+          customerId: booking.customer_id,
+          actorId: auth.user.id,
+          summary: message,
+          cards: false,
+        });
+      }
       return NextResponse.json({
         ok: true,
         booking_id: bookingId,
         pieces: deposited.added,
         carte_id: cardId,
         message,
+        repartir: gate.repartir,
       });
     }
 
     if (action === "apply_cards" || action === "replace_booking") {
       const bookingId = String(body.booking_id || "");
       if (!bookingId) return jsonError("Choisissez un voyage");
+      const gate = treatedEmailGate(row.status, row.created_booking_id, bookingId, body.repartir === true);
+      if ("error" in gate) return jsonError(gate.error);
       const { data: booking } = await admin
         .from("crm_bookings")
         .select("id, customer_id")
@@ -265,12 +293,22 @@ export async function POST(request: Request, ctx: Ctx) {
           auth.user.id
         );
         if (flown.wrote) {
+          if (gate.repartir) {
+            await noteEmailRepartition(admin, {
+              emailId: id,
+              sourceBookingId: gate.conserver,
+              targetBookingId: bookingId,
+              customerId: booking.customer_id,
+              actorId: auth.user.id,
+            });
+          }
           return NextResponse.json({
             ok: true,
             booking_id: bookingId,
             pieces: flown.pieces,
             cartes: flown.cartes,
             message: flown.message,
+            repartir: gate.repartir,
           });
         }
       }
@@ -284,19 +322,30 @@ export async function POST(request: Request, ctx: Ctx) {
         await admin.from("crm_email_ingest").update(extractPatch).eq("id", id);
       }
       const message = attachFilesSummary(deposited, Boolean(cardId));
-      await markEmailAttached(admin, row, {
-        bookingId,
-        customerId: booking.customer_id,
-        actorId: auth.user.id,
-        summary: message,
-        cards: false,
-      });
+      if (gate.repartir) {
+        await noteEmailRepartition(admin, {
+          emailId: id,
+          sourceBookingId: gate.conserver,
+          targetBookingId: bookingId,
+          customerId: booking.customer_id,
+          actorId: auth.user.id,
+        });
+      } else {
+        await markEmailAttached(admin, row, {
+          bookingId,
+          customerId: booking.customer_id,
+          actorId: auth.user.id,
+          summary: message,
+          cards: false,
+        });
+      }
       return NextResponse.json({
         ok: true,
         booking_id: bookingId,
         pieces: deposited.added,
         carte_id: cardId,
         message,
+        repartir: gate.repartir,
       });
     }
 
@@ -319,6 +368,8 @@ export async function POST(request: Request, ctx: Ctx) {
       if (action === "preview_steps" || body.confirmer !== true) {
         return NextResponse.json({ ok: true, ecrit: false, apercu: preview });
       }
+      const gate = treatedEmailGate(row.status, row.created_booking_id, bookingId, body.repartir === true);
+      if ("error" in gate) return jsonError(gate.error);
       await applyBookingSteps({
         admin,
         bookingId,
@@ -329,17 +380,29 @@ export async function POST(request: Request, ctx: Ctx) {
         visibleToClient: booking.visible_to_client === true,
       });
       const message = "Les étapes sont mises à jour. Le prix de vente n’a pas changé.";
-      await markEmailAttached(admin, row, {
-        bookingId,
-        customerId: booking.customer_id,
-        actorId: auth.user.id,
-        summary: message,
-        cards: true,
-      });
-      return NextResponse.json({ ok: true, ecrit: true, booking_id: bookingId, apercu: preview, message });
+      if (gate.repartir) {
+        await noteEmailRepartition(admin, {
+          emailId: id,
+          sourceBookingId: gate.conserver,
+          targetBookingId: bookingId,
+          customerId: booking.customer_id,
+          actorId: auth.user.id,
+        });
+      } else {
+        await markEmailAttached(admin, row, {
+          bookingId,
+          customerId: booking.customer_id,
+          actorId: auth.user.id,
+          summary: message,
+          cards: true,
+        });
+      }
+      return NextResponse.json({ ok: true, ecrit: true, booking_id: bookingId, apercu: preview, message, repartir: gate.repartir });
     }
 
     if (action === "new_booking") {
+      const closed = treatedEmailGate(row.status, row.created_booking_id, "", false);
+      if ("error" in closed) return jsonError(closed.error);
       if (isCancellationExtract(extract)) {
         return jsonError("Une annulation ne crée pas de dossier. Rattachez-la au voyage existant.");
       }

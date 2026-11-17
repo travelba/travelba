@@ -449,6 +449,7 @@ export function EmailIngestInbox({
       item_id?: string;
       confirmer?: boolean;
       cartes?: boolean;
+      repartir?: boolean;
     },
     opts?: { refresh?: boolean }
   ) {
@@ -938,6 +939,8 @@ export function EmailIngestInbox({
                   {(() => {
                     const picked = selectedBooking[row.id];
                     const depositBookingId = picked != null ? picked : row.suggested_booking_id || "";
+                    const repartir = mode === "appliques";
+                    const sameStay = repartir && depositBookingId === row.created_booking_id;
                     const edited = Boolean(drafts[row.id]);
                     const flightPlan = planFlightDeposit({
                       items: (viewOf(row).items || []).map((item) => ({ ...item, kind: item.kind || "" })),
@@ -948,7 +951,7 @@ export function EmailIngestInbox({
                         <div className="flex flex-wrap gap-2 sm:col-span-2">
                           <button
                             type="button"
-                            disabled={isBusy || !depositBookingId}
+                            disabled={isBusy || !depositBookingId || sameStay}
                             aria-busy={isBusy || undefined}
                             className="admin-af-btn-accent admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
                             onClick={() =>
@@ -961,6 +964,7 @@ export function EmailIngestInbox({
                                       item_id: undefined,
                                       title: cardTitle.trim(),
                                       cartes: withFlights,
+                                      ...(repartir ? { repartir: true } : {}),
                                       ...(drafts[row.id]
                                         ? {
                                             extract: drafts[row.id],
@@ -968,21 +972,33 @@ export function EmailIngestInbox({
                                           }
                                         : {}),
                                     }
-                                  : { action: "attach_booking", booking_id: depositBookingId, cartes: withFlights }
+                                  : {
+                                      action: "attach_booking",
+                                      booking_id: depositBookingId,
+                                      cartes: withFlights,
+                                      ...(repartir ? { repartir: true } : {}),
+                                    }
                               )
                             }
                           >
                             {isBusy && (busy?.action === "attach_booking" || busy?.action === "apply_cards")
                               ? pendingLabel("attach_booking")
-                              : "Déposer les pièces"}
+                              : repartir
+                                ? "Déposer aussi sur un autre dossier"
+                                : "Déposer les pièces"}
                           </button>
                           {withFlights ? (
                             <button
                               type="button"
-                              disabled={isBusy || !depositBookingId}
+                              disabled={isBusy || !depositBookingId || sameStay}
                               className="admin-tap rounded-lg border border-border px-3 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
                               onClick={() =>
-                                act(row.id, { action: "attach_booking", booking_id: depositBookingId, cartes: false })
+                                act(row.id, {
+                                  action: "attach_booking",
+                                  booking_id: depositBookingId,
+                                  cartes: false,
+                                  ...(repartir ? { repartir: true } : {}),
+                                })
                               }
                             >
                               Déposer seulement
@@ -1013,6 +1029,7 @@ export function EmailIngestInbox({
                                     action: "update_steps",
                                     booking_id: depositBookingId,
                                     confirmer: true,
+                                    ...(repartir ? { repartir: true } : {}),
                                   })
                                 }
                               >
@@ -1043,12 +1060,18 @@ export function EmailIngestInbox({
                               ))}
                             </ul>
                             <p className="mt-1">
-                              Déposer les pièces ajoute ces vols. Déposer seulement laisse les cartes inchangées.
+                              {repartir
+                                ? "Déposer aussi copie les pièces sur l’autre dossier. Le premier dossier les garde. Aucun message."
+                                : "Déposer les pièces ajoute ces vols. Déposer seulement laisse les cartes inchangées."}
+                              {sameStay ? " Choisissez un autre dossier." : ""}
                             </p>
                           </div>
                         ) : (
                           <p className="text-xs text-muted sm:col-span-2">
-                            Les fichiers sont copiés sur le dossier, sur l’étape qui correspond. Aucune étape n’est créée ni modifiée.
+                            {repartir
+                              ? "Le mail est déjà traité. Les pièces sont copiées sur l’autre dossier. Le premier dossier les garde. Aucun message."
+                              : "Les fichiers sont copiés sur le dossier, sur l’étape qui correspond. Aucune étape n’est créée ni modifiée."}
+                            {sameStay ? " Choisissez un autre dossier." : ""}
                           </p>
                         )}
                       </>
