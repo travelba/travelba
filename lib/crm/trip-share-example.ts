@@ -9,7 +9,7 @@ import { bookingCoverUrl } from "./covers";
 import { formatDateFr } from "./dates";
 import { withoutHotelRosterItems } from "./hotel-contact";
 import { toPublicBooking } from "./public-booking";
-import { siteConfig } from "../site";
+import { brandShareImages, siteConfig } from "../site";
 import { stayTitleFromItems } from "./staff-stay";
 import type { CrmBooking, CrmBookingDocument, CrmBookingItem } from "./types";
 
@@ -128,7 +128,9 @@ function tripDescription(start: string | null, end: string | null) {
 /** Même en-tête que le lien public. Le code exemple reste hors index. */
 export function publicTripMetadata(code: string, trip: ExamplePublishedTrip | null): Metadata {
   const hidden = { index: false, follow: false };
-  if (!trip) return { title: "Voyage", robots: hidden };
+  if (!trip) {
+    return { title: "Voyage", robots: hidden, openGraph: { images: brandShareImages(siteConfig.name) } };
+  }
   const title = stayTitleFromItems(trip.booking.title, trip.booking.destination, clientVisibleItems(trip.items));
   const description = tripDescription(trip.booking.start_date, trip.booking.end_date);
   const cover = bookingCoverUrl(trip.booking, 1200, { partage: code, items: trip.items });
@@ -141,7 +143,7 @@ export function publicTripMetadata(code: string, trip: ExamplePublishedTrip | nu
       description,
       url: `${siteConfig.url}/v/${code}`,
       siteName: siteConfig.name,
-      images: cover ? [{ url: cover, alt: title }] : undefined,
+      images: cover ? [{ url: cover, alt: title }] : brandShareImages(siteConfig.name),
     },
   };
 }

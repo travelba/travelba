@@ -172,6 +172,9 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.match(html, /og:image:width" content="1200"/);
   assert.match(html, /og:image:height" content="630"/);
   assert.match(html, /favicon\.ico/);
+  assert.match(html, /icon\.png" type="image\/png" sizes="512x512"/);
+  assert.match(html, /apple-touch-icon" href="https:\/\/travelba\.fr\/apple-touch-icon\.png"/);
+  assert.equal(html.includes("/og.png"), false);
   assert.equal(html.includes("og-concierge"), false);
   assert.equal(html.includes("tba-mark"), false);
   assert.match(html, /method="post"/);
@@ -191,9 +194,31 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
   assert.equal(html.includes("hashed"), false);
   const bare = entryPreviewHtml("https://travelba.fr", "K7MQ2PX4");
   assert.match(bare, /<title>Le Concierge<\/title>/);
-  assert.equal(bare.includes("og:image"), false);
+  assert.match(bare, /og:title" content="Le Concierge"/);
+  assert.match(bare, /og:description" content="Votre espace personnel vous attend\."/);
+  assert.match(bare, /og:image" content="https:\/\/travelba\.fr\/og\.png"/);
+  assert.match(bare, /og:image:secure_url" content="https:\/\/travelba\.fr\/og\.png"/);
+  assert.match(bare, /og:image:type" content="image\/png"/);
+  assert.match(bare, /og:image:width" content="1200"/);
+  assert.match(bare, /og:image:height" content="630"/);
+  assert.match(bare, /og:image" content="https:\/\/travelba\.fr\/og-square\.png"/);
+  assert.match(bare, /og:image:width" content="600"/);
+  assert.match(bare, /og:image:height" content="600"/);
+  assert.match(bare, /twitter:image" content="https:\/\/travelba\.fr\/og\.png"/);
+  assert.match(bare, /icon\.png" type="image\/png" sizes="512x512"/);
+  assert.match(bare, /apple-touch-icon\.png" type="image\/png" sizes="180x180"/);
   assert.equal(bare.includes("og-concierge"), false);
+  assert.equal(bare.includes("tba-mark"), false);
+  assert.equal(/IATA|APST/.test(bare), false);
+  assert.equal(bare.includes("TB-"), false);
   assert.match(bare, /favicon\.ico/);
+  const upgraded = entryPreviewHtml("http://travelba.fr", "K7MQ2PX4");
+  assert.match(upgraded, /og:image" content="https:\/\/travelba\.fr\/og\.png"/);
+  assert.match(upgraded, /og:image:secure_url" content="https:\/\/travelba\.fr\/og\.png"/);
+  assert.match(upgraded, /icon\.png" type="image\/png" sizes="512x512"/);
+  const local = entryPreviewHtml("http://localhost:3000", "K7MQ2PX4");
+  assert.match(local, /og:image" content="http:\/\/localhost:3000\/og\.png"/);
+  assert.equal(local.includes("og:image:secure_url"), false);
   const noCover = entryPreviewHtml(
     "https://travelba.fr",
     "K7MQ2PX4",
@@ -205,7 +230,10 @@ test("WhatsApp reçoit le titre sans consommer le jeton", () => {
     })
   );
   assert.match(noCover, /Séjour à Avoriaz/);
-  assert.equal(noCover.includes("og:image"), false);
+  assert.match(noCover, /og:image" content="https:\/\/travelba\.fr\/og\.png"/);
+  assert.match(noCover, /og:image:width" content="1200"/);
+  assert.match(noCover, /og:image:height" content="630"/);
+  assert.equal(noCover.includes("/api/covers"), false);
   assert.equal(noCover.includes("<img"), false);
   assert.match(noCover, /class="door plain"/);
   assert.match(bare, /class="door plain"/);
@@ -225,7 +253,11 @@ test("la porte humaine n’attend ni le dossier ni la photo", () => {
   assert.match(html, /<script>location\.replace\(location\.pathname\+"\?ouvrir=1"\)<\/script>/);
   assert.equal(html.includes("<img"), false);
   assert.equal(html.includes("/api/covers"), false);
-  assert.equal(html.includes("og:image"), false);
+  assert.match(html, /og:title" content="Le Concierge"/);
+  assert.match(html, /og:description" content="Votre espace personnel vous attend\."/);
+  assert.match(html, /og:image" content="https:\/\/travelba\.fr\/og\.png"/);
+  assert.match(html, /og:image:width" content="1200"/);
+  assert.match(html, /og:image:height" content="630"/);
   assert.equal(html.includes("token"), false);
   assert.equal(html.includes("hashed"), false);
   assert.equal(/location\.replace\("https?:/.test(html), false);
@@ -294,6 +326,7 @@ test("l’e-mail du lien est celui du titulaire, et l’entrée n’ouvre pas la
   assert.match(partner, /Set your password/);
   assert.match(partner, /og:locale" content="en_GB"/);
   assert.equal(partner.includes("Ouvrir mon espace"), false);
+  assert.equal(partner.includes("/og.png"), false);
   assert.equal(partner.includes("Le Concierge"), false);
   assert.equal(partner.includes("Votre espace"), false);
   assert.equal(/[àâäéèêëïîôùûüçœ]/i.test(partner), false);

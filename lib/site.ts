@@ -45,6 +45,37 @@ export const siteConfig = {
   },
 } as const;
 
+/** Aperçu partagé (WhatsApp, Facebook). Logo seul : aucun nom, aucun dossier. */
+export const CONCIERGE_SHARE_TITLE = "Le Concierge";
+export const CONCIERGE_SHARE_DESCRIPTION = "Votre espace personnel vous attend.";
+
+export const BRAND_OG_IMAGE = "/og.png";
+export const BRAND_OG_IMAGE_WIDTH = 1200;
+export const BRAND_OG_IMAGE_HEIGHT = 630;
+export const BRAND_OG_SQUARE = "/og-square.png";
+export const BRAND_OG_SQUARE_SIZE = 600;
+export const BRAND_ICON = "/icon.png";
+export const BRAND_APPLE_TOUCH_ICON = "/apple-touch-icon.png";
+
+export function brandShareImages(alt: string) {
+  return [
+    {
+      url: BRAND_OG_IMAGE,
+      width: BRAND_OG_IMAGE_WIDTH,
+      height: BRAND_OG_IMAGE_HEIGHT,
+      alt,
+      type: "image/png" as const,
+    },
+    {
+      url: BRAND_OG_SQUARE,
+      width: BRAND_OG_SQUARE_SIZE,
+      height: BRAND_OG_SQUARE_SIZE,
+      alt,
+      type: "image/png" as const,
+    },
+  ];
+}
+
 export const SERVICE_KEYS = [
   "jet",
   "seminars",

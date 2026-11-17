@@ -3,14 +3,28 @@ import { redirect } from "next/navigation";
 import { ensureCustomerForUser, ensureStaff, getSessionUser } from "@/lib/crm/auth";
 import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
 import { customerFullName } from "@/lib/crm/types";
-import { siteConfig } from "@/lib/site";
+import { brandShareImages, CONCIERGE_SHARE_DESCRIPTION, CONCIERGE_SHARE_TITLE, siteConfig } from "@/lib/site";
 import { AccountChrome } from "@/components/account/AccountChrome";
 import { hotelBookingEnabled, showHotelButton } from "@/lib/crm/hotel-access";
 import { readHotelButtonVisibility } from "@/lib/crm/hotel-access-run";
 
 export const metadata = {
   title: `Mon compte — ${siteConfig.shortName}`,
+  description: CONCIERGE_SHARE_DESCRIPTION,
   robots: { index: false, follow: false },
+  openGraph: {
+    title: CONCIERGE_SHARE_TITLE,
+    description: CONCIERGE_SHARE_DESCRIPTION,
+    siteName: siteConfig.name,
+    type: "website" as const,
+    images: brandShareImages(CONCIERGE_SHARE_TITLE),
+  },
+  twitter: {
+    card: "summary_large_image" as const,
+    title: CONCIERGE_SHARE_TITLE,
+    description: CONCIERGE_SHARE_DESCRIPTION,
+    images: brandShareImages(CONCIERGE_SHARE_TITLE).map((image) => image.url),
+  },
 };
 
 export default async function AccountLayout({
