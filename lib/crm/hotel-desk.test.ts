@@ -16,7 +16,12 @@ import {
   hotelMailSubjectKey,
   hotelReplyForDesk,
   hotelReplyLink,
+  hotelConfirmationTokens,
+  hotelLooseSearchQueries,
   hotelReplySearchQueries,
+  hotelReplySubjectKey,
+  hotelSendTooSoon,
+  type HotelReplyCue,
   deskNeedsAttention,
   applyHotelSalutation,
   companionNames,
@@ -964,6 +969,18 @@ test("la Boîte › Hôtels et le cron relisent le fil Gmail, et le connecteur e
   assert.match(registry, /courriers_hotel/);
 });
 
+test("la recherche d’une réponse ne se limite pas à l’objet exact", () => {
+  const src = readFileSync(join(process.cwd(), "lib/crm/hotel-desk-run.ts"), "utf8");
+  const start = src.indexOf("async function collectThreadHits");
+  const end = src.indexOf("function toGmailHit");
+  const fn = src.slice(start, end);
+  assert.match(fn, /hotelLooseSearchQueries/);
+  assert.match(fn, /confirmations/);
+  const send = src.slice(src.indexOf("export async function sendHotelRequest"), src.indexOf("async function staffFullName"));
+  assert.match(send, /hotelSendTooSoon/);
+  assert.match(send, /claimHotelSend/);
+});
+
 test("la synchro des réponses relit aussi un séjour en préparation", () => {
   const src = readFileSync(join(process.cwd(), "lib/crm/hotel-desk-run.ts"), "utf8");
   const start = src.indexOf("export async function syncRecentHotelReplies");
@@ -984,6 +1001,87 @@ test("seul un courrier envoyé lance la recherche", () => {
   assert.deepEqual(subjectsToFollow({ ...sent, status: "waiting", sent_at: null }), []);
   assert.deepEqual(subjectsToFollow({ ...sent, status: "skipped" }), []);
   assert.deepEqual(subjectsToFollow({ ...sent, status: "draft" }), []);
+});
+
+test("Hyatt : un nouveau fil avec le numéro rejoint la bonne demande, un homonyme non", () => {
+  const sent = "David Berda — Payment link — Park Hyatt Saigon — 18 December 2026 — 150912RA041982";
+  const other = "David Berda — Payment link — Park Hyatt Saigon — 31 December 2026 — 150912RA099999";
+  const cue = (subject: string, id: string): HotelReplyCue => ({
+    subjectKey: hotelMailSubjectKey(subject),
+    requestId: id,
+    confirmations: hotelConfirmationTokens(subject),
+    guest: "David Berda",
+    reference: "TB-2026-0148",
+    recipients: ["federica.cantarini@hyatt.com", "prive.eame@hyatt.com"],
+  });
+  const inbound = {
+    from: "Xuan Anh Tran <xuananh.tran@hyatt.com>",
+    subject: "Park Hyatt Saigon - 150912RA041982 - Mr. David Berda",
+    body: "Dear team, the payment link is ready.",
+  };
+  const cues = [cue(sent, "dec-18"), cue(other, "dec-31")];
+  assert.equal(hotelReplySubjectKey({ ...inbound, cues })?.subjectKey, hotelMailSubjectKey(sent));
+  const classified = classifyHotelMail({ ...inbound, keys: [sent, other], cues });
+  assert.equal(classified.keep, true);
+  assert.equal(classified.countsAsReply, true);
+  assert.equal(classified.direction, "in");
+  assert.equal(classified.via, "confirmation");
+  assert.equal(classified.subjectKey, hotelMailSubjectKey(sent));
+  assert.equal(
+    hotelReplySubjectKey({
+      from: inbound.from,
+      subject: "Re: your stay",
+      body: "Confirmation 150912RA041982 is confirmed.",
+      cues,
+    })?.subjectKey,
+    hotelMailSubjectKey(sent)
+  );
+  assert.equal(
+    hotelReplySubjectKey({
+      from: inbound.from,
+      subject: "Park Hyatt Saigon - Mr. David Berda",
+      body: "Hello, about the stay.",
+      cues,
+    }),
+    null
+  );
+  const queries = hotelLooseSearchQueries({
+    subject: sent,
+    emails: cue(sent, "dec-18").recipients,
+    confirmations: hotelConfirmationTokens(sent),
+    after: "2026/12/01",
+  });
+  assert.ok(queries.some((query) => query.includes('"150912RA041982"') && !query.includes("subject:")));
+  assert.ok(queries.some((query) => query.includes("from:hyatt.com")));
+  const generic = hotelLooseSearchQueries({
+    subject: sent,
+    emails: ["david@gmail.com"],
+    confirmations: [],
+    after: "2026/12/01",
+  });
+  assert.equal(generic.some((query) => /from:gmail\.com\)/.test(query)), false);
+  assert.ok(generic.some((query) => query.includes("from:david@gmail.com")));
+  const away = classifyHotelMail({
+    from: inbound.from,
+    subject: inbound.subject,
+    body: "I am out of the office until Monday.",
+    keys: [sent],
+    cues: [cue(sent, "dec-18")],
+  });
+  assert.equal(away.keep, true);
+  assert.equal(away.countsAsReply, false);
+  const now = Date.parse("2026-12-18T10:00:06.000Z");
+  assert.equal(hotelSendTooSoon({ sentAt: "2026-12-18T10:00:00.000Z", status: "sent", nowMs: now }), true);
+  assert.equal(hotelSendTooSoon({ sentAt: "2026-12-18T09:00:00.000Z", status: "sent", nowMs: now }), false);
+  assert.equal(
+    hotelSendTooSoon({
+      sentAt: "2026-12-18T10:00:00.000Z",
+      lastFollowUpAt: "2026-12-17T10:00:00.000Z",
+      status: "follow_up",
+      nowMs: now,
+    }),
+    false
+  );
 });
 
 test("une réponse d'une autre adresse reste, un objet voisin non", () => {

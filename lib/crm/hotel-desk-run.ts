@@ -36,8 +36,11 @@ import {
   appendSentSubject,
   classifyHotelMail,
   gmailAfterDate,
+  hotelConfirmationTokens,
+  hotelLooseSearchQueries,
   hotelMailSubjectKey,
-  hotelThreadSearchQuery,
+  hotelSendTooSoon,
+  type HotelReplyCue,
   keepAgencyDraft,
   knownHotelRecipients,
   sameStoredReply,
@@ -272,6 +275,8 @@ type ThreadAnchor = {
   requestId: string | null;
   messageId: string | null;
   syncedAt: string | null;
+  recipients: string[];
+  confirmations: string[];
 };
 
 type GmailHit = {
@@ -390,13 +395,22 @@ export async function syncHotelDeskThreads(admin: Admin, bookingId: string) {
     const nowMs = Date.now();
     const dueAnchors = anchors.filter((anchor) => anchor.stamps.some((stamp) => threadStampDue(stamp.syncedAt, nowMs)));
     if (anchors.length > 0 && dueAnchors.length === 0) return replied;
+    const context = await replyContext(admin, bookingId);
+    for (const anchor of anchors) {
+      const ref = context.confirmations.get(anchor.bookingItemId) || "";
+      for (const token of hotelConfirmationTokens(ref)) {
+        if (!anchor.confirmations.some((item) => item.toUpperCase() === token.toUpperCase())) anchor.confirmations.push(token);
+      }
+    }
+    const cues = replyCues(anchors, context.guest, context.reference);
+    const sharedConfirmation = new Map<string, boolean>();
     for (const anchor of dueAnchors) {
       const knownThreads = existing
         .filter((row) => row.booking_item_id === anchor.bookingItemId && row.subject_key === anchor.subjectKey && row.gmail_thread_id)
         .map((row) => row.gmail_thread_id || "");
       const found = await collectThreadHits(anchor, knownThreads);
       if (found.hits.length) {
-        const people = await storeThreadHits(admin, bookingId, anchor, found.hits);
+        const people = await storeThreadHits(admin, bookingId, anchor, found.hits, cues, sharedConfirmation);
         named.push(...people);
       }
       if (!found.searchFailed) {
@@ -432,6 +446,12 @@ function threadAnchors(letters: CrmHotelRequest[], notes: CrmHotelMessage[]) {
     }
     current.stamps.push(stamp);
     if (anchor.sinceMs < current.sinceMs) current.sinceMs = anchor.sinceMs;
+    for (const email of anchor.recipients) {
+      if (!current.recipients.includes(email)) current.recipients.push(email);
+    }
+    for (const token of anchor.confirmations) {
+      if (!current.confirmations.some((item) => item.toUpperCase() === token.toUpperCase())) current.confirmations.push(token);
+    }
     if (anchor.requestId) {
       current.requestId = anchor.requestId;
       current.table = "crm_hotel_requests";
@@ -452,6 +472,8 @@ function threadAnchors(letters: CrmHotelRequest[], notes: CrmHotelMessage[]) {
         requestId: row.id,
         messageId: null,
         syncedAt: row.thread_synced_at ?? null,
+        recipients: cleanRecipients(row.recipients || []),
+        confirmations: hotelConfirmationTokens(row.subject, ...(row.sent_subjects || [])),
       });
     }
   }
@@ -467,6 +489,8 @@ function threadAnchors(letters: CrmHotelRequest[], notes: CrmHotelMessage[]) {
         requestId: null,
         messageId: row.id,
         syncedAt: row.thread_synced_at ?? null,
+        recipients: cleanRecipients(row.recipients || []),
+        confirmations: hotelConfirmationTokens(row.subject, ...(row.sent_subjects || [])),
       });
     }
   }
@@ -483,10 +507,105 @@ function anchorSince(row: { sent_at: string | null; created_at: string; follow_u
   });
 }
 
+async function replyContext(admin: Admin, bookingId: string) {
+  const confirmations = new Map<string, string>();
+  let guest = "";
+  let reference = "";
+  const { data: itemRows } = await admin.from("crm_booking_items").select("id, confirmation_ref").eq("booking_id", bookingId).eq("kind", "hotel");
+  for (const row of (itemRows || []) as { id?: string; confirmation_ref?: string | null }[]) {
+    if (row.id && row.confirmation_ref) confirmations.set(row.id, row.confirmation_ref);
+  }
+  const { data: booking } = await admin.from("crm_bookings").select("reference, customer_id").eq("id", bookingId).maybeSingle();
+  const stay = booking as { reference?: string | null; customer_id?: string | null } | null;
+  reference = (stay?.reference || "").trim();
+  const { data: travelers } = await admin
+    .from("crm_booking_travelers")
+    .select("first_name, last_name, is_account_holder")
+    .eq("booking_id", bookingId);
+  let holder: { first_name: string; last_name: string } | null = null;
+  if (stay?.customer_id) {
+    const { data: customer } = await admin.from("crm_customers").select("first_name, last_name").eq("id", stay.customer_id).maybeSingle();
+    const person = customer as { first_name?: string | null; last_name?: string | null } | null;
+    if (person) holder = { first_name: person.first_name || "", last_name: person.last_name || "" };
+  }
+  const lead = principalGuest({
+    travelers: (travelers || []) as { first_name: string | null; last_name: string | null; is_account_holder: boolean }[],
+    holder,
+  });
+  guest = `${lead.firstName} ${lead.lastName}`.trim();
+  return { confirmations, guest, reference };
+}
+
+function replyCues(anchors: (ThreadAnchor & { subjectKey: string })[], guest: string, reference: string): HotelReplyCue[] {
+  return anchors.map((anchor) => ({
+    subjectKey: anchor.subjectKey,
+    requestId: anchor.requestId || anchor.messageId || anchor.subjectKey,
+    confirmations: anchor.confirmations,
+    guest,
+    reference,
+    recipients: anchor.recipients,
+  }));
+}
+
+/** Le même numéro sur deux dossiers : on ne rattache pas. Une erreur de lecture ne bloque pas le fil déjà là. */
+async function confirmationShared(admin: Admin, tokens: string[], cache: Map<string, boolean>) {
+  for (const token of tokens) {
+    const key = token.toUpperCase();
+    let shared = cache.get(key);
+    if (shared == null) {
+      const { data, error } = await admin
+        .from("crm_booking_items")
+        .select("booking_id")
+        .eq("kind", "hotel")
+        .ilike("confirmation_ref", `%${token}%`)
+        .limit(5);
+      if (error || !data) shared = false;
+      else {
+        const bookings = new Set((data as { booking_id?: string | null }[]).map((row) => row.booking_id).filter(Boolean));
+        shared = bookings.size > 1;
+      }
+      cache.set(key, shared);
+    }
+    if (shared) return true;
+  }
+  return false;
+}
+
+const HOTEL_SEND_LOCK_MS = 60_000;
+
+/** Verrou d’une minute. Un second clic pendant l’envoi, ou juste après, ne repart pas. */
+async function claimHotelSend(admin: Admin, row: { id: string; updated_at: string }, nowMs = Date.now()) {
+  const provider = `hotel-send:${row.id}`;
+  const { data, error } = await admin.from("crm_email_sync").select("updated_at").eq("provider", provider).maybeSingle();
+  if (!error) {
+    const stamp = (data as { updated_at?: string } | null)?.updated_at;
+    const at = stamp ? Date.parse(stamp) : NaN;
+    if (Number.isFinite(at) && nowMs >= at && nowMs - at < HOTEL_SEND_LOCK_MS) return false;
+  }
+  const claimed = await admin
+    .from("crm_hotel_requests")
+    .update({ updated_at: new Date(nowMs).toISOString() })
+    .eq("id", row.id)
+    .eq("updated_at", row.updated_at)
+    .select("id");
+  if (!claimed.error && !(claimed.data || []).length) return false;
+  await admin.from("crm_email_sync").upsert({ provider, updated_at: new Date(nowMs).toISOString() }, { onConflict: "provider" });
+  return true;
+}
+
+async function releaseHotelSend(admin: Admin, requestId: string) {
+  await admin.from("crm_email_sync").delete().eq("provider", `hotel-send:${requestId}`);
+}
+
 async function collectThreadHits(anchor: ThreadAnchor & { subjectKey: string }, knownThreads: string[]) {
   if (!gmailConfigured()) return { hits: [] as GmailHit[], searchFailed: false };
   const after = gmailAfterDate(anchor.sinceMs);
-  const query = hotelThreadSearchQuery(anchor.subject, after);
+  const queries = hotelLooseSearchQueries({
+    subject: anchor.subject,
+    emails: anchor.recipients,
+    confirmations: anchor.confirmations,
+    after,
+  });
   const hits: GmailHit[] = [];
   const byId = new Map<string, GmailHit>();
   const push = (message: Omit<GmailHit, "inThread">, inThread: boolean) => {
@@ -502,15 +621,15 @@ async function collectThreadHits(anchor: ThreadAnchor & { subjectKey: string }, 
   };
   const threadIds = new Set(knownThreads.filter(Boolean));
   let searchFailed = false;
-  try {
-    if (query) {
-      for (const message of await searchInbox(query, 8)) {
+  for (const query of queries) {
+    try {
+      for (const message of await searchInbox(query, 4)) {
         push(toGmailHit(message), false);
         if (message.threadId) threadIds.add(message.threadId);
       }
+    } catch {
+      searchFailed = true;
     }
-  } catch {
-    searchFailed = true;
   }
   for (const threadId of [...threadIds].slice(0, 5)) {
     try {
@@ -557,10 +676,31 @@ async function storeThreadHits(
   admin: Admin,
   bookingId: string,
   anchor: ThreadAnchor & { subjectKey: string },
-  hits: GmailHit[]
+  hits: GmailHit[],
+  cues: HotelReplyCue[],
+  sharedConfirmation: Map<string, boolean>
 ) {
   const parties: ThreadParty[] = [];
-  const rows = hits.flatMap((hit) => {
+  const rows: {
+    booking_id: string;
+    booking_item_id: string;
+    gmail_message_id: string;
+    gmail_thread_id: string | null;
+    subject_key: string;
+    direction: "out" | "in";
+    from_email: string;
+    to_emails: string[];
+    cc_emails: string[];
+    subject: string;
+    body: string;
+    link: string | null;
+    received_at: string;
+    counts_as_reply: boolean;
+    source: "gmail";
+    request_id: string | null;
+    message_id: string | null;
+  }[] = [];
+  for (const hit of hits) {
     const classified = classifyHotelMail({
       from: hit.from,
       subject: hit.subject,
@@ -568,8 +708,16 @@ async function storeThreadHits(
       keys: [anchor.subject],
       autoSubmitted: hit.autoSubmitted,
       acceptThreadReply: hit.inThread,
+      cues,
+      threadKey: hit.inThread ? anchor.subjectKey : null,
     });
-    if (!classified.keep || !hit.id) return [];
+    if (!classified.keep || classified.subjectKey !== anchor.subjectKey || !hit.id) continue;
+    if (classified.via === "confirmation" || classified.via === "domain") {
+      const tokens = hotelConfirmationTokens(hit.subject, hit.body).filter((token) =>
+        anchor.confirmations.some((item) => item.toUpperCase() === token.toUpperCase())
+      );
+      if (tokens.length && (await confirmationShared(admin, tokens, sharedConfirmation))) continue;
+    }
     parties.push({
       inbound: classified.direction === "in" && classified.countsAsReply,
       from: hit.from,
@@ -578,28 +726,26 @@ async function storeThreadHits(
       cc: hit.cc,
     });
     const receivedAt = hit.receivedAt && Number.isFinite(Date.parse(hit.receivedAt)) ? hit.receivedAt : new Date().toISOString();
-    return [
-      {
-        booking_id: bookingId,
-        booking_item_id: anchor.bookingItemId,
-        gmail_message_id: hit.id,
-        gmail_thread_id: hit.threadId || null,
-        subject_key: classified.subjectKey,
-        direction: classified.direction,
-        from_email: hit.from.slice(0, 200),
-        to_emails: partyList(hit.to),
-        cc_emails: partyList(hit.cc),
-        subject: hit.subject.slice(0, 300),
-        body: classified.body,
-        link: classified.link,
-        received_at: receivedAt,
-        counts_as_reply: classified.countsAsReply,
-        source: "gmail",
-        request_id: anchor.requestId,
-        message_id: anchor.requestId ? null : anchor.messageId,
-      },
-    ];
-  });
+    rows.push({
+      booking_id: bookingId,
+      booking_item_id: anchor.bookingItemId,
+      gmail_message_id: hit.id,
+      gmail_thread_id: hit.threadId || null,
+      subject_key: classified.subjectKey,
+      direction: classified.direction,
+      from_email: hit.from.slice(0, 200),
+      to_emails: partyList(hit.to),
+      cc_emails: partyList(hit.cc),
+      subject: hit.subject.slice(0, 300),
+      body: classified.body,
+      link: classified.link,
+      received_at: receivedAt,
+      counts_as_reply: classified.countsAsReply,
+      source: "gmail",
+      request_id: anchor.requestId,
+      message_id: anchor.requestId ? null : anchor.messageId,
+    });
+  }
   const named = threadContactCandidates(parties).map((person) => ({ ...person, itemId: anchor.bookingItemId }));
   if (!rows.length) return named;
   const ids = rows.map((row) => row.gmail_message_id);
@@ -780,6 +926,9 @@ export async function sendHotelRequest(
   const recipients = cleanRecipients(input.recipients);
   if (!recipients.length) throw new Error("Choisissez au moins un destinataire.");
   const row = await loadRequest(admin, input.bookingId, input.itemId, input.kind);
+  if (hotelSendTooSoon({ sentAt: row.sent_at, lastFollowUpAt: row.last_follow_up_at, status: row.status, nowMs: Date.now() })) {
+    throw new Error("Cette demande vient d’être envoyée.");
+  }
   const item = await loadItem(admin, input.bookingId, input.itemId);
   const lang = hotelLanguage(hotelContact(item).country);
   let note = "";
@@ -817,6 +966,7 @@ export async function sendHotelRequest(
   const subject = (followUp ? input.subject.trim() : ensureHotelMailSubject(input.subject, identity)).slice(0, 300);
   const stampedBody = signHotelLetter(ensureHotelMailIdentity(input.body, identity), await staffFullName(admin, input.staffId));
   const text = outboundHotelLetter(stampedBody, note);
+  if (!(await claimHotelSend(admin, row))) throw new Error("Cette demande vient d’être envoyée.");
   try {
     await deliverHotelMail({
       to: recipients,
@@ -826,6 +976,7 @@ export async function sendHotelRequest(
       carriesCardLink: Boolean(cardLinkId),
     });
   } catch (error) {
+    await releaseHotelSend(admin, row.id);
     if (cardLinkId) await settleCardLinks(admin, { linkId: cardLinkId, requestId: row.id, sent: false });
     throw error;
   }
@@ -981,6 +1132,16 @@ export async function sendHotelFollowUp(
       .maybeSingle();
     const row = data as CrmHotelRequest | null;
     if (!row?.sent_at) throw new Error("Ce courrier n’a pas encore été envoyé.");
+    if (
+      hotelSendTooSoon({
+        sentAt: row.sent_at,
+        lastFollowUpAt: row.last_follow_up_at,
+        status: row.status,
+        nowMs: Date.now(),
+      })
+    ) {
+      throw new Error("Cette demande vient d’être envoyée.");
+    }
     const refusal = followUpRefused({
       sentAt: row.sent_at,
       status: row.status,
@@ -1007,7 +1168,13 @@ export async function sendHotelFollowUp(
       postedCc,
     });
     if (!addressed.to.length) throw new Error("Choisissez au moins un destinataire.");
-    await deliverHotelMail({ to: addressed.to, cc: addressed.cc, subject, text, attachments: [] });
+    if (!(await claimHotelSend(admin, row))) throw new Error("Cette demande vient d’être envoyée.");
+    try {
+      await deliverHotelMail({ to: addressed.to, cc: addressed.cc, subject, text, attachments: [] });
+    } catch (error) {
+      await releaseHotelSend(admin, row.id);
+      throw error;
+    }
     const now = new Date().toISOString();
     await admin
       .from("crm_hotel_requests")
