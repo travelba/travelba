@@ -9,7 +9,7 @@ import { formatDateTimeFr } from "@/lib/crm/money";
 import { loadPliantAccountBalance, pliantConfigured } from "@/lib/crm/pliant";
 import { loadPliantStayRefs } from "@/lib/crm/pliant-dossier-run";
 import { tripCostEventSentence } from "@/lib/crm/pliant-link";
-import { pliantStayForCard } from "@/lib/crm/pliant-tx";
+import { pliantRefusalLabel, pliantStayForCard } from "@/lib/crm/pliant-tx";
 import { revolutConfigured, revolutConnected } from "@/lib/crm/revolut";
 import { repairRevolutDebitQueue } from "@/lib/crm/revolut-debit";
 import { revolutDebitLine } from "@/lib/crm/revolut-inbox";
@@ -118,7 +118,7 @@ export async function PointerPanel({ params }: { params: Record<string, SearchPa
         const { data, error } = await admin
           .from("crm_pliant_transactions")
           .select(
-            "id, card_id, status, type, merchant, billing_cents, billing_currency, transaction_cents, transaction_currency, booked_at, card_label, card_last4, holder_name, category, comment, match_status"
+            "id, card_id, status, type, merchant, billing_cents, billing_currency, transaction_cents, transaction_currency, booked_at, card_label, card_last4, holder_name, category, comment, match_status, raw"
           )
           .or("type.is.null,type.neq.STATUS_INQUIRY")
           .order("booked_at", { ascending: false, nullsFirst: false })
@@ -179,6 +179,7 @@ export async function PointerPanel({ params }: { params: Record<string, SearchPa
                 atLabel: formatDateTimeFr(event.at),
               })
             : null,
+          refusal: pliantRefusalLabel(row.status, row.raw),
         };
       });
     } catch (err) {

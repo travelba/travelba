@@ -3,7 +3,7 @@ import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatMoney } from "./money";
 import { McpReadError } from "./mcp-passport";
-import { clientCompanionLines, dossierPayerLine, mcpTripCost, readChercherDossiers, readFicheClient, readFicheDossier, readFormalites, readGrandLivre } from "./mcp-read";
+import { clientCompanionLines, dossierPayerLine, mcpTripCost, readChercherDossiers, readFicheClient, readFicheDossier, readFormalites, readGrandLivre, readPliantDebits } from "./mcp-read";
 import type { TripCost } from "./trip-costs";
 
 const BOOKING = "22222222-2222-4222-8222-222222222222";
@@ -655,4 +655,91 @@ test("fiche_client liste chaque société avec son identifiant", async () => {
     () => readFicheClient({ id: holder }, failed),
     (err: unknown) => err instanceof McpReadError && err.message === "Lecture des sociétés impossible."
   );
+});
+
+test("un refus Pliant est lisible et n’est pas proposé, y compris pour une carte", async () => {
+  const booking = "22222222-2222-4222-8222-222222222222";
+  const cardRow = "44444444-4444-4444-8444-444444444444";
+  const card = "pliant-card-1";
+  const declined = {
+    id: "33333333-3333-4333-8333-333333333333",
+    card_id: card,
+    merchant: "ONEPAY",
+    billing_cents: -1200,
+    billing_currency: "EUR",
+    transaction_cents: -1200,
+    transaction_currency: "EUR",
+    type: "PURCHASE",
+    status: "DECLINED",
+    match_status: "unmatched",
+    booked_at: "2026-11-02T10:00:00.000Z",
+    raw: { declineReason: { type: "SCA_REQUIRED_VIRTUAL" }, createdAt: "2026-11-02T10:00:00.000Z" },
+    card_last4: "4242",
+  };
+  const booked = {
+    ...declined,
+    id: "55555555-5555-4555-8555-555555555555",
+    merchant: "HOTEL",
+    status: "BOOKED",
+    match_status: "matched",
+    raw: {},
+  };
+  const tables: Record<string, Record<string, unknown>[]> = {
+    crm_pliant_transactions: [declined, booked],
+    crm_bookings: [{ id: booking, reference: "TB-2026-0001" }],
+    crm_booking_cards: [{ id: cardRow, pliant_card_id: card, booking_id: booking }],
+    crm_pliant_cards: [],
+  };
+  const admin = {
+    from(table: string) {
+      const filters: { col: string; val: unknown }[] = [];
+      const api = {
+        select() {
+          return api;
+        },
+        eq(col: string, val: unknown) {
+          filters.push({ col, val });
+          return api;
+        },
+        in() {
+          return api;
+        },
+        or() {
+          return api;
+        },
+        order() {
+          return api;
+        },
+        limit() {
+          return api;
+        },
+        then(resolve: (value: { data: unknown; error: null }) => void) {
+          const rows = (tables[table] || []).filter((row) => filters.every((filter) => row[filter.col] === filter.val));
+          resolve({ data: rows, error: null });
+        },
+      };
+      return api;
+    },
+  } as unknown as SupabaseClient;
+
+  const list = await readPliantDebits({}, admin);
+  if (!("debits" in list)) assert.fail("liste");
+  const refusal = list.debits.find((row) => row.commercant === "ONEPAY");
+  assert.ok(refusal);
+  assert.equal(refusal.etat, "refusé");
+  assert.equal(refusal.motif, "Authentification 3DS exigée : le commerçant ne l’a pas lancée");
+  assert.equal(refusal.suggestion, null);
+  const paid = list.debits.find((row) => row.commercant === "HOTEL");
+  assert.equal(paid?.etat, "rattachée");
+  assert.equal(paid?.motif, null);
+
+  const scoped = await readPliantDebits({ dossier_id: booking, carte_id: cardRow }, admin);
+  if (!("debits" in scoped) || !scoped.porte_sur) assert.fail("carte");
+  assert.equal(scoped.debits.length, 1);
+  assert.equal(scoped.debits[0]?.etat, "refusé");
+  assert.equal(scoped.debits[0]?.suggestion, null);
+  assert.equal(scoped.porte_sur.carte_id, cardRow);
+
+  const missing = await readPliantDebits({ carte_id: card }, admin);
+  assert.match("message" in missing && missing.message ? missing.message : "", /dossier/);
 });

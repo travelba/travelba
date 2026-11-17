@@ -467,9 +467,21 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "pliant_debits",
     description:
-      "Dépenses carte Pliant. id, date d’autorisation (createdAt, pas le débit), quatre derniers chiffres, commerçant, montant, devise, état, proposition du moment (dossier_titre, client_nom, confiance, raisons, voyageurs). La proposition ne rattache pas. page et limite parcourent la file. L’id sert à comptabilite_sortie.",
-    input: { page: listPage, limite: listLimit },
-    run: (args) => readPliantDebits(pageOf(args)),
+      "Dépenses carte Pliant. id, date d’autorisation (createdAt, pas le débit), quatre derniers chiffres, commerçant, montant, devise, état, proposition du moment (dossier_titre, client_nom, confiance, raisons, voyageurs). La proposition ne rattache pas. Un paiement refusé a etat « refusé » et un motif en français : il n’est jamais proposé au rattachement. dossier_id ou reference, avec carte_id, liste les refus de cette carte. page et limite parcourent la file. L’id sert à comptabilite_sortie.",
+    input: {
+      page: listPage,
+      limite: listLimit,
+      dossier_id: z.string().trim().max(80).optional().describe("Dossier, avec carte_id, pour lister les refus"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier, si dossier_id est absent"),
+      carte_id: z.string().trim().max(80).optional().describe("Carte du dossier dont on liste les refus"),
+    },
+    run: (args) =>
+      readPliantDebits({
+        ...pageOf(args),
+        dossier_id: str(args, "dossier_id"),
+        reference: str(args, "reference"),
+        carte_id: str(args, "carte_id"),
+      }),
   },
   {
     name: "comptabilite_voyage",
@@ -729,7 +741,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Crée une carte Pliant sur le dossier (dossier_id ou reference), au nom indiqué (ex. Hôtel). Plafond total obligatoire, en euros par défaut. transactions : nombre d’achats, 1 par défaut (usage unique, un contrôle de passerelle ne compte pas). Au-delà, carte virtuelle réutilisable : le plafond total et le montant maximum par transaction sont envoyés, par exemple 1 500 € et 5 achats pour la garantie, les extras et le solde. Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. La carte reste rattachée au dossier : chaque débit s’y rapproche. Ne renvoie jamais le numéro ni le CVV. lire_carte_pliant, juste après, donne le numéro au jeton général, au jeton carte, et à une clé tbk_ qui a le droit Créer une carte Pliant. Jeton général, jeton carte, ou clé tbk_ avec le droit Créer une carte Pliant. Sans confirmer, aperçu seulement : la carte n’est pas créée.",
+      "Crée une carte Pliant sur le dossier (dossier_id ou reference), au nom indiqué (ex. Hôtel). Plafond total obligatoire, en euros par défaut. transactions : nombre d’achats, 1 par défaut. Si le compte a PLIANT_VIRTUAL_TRAVEL, c’est ce produit (sans 3DS, jamais une config _CC) : le nombre est toujours envoyé, plafond total et montant d’un achat égal au plafond. Sinon, 1 reste une carte à usage unique et un nombre plus grand une carte virtuelle. La réponse donne card_config, et avertissement si les cartes voyage ne sont pas activées. Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. La carte reste rattachée au dossier : chaque débit s’y rapproche. Ne renvoie jamais le numéro ni le CVV. lire_carte_pliant, juste après, donne le numéro au jeton général, au jeton carte, et à une clé tbk_ qui a le droit Créer une carte Pliant. Jeton général, jeton carte, ou clé tbk_ avec le droit Créer une carte Pliant. Sans confirmer, aperçu seulement : la carte n’est pas créée.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier, ex. TB-2026-0082"),

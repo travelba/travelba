@@ -34,7 +34,7 @@ export async function POST(request: Request, ctx: Ctx) {
 
   if (action === "issue") {
     try {
-      await issueBookingCard(admin, {
+      const issued = await issueBookingCard(admin, {
         bookingId: id,
         amount: typeof body?.amount === "string" ? body.amount : "",
         firstName: typeof body?.firstName === "string" ? body.firstName : "",
@@ -43,7 +43,7 @@ export async function POST(request: Request, ctx: Ctx) {
         transactionAmount: typeof body?.transactionAmount === "string" ? body.transactionAmount : "",
         transactionCount: typeof body?.transactionCount === "string" ? body.transactionCount : "",
       });
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true, cardConfig: issued.cardConfig, avertissement: issued.avertissement });
     } catch (error) {
       return jsonError(error instanceof Error ? error.message : "La carte n’a pas pu être créée.", 400);
     }

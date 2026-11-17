@@ -45,6 +45,8 @@ export type PliantLine = {
   cost: { id: string; bookingId: string; reference: string; itemLabel: string | null } | null;
   /** Dernier geste de rattachement, déjà formulé. */
   auditLabel: string | null;
+  /** « Refusé : motif » quand le paiement a été refusé. */
+  refusal: string | null;
 };
 
 function lineView(row: PliantLine) {
@@ -93,7 +95,7 @@ function euros(cents: number, currency: string | null) {
 }
 
 function needsMatch(row: PliantLine) {
-  return row.matchStatus === "unmatched" && row.outgoing != null;
+  return !row.refusal && row.matchStatus === "unmatched" && row.outgoing != null;
 }
 
 export function PliantAccount({
@@ -111,7 +113,7 @@ export function PliantAccount({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scope, setScope] = useState<"all" | "unmatched">("unmatched");
-  const shown = scope === "unmatched" ? lines.filter(needsMatch) : lines;
+  const shown = scope === "unmatched" ? lines.filter((row) => needsMatch(row) || row.refusal) : lines;
 
   async function sync() {
     setBusy(true);
@@ -160,6 +162,7 @@ export function PliantAccount({
   }
 
   function tripCell(row: PliantLine) {
+    if (row.refusal) return <p className="text-sm text-[#6b6560]">{row.refusal}</p>;
     if (row.cost || row.outgoing) {
       return <PliantMatchActions id={row.id} linked={row.cost} outgoing={row.outgoing} auditLabel={row.auditLabel} />;
     }
@@ -210,11 +213,12 @@ export function PliantAccount({
         <ul className="divide-y divide-border md:hidden">
           {shown.map((row) => {
             const view = lineView(row);
+            const ink = row.refusal ? "text-[#6b6560]" : "text-[var(--admin-navy)]";
             return (
-              <li key={row.id} className="space-y-2 px-5 py-4">
+              <li key={row.id} className={`space-y-2 px-5 py-4 ${row.refusal ? "bg-[#f4f1ea]" : ""}`}>
                 <div className="flex items-start justify-between gap-3">
-                  <p className="font-medium text-[var(--admin-navy)]">{view.merchant}</p>
-                  <p className="shrink-0 text-right font-medium tabular-nums text-[var(--admin-navy)]">
+                  <p className={`font-medium ${ink}`}>{view.merchant}</p>
+                  <p className={`shrink-0 text-right font-medium tabular-nums ${ink}`}>
                     {view.amount}
                     {view.origin ? <span className="mt-0.5 block text-xs font-normal text-muted">{view.origin}</span> : null}
                   </p>
@@ -222,9 +226,9 @@ export function PliantAccount({
                 <p className="text-xs text-muted">{formatDateFr(row.bookedAt)}</p>
                 <dl className="grid grid-cols-[5.5rem_1fr] gap-x-3 gap-y-1 text-sm">
                   <dt className="text-muted">Libellé</dt>
-                  <dd className="font-semibold text-[var(--admin-navy)]">{view.card.label}</dd>
+                  <dd className={`font-semibold ${ink}`}>{view.card.label}</dd>
                   <dt className="text-muted">Carte</dt>
-                  <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{view.card.number}</dd>
+                  <dd className={`font-semibold tabular-nums ${ink}`}>{view.card.number}</dd>
                 </dl>
                 <LineMeta row={row} />
                 {tripCell(row)}
@@ -247,16 +251,17 @@ export function PliantAccount({
             <tbody className="divide-y divide-border">
               {shown.map((row) => {
                 const view = lineView(row);
+                const ink = row.refusal ? "text-[#6b6560]" : "text-[var(--admin-navy)]";
                 return (
-                  <tr key={row.id} className="align-top">
+                  <tr key={row.id} className={`align-top ${row.refusal ? "bg-[#f4f1ea]" : ""}`}>
                     <td className="px-5 py-3 text-muted">{formatDateFr(row.bookedAt)}</td>
                     <td className="px-5 py-3">
-                      <p className="font-medium text-[var(--admin-navy)]">{view.merchant}</p>
+                      <p className={`font-medium ${ink}`}>{view.merchant}</p>
                       <LineMeta row={row} />
                     </td>
-                    <td className="px-5 py-3 font-semibold text-[var(--admin-navy)]">{view.card.label}</td>
-                    <td className="px-5 py-3 font-semibold tabular-nums text-[var(--admin-navy)]">{view.card.number}</td>
-                    <td className="px-5 py-3 text-right font-medium tabular-nums text-[var(--admin-navy)]">
+                    <td className={`px-5 py-3 font-semibold ${ink}`}>{view.card.label}</td>
+                    <td className={`px-5 py-3 font-semibold tabular-nums ${ink}`}>{view.card.number}</td>
+                    <td className={`px-5 py-3 text-right font-medium tabular-nums ${ink}`}>
                       {view.amount}
                       {view.origin ? <span className="mt-0.5 block text-xs font-normal text-muted">{view.origin}</span> : null}
                     </td>

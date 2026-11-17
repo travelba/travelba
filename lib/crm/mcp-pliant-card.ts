@@ -55,7 +55,7 @@ export type CardSecrets = { pan: string; expiry: string; cvc: string };
 
 export type CardDeps = {
   configured: () => boolean;
-  issue: (body: unknown) => Promise<{ cardId: string | null }>;
+  issue: (body: unknown) => Promise<{ cardId: string | null; cardConfig?: string | null; avertissement?: string | null }>;
   face: (cardId: string) => Promise<{ last4: string | null }>;
   secrets: (cardId: string) => Promise<CardSecrets>;
   lock: (cardId: string) => Promise<void>;
@@ -429,9 +429,13 @@ export async function createPliantCard(
   }
 
   let cardId = "";
+  let cardConfig = body.cardConfig;
+  let avertissement: string | null = null;
   try {
     const issued = await deps.issue(body);
     cardId = issued.cardId || "";
+    if (issued.cardConfig) cardConfig = issued.cardConfig;
+    avertissement = issued.avertissement || null;
     if (!cardId) throw new Error("Pliant n’a pas créé la carte.");
   } catch (err) {
     console.error("[mcp] carte", "émission");
@@ -527,6 +531,8 @@ export async function createPliantCard(
     valable_du: body.validFrom,
     valable_au: body.validTo,
     quatre_derniers: last4,
+    card_config: cardConfig,
+    ...(avertissement ? { avertissement } : {}),
   };
   if (access.cards !== true) {
     const hidden = created as Record<string, unknown>;

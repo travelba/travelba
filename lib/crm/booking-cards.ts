@@ -107,7 +107,7 @@ export async function issueBookingCard(
     transaction_limit_cents: draft.body.transactionLimit.value,
     max_transaction_count: null,
   });
-  return { ok: true as const };
+  return { ok: true as const, cardConfig: issued.cardConfig, avertissement: issued.avertissement };
 }
 
 async function bookingCardRow(admin: Admin, bookingId: string, cardRowId: string) {

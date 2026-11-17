@@ -1,7 +1,7 @@
 import "server-only";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
-import { pickListedId, pickTravelConfig, pliantRefusal } from "./eta-il-fee";
+import { issuableTravelConfig, pickListedId, pickTravelConfig, pliantRefusal } from "./eta-il-fee";
 import {
   acquirePliantToken,
   emptyPliantTokenMemory,
@@ -15,7 +15,9 @@ import { pliantOtpToken, pliantPciWidgetUrl } from "./pliant-pci";
 import {
   emptyPliantCardControls,
   PLIANT_SINGLE_USE,
+  PLIANT_TRAVEL_WARNING,
   pliantConfigIsSingleUse,
+  pliantConfigIsTravel,
   pliantControlsAreOpen,
   pliantIssuePayload,
 } from "./pliant-controls";
@@ -193,7 +195,14 @@ function moneyCode(value: unknown) {
   return currency.trim().toUpperCase();
 }
 
-export async function issuePliantCard(cardholderId: string, body: unknown) {
+export type PliantIssuedCard = {
+  cardId: string | null;
+  status: string | null;
+  cardConfig: string;
+  avertissement: string | null;
+};
+
+export async function issuePliantCard(cardholderId: string, body: unknown): Promise<PliantIssuedCard> {
   const raw = (body && typeof body === "object" ? body : {}) as Record<string, unknown> & {
     organizationId?: string;
     cardConfig?: string;
@@ -213,6 +222,7 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
     cardConfig: raw.cardConfig || PLIANT_SINGLE_USE,
   });
   const token = await accessToken();
+  const payload = pliantIssuePayload(raw, resolved);
   const res = await fetch(`${endpoints().api}/cards/${resolved.cardholderId}`, {
     method: "POST",
     signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
@@ -221,7 +231,7 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
       "content-type": "application/json",
       "Pliant-API-Version": "2.1.0",
     },
-    body: JSON.stringify(pliantIssuePayload(raw, resolved)),
+    body: JSON.stringify(payload),
   });
   const text = await res.text();
   if (!res.ok) {
@@ -230,12 +240,17 @@ export async function issuePliantCard(cardholderId: string, body: unknown) {
   }
   const json = JSON.parse(text) as { cardId?: string; id?: string; status?: string };
   const cardId = json.cardId || json.id || null;
-  if (cardId) await clearPliantCardControls(cardId, token);
-  return { cardId, status: json.status || null };
+  if (cardId) await clearPliantCardControls(cardId, token, resolved.cardConfig);
+  return {
+    cardId,
+    status: json.status || null,
+    cardConfig: resolved.cardConfig,
+    avertissement: resolved.avertissement,
+  };
 }
 
 /** Retire commerçants, catégories, dates, lieux, pays, devises et modes d’acceptation. */
-async function clearPliantCardControls(cardId: string, token: string) {
+async function clearPliantCardControls(cardId: string, token: string, cardConfig: string) {
   const headers = {
     authorization: `Bearer ${token}`,
     "content-type": "application/json",
@@ -253,13 +268,39 @@ async function clearPliantCardControls(cardId: string, token: string) {
     if ((res.ok || res.status === 202) && (await pliantCardControlsAreOpen(url, headers))) return;
     console.error("[pliant] contrôles", res.status);
   }
-  throw new Error("Pliant n’a pas retiré les restrictions de la carte.");
+  throw new Error(
+    pliantConfigIsTravel(cardConfig)
+      ? "Pliant n’a pas retiré les restrictions de la carte voyage."
+      : "Pliant n’a pas retiré les restrictions de la carte."
+  );
 }
 
 async function pliantCardControlsAreOpen(url: string, headers: Record<string, string>) {
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS) });
   if (!res.ok) return false;
   return pliantControlsAreOpen(await res.json().catch(() => null));
+}
+
+const AVAILABLE_TTL_MS = 60_000;
+const availableCache = new Map<string, { at: number; configs: PliantAvailableConfig[] }>();
+
+type PliantAvailableConfig = { cardConfig?: string | null; canBeIssued?: boolean | null; type?: string | null };
+
+/** Vide le cache des configs émissibles. Les tests ne réutilisent pas la liste d’un autre essai. */
+export function resetPliantAvailableCardsCache() {
+  availableCache.clear();
+}
+
+async function loadAvailableCardConfigs(organizationId: string) {
+  const now = Date.now();
+  const hit = availableCache.get(organizationId);
+  if (hit && now - hit.at < AVAILABLE_TTL_MS) return hit.configs;
+  const available = await pliantJson(`/cards/available-cards?organizationId=${encodeURIComponent(organizationId)}`);
+  const listed = available && Array.isArray(available.cardConfigs) ? available.cardConfigs : null;
+  if (!listed) return null;
+  const configs = listed.filter((row): row is PliantAvailableConfig => Boolean(row) && typeof row === "object" && !Array.isArray(row));
+  availableCache.set(organizationId, { at: now, configs });
+  return configs;
 }
 
 async function resolvePliantIssue(preferred: { organizationId: string; cardholderId: string; cardConfig: string }) {
@@ -274,8 +315,7 @@ async function resolvePliantIssue(preferred: { organizationId: string; cardholde
   const cardholderId = holders ? pickListedId(preferred.cardholderId, holderIds) : preferred.cardholderId;
   if (!cardholderId) throw new Error("Pliant : le porteur configuré est introuvable.");
 
-  const available = await pliantJson(`/cards/available-cards?organizationId=${encodeURIComponent(organizationId)}`);
-  const configs = Array.isArray(available?.cardConfigs) ? available.cardConfigs : null;
+  const configs = await loadAvailableCardConfigs(organizationId);
   const cardConfig = configs ? pickTravelConfig(preferred.cardConfig, configs) : preferred.cardConfig;
   if (!cardConfig) {
     throw new Error(
@@ -284,7 +324,8 @@ async function resolvePliantIssue(preferred: { organizationId: string; cardholde
         : "Pliant : la configuration de carte est introuvable."
     );
   }
-  return { organizationId, cardholderId, cardConfig };
+  const avertissement = configs && !issuableTravelConfig(configs) ? PLIANT_TRAVEL_WARNING : null;
+  return { organizationId, cardholderId, cardConfig, avertissement };
 }
 
 function rows(payload: { data?: unknown } | null, key: "organizationId" | "cardholderId") {

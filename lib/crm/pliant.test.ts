@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "node:test";
 import { emptyPliantCardControls } from "./pliant-controls";
-import { issuePliantCard, PliantSecretsError, readIssuedPliantCardSecrets, readPliantCardholderName, readPliantCardSecrets, readPliantHealth } from "./pliant";
+import { issuePliantCard, PliantSecretsError, readIssuedPliantCardSecrets, readPliantCardholderName, readPliantCardSecrets, readPliantHealth, resetPliantAvailableCardsCache } from "./pliant";
+import { PLIANT_TRAVEL_WARNING, PLIANT_VIRTUAL_TRAVEL } from "./pliant-controls";
 import { maskPliantPath, scrubPliantLog } from "./pliant-tx";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -36,19 +37,27 @@ describe("lectures Pliant", { concurrency: 1 }, () => {
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
     serviceRole: process.env.SUPABASE_SERVICE_ROLE_KEY,
   };
-  const calls: { url: string; method: string }[] = [];
+  const calls: { url: string; method: string; body: unknown }[] = [];
   const logs: unknown[][] = [];
   let restoreFetch: (() => void) | null = null;
   const originalError = console.error;
 
-  function install(mode: "holder-400" | "holder-ok" | "org-400" | "issue") {
+  function install(mode: "holder-400" | "holder-ok" | "org-400" | "issue" | "issue-travel" | "issue-travel-stuck") {
     calls.length = 0;
     logs.length = 0;
     const prior = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method || "GET";
-      calls.push({ url, method });
+      let body: unknown = null;
+      if (typeof init?.body === "string") {
+        try {
+          body = JSON.parse(init.body);
+        } catch {
+          body = null;
+        }
+      }
+      calls.push({ url, method, body });
       if (url.includes("pliant-test.supabase.co")) {
         if (url.includes("/rpc/crm_claim_integration_refresh")) return Response.json(true);
         if (url.includes("/crm_integrations") && method === "GET") return Response.json([]);
@@ -62,6 +71,15 @@ describe("lectures Pliant", { concurrency: 1 }, () => {
       }
       if (url.includes("/organizations")) return Response.json({ data: [{ organizationId: ORG }] });
       if (url.includes("/cards/available-cards")) {
+        if (mode === "issue-travel" || mode === "issue-travel-stuck") {
+          return Response.json({
+            cardConfigs: [
+              { cardConfig: "PLIANT_SINGLE_USE", canBeIssued: true, type: "SINGLE_USE" },
+              { cardConfig: "PLIANT_VIRTUAL_TRAVEL_CC_150", canBeIssued: true, type: "VIRTUAL" },
+              { cardConfig: "PLIANT_VIRTUAL_TRAVEL", canBeIssued: true, type: "VIRTUAL" },
+            ],
+          });
+        }
         return Response.json({ cardConfigs: [{ cardConfig: "PLIANT_SINGLE_USE", canBeIssued: true, type: "SINGLE_USE" }] });
       }
       if (url.includes("/cardholders?")) return Response.json({ data: [{ cardholderId: HOLDER }] });
@@ -73,7 +91,12 @@ describe("lectures Pliant", { concurrency: 1 }, () => {
       }
       if (url.includes(`/cards/${HOLDER}`) && method === "POST") return Response.json({ cardId: "card-1", status: "ACTIVE" });
       if (url.includes("/card-controls") && method === "PUT") return new Response(null, { status: 200 });
-      if (url.includes("/card-controls") && method === "GET") return Response.json(emptyPliantCardControls());
+      if (url.includes("/card-controls") && method === "GET") {
+        if (mode === "issue-travel-stuck") {
+          return Response.json({ ...emptyPliantCardControls(), merchants: { restriction: "ALLOWED", values: ["1"] } });
+        }
+        return Response.json(emptyPliantCardControls());
+      }
       return new Response("unexpected", { status: 500 });
     }) as typeof fetch;
     console.error = (...args: unknown[]) => {
@@ -86,6 +109,7 @@ describe("lectures Pliant", { concurrency: 1 }, () => {
   }
 
   afterEach(() => {
+    resetPliantAvailableCardsCache();
     restoreFetch?.();
     restoreFetch = null;
     const restore = (key: string, value: string | undefined) => {
@@ -162,6 +186,80 @@ describe("lectures Pliant", { concurrency: 1 }, () => {
     assert.match(list?.url || "", /status=ACTIVE/);
     assert.match(list?.url || "", /page=0/);
     assert.match(list?.url || "", /limit=100/);
+  });
+
+  test("la carte voyage est émise sans restriction, et la liste est mise en cache", async () => {
+    arm();
+    install("issue-travel");
+    resetPliantAvailableCardsCache();
+    const issued = await issuePliantCard(HOLDER, {
+      organizationId: ORG,
+      cardConfig: "PLIANT_SINGLE_USE",
+      limit: { value: 150000, currency: "EUR" },
+      transactionLimit: { value: 40000, currency: "EUR" },
+      maxTransactionCount: 5,
+      cardControls: { merchants: { restriction: "ALLOWED", values: ["9"] } },
+    });
+    assert.equal(issued.cardConfig, PLIANT_VIRTUAL_TRAVEL);
+    assert.equal(issued.avertissement, null);
+    const again = await issuePliantCard(HOLDER, {
+      organizationId: ORG,
+      limit: { value: 1000, currency: "EUR" },
+    });
+    assert.equal(again.cardConfig, PLIANT_VIRTUAL_TRAVEL);
+    const listed = calls.filter((call) => call.url.includes("/cards/available-cards"));
+    assert.equal(listed.length, 1);
+    const posts = calls.filter((call) => call.method === "POST" && call.url.includes(`/cards/${HOLDER}`));
+    const first = posts[0]?.body as {
+      cardConfig?: string;
+      maxTransactionCount?: number;
+      limitRenewFrequency?: string;
+      transactionLimit?: { value: number };
+      cardControls?: Record<string, unknown>;
+    };
+    assert.equal(first.cardConfig, PLIANT_VIRTUAL_TRAVEL);
+    assert.equal(first.maxTransactionCount, 5);
+    assert.equal(first.limitRenewFrequency, "TOTAL");
+    assert.equal(first.transactionLimit?.value, 150000);
+    assert.equal(Object.values(first.cardControls || {}).every((value) => value == null), true);
+    const second = posts[1]?.body as { maxTransactionCount?: number; cardConfig?: string };
+    assert.equal(second.cardConfig, PLIANT_VIRTUAL_TRAVEL);
+    assert.equal(second.maxTransactionCount, 1);
+    assert.equal(JSON.stringify(posts).includes("TRAVEL_CC"), false);
+  });
+
+  test("sans carte voyage, l’émission reste à usage unique et prévient du 3DS", async () => {
+    arm();
+    install("issue");
+    resetPliantAvailableCardsCache();
+    const issued = await issuePliantCard(HOLDER, {
+      organizationId: ORG,
+      limit: { value: 1000, currency: "EUR" },
+      transactionLimit: { value: 1000, currency: "EUR" },
+      maxTransactionCount: 1,
+    });
+    assert.equal(issued.cardConfig, "PLIANT_SINGLE_USE");
+    assert.equal(issued.avertissement, PLIANT_TRAVEL_WARNING);
+    const post = calls.find((call) => call.method === "POST" && call.url.includes(`/cards/${HOLDER}`));
+    const body = post?.body as { cardConfig?: string; maxTransactionCount?: number; cardControls?: Record<string, unknown> };
+    assert.equal(body.cardConfig, "PLIANT_SINGLE_USE");
+    assert.equal(Object.hasOwn(body, "maxTransactionCount"), false);
+    assert.equal(Object.values(body.cardControls || {}).every((value) => value == null), true);
+  });
+
+  test("une carte voyage dont les contrôles restent posés est refusée", async () => {
+    arm();
+    install("issue-travel-stuck");
+    resetPliantAvailableCardsCache();
+    await assert.rejects(
+      () =>
+        issuePliantCard(HOLDER, {
+          organizationId: ORG,
+          limit: { value: 1000, currency: "EUR" },
+          transactionLimit: { value: 1000, currency: "EUR" },
+        }),
+      /restrictions de la carte voyage/
+    );
   });
 
   test("une organisation illisible est un échec de santé, sans identifiant", async () => {
