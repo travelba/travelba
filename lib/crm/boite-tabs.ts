@@ -13,7 +13,7 @@ export const BOITE_TAB_HELP: Record<BoiteTab, string> = {
   fournisseurs:
     "E-mails des fournisseurs et réservations Little Emperors sans dossier. Un fil, une carte : la proposition dit le client et le dossier. Rien n’est déposé ni montré au client sans votre clic.",
   hotels:
-    "Courriers envoyés aux hôtels et leurs réponses. Répondre ou Relancer ouvre le brouillon dans le même fil : il part seulement après confirmation.",
+    "Courriers hôtel, une ligne par séjour : paiement à faire, réponses, envois sans réponse. Rien ne part sans confirmation.",
   whatsapp: "Conversations WhatsApp, reprise du Concierge et messages à approuver. Rien ne part sans votre clic.",
 };
 
@@ -57,17 +57,17 @@ export function fournisseursViewFromParam(raw: string | string[] | undefined): F
   return FOURNISSEURS_ALIASES[value] || "file";
 }
 
-/** Vues d’Hôtels : les réponses à traiter, les courriers sans réponse (Relancer), les demandes de séjour. */
-export const HOTELS_VIEWS = ["reponses", "sans-reponse", "demandes"] as const;
+/** Vues d’Hôtels : la file des courriers, et les demandes de séjour de l’espace client. */
+export const HOTELS_VIEWS = ["reponses", "demandes"] as const;
 export type HotelsView = (typeof HOTELS_VIEWS)[number];
 export const HOTELS_VIEW_LABELS: Record<HotelsView, string> = {
-  reponses: "Réponses",
-  "sans-reponse": "Sans réponse",
+  reponses: "Courriers",
   demandes: "Demandes hôtels",
 };
 
 export function hotelsViewFromParam(raw: string | string[] | undefined): HotelsView {
   const value = (Array.isArray(raw) ? raw[0] : raw) || "";
+  if (value === "sans-reponse") return "reponses";
   return (HOTELS_VIEWS as readonly string[]).includes(value) ? (value as HotelsView) : "reponses";
 }
 
