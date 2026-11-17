@@ -16,6 +16,8 @@ const inboxView = import("../../components/admin/HotelInbox");
 
 import {
   buildHotelInbox,
+  HOTEL_INBOX_LOAD_ERROR,
+  hotelInboxActionCount,
   hotelInboxExcerpt,
   hotelPaymentAmountCents,
   hotelPaymentSignal,
@@ -390,6 +392,44 @@ test("la page groupe, replie l’attente et le reste, et compte le séjour termi
   assert.match(html, /Répondre/);
   assert.match(html, /Relancer/);
   assert.match(html, /Ouvrir le dossier/);
+});
+
+test("l’agence a écrit en dernier après une vraie réponse : Le reste, replié", async () => {
+  const inbox = buildHotelInbox(
+    [
+      request({
+        hotelName: "Park Hyatt Saigon",
+        turns: [
+          turn({ id: "out-1", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({ id: "in-1", at: "2026-11-02T09:00:00.000Z", direction: "in", body: "Nous avons bien noté votre demande.", link: null }),
+          turn({ id: "out-2", at: "2026-11-03T10:00:00.000Z", direction: "out", body: "Merci, c’est noté.", countsAsReply: false }),
+        ],
+      }),
+    ],
+    [],
+    true,
+    [],
+    [],
+    NOW
+  );
+  assert.equal(inbox.rest.length, 1);
+  assert.equal(inbox.rest[0]?.lastWriter, "L'agence");
+  assert.equal(inbox.payment.length + inbox.replies.length + inbox.unanswered.length + inbox.waiting.length, 0);
+  assert.equal(hotelInboxActionCount(inbox), 0);
+  const { HotelInbox } = await inboxView;
+  const html = renderToStaticMarkup(createElement(HotelInbox, { inbox }));
+  assert.match(html, /Le reste · 1/);
+  assert.match(html, /Park Hyatt Saigon/);
+  assert.equal(/<details class="group\/rest[^"]*" open/.test(html), false);
+});
+
+test("une lecture impossible montre le bandeau et n’annonce pas une boîte vide", async () => {
+  const inbox = { ...buildHotelInbox([], [], true, [], [], NOW), loadError: HOTEL_INBOX_LOAD_ERROR };
+  const { HotelInbox } = await inboxView;
+  const html = renderToStaticMarkup(createElement(HotelInbox, { inbox }));
+  assert.match(html, /Lecture des courriers impossible, réessayez/);
+  assert.equal(html.includes("Rien à traiter pour le moment"), false);
+  assert.equal(html.includes("Aucun envoi en attente"), false);
 });
 
 test("un fil classé reste dans Le reste", () => {

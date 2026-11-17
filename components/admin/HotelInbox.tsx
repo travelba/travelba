@@ -281,8 +281,15 @@ function Block({
 /** Une liste : paiement, autres réponses, envois sans réponse, puis le reste. */
 export function HotelInbox({ inbox }: { inbox: HotelInboxModel }) {
   const empty = !inbox.payment.length && !inbox.replies.length && !inbox.unanswered.length && !inbox.waiting.length && !inbox.rest.length && !inbox.endedUnpaid.length;
+  const failed = Boolean(inbox.loadError);
+  const showSilence = !failed || inbox.unanswered.length > 0 || inbox.waiting.length > 0;
   return (
     <div className="space-y-6">
+      {inbox.loadError ? (
+        <p role="alert" className="rounded-2xl border border-[#e5e0d4] bg-[#f8f4ed] px-4 py-3 text-sm font-semibold text-[#0B192C]">
+          {inbox.loadError}
+        </p>
+      ) : null}
       <Block
         id="hotels-paiement"
         title="Paiement Pliant à faire"
@@ -295,33 +302,35 @@ export function HotelInbox({ inbox }: { inbox: HotelInboxModel }) {
         hint="L’hôtel a écrit en dernier. Répondre ouvre le brouillon : il part seulement après confirmation."
         rows={inbox.replies}
       />
-      <section aria-labelledby="hotels-silence">
-        <h2 id="hotels-silence" className="font-display text-lg font-bold text-[#0B192C]">
-          Envoyé sans réponse
-        </h2>
-        <p className="mt-1 text-sm text-[#3d4654]">Relancer ouvre le brouillon. Il part seulement après confirmation.</p>
-        {inbox.unanswered.length ? (
-          <ul className="mt-3 divide-y divide-[#e5e0d4] overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
-            {inbox.unanswered.map((row) => (
-              <HotelLine key={row.id} row={row} />
-            ))}
-          </ul>
-        ) : null}
-        {inbox.waiting.length ? (
-          <details className="group/wait mt-3 overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-[#0B192C] [&::-webkit-details-marker]:hidden [&::marker]:content-none">
-              <span>{waitingHeading(inbox.waiting.length)}</span>
-              <Icon name="expand_more" className="h-4 w-4 shrink-0 transition-transform group-open/wait:rotate-180" />
-            </summary>
-            <ul className="divide-y divide-[#e5e0d4] border-t border-[#e5e0d4]">
-              {inbox.waiting.map((row) => (
+      {showSilence ? (
+        <section aria-labelledby="hotels-silence">
+          <h2 id="hotels-silence" className="font-display text-lg font-bold text-[#0B192C]">
+            Envoyé sans réponse
+          </h2>
+          <p className="mt-1 text-sm text-[#3d4654]">Relancer ouvre le brouillon. Il part seulement après confirmation.</p>
+          {inbox.unanswered.length ? (
+            <ul className="mt-3 divide-y divide-[#e5e0d4] overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
+              {inbox.unanswered.map((row) => (
                 <HotelLine key={row.id} row={row} />
               ))}
             </ul>
-          </details>
-        ) : null}
-        {!inbox.unanswered.length && !inbox.waiting.length ? <p className="mt-2 text-sm text-[#3d4654]">Aucun envoi en attente.</p> : null}
-      </section>
+          ) : null}
+          {inbox.waiting.length ? (
+            <details className="group/wait mt-3 overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-[#0B192C] [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+                <span>{waitingHeading(inbox.waiting.length)}</span>
+                <Icon name="expand_more" className="h-4 w-4 shrink-0 transition-transform group-open/wait:rotate-180" />
+              </summary>
+              <ul className="divide-y divide-[#e5e0d4] border-t border-[#e5e0d4]">
+                {inbox.waiting.map((row) => (
+                  <HotelLine key={row.id} row={row} />
+                ))}
+              </ul>
+            </details>
+          ) : null}
+          {!inbox.unanswered.length && !inbox.waiting.length ? <p className="mt-2 text-sm text-[#3d4654]">Aucun envoi en attente.</p> : null}
+        </section>
+      ) : null}
       {inbox.rest.length ? (
         <details className="group/rest overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-[#0B192C] [&::-webkit-details-marker]:hidden [&::marker]:content-none">
@@ -347,7 +356,7 @@ export function HotelInbox({ inbox }: { inbox: HotelInboxModel }) {
           </ul>
         </details>
       ) : null}
-      {empty ? <p className="text-sm text-[#3d4654]">Rien à traiter pour le moment.</p> : null}
+      {empty && !failed ? <p className="text-sm text-[#3d4654]">Rien à traiter pour le moment.</p> : null}
     </div>
   );
 }

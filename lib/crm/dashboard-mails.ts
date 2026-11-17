@@ -34,7 +34,10 @@ export function dashboardMailsFromInbox(inbox: HotelInbox): DashboardMail[] {
   ];
 }
 
-/** Courriers hôtel encore ouverts. Aucune écriture, aucun appel Gmail. */
+/**
+ * Courriers hôtel encore ouverts. Aucune écriture, aucun appel Gmail.
+ * Le client est le service role : même lecture que la page Hôtels.
+ */
 export async function loadDashboardMails(supabase: SupabaseClient): Promise<DashboardMail[]> {
   return dashboardMailsFromInbox(await loadHotelInbox(supabase));
 }
