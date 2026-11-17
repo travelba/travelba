@@ -124,20 +124,21 @@ export async function GET(request: Request) {
 async function paymentAlerts(admin: ReturnType<typeof createServiceClient>, since: string): Promise<PaymentAlert[]> {
   const selected = await admin
     .from("crm_agency_alerts")
-    .select("id, summary, created_at, entity_id")
+    .select("id, summary, created_at, entity_id, entity_type")
     .eq("kind", "payment")
     .gt("created_at", since)
     .order("created_at", { ascending: true })
     .limit(8);
   if (selected.error) return [];
-  return ((selected.data || []) as { id: string; summary: string | null; created_at: string; entity_id: string | null }[]).map(
-    (row) => ({
-      id: String(row.id),
-      summary: row.summary,
-      createdAt: row.created_at,
-      customerId: row.entity_id,
-    })
-  );
+  return (
+    (selected.data || []) as { id: string; summary: string | null; created_at: string; entity_id: string | null; entity_type: string | null }[]
+  ).map((row) => ({
+    id: String(row.id),
+    summary: row.summary,
+    createdAt: row.created_at,
+    customerId: row.entity_type === "client" ? row.entity_id : null,
+    queue: row.entity_type === "revolut" || row.entity_type === "stripe",
+  }));
 }
 
 async function conciergeChanges(admin: ReturnType<typeof createServiceClient>, since: string): Promise<ConciergeChangeAlert[]> {

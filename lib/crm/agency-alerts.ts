@@ -39,6 +39,8 @@ export type PaymentAlert = {
   summary: string | null;
   createdAt: string;
   customerId: string | null;
+  /** revolut ou stripe sans client : À encaisser. Sinon la fiche. */
+  queue?: boolean;
 };
 
 /** Un e-mail de la file, un message client, une modification du concierge, un paiement, du plus ancien au plus récent. */
@@ -96,7 +98,7 @@ export function agencyAlerts(input: {
         at: row.createdAt,
         title: "Paiement client",
         body: clip(row.summary || "") || "Un client a payé.",
-        href: row.customerId ? `/admin/clients/${row.customerId}` : "/admin/argent?onglet=a-encaisser",
+        href: row.queue || !row.customerId ? "/admin/argent?onglet=a-encaisser" : `/admin/clients/${row.customerId}`,
         kicker: "Paiement",
       },
     ];
