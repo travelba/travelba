@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Inter, Nunito_Sans, Plus_Jakarta_Sans } from "next/font/google";
-import { siteConfig } from "@/lib/site";
+import { brandShareImages, siteConfig } from "@/lib/site";
 import "./globals.css";
 
 // Connexion et CRM peignent Plus Jakarta. Space Grotesk ne sert que la vitrine : pas de preload,
@@ -49,6 +49,15 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
   title: siteConfig.name,
   manifest: "/manifest.webmanifest",
+  openGraph: {
+    type: "website",
+    siteName: siteConfig.name,
+    images: brandShareImages(siteConfig.name),
+  },
+  twitter: {
+    card: "summary_large_image",
+    images: brandShareImages(siteConfig.name).map((image) => image.url),
+  },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -56,6 +65,7 @@ export const metadata: Metadata = {
       { url: "/favicon-32.png", type: "image/png", sizes: "32x32" },
       { url: "/favicon-48.png", type: "image/png", sizes: "48x48" },
       { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/icon.png", type: "image/png", sizes: "512x512" },
       { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
       { url: "/favicon.png", type: "image/png", sizes: "512x512" },
     ],

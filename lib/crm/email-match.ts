@@ -383,6 +383,19 @@ function extractWindow(extract: BookingExtract): { start: string | null; end: st
   return { start, end };
 }
 
+/** Dates du mail et du dossier : elles se croisent, ou l’écart tient dans la fenêtre proche. */
+export function stayDatesCompatible(
+  extract: BookingExtract,
+  start: string | null | undefined,
+  end: string | null | undefined
+) {
+  const window = extractWindow(extract);
+  return (
+    dateRangesOverlap(window.start, window.end, start, end) ||
+    stayWindowsNear(window.start, window.end, start, end)
+  );
+}
+
 function bookingPlaces(booking: TripBooking): string[] {
   return [booking.destination, booking.title].filter((value): value is string =>
     Boolean(value && value.trim())
@@ -423,14 +436,71 @@ export type CustomerSuggestion = {
   candidates: EmailIngestCandidate[];
 };
 
+/** Accompagnant rattaché à la fiche du titulaire. */
+export type TravelCompanionLite = {
+  id?: string;
+  customer_id: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  usage_name?: string | null;
+};
+
+/** Identité exacte, insensible à l’ordre prénom / nom (`foldName`). */
+function identityKeys(person: {
+  first_name?: string | null;
+  last_name?: string | null;
+  usage_name?: string | null;
+}) {
+  const keys = new Set<string>();
+  const first = foldName(person.first_name);
+  const lasts = [foldName(person.last_name), foldName(person.usage_name)].filter(Boolean);
+  for (const last of lasts) {
+    if (!first || !last) continue;
+    keys.add([first, last].sort().join("|"));
+  }
+  return keys;
+}
+
+function sharesExactIdentity(
+  person: { first_name?: string | null; last_name?: string | null },
+  stored: { first_name?: string | null; last_name?: string | null; usage_name?: string | null }
+) {
+  const left = identityKeys(person);
+  if (!left.size) return false;
+  for (const key of identityKeys(stored)) {
+    if (left.has(key)) return true;
+  }
+  return false;
+}
+
+/** Fiches (titulaire ou accompagnant d’une autre fiche) qui portent exactement ce nom. */
+function exactIdentityCustomerIds(
+  person: ExtractPerson,
+  customers: CustomerLite[],
+  companions: TravelCompanionLite[]
+) {
+  const ids = new Set<string>();
+  for (const customer of customers) {
+    if (sharesExactIdentity(person, customer)) ids.add(customer.id);
+  }
+  for (const companion of companions) {
+    if (companion.customer_id && sharesExactIdentity(person, companion)) ids.add(companion.customer_id);
+  }
+  return ids;
+}
+
 /**
  * Client suggéré à partir de l'extract : e-mail exact d'abord, puis nom
- * (y compris voyageurs et nom de famille approchant).
+ * (y compris voyageurs, accompagnants et nom de famille approchant).
  * autoCustomerId n'est renseigné que sur un hit fort et unique.
+ * Un accompagnant exact pointe vers la fiche du titulaire.
+ * Un homonyme complet (même prénom et même nom, y compris un accompagnant
+ * d’une autre fiche) ne choisit personne.
  */
 export function suggestCustomerFromExtract(
   customers: CustomerLite[],
-  extract: BookingExtract
+  extract: BookingExtract,
+  companions: TravelCompanionLite[] = []
 ): CustomerSuggestion {
   const byId = new Map<string, EmailIngestCandidate>();
   const push = (c: CustomerLite, score: number, reason: string) => {
@@ -462,9 +532,12 @@ export function suggestCustomerFromExtract(
     if (l) lastCounts.set(l, (lastCounts.get(l) || 0) + 1);
   }
 
+  const holdersById = new Map(customers.map((row) => [row.id, row]));
   const nameHits: string[] = [];
   for (const person of people) {
     if (compactName(person.last_name).length < 2) continue;
+    const identityIds = exactIdentityCustomerIds(person, customers, companions);
+    const homonym = identityIds.size > 1;
     for (const c of customers) {
       const match = personMatchesCustomer(person, c);
       if (!match.last) continue;
@@ -472,7 +545,10 @@ export function suggestCustomerFromExtract(
       let score = 0;
       let reason = "Nom de famille";
       if (match.exactLast && match.first) {
-        score = uniqueLast ? 92 : 85;
+        const exact = sharesExactIdentity(person, c);
+        if (exact && homonym) score = 85;
+        else if (exact || uniqueLast) score = 92;
+        else score = 85;
         reason = match.inverted ? "Prénom et nom inversés" : "Nom et prénom";
       } else if (match.first) {
         score = uniqueLast ? 86 : 80;
@@ -486,6 +562,14 @@ export function suggestCustomerFromExtract(
       }
       push(c, score, reason);
       nameHits.push(c.id);
+    }
+    for (const companion of companions) {
+      if (!sharesExactIdentity(person, companion)) continue;
+      const holder = holdersById.get(companion.customer_id);
+      if (!holder) continue;
+      const holderName = shownPersonName(holder) || customerLabel(holder);
+      push(holder, homonym ? 85 : 92, `Accompagnant de ${holderName}`);
+      nameHits.push(holder.id);
     }
   }
 
@@ -657,6 +741,8 @@ export function suggestBookingByTripSignals(
         ? "Nom, destination et dates"
         : "Nom, destination et dates (chevauchement)",
       score,
+      start_date: booking.start_date,
+      end_date: booking.end_date,
     });
   }
 
@@ -928,6 +1014,8 @@ export function suggestBookingByDestination(
       label: bookingLabel(booking),
       reason: cancelled ? SAME_DESTINATION_CANCELLED_REASON : SAME_DESTINATION_REASON,
       score: cancelled ? SAME_DESTINATION_SCORE - 2 : SAME_DESTINATION_SCORE,
+      start_date: booking.start_date,
+      end_date: booking.end_date,
     });
   }
 
@@ -962,6 +1050,8 @@ export function suggestBookingByClientEmail(
       label: bookingLabel(booking),
       reason: OVERLAP_ADD_REASON,
       score: EMAIL_DATES_SCORE,
+      start_date: booking.start_date,
+      end_date: booking.end_date,
     });
   }
   candidates.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr"));
@@ -1003,6 +1093,22 @@ export function deterministicBookingId(
   );
   if (byStay.length === 1) return { tier: "traveler_hotel_dates", bookingId: byStay[0].booking_id };
   return { tier: "human", bookingId: null };
+}
+
+/**
+ * Le dossier « même destination » n’est proposé que s’il est seul et que les
+ * dates se croisent ou sont proches. Sinon on n’oriente pas vers lui.
+ */
+export function soleCompatibleDestinationId(
+  tier: MatchTier,
+  hotelStayCount: number,
+  destination: BookingSuggestionCandidate[],
+  extract: BookingExtract
+) {
+  if (tier !== "human" || hotelStayCount !== 0 || destination.length !== 1) return null;
+  const only = destination[0];
+  if (!only || !stayDatesCompatible(extract, only.start_date, only.end_date)) return null;
+  return only.booking_id;
 }
 
 export function proposesAddToDossier(

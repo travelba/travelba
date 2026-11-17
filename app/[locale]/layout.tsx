@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { routing } from "@/i18n/routing";
-import { siteConfig } from "@/lib/site";
+import { brandShareImages, siteConfig } from "@/lib/site";
 import { HtmlLang } from "@/components/HtmlLang";
 
 export function generateStaticParams() {
@@ -30,6 +30,13 @@ export async function generateMetadata({
       locale,
       type: "website",
       url: locale === "en" ? "/en" : "/fr",
+      images: brandShareImages(siteConfig.name),
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: t("title"),
+      description: t("description"),
+      images: brandShareImages(siteConfig.name).map((image) => image.url),
     },
     alternates: {
       canonical: locale === "en" ? "/en" : "/fr",

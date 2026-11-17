@@ -158,6 +158,90 @@ export function pliantStatusLabel(status: string | null) {
   return PLIANT_STATUS_LABELS[status] || status;
 }
 
+/** Motifs Pliant (`declineReason.type`) en français. Un code inconnu reste « Paiement refusé ». */
+export const PLIANT_DECLINE_LABELS: Record<string, string> = {
+  CARD_ACCEPTANCE_NOT_ALLOWED: "Mode d’acceptation refusé",
+  CARD_CONTROLS_DATETIME_LOCKED: "Carte fermée à cette date ou cette heure",
+  CREDIT_ORG_LIMIT_EXCEEDED: "Plafond du compte dépassé",
+  DECLINE_REASON_NOT_DETECTED: "Motif non précisé",
+  DISALLOWED_MCC: "Catégorie de commerçant refusée",
+  DO_NOT_HONOUR: "Paiement refusé par le réseau",
+  EXCEED_ATM_AMOUNT_VELOCITY_LIMIT: "Plafond de retrait dépassé",
+  EXCEED_AMOUNT_VELOCITY_LIMIT: "Plafond de montant dépassé",
+  EXCEED_FREQUENCY_VELOCITY_LIMIT: "Trop de paiements",
+  EXPIRED_CARD: "Carte expirée",
+  INCORRECT_CVV2: "Cryptogramme incorrect",
+  INCORRECT_EXPIRY_DATE: "Date d’expiration incorrecte",
+  INCORRECT_PIN: "Code incorrect",
+  INSUFFICIENT_FUNDS: "Plafond ou solde insuffisant",
+  INSUFFICIENT_FUNDS_GPS: "Plafond ou solde insuffisant",
+  INVALID_AMOUNT: "Montant refusé",
+  INVALID_CARD_NUMBER: "Numéro de carte refusé",
+  ISSUER_INOPERATIVE: "Émetteur indisponible",
+  LOCKED_CARD: "Carte bloquée",
+  LOST_CARD: "Carte déclarée perdue",
+  MONTHLY_CARD_LIMIT_EXCEEDED: "Plafond mensuel dépassé",
+  PENDING_CARD: "Carte pas encore active",
+  PIN_TRIES_EXCEEDED: "Trop de codes incorrects",
+  PIN_VALIDATION_FAILURE: "Code refusé",
+  POSTAL_CODE_NOT_ALLOWED: "Code postal refusé",
+  PREFUND_ORG_LIMIT_EXCEEDED: "Plafond du compte dépassé",
+  SCA_REQUIRED_PHYSICAL: "Authentification 3DS exigée",
+  SCA_REQUIRED_PHYSICAL_OFFLINE: "Authentification 3DS exigée",
+  SCA_REQUIRED_PHYSICAL_ONLINE: "Authentification 3DS exigée",
+  SCA_REQUIRED_VIRTUAL: "Authentification 3DS exigée : le commerçant ne l’a pas lancée",
+  SINGLE_USE_CARD: "Carte déjà utilisée",
+  STOLEN_CARD: "Carte déclarée volée",
+  TERMINATED_CARD: "Carte supprimée",
+  TRANSACTION_LIMIT_EXCEEDED: "Montant au-dessus du plafond",
+  TRANSACTION_TYPE_NOT_ALLOWED: "Type de paiement refusé",
+  TRANSACTION_CATEGORY_NOT_ALLOWED: "Catégorie refusée",
+  TRANSACTION_MERCH_STRING_NOT_ALLOWED: "Commerçant refusé",
+  TRANSACTION_MERCHIDDE42_NOT_ALLOWED: "Commerçant refusé",
+  TRANSACTION_MCC_NOT_ALLOWED: "Catégorie de commerçant refusée",
+};
+
+function declineText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/** `raw.declineReason.type`, ou un équivalent déjà stocké. */
+export function pliantDeclineCode(raw: unknown) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const row = raw as Record<string, unknown>;
+  const nodes = [row.declineReason, row.decline_reason, row.rejectionReason, row.statusReason];
+  for (const node of nodes) {
+    if (typeof node === "string" && node.trim()) return node.trim().toUpperCase();
+    if (node && typeof node === "object" && !Array.isArray(node)) {
+      const type = declineText((node as Record<string, unknown>).type) || declineText((node as Record<string, unknown>).code);
+      if (type) return type.toUpperCase();
+    }
+  }
+  const flat = declineText(row.declineReasonType) || declineText(row.decline_reason_type);
+  return flat ? flat.toUpperCase() : null;
+}
+
+export function pliantDeclineMotif(raw: unknown) {
+  const code = pliantDeclineCode(raw);
+  if (!code) return null;
+  return PLIANT_DECLINE_LABELS[code] || "Paiement refusé";
+}
+
+/** Ligne admin : « Refusé : motif ». Null si le paiement n’est pas un refus. */
+export function pliantRefusalLabel(status: string | null, raw: unknown) {
+  if ((status || "").toUpperCase() !== "DECLINED") return null;
+  return `Refusé : ${pliantDeclineMotif(raw) || "Motif non précisé"}`;
+}
+
+/** État MCP. Un refus n’est jamais proposé au rattachement. */
+export function pliantDebitState(status: string | null, matchStatus: string | null) {
+  if ((status || "").toUpperCase() === "DECLINED") {
+    return { etat: "refusé" as const, proposable: false };
+  }
+  const etat = matchStatus === "matched" ? "rattachée" : matchStatus === "ignored" ? "hors voyage" : "à pointer";
+  return { etat, proposable: etat === "à pointer" };
+}
+
 export function pliantCategoryLabel(category: string | null) {
   if (!category) return null;
   return PLIANT_CATEGORY_LABELS[category] || category;

@@ -75,6 +75,7 @@ import {
   suggestBookingByTraveler,
   suggestBookingByTripSignals,
   suggestCustomerFromExtract,
+  soleCompatibleDestinationId,
   type HotelStayCard,
 } from "@/lib/crm/email-match";
 import {
@@ -357,14 +358,24 @@ export function backfillCdsgroupeMessages() {
 }
 
 async function computeSuggestions(admin: Admin, extract: BookingExtract) {
-  const { data: customers } = await admin
-    .from("crm_customers")
-    .select("id, first_name, last_name, usage_name, company_name, email");
+  const [{ data: customers }, { data: companionData }] = await Promise.all([
+    admin.from("crm_customers").select("id, first_name, last_name, usage_name, company_name, email"),
+    admin.from("crm_travel_companions").select("id, customer_id, first_name, last_name, usage_name"),
+  ]);
   const people = (customers || []) as (Pick<
     CrmCustomer,
     "id" | "first_name" | "last_name" | "company_name" | "email"
   > & { usage_name?: string | null })[];
-  const { autoCustomerId, candidates } = suggestCustomerFromExtract(people, extract);
+  const companionList = (
+    (companionData || []) as {
+      id: string;
+      customer_id: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      usage_name?: string | null;
+    }[]
+  ).flatMap((row) => (row.customer_id ? [{ ...row, customer_id: row.customer_id }] : []));
+  const { autoCustomerId, candidates } = suggestCustomerFromExtract(people, extract, companionList);
 
   const { data: bookings } = await admin
     .from("crm_bookings")
@@ -378,11 +389,9 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
   const itemsByBooking = new Map<string, { confirmation_ref: string | null; details?: Record<string, unknown> | null }[]>();
   const hotelCards: HotelStayCard[] = [];
   const travelerRows: { booking_id: string; first_name: string | null; last_name: string | null }[] = [];
-  const companionRows: { customer_id: string; first_name: string | null; last_name: string | null }[] = [];
   const attachedRefs = new Map<string, string[]>();
-  const [{ data: travelers }, { data: companions }, { data: attachedMails }] = await Promise.all([
+  const [{ data: travelers }, { data: attachedMails }] = await Promise.all([
     admin.from("crm_booking_travelers").select("booking_id, first_name, last_name"),
-    admin.from("crm_travel_companions").select("customer_id, first_name, last_name"),
     admin
       .from("crm_email_ingest")
       .select("created_booking_id, suggested_booking_id, confirmation_refs")
@@ -391,9 +400,6 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
   ]);
   for (const row of travelers || []) {
     if (row.booking_id) travelerRows.push(row);
-  }
-  for (const row of companions || []) {
-    if (row.customer_id) companionRows.push(row);
   }
   for (const mail of attachedMails || []) {
     const bookingId = mail.created_booking_id || mail.suggested_booking_id;
@@ -430,7 +436,7 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
     : suggestBookingByDestination(extract, bookingList, people);
   const hotelStay = suggestBookingByHotelStay(extract, bookingList, hotelCards, people);
   const byEmail = suggestBookingByClientEmail(extract, bookingList, people);
-  const byTraveler = suggestBookingByTraveler(extract, bookingList, travelerRows, companionRows, people);
+  const byTraveler = suggestBookingByTraveler(extract, bookingList, travelerRows, companionList, people);
   const booking = mergeBookingSuggestions(
     suggestBookingByReference(extract, bookingList, itemsByBooking, attachedRefs),
     byTraveler,
@@ -443,8 +449,13 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
   let suggestedBookingId = booking.autoBookingId;
   if (tier.tier === "reference") suggestedBookingId = tier.bookingId;
   if (tier.tier === "email_dates") suggestedBookingId = null;
-  if (!suggestedBookingId && tier.tier === "human" && hotelStay.candidates.length === 0 && destination.candidates.length === 1) {
-    suggestedBookingId = destination.candidates[0].booking_id;
+  if (!suggestedBookingId) {
+    suggestedBookingId = soleCompatibleDestinationId(
+      tier.tier,
+      hotelStay.candidates.length,
+      destination.candidates,
+      extract
+    );
   }
 
   const merged: EmailIngestCandidate[] = [...candidates];

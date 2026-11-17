@@ -8,6 +8,10 @@ import {
   pliantCardDisplay,
   pliantDossierLabels,
   pliantExpenseCaption,
+  pliantDeclineCode,
+  pliantDeclineMotif,
+  pliantDebitState,
+  pliantRefusalLabel,
   pliantSignedCents,
   pliantStayForCard,
   pliantSyncSummary,
@@ -108,6 +112,22 @@ test("le séjour se retrouve par la carte, pas par un autre dossier", () => {
     { cents: 90000, currency: "EUR" }
   );
   assert.equal(pliantAvailableLimit({ name: "Travelba" }), null);
+});
+
+test("un refus Pliant porte un motif français et n’est pas proposable", () => {
+  const raw = { declineReason: { type: "SCA_REQUIRED_VIRTUAL", title: { en: "SCA required", de: "SCA erforderlich" } } };
+  assert.equal(pliantDeclineCode(raw), "SCA_REQUIRED_VIRTUAL");
+  assert.equal(pliantDeclineMotif(raw), "Authentification 3DS exigée : le commerçant ne l’a pas lancée");
+  assert.equal(pliantRefusalLabel("DECLINED", raw), "Refusé : Authentification 3DS exigée : le commerçant ne l’a pas lancée");
+  assert.equal(pliantRefusalLabel("BOOKED", raw), null);
+  assert.deepEqual(pliantDebitState("DECLINED", "unmatched"), { etat: "refusé", proposable: false });
+  assert.deepEqual(pliantDebitState("BOOKED", "unmatched"), { etat: "à pointer", proposable: true });
+  assert.equal(pliantDeclineMotif({ decline_reason: { code: "INSUFFICIENT_FUNDS" } }), "Plafond ou solde insuffisant");
+  assert.equal(pliantDeclineMotif({ declineReasonType: "LOCKED_CARD" }), "Carte bloquée");
+  assert.equal(pliantDeclineMotif({ declineReason: "UNKNOWN_CODE" }), "Paiement refusé");
+  assert.equal(pliantDeclineMotif({ declineReason: { type: "  " } }), null);
+  assert.equal(pliantRefusalLabel("DECLINED", {}), "Refusé : Motif non précisé");
+  assert.equal(pliantDeclineCode({ pan: "4242424242424242", declineReason: { type: "DO_NOT_HONOUR" } }), "DO_NOT_HONOUR");
 });
 
 test("une carte de dossier nomme le séjour et le client avant le membre Pliant", () => {

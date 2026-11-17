@@ -1,5 +1,11 @@
 import { ETA_IL_PORTAL } from "./eta-il-draft";
-import { DEFAULT_PLIANT_TRANSACTIONS, PLIANT_SINGLE_USE, pliantConfigIsSingleUse } from "./pliant-controls";
+import {
+  DEFAULT_PLIANT_TRANSACTIONS,
+  PLIANT_SINGLE_USE,
+  PLIANT_VIRTUAL_TRAVEL,
+  pliantConfigIsCommercialChoice,
+  pliantConfigIsSingleUse,
+} from "./pliant-controls";
 import {
   centsToEur,
   corridorCeilingCents,
@@ -342,17 +348,30 @@ export function pickListedId(preferred: string, ids: string[]) {
   return null;
 }
 
+type PliantAvailableConfig = { cardConfig?: string | null; canBeIssued?: boolean | null; type?: string | null };
+
+/** `PLIANT_VIRTUAL_TRAVEL` émissible, jamais une variante `_CC`. */
+export function issuableTravelConfig(configs: PliantAvailableConfig[]) {
+  const row = configs.find(
+    (item) => item.canBeIssued !== false && item.cardConfig === PLIANT_VIRTUAL_TRAVEL && !pliantConfigIsCommercialChoice(item.cardConfig)
+  );
+  return row?.cardConfig || null;
+}
+
 /**
- * Config émissible du compte, hors produit voyage.
- * Une demande à usage unique ne retombe pas sur `PLIANT_VIRTUAL`.
- * Une demande virtuelle (formalité) reste sur `PLIANT_VIRTUAL`.
+ * Préfère la carte voyage si le compte peut l’émettre.
+ * Sinon, le produit demandé : une demande à usage unique ne retombe pas sur `PLIANT_VIRTUAL`.
+ * Une demande virtuelle reste sur `PLIANT_VIRTUAL`. Aucune config `_CC`.
  */
-export function pickTravelConfig(
-  preferred: string,
-  configs: { cardConfig?: string | null; canBeIssued?: boolean | null; type?: string | null }[]
-) {
+export function pickTravelConfig(preferred: string, configs: PliantAvailableConfig[]) {
+  const travel = issuableTravelConfig(configs);
+  if (travel) return travel;
   const open = configs.filter(
-    (row) => row.canBeIssued !== false && row.cardConfig && !/TRAVEL/i.test(row.cardConfig)
+    (row) =>
+      row.canBeIssued !== false &&
+      row.cardConfig &&
+      !/TRAVEL/i.test(row.cardConfig) &&
+      !pliantConfigIsCommercialChoice(row.cardConfig)
   );
   if (pliantConfigIsSingleUse(preferred)) {
     const single = open.filter(

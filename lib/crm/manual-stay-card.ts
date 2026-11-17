@@ -129,7 +129,7 @@ export function manualStayCardDraft(input: {
   hotels?: Array<string | null | undefined>;
   reference?: string | null;
   transactionAmount?: string;
-  /** Ignoré. La carte est à usage unique : un nombre de transactions n’est pas envoyé. */
+  /** Ignoré sur ce brouillon : le formulaire n’envoie pas de nombre. L’émission choisit le produit. */
   transactionCount?: string;
   currency?: string;
 }): { error: string } | { body: ReturnType<typeof manualStayCardBody> } {

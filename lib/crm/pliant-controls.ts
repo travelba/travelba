@@ -18,14 +18,23 @@ export const PLIANT_SINGLE_USE = "PLIANT_SINGLE_USE";
 /**
  * Carte virtuelle réutilisable. `maxTransactionCount` est honoré (1 à 999999999).
  * Sans ce champ, Pliant laisse un nombre d’achats illimité jusqu’à l’expiration.
- * Pas une config `TRAVEL` : son défaut est 3 ou 5, et Commercial Choice refuse des commerçants.
+ * Repli si les cartes voyage ne sont pas activées.
  */
 export const PLIANT_VIRTUAL = "PLIANT_VIRTUAL";
 
 /**
- * Deux paiements sur une carte virtuelle de formalité : un contrôle de passerelle et le règlement.
- * Les cartes fournisseur et le formulaire du dossier restent à usage unique et n’envoient pas ce nombre.
- * `creer_carte_pliant` envoie le nombre seulement quand il est supérieur à 1, sur `PLIANT_VIRTUAL`.
+ * Carte voyage, exemptée de 3DS. Uniquement si elle est émissible sur le compte.
+ * Jamais une variante Commercial Choice (`_CC`) : elle refuse des commerçants.
+ * Sans `maxTransactionCount`, Pliant pose 3 ou 5 achats : le nombre est toujours envoyé.
+ */
+export const PLIANT_VIRTUAL_TRAVEL = "PLIANT_VIRTUAL_TRAVEL";
+
+/** Repli lisible quand le compte n’a pas les cartes voyage. */
+export const PLIANT_TRAVEL_WARNING = "Cartes voyage non activées sur le compte Pliant : 3DS possible.";
+
+/**
+ * Deux paiements sur une carte de formalité : un contrôle de passerelle et le règlement.
+ * L’émission préfère `PLIANT_VIRTUAL_TRAVEL` et envoie ce nombre explicitement.
  */
 export const DEFAULT_PLIANT_TRANSACTIONS = 2;
 
@@ -33,6 +42,16 @@ const PLIANT_TX_MAX = 999_999_999;
 
 export function pliantConfigIsSingleUse(cardConfig: string) {
   return /SINGLE_USE$/i.test(cardConfig.trim());
+}
+
+/** Exactement la carte voyage, pas une Commercial Choice. */
+export function pliantConfigIsTravel(cardConfig: string) {
+  return cardConfig.trim() === PLIANT_VIRTUAL_TRAVEL;
+}
+
+/** `PLIANT_VIRTUAL_TRAVEL_CC` et `PLIANT_VIRTUAL_TRAVEL_CC_150` : jamais émises. */
+export function pliantConfigIsCommercialChoice(cardConfig: string) {
+  return /_CC(?:_|$)/i.test(cardConfig.trim());
 }
 
 /** Contrôles vidés. L’API Pliant supprime un contrôle absent ou nul (`nullable`). */
@@ -95,12 +114,17 @@ export function parsePliantTransactionCount(value: unknown): { ok: true; count: 
 }
 
 /**
- * 1 achat : `PLIANT_SINGLE_USE`, sans `maxTransactionCount` (la règle du produit).
- * Davantage : `PLIANT_VIRTUAL`, qui honore le nombre. Jamais une config `TRAVEL`.
+ * Produit de repli si `PLIANT_VIRTUAL_TRAVEL` n’est pas émissible.
+ * 1 achat : `PLIANT_SINGLE_USE`, sans envoyer `maxTransactionCount`.
+ * Davantage : `PLIANT_VIRTUAL`, qui honore le nombre.
+ * `transactions` est le nombre que la carte voyage envoie toujours (1 par défaut).
  */
 export function pliantCardForTransactionCount(count: number) {
-  if (count <= 1) return { cardConfig: PLIANT_SINGLE_USE, maxTransactionCount: null as number | null };
-  return { cardConfig: PLIANT_VIRTUAL, maxTransactionCount: count };
+  const transactions = Number.isInteger(count) && count >= 1 ? count : 1;
+  if (transactions <= 1) {
+    return { cardConfig: PLIANT_SINGLE_USE, maxTransactionCount: null as number | null, transactions: 1 };
+  }
+  return { cardConfig: PLIANT_VIRTUAL, maxTransactionCount: transactions, transactions };
 }
 
 /** `purpose` est obligatoire pour une config qui se termine par SINGLE_USE (200 caractères). */
@@ -112,38 +136,55 @@ function issuedPurpose(raw: Record<string, unknown>, cardConfig: string) {
   return label.slice(0, 200);
 }
 
+function moneyCopy(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as { value?: unknown; currency?: unknown };
+  const amount = typeof row.value === "number" ? row.value : Number(row.value);
+  if (!Number.isFinite(amount)) return null;
+  const currency = typeof row.currency === "string" && row.currency.trim() ? row.currency.trim().toUpperCase() : "EUR";
+  return { value: amount, currency };
+}
+
 /**
  * Corps d’émission sans aucun blocage, même si l’appelant en avait posé.
- * Le plafond, le montant par transaction et la fenêtre restent ceux de l’appelant.
- * Une carte à usage unique n’envoie pas `maxTransactionCount` : le champ est un plafond
- * d’autorisations (1 à 999999999), sans défaut propre à SINGLE_USE. Le seul défaut
- * documenté est celui des cartes TRAVEL (3 à l’émission, 5 avec le porteur). L’usage
- * unique est la règle du produit, et un contrôle de passerelle ne consomme pas l’achat.
+ * Carte voyage : `maxTransactionCount` est toujours là (1 si le nombre manque),
+ * le renouvellement est `TOTAL`, et le montant d’un achat égale le plafond.
+ * Repli à usage unique : le nombre n’est pas envoyé. Une carte virtuelle de repli
+ * garde le nombre saisi. Une config `_CC` est refusée.
  */
 export function pliantIssuePayload(
   raw: Record<string, unknown>,
   resolved: { organizationId: string; cardConfig: string }
 ) {
+  if (pliantConfigIsCommercialChoice(resolved.cardConfig)) {
+    throw new Error("Pliant : une configuration Commercial Choice n’est pas utilisée.");
+  }
   const rest = { ...raw };
   delete rest.cardControls;
   delete rest.additionalLimits;
   delete rest.type;
   delete rest.maxTransactionCount;
   delete rest.purpose;
+  const travel = pliantConfigIsTravel(resolved.cardConfig);
   const purpose = issuedPurpose(raw, resolved.cardConfig);
-  const count = pliantConfigIsSingleUse(resolved.cardConfig) ? null : explicitTransactionCount(raw.maxTransactionCount);
+  const requested = explicitTransactionCount(raw.maxTransactionCount);
+  const count = travel ? (requested ?? 1) : pliantConfigIsSingleUse(resolved.cardConfig) ? null : requested;
+  const limit = moneyCopy(rest.limit);
   return {
     ...rest,
     organizationId: resolved.organizationId,
     cardConfig: resolved.cardConfig,
     ...(purpose ? { purpose } : {}),
     ...(count != null ? { maxTransactionCount: count } : {}),
+    ...(travel ? { limitRenewFrequency: "TOTAL" as const } : {}),
+    ...(travel && limit ? { limit, transactionLimit: limit } : {}),
     cardControls: emptyPliantCardControls(),
   } as Record<string, unknown> & {
     organizationId: string;
     cardConfig: string;
     purpose?: string;
     maxTransactionCount?: number;
+    limitRenewFrequency?: "TOTAL";
     cardControls: ReturnType<typeof emptyPliantCardControls>;
   };
 }
