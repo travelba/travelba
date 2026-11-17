@@ -349,7 +349,7 @@ async function loadEstaBundle(admin: Admin, bookingId: string): Promise<EstaBund
   if (error || !booking) return null;
   const customerId = (booking as { customer_id: string }).customer_id;
   const [items, travelers, documents, customer] = await Promise.all([
-    admin.from("crm_booking_items").select("kind, lifecycle, details, start_at, end_at").eq("booking_id", bookingId),
+    admin.from("crm_booking_items").select("kind, lifecycle, details, start_at, end_at, visible_to_client").eq("booking_id", bookingId),
     admin.from("crm_booking_travelers").select("*").eq("booking_id", bookingId),
     admin.from("crm_travel_documents").select("*").eq("customer_id", customerId),
     admin
@@ -491,7 +491,7 @@ async function stayContext(admin: Admin, bookingId: string) {
   };
   const { data: items } = await admin
     .from("crm_booking_items")
-    .select("kind, lifecycle, title, details, start_at, end_at, sort_order")
+    .select("kind, lifecycle, title, details, start_at, end_at, sort_order, visible_to_client")
     .eq("booking_id", bookingId);
   const steps = (items || []) as CrmBookingItem[];
   const dates = tripEstaDates(steps, row);

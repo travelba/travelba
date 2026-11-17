@@ -26,7 +26,7 @@ import {
   tripPlaceLine,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
-import { nextStayLabels } from "@/lib/crm/staff-stay";
+import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { findVisaExtra, visaProposed, type ServiceRefusal } from "@/lib/crm/extras";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
@@ -277,21 +277,29 @@ function ClientScreen({
     usage_name: customer.usage_name,
     birth_date: customer.birth_date,
   };
+  const face = clientStayFace({
+    title: booking.title,
+    destination: booking.destination,
+    startDate: booking.start_date,
+    endDate: booking.end_date,
+    items: allItems,
+    homeCity: customer.city,
+  });
+  const shown = applyClientStayFace(booking, face);
   const missingCount = missingPassportCount(travelers, identityDocs, {
     holder,
     companions,
-    returnOn: booking.end_date || booking.start_date,
+    returnOn: shown.end_date || shown.start_date,
   });
   const missingPassports = missingCount > 0;
-  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, booking.reference, booking.destination, {
-    title: booking.title,
+  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, booking.reference, shown.destination, {
+    title: shown.title,
     homeCity: customer.city,
     items,
   });
-  const labels = nextStayLabels(booking.title, booking.destination, items, "Séjour", customer.city);
-  const headline = labels.title || "Séjour";
+  const headline = face.title || "Séjour";
   const clientNote = shownClientNote(booking.notes_client);
-  const placeLine = tripPlaceLine(headline, labels.destination);
+  const placeLine = tripPlaceLine(headline, face.destination);
   const formalities = frenchPassportTrip(items, travelers.length);
   const feeExtras = agencyFeeExtraAmounts(allItems);
   const stayTotal = bookingTotalFromItems(allItems);
@@ -369,8 +377,9 @@ function ClientScreen({
               <>
                 <p className="text-sm font-semibold text-[var(--aura-blue)]">← Réservations</p>
                 <BookingHero
-                  booking={booking}
-                  items={allItems}
+                  booking={shown}
+                  places={face.places}
+                  items={items}
                   priority
                   className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
                 >
@@ -384,7 +393,7 @@ function ClientScreen({
                       <h2 className="font-display text-[1.7rem] font-extrabold leading-tight">{headline}</h2>
                       {placeLine ? <p className="text-sm text-white/75">{placeLine}</p> : null}
                       <p className="text-sm text-white/75">
-                        {formatDateFr(booking.start_date)} — {formatDateFr(booking.end_date)}
+                        {formatDateFr(shown.start_date)} — {formatDateFr(shown.end_date)}
                       </p>
                     </div>
                   </div>
