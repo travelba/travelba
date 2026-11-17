@@ -5,16 +5,20 @@ import { parisIsoDate } from "./hotel-arrival";
 import {
   buildHotelInbox,
   HOTEL_INBOX_LOAD_ERROR,
+  merchantResemblesHotel,
   type HotelInbox,
   type HotelInboxCard,
   type HotelInboxLink,
   type HotelInboxRequest,
   type HotelInboxTurn,
+  type HotelPaymentEvidence,
 } from "./hotel-inbox";
 import type { HotelPliantSpend } from "./hotel-courrier-board";
 import { missingDbColumn } from "./optional-column";
+import { pliantSpendSettlement, suggestCostTargets } from "./trip-costs";
+import { loadCostTargets } from "./trip-costs-db";
 
-const EMPTY: HotelInbox = { payment: [], replies: [], unanswered: [], waiting: [], rest: [], endedUnpaid: [] };
+const EMPTY: HotelInbox = { payment: [], replies: [], unanswered: [], waiting: [], rest: [], paid: [], endedUnpaid: [] };
 
 type ItemRow = {
   id: string;
@@ -498,7 +502,20 @@ export async function loadHotelInbox(supabase: SupabaseClient, nowMs = Date.now(
         pliantCardId: row.pliant_card_id || "",
       })),
     ];
-    return buildHotelInbox(sources, spends.spends, spends.known, inboxCards, inboxLinks, nowMs);
+    const evidence = await loadPaymentEvidence(supabase, {
+      bookingIds,
+      hotelItems: sources.map((row) => ({ bookingId: row.bookingId, hotelName: row.hotelName })),
+      cards: inboxCards,
+    });
+    return buildHotelInbox(
+      sources,
+      spends.spends,
+      spends.known || evidence.known,
+      inboxCards,
+      inboxLinks,
+      nowMs,
+      evidence.rows
+    );
   } catch (error) {
     console.error("[hotel-inbox]", error instanceof Error ? error.message : "lecture");
     return { ...EMPTY, loadError: HOTEL_INBOX_LOAD_ERROR };
@@ -573,4 +590,279 @@ async function endedItemIds(supabase: SupabaseClient, itemIds: string[], nowMs: 
     }
   }
   return [...ended];
+}
+
+type EvidenceCostRow = {
+  id: string;
+  booking_id: string;
+  booking_item_id: string | null;
+  source: string | null;
+  source_id: string | null;
+  amount_eur: number | string | null;
+  supplier: string | null;
+  occurred_on: string | null;
+  state?: string | null;
+};
+
+type EvidenceSpendRow = {
+  id: string;
+  card_id: string | null;
+  status: string | null;
+  type: string | null;
+  merchant: string | null;
+  billing_cents: number | null;
+  billing_currency: string | null;
+  transaction_cents: number | null;
+  transaction_currency: string | null;
+  booked_at: string | null;
+  card_label: string | null;
+  match_status: string | null;
+  customer_id: string | null;
+  matched_customer_id: string | null;
+};
+
+const EVIDENCE_SPEND_COLUMNS =
+  "id, card_id, status, type, merchant, billing_cents, billing_currency, transaction_cents, transaction_currency, booked_at, card_label, match_status, customer_id, matched_customer_id";
+
+function euros(value: number | string | null | undefined) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+/**
+ * Coûts du séjour, du dossier, dépenses des cartes du dossier, et propositions déjà calculées.
+ * Lecture seule : aucun rattachement.
+ */
+async function loadPaymentEvidence(
+  supabase: SupabaseClient,
+  input: {
+    bookingIds: string[];
+    hotelItems: { bookingId: string; hotelName: string }[];
+    cards: HotelInboxCard[];
+  }
+): Promise<{ known: boolean; rows: HotelPaymentEvidence[] }> {
+  const bookingIds = [...new Set(input.bookingIds.filter(Boolean))];
+  if (!bookingIds.length) return { known: true, rows: [] };
+  try {
+    const costs = await readTripCosts(supabase, bookingIds);
+    const itemIds = [...new Set(costs.map((row) => row.booking_item_id).filter((id): id is string => Boolean(id)))];
+    const kinds = new Map<string, string>();
+    if (itemIds.length) {
+      const items = await idsIn(
+        (slice) => supabase.from("crm_booking_items").select("id, kind").in("id", slice),
+        itemIds
+      );
+      for (const row of items as { id: string; kind: string | null }[]) kinds.set(row.id, row.kind || "");
+    }
+    const cardByPliant = new Map<string, { bookingId: string; label: string }>();
+    for (const card of input.cards) {
+      if (!card.pliantCardId) continue;
+      cardByPliant.set(card.pliantCardId, { bookingId: card.bookingId, label: card.label });
+    }
+    const sourceIds = costs.filter((row) => row.source === "pliant" && row.source_id).map((row) => row.source_id as string);
+    const spends = await readEvidenceSpends(supabase, sourceIds, [...cardByPliant.keys()]);
+    const spendById = new Map(spends.map((row) => [row.id, row]));
+    const rows: HotelPaymentEvidence[] = [];
+    const seen = new Set<string>();
+
+    for (const cost of costs) {
+      const amount = euros(cost.amount_eur);
+      if (!(amount > 0) || !cost.booking_id) continue;
+      const kind = cost.booking_item_id ? kinds.get(cost.booking_item_id) || "" : "";
+      const place = !cost.booking_item_id || kind === "expense" ? "dossier" : kind === "hotel" ? "stay" : null;
+      if (!place) continue;
+      if (cost.source === "revolut") {
+        rows.push({
+          id: cost.source_id || cost.id,
+          source: "revolut",
+          bookingId: cost.booking_id,
+          bookingItemId: cost.booking_item_id,
+          place,
+          status: "BOOKED",
+          amount,
+          currency: "EUR",
+          at: cost.occurred_on,
+          merchant: cost.supplier,
+          cardLabel: null,
+          confidence: null,
+        });
+        continue;
+      }
+      if (cost.source !== "pliant") continue;
+      const spend = cost.source_id ? spendById.get(cost.source_id) : undefined;
+      const card = spend?.card_id ? cardByPliant.get(spend.card_id) : undefined;
+      if (spend?.id) seen.add(spend.id);
+      rows.push({
+        id: spend?.id || cost.source_id || cost.id,
+        source: "pliant",
+        bookingId: cost.booking_id,
+        bookingItemId: cost.booking_item_id,
+        place,
+        status: (spend?.status || (cost.state === "pending" ? "PENDING" : "BOOKED")).toUpperCase(),
+        type: spend?.type || "PURCHASE",
+        billingCents: spend?.billing_cents ?? Math.round(amount * 100),
+        currency: spend?.billing_currency || "EUR",
+        at: spend?.booked_at || cost.occurred_on,
+        merchant: spend?.merchant || cost.supplier,
+        cardLabel: card?.label || spend?.card_label || null,
+        confidence: null,
+      });
+    }
+
+    for (const spend of spends) {
+      if (seen.has(spend.id) || !spend.card_id) continue;
+      const card = cardByPliant.get(spend.card_id);
+      if (!card) continue;
+      seen.add(spend.id);
+      rows.push({
+        id: spend.id,
+        source: "pliant",
+        bookingId: card.bookingId,
+        bookingItemId: null,
+        place: "card",
+        status: spend.status,
+        type: spend.type,
+        billingCents: spend.billing_cents,
+        currency: spend.billing_currency || "EUR",
+        at: spend.booked_at,
+        merchant: spend.merchant,
+        cardLabel: card.label || spend.card_label,
+        confidence: null,
+      });
+    }
+
+    const hotelsByBooking = new Map<string, string[]>();
+    for (const item of input.hotelItems) {
+      const list = hotelsByBooking.get(item.bookingId) || [];
+      if (item.hotelName && !list.includes(item.hotelName)) list.push(item.hotelName);
+      hotelsByBooking.set(item.bookingId, list);
+    }
+    try {
+      rows.push(...(await readProposals(supabase, hotelsByBooking, cardByPliant, seen)));
+    } catch (error) {
+      console.error("[hotel-inbox]", error instanceof Error ? error.message : "propositions");
+    }
+    return { known: true, rows };
+  } catch (error) {
+    console.error("[hotel-inbox]", error instanceof Error ? error.message : "paiements");
+    return { known: false, rows: [] };
+  }
+}
+
+async function readTripCosts(supabase: SupabaseClient, bookingIds: string[]) {
+  const rows: EvidenceCostRow[] = [];
+  let columns = "id, booking_id, booking_item_id, source, source_id, amount_eur, supplier, occurred_on, state";
+  for (const slice of chunks(bookingIds, 60)) {
+    const first = await supabase.from("crm_trip_costs").select(columns).in("booking_id", slice);
+    if (first.error && missingDbColumn(first.error, "state")) {
+      columns = "id, booking_id, booking_item_id, source, source_id, amount_eur, supplier, occurred_on";
+      const retry = await supabase.from("crm_trip_costs").select(columns).in("booking_id", slice);
+      if (retry.error) throw new Error(retry.error.message);
+      rows.push(...((retry.data || []) as unknown as EvidenceCostRow[]));
+      continue;
+    }
+    if (first.error) throw new Error(first.error.message);
+    rows.push(...((first.data || []) as unknown as EvidenceCostRow[]));
+  }
+  return rows;
+}
+
+async function readEvidenceSpends(supabase: SupabaseClient, sourceIds: string[], cardIds: string[]) {
+  const rows: EvidenceSpendRow[] = [];
+  const seen = new Set<string>();
+  function push(data: EvidenceSpendRow[]) {
+    for (const row of data) {
+      if (!row.id || seen.has(row.id)) continue;
+      seen.add(row.id);
+      rows.push(row);
+    }
+  }
+  for (const slice of chunks([...new Set(sourceIds)], 60)) {
+    const { data, error } = await supabase.from("crm_pliant_transactions").select(EVIDENCE_SPEND_COLUMNS).in("id", slice);
+    if (error) throw new Error(error.message);
+    push((data || []) as EvidenceSpendRow[]);
+  }
+  for (const slice of chunks([...new Set(cardIds)], 40)) {
+    const { data, error } = await supabase.from("crm_pliant_transactions").select(EVIDENCE_SPEND_COLUMNS).in("card_id", slice);
+    if (error) throw new Error(error.message);
+    push((data || []) as EvidenceSpendRow[]);
+  }
+  return rows;
+}
+
+/** Dépenses non pointées dont le commerçant ressemble à un hôtel du fil, confiance haute seulement. */
+async function readProposals(
+  supabase: SupabaseClient,
+  hotelsByBooking: Map<string, string[]>,
+  cardByPliant: Map<string, { bookingId: string; label: string }>,
+  attached: Set<string>
+) {
+  const names = [...hotelsByBooking.values()].flat();
+  if (!names.length) return [] as HotelPaymentEvidence[];
+  const { data, error } = await supabase
+    .from("crm_pliant_transactions")
+    .select(EVIDENCE_SPEND_COLUMNS)
+    .eq("match_status", "unmatched")
+    .in("status", ["PENDING", "BOOKED", "CONFIRMED"])
+    .in("type", ["PURCHASE", "CASH_WITHDRAWAL"])
+    .order("booked_at", { ascending: false })
+    .limit(200);
+  if (error) throw new Error(error.message);
+  const open = ((data || []) as EvidenceSpendRow[]).filter(
+    (row) => row.id && !attached.has(row.id) && names.some((hotel) => merchantResemblesHotel(row.merchant, hotel))
+  );
+  if (!open.length) return [] as HotelPaymentEvidence[];
+  const targets = await loadCostTargets(supabase);
+  const rows: HotelPaymentEvidence[] = [];
+  for (const spend of open) {
+    const settlement = pliantSpendSettlement({
+      id: spend.id,
+      status: spend.status,
+      type: spend.type,
+      merchant: spend.merchant,
+      billing_cents: spend.billing_cents,
+      billing_currency: spend.billing_currency,
+      transaction_cents: spend.transaction_cents,
+      transaction_currency: spend.transaction_currency,
+      booked_at: spend.booked_at,
+    });
+    if (!settlement || settlement.draft.amountEur === 0) continue;
+    const card = spend.card_id ? cardByPliant.get(spend.card_id) : undefined;
+    const suggestions = suggestCostTargets(
+      {
+        text: spend.merchant,
+        party: spend.merchant,
+        amount: Math.abs(settlement.draft.amountEur),
+        originalAmount: settlement.draft.originalAmount,
+        originalCurrency: settlement.draft.originalCurrency,
+        cardBookingIds: card ? [card.bookingId] : [],
+        cardName: spend.card_label,
+        customerId: spend.customer_id || spend.matched_customer_id,
+        date: spend.booked_at ? String(spend.booked_at).slice(0, 10) : null,
+      },
+      targets
+    );
+    for (const hit of suggestions) {
+      if (hit.confidence !== "haute" || !hotelsByBooking.has(hit.bookingId)) continue;
+      const hotels = hotelsByBooking.get(hit.bookingId) || [];
+      if (!hotels.some((hotel) => merchantResemblesHotel(spend.merchant, hotel))) continue;
+      rows.push({
+        id: spend.id,
+        source: "pliant",
+        bookingId: hit.bookingId,
+        bookingItemId: null,
+        place: "proposal",
+        status: spend.status,
+        type: spend.type,
+        billingCents: spend.billing_cents,
+        currency: spend.billing_currency || "EUR",
+        at: spend.booked_at,
+        merchant: spend.merchant,
+        cardLabel: card?.label || spend.card_label,
+        confidence: "haute",
+      });
+      break;
+    }
+  }
+  return rows;
 }
