@@ -174,6 +174,17 @@ export function mb3mAmadeusSuggestionSentence(row: { label: string; invoiceNumbe
   return `${row.label} : une facture Amadeus sans dossier pourrait correspondre (facture n°${row.invoiceNumber}). Elle reste sur la facture du CRM.`;
 }
 
+/**
+ * Avertissement du bouton Préparer : lettrage ou lecture impossible.
+ * Vide si la préparation a suivi son cours (y compris un autre avertissement).
+ */
+export function mb3mLettrageHoldNotice(input: { statut?: string | null; avertissement?: string | null } | null) {
+  if (!input) return null;
+  if (input.statut !== "bloque_lettrage" && input.statut !== "avertissement") return null;
+  const text = (input.avertissement || "").replace(/\s+/g, " ").trim();
+  return text || "La pro forma n’est pas remplacée.";
+}
+
 /** Phrase après le clic : les crédits envoyés ou déjà présents chez MB3M. */
 export function mb3mReglementNote(
   rows: {

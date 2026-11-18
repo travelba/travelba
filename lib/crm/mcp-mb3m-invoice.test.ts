@@ -216,6 +216,47 @@ describe("préparer la facture MB3M", () => {
     assert.match(result.avertissement || "", /soldée/);
   });
 
+  it("renvoie le blocage de lettrage sans le compter comme une erreur", async () => {
+    const warning =
+      "La pro forma n° 2217 a déjà un règlement lettré dans MB3M. Elle n’est pas remplacée. Délettrez le règlement dans MB3M si vous voulez la refaire.";
+    const result = await preparerFactureMb3m(
+      { reference: "TB-2026-0044" },
+      deps({
+        emit: async () => ({
+          number: "2217",
+          documentId: null,
+          created: false,
+          replaced: false,
+          printed: false,
+          visibleToClient: false,
+          reglements: [],
+          statut: "bloque_lettrage",
+          avertissement: warning,
+        }),
+        loadInvoices: async () => [
+          {
+            piece_number: "2217",
+            lines: [line],
+            amount: 5404.15,
+            printed_at: null,
+            attempt_status: null,
+            attempt_error: null,
+            attempt_started_at: null,
+            attempt_started_by: null,
+            updated_at: "2026-11-18T12:00:00.000Z",
+          },
+        ],
+      })
+    );
+    assert.equal(result.statut, "bloque_lettrage");
+    assert.equal(result.erreur, null);
+    assert.equal(result.cree, false);
+    assert.equal(result.remplacee, false);
+    assert.equal(result.numero_mb3m, "2217");
+    assert.match(result.avertissement || "", /2217/);
+    assert.match(result.avertissement || "", /pas remplacée/);
+  });
+
   it("refuse un dossier sans identifiant", async () => {
     await assert.rejects(() => preparerFactureMb3m({}), (error: unknown) => {
       assert.ok(error instanceof McpWriteError);
