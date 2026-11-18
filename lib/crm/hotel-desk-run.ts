@@ -4,8 +4,16 @@ import { Resend } from "resend";
 import { pliantCardCaption, pliantCardNomination } from "./eta-il-fee";
 import { downloadCrmFile, removeCrmFiles, uploadCrmFile } from "./files";
 import { agencyCardObjectPath, agencyCardSiblingPaths, clientCardMime, isAgencyCardPath, isSafeCrmPath } from "./files-access";
-import { getThread, gmailConfigured, gmailHeaderValues, searchInbox } from "./gmail";
-import { headerDisplayName, headerValue } from "./gmail-parse";
+import { getAttachmentBytes, getThread, gmailConfigured, gmailHeaderValues, searchInbox } from "./gmail";
+import { headerDisplayName, headerValue, type ParsedGmailMessage } from "./gmail-parse";
+import { isNestedMailFile } from "./nested-mail";
+import {
+  firstOutboundAt,
+  keepHotelThreadLink,
+  shouldReadNestedMail,
+  textOfNestedMail,
+  withReplyWindow,
+} from "./hotel-thread-link";
 import { attachLittleEmperorsCatalog } from "./hotel-catalog-load";
 import { holidaysFor } from "./holidays";
 import { hotelContact, leHotelIdFromItem } from "./hotel-contact";
@@ -288,11 +296,15 @@ type GmailHit = {
   cc: string[];
   subject: string;
   body: string;
+  /** Texte des .eml et des mails inline, vide si le corps a déjà le lien. */
+  nestedText: string;
   receivedAt: string | null;
   autoSubmitted: boolean;
   /** Vrai si le message vient du fil Gmail déjà lié au courrier. */
   inThread: boolean;
 };
+
+const NESTED_MAIL_BYTES = 8 * 1024 * 1024;
 
 const HOTEL_REPLY_SYNC_PROVIDER = "gmail-hotel-replies";
 
@@ -408,11 +420,13 @@ export async function syncHotelDeskThreads(admin: Admin, bookingId: string) {
       const knownThreads = existing
         .filter((row) => row.booking_item_id === anchor.bookingItemId && row.subject_key === anchor.subjectKey && row.gmail_thread_id)
         .map((row) => row.gmail_thread_id || "");
-      const found = await collectThreadHits(anchor, knownThreads);
+      const memory = threadMemory(existing, anchor);
+      const found = await collectThreadHits(anchor, knownThreads, memory.links);
       if (found.hits.length) {
-        const people = await storeThreadHits(admin, bookingId, anchor, found.hits, cues, sharedConfirmation);
+        const people = await storeThreadHits(admin, bookingId, anchor, found.hits, cues, sharedConfirmation, memory);
         named.push(...people);
       }
+      await clearPrematureReplies(admin, bookingId, anchor.bookingItemId, anchor.subjectKey);
       if (!found.searchFailed) {
         const stamped = new Date().toISOString();
         for (const stamp of anchor.stamps) {
@@ -597,7 +611,21 @@ async function releaseHotelSend(admin: Admin, requestId: string) {
   await admin.from("crm_email_sync").delete().eq("provider", `hotel-send:${requestId}`);
 }
 
-async function collectThreadHits(anchor: ThreadAnchor & { subjectKey: string }, knownThreads: string[]) {
+type ThreadMemory = { links: Map<string, string | null>; priorOutboundAt: string | null };
+
+function threadMemory(existing: CrmHotelThreadMessage[], anchor: { bookingItemId: string; subjectKey: string }): ThreadMemory {
+  const rows = existing.filter((row) => row.booking_item_id === anchor.bookingItemId && row.subject_key === anchor.subjectKey);
+  return {
+    links: new Map(rows.map((row) => [row.gmail_message_id, (row.link || "").trim() || null])),
+    priorOutboundAt: firstOutboundAt(rows.filter((row) => row.direction === "out").map((row) => row.received_at)),
+  };
+}
+
+async function collectThreadHits(
+  anchor: ThreadAnchor & { subjectKey: string },
+  knownThreads: string[],
+  storedLinks: Map<string, string | null>
+) {
   if (!gmailConfigured()) return { hits: [] as GmailHit[], searchFailed: false };
   const after = gmailAfterDate(anchor.sinceMs);
   const queries = hotelLooseSearchQueries({
@@ -621,10 +649,19 @@ async function collectThreadHits(anchor: ThreadAnchor & { subjectKey: string }, 
   };
   const threadIds = new Set(knownThreads.filter(Boolean));
   let searchFailed = false;
+  const take = async (message: ParsedGmailMessage, inThread: boolean) => {
+    if (!message.id) return;
+    const prev = byId.get(message.id);
+    if (prev) {
+      if (inThread) prev.inThread = true;
+      return;
+    }
+    push(await toGmailHit(message, storedLinks.get(message.id) || null), inThread);
+  };
   for (const query of queries) {
     try {
       for (const message of await searchInbox(query, 4)) {
-        push(toGmailHit(message), false);
+        await take(message, false);
         if (message.threadId) threadIds.add(message.threadId);
       }
     } catch {
@@ -633,7 +670,7 @@ async function collectThreadHits(anchor: ThreadAnchor & { subjectKey: string }, 
   }
   for (const threadId of [...threadIds].slice(0, 5)) {
     try {
-      for (const message of await getThread(threadId)) push(toGmailHit(message), true);
+      for (const message of await getThread(threadId)) await take(message, true);
     } catch {
       continue;
     }
@@ -641,27 +678,47 @@ async function collectThreadHits(anchor: ThreadAnchor & { subjectKey: string }, 
   return { hits, searchFailed };
 }
 
-function toGmailHit(message: {
-  id: string;
-  threadId: string;
-  from: string;
-  fromEmail: string;
-  subject: string;
-  text: string;
-  receivedAt: string | null;
-  autoSubmitted: boolean;
-  toEmails?: string[];
-  ccEmails?: string[];
-}): GmailHit {
+async function nestedMailText(message: ParsedGmailMessage) {
+  const parts: string[] = [];
+  for (const raw of message.inlineMails || []) {
+    const text = textOfNestedMail(raw);
+    if (text) parts.push(text);
+  }
+  let fetched = 0;
+  for (const att of message.attachments || []) {
+    if (fetched >= 4) break;
+    if (!isNestedMailFile(att.mimeType, att.filename)) continue;
+    if (att.size > NESTED_MAIL_BYTES) continue;
+    fetched += 1;
+    try {
+      const bytes = await getAttachmentBytes(message.id, att.attachmentId);
+      if (!bytes.byteLength || bytes.byteLength > NESTED_MAIL_BYTES) continue;
+      const text = textOfNestedMail(bytes);
+      if (text) parts.push(text);
+    } catch {
+      continue;
+    }
+  }
+  return parts.join("\n");
+}
+
+async function toGmailHit(message: ParsedGmailMessage, storedLink: string | null): Promise<GmailHit> {
+  const from = message.fromEmail || message.from;
+  const body = message.text || "";
+  const hasNested =
+    (message.inlineMails || []).length > 0 ||
+    (message.attachments || []).some((att) => isNestedMailFile(att.mimeType, att.filename));
+  const nestedText = shouldReadNestedMail({ from, body, storedLink, hasNested }) ? await nestedMailText(message) : "";
   return {
     id: message.id,
     threadId: message.threadId,
-    from: message.fromEmail || message.from,
+    from,
     fromName: headerDisplayName(message.from),
     to: message.toEmails || [],
     cc: message.ccEmails || [],
     subject: message.subject || "",
-    body: message.text || "",
+    body,
+    nestedText,
     receivedAt: message.receivedAt,
     autoSubmitted: message.autoSubmitted,
     inThread: false,
@@ -678,7 +735,8 @@ async function storeThreadHits(
   anchor: ThreadAnchor & { subjectKey: string },
   hits: GmailHit[],
   cues: HotelReplyCue[],
-  sharedConfirmation: Map<string, boolean>
+  sharedConfirmation: Map<string, boolean>,
+  memory: ThreadMemory
 ) {
   const parties: ThreadParty[] = [];
   const rows: {
@@ -700,6 +758,7 @@ async function storeThreadHits(
     request_id: string | null;
     message_id: string | null;
   }[] = [];
+  const drafts: { hit: GmailHit; classified: ReturnType<typeof classifyHotelMail>; receivedAt: string }[] = [];
   for (const hit of hits) {
     const classified = classifyHotelMail({
       from: hit.from,
@@ -710,6 +769,7 @@ async function storeThreadHits(
       acceptThreadReply: hit.inThread,
       cues,
       threadKey: hit.inThread ? anchor.subjectKey : null,
+      nestedText: hit.nestedText,
     });
     if (!classified.keep || classified.subjectKey !== anchor.subjectKey || !hit.id) continue;
     if (classified.via === "confirmation" || classified.via === "domain") {
@@ -718,14 +778,29 @@ async function storeThreadHits(
       );
       if (tokens.length && (await confirmationShared(admin, tokens, sharedConfirmation))) continue;
     }
+    const receivedAt = hit.receivedAt && Number.isFinite(Date.parse(hit.receivedAt)) ? hit.receivedAt : new Date().toISOString();
+    drafts.push({ hit, classified, receivedAt });
+  }
+  const timed = withReplyWindow(
+    drafts.map((draft) => ({
+      direction: draft.classified.direction,
+      receivedAt: draft.receivedAt,
+      countsAsReply: draft.classified.countsAsReply,
+    })),
+    memory.priorOutboundAt
+  );
+  for (let index = 0; index < drafts.length; index += 1) {
+    const draft = drafts[index];
+    if (!draft) continue;
+    const { hit, classified, receivedAt } = draft;
+    const countsAsReply = timed[index]?.countsAsReply ?? classified.countsAsReply;
     parties.push({
-      inbound: classified.direction === "in" && classified.countsAsReply,
+      inbound: classified.direction === "in" && countsAsReply,
       from: hit.from,
       fromName: hit.fromName,
       to: hit.to,
       cc: hit.cc,
     });
-    const receivedAt = hit.receivedAt && Number.isFinite(Date.parse(hit.receivedAt)) ? hit.receivedAt : new Date().toISOString();
     rows.push({
       booking_id: bookingId,
       booking_item_id: anchor.bookingItemId,
@@ -738,9 +813,9 @@ async function storeThreadHits(
       cc_emails: partyList(hit.cc),
       subject: hit.subject.slice(0, 300),
       body: classified.body,
-      link: classified.link,
+      link: classified.direction === "in" ? keepHotelThreadLink(classified.link, memory.links.get(hit.id)) : null,
       received_at: receivedAt,
-      counts_as_reply: classified.countsAsReply,
+      counts_as_reply: countsAsReply,
       source: "gmail",
       request_id: anchor.requestId,
       message_id: anchor.requestId ? null : anchor.messageId,
@@ -763,6 +838,32 @@ async function storeThreadHits(
     await admin.from("crm_hotel_thread_messages").upsert(bare, { onConflict: "gmail_message_id" });
   }
   return named;
+}
+
+/** Un message déjà en base, antérieur au premier envoi, ne reste pas une réponse. */
+async function clearPrematureReplies(admin: Admin, bookingId: string, itemId: string, subjectKey: string) {
+  const { data, error } = await admin
+    .from("crm_hotel_thread_messages")
+    .select("direction, received_at")
+    .eq("booking_id", bookingId)
+    .eq("booking_item_id", itemId)
+    .eq("subject_key", subjectKey);
+  if (error || !data) return;
+  const first = firstOutboundAt(
+    (data as { direction?: string | null; received_at?: string | null }[])
+      .filter((row) => row.direction === "out")
+      .map((row) => row.received_at)
+  );
+  if (!first) return;
+  await admin
+    .from("crm_hotel_thread_messages")
+    .update({ counts_as_reply: false })
+    .eq("booking_id", bookingId)
+    .eq("booking_item_id", itemId)
+    .eq("subject_key", subjectKey)
+    .eq("direction", "in")
+    .eq("counts_as_reply", true)
+    .lt("received_at", first);
 }
 
 function deskTurns(turns: CrmHotelThreadMessage[], itemId: string, keys: Set<string>): FollowUpTurn[] {
