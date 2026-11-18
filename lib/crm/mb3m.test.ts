@@ -1027,7 +1027,7 @@ describe("règlements MB3M", () => {
     assert.equal(emitted[0]?.bank, "REVOLUT");
     assert.equal(emitted[1]?.mode, "BankTransfer");
     assert.equal(emitted[1]?.bank, "QONTO");
-    assert.equal(emitted[2]?.mode, "OnlinePaymentCard");
+    assert.equal(emitted[2]?.mode, "PaymentCard");
     assert.equal(emitted[3]?.mode, "PaymentCard");
     assert.equal(emitted[4]?.mode, "Check");
     assert.equal(emitted[5]?.mode, "Cash");
@@ -1091,8 +1091,9 @@ describe("règlements MB3M", () => {
     assert.equal(request?.includes("<Customer>"), false);
     assert.equal(request?.includes("<Company>"), false);
     assert.equal(request?.includes("<Person>"), false);
-    assert.equal(bodies[1]?.action, '"http://schemas.mb3m.fr/Partners/IFolderService/WriteMatching"');
-    const matchOrder = ["<Amount>2274.96</Amount>", "<PaymentNumber>2154</PaymentNumber>", "<PieceNumber>2152</PieceNumber>"].map(
+    assert.equal(bodies[1]?.action, '"http://schemas.mb3m.fr/Partners/IPieceService/WriteMatching"');
+    assert.ok((bodies[1]?.body || "").includes("<PieceMatchingRequest"));
+    const matchOrder = ["<Source><Number>2154</Number></Source>", "<Target><Number>2152</Number></Target>", "<Amount>2274.96</Amount>"].map(
       (needle) => (bodies[1]?.body || "").indexOf(needle)
     );
     assert.ok(matchOrder.every((index) => index >= 0));
@@ -1266,6 +1267,17 @@ describe("règlements MB3M", () => {
     });
     assert.equal(rows[0]?.number, "2149");
     assert.equal(rows[0]?.unmatched, 561.19);
+  });
+
+  it("lit un règlement de la vraie réponse FindAllPieces (IsPayment, Balance, Identity)", async () => {
+    arm();
+    const xml = `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FolderFindPiecesResult xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Pieces><Piece><Amount>2767.6100</Amount><Balance>2767.6100</Balance><Customer><Uid>fb3e41d2-6be4-4998-aef4-851839cc48f3</Uid><Name>BEELYNQ LLC</Name></Customer><DateCreation>2026-11-17T00:00:00</DateCreation><Folder><Id i:nil="true"/><Uid>1f0c002c-615e-422b-aff6-202611161249</Uid></Folder><Identity><Number>2218</Number><Uid>31be0700-573c-4d21-b6c8-202611171333</Uid></Identity><IsPayment>true</IsPayment><RefCommand/></Piece><Piece><Amount>2767.6100</Amount><Balance>0.0000</Balance><Customer><Uid>fb3e41d2-6be4-4998-aef4-851839cc48f3</Uid></Customer><DatePrint>2026-11-16T12:27:51.28+00:00</DatePrint><Identity><Number>2203</Number><Uid>a1dce7bf-7e4e-4431-8332-202611161316</Uid></Identity><IsPayment>false</IsPayment><RefCommand>TB-2026-0159</RefCommand></Piece></Pieces><TotalCount>2</TotalCount></FolderFindPiecesResult></s:Body></s:Envelope>`;
+    const rows = await mb3mFindCustomerPayments("fb3e41d2-6be4-4998-aef4-851839cc48f3", async () => new Response(xml));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.number, "2218");
+    assert.equal(rows[0]?.amount, 2767.61);
+    assert.equal(rows[0]?.unmatched, 2767.61);
+    assert.equal(rows[0]?.date, "2026-11-17");
   });
 
   it("cherche d’abord le dossier de la facture, puis les autres dossiers du client", async () => {
