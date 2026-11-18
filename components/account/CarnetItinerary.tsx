@@ -520,7 +520,7 @@ export function CarnetItinerary({
         variant={services.variant}
         bookingId={booking.id}
         reference={booking.reference}
-        price={price}
+        price={pricesVisible ? price : 0}
         currency={booking.currency}
         pricesVisible={pricesVisible}
         locked={services.variant === "client" && !extraNoticeOk(at, now)}

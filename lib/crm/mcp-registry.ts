@@ -350,7 +350,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_client",
     description:
-      "Fiche d’un client : coordonnées, toutes les sociétés de facturation (societes : identifiant, raison sociale, SIRET, identifiant d’entreprise, TVA ou numéro fiscal, e-mail, adresse, code postal, ville, pays en code ISO, principale ; pas de téléphone sur la société), encours (signe brut), pièces à échéance (type et date, jamais le numéro). id ou q.",
+      "Fiche d’un client : coordonnées, toutes les sociétés de facturation (societes : identifiant, raison sociale, SIRET, identifiant d’entreprise, TVA ou numéro fiscal, e-mail, adresse, code postal, ville, pays en code ISO, principale ; pas de téléphone sur la société), encours (signe brut), pièces à échéance (type et date, jamais le numéro), masquer_prix (vrai si l’espace client ne reçoit plus les montants). id ou q.",
     input: { id, q },
     run: (args: ToolArgs) => readFicheClient({ id: str(args, "id"), q: str(args, "q") }),
   },
@@ -1000,7 +1000,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_client",
     write: true,
     description:
-      "Met à jour le prénom, le nom, l’e-mail, le téléphone, la société ou la commission d’agence d’un client déjà identifié. commission_agence : 10, 7,5, 5, ou defaut pour 10 %. Les dossiers sans dérogation suivent. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). supprimer_societe_id retire une société vide, sans raison sociale ni SIRET, qui n’est pas utilisée. Ne crée pas de fiche. Aucun message.",
+      "Met à jour le prénom, le nom, l’e-mail, le téléphone, la société ou la commission d’agence d’un client déjà identifié. commission_agence : 10, 7,5, 5, ou defaut pour 10 %. Les dossiers sans dérogation suivent. masquer_prix vrai : l’espace client, le carnet, l’aperçu et les partages de ce client ne reçoivent plus aucun prix, montant, solde, transaction, relevé ni lien de paiement, sur tous ses dossiers. Faux les montre de nouveau. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). supprimer_societe_id retire une société vide, sans raison sociale ni SIRET, qui n’est pas utilisée. Ne crée pas de fiche. Aucun message.",
     input: {
       id: z.string().trim().describe("Identifiant du client"),
       prenom: z.string().max(80).optional().describe("Prénom"),
@@ -1020,6 +1020,10 @@ export const MCP_TOOLS: ToolDef[] = [
         .max(80)
         .optional()
         .describe("Retire cette société si elle est vide et n’est pas utilisée"),
+      masquer_prix: z
+        .boolean()
+        .optional()
+        .describe("Vrai : l’espace client de cette fiche ne reçoit plus aucun prix ni transaction. Faux : les montre."),
       ...COMPANY_FIELDS,
     },
     run: (args) => updateClient(args),

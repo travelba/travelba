@@ -199,6 +199,8 @@ export type CrmCustomer = {
   stripe_customer_id: string | null;
   /** Badge / filtre admin — aucun effet côté espace client. */
   on_hold?: boolean;
+  /** Espace client : aucun prix, aucun solde, aucune transaction. Défaut faux. L’agence seule l’écrit. */
+  hide_client_prices?: boolean;
   /** Réservation d’hôtels en autonomie. Faux par défaut. L’agence seule l’écrit. */
   hotel_booking_enabled?: boolean;
   /** Compte de démonstration : jamais de mode réel. */

@@ -26,6 +26,8 @@ import {
 } from "@/components/account/HomeTripExtras";
 import { Icon } from "@/components/crm/icons";
 import { greetingGivenName } from "@/lib/crm/identity";
+import { clientHidesPrices, stayHidesPrices, stripClientMoneyItem } from "@/lib/crm/client-price-privacy";
+import { hiddenPriceCustomerIds } from "@/lib/crm/client-price-privacy-load";
 
 export default async function AccountHomePage({ searchParams }: { searchParams: Promise<{ confirme?: string }> }) {
   const { confirme } = await searchParams;
@@ -66,9 +68,11 @@ export default async function AccountHomePage({ searchParams }: { searchParams: 
           </Link>
         ) : null}
 
-        <Suspense fallback={<HomeEncoursSkeleton />}>
-          <HomeEncours customer={customer} />
-        </Suspense>
+        {clientHidesPrices(customer) ? null : (
+          <Suspense fallback={<HomeEncoursSkeleton />}>
+            <HomeEncours customer={customer} />
+          </Suspense>
+        )}
 
         <Suspense fallback={<HomeTripSkeleton />}>
           <HomeNextStay customer={customer} />
@@ -171,6 +175,11 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
   }
 
   const face = faces[nextTrip.id];
+  const hiddenOwners = clientHidesPrices(customer)
+    ? new Set<string>()
+    : await hiddenPriceCustomerIds(nextTrip.customer_id === customer.id ? [] : [nextTrip.customer_id]);
+  const hideMoney = stayHidesPrices(customer, nextTrip.customer_id, hiddenOwners);
+  const heroItems = hideMoney ? face?.items?.map((item) => stripClientMoneyItem(item)) : face?.items;
   const countdown = jMinusLabel(nextTrip.start_date);
   const tripHref = `/mon-compte/reservations/${nextTrip.reference}`;
   const tripName = face?.title || nextTrip.title || "Prochain séjour";
@@ -182,7 +191,7 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
         <BookingHero
           booking={toPublicBooking(nextTrip)}
           places={face?.places}
-          items={face?.items}
+          items={heroItems}
           priority
           frameClassName="relative h-[22rem] w-full"
           transitionName={stayTransitionName(nextTrip.reference)}

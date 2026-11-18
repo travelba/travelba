@@ -10,6 +10,7 @@ import { customerPathScope, isAgencyCardPath, isInlineSafeFile, isSafeCrmPath } 
 import { rasterPdfPages } from "@/lib/crm/pdf-raster";
 import { isTripShareCode } from "@/lib/crm/trip-share";
 import { sharePathAllowed } from "@/lib/crm/trip-share-load";
+import { clientHidesPrices, isClientInvoiceDocument, isClientMoneyFile } from "@/lib/crm/client-price-privacy";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -119,6 +120,7 @@ export async function GET(request: Request) {
 
   const client = await requireCustomer();
   if (client instanceof NextResponse) return client;
+  if (clientHidesPrices(client.customer) && isClientMoneyFile(path)) return jsonError("Document introuvable", 404);
 
   const scope = customerPathScope(path, client.customer.id);
   if (scope.kind === "denied") return jsonError("Accès refusé", 403);
@@ -144,6 +146,16 @@ export async function GET(request: Request) {
       .eq("visible_to_client", true)
       .maybeSingle();
     if (!doc) return jsonError("Document non publié", 403);
+    if (
+      clientHidesPrices(client.customer) &&
+      isClientInvoiceDocument({
+        kind: typeof doc.kind === "string" ? doc.kind : null,
+        file_name: typeof doc.file_name === "string" ? doc.file_name : null,
+        storage_path: path,
+      })
+    ) {
+      return jsonError("Document introuvable", 404);
+    }
     if (download && typeof doc.id === "string") {
       let itemKind: string | null = null;
       if (typeof doc.booking_item_id === "string") {

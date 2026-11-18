@@ -26,6 +26,8 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { toPublicBooking } from "@/lib/crm/public-booking";
+import { clientHidesPrices, stayHidesPrices, stripClientMoneyItem } from "@/lib/crm/client-price-privacy";
+import { hiddenPriceCustomerIds } from "@/lib/crm/client-price-privacy-load";
 
 type Props = { params: Promise<{ reference: string }>; searchParams: Promise<{ confirme?: string }> };
 
@@ -112,6 +114,12 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
   const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null; moment?: string | null }[])
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
+  const hiddenOwners =
+    clientHidesPrices(customer) || b.customer_id === customer.id
+      ? new Set<string>()
+      : await hiddenPriceCustomerIds([b.customer_id]);
+  const hideMoney = stayHidesPrices(customer, b.customer_id, hiddenOwners);
+  const heroItems = hideMoney ? withoutHotelRosterItems(face.items).map((item) => stripClientMoneyItem(item)) : withoutHotelRosterItems(face.items);
 
   return (
     <AccountPage>
@@ -121,7 +129,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
             reference={b.reference}
             confirmation={rawItems.find((item) => item.kind === "hotel")?.confirmation_ref}
             summary={`${headline} · ${formatDateFr(b.start_date)} — ${formatDateFr(b.end_date)}`}
-            price={formatMoney(Number(b.total_amount) || 0, b.currency || "EUR")}
+            price={hideMoney ? undefined : formatMoney(Number(b.total_amount) || 0, b.currency || "EUR")}
             calendarHref={`/mon-compte/reservations/${b.reference}/agenda.ics`}
             manageHref="#sejour"
           />
@@ -137,7 +145,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
         <BookingHero
           booking={pub}
           places={face.places}
-          items={withoutHotelRosterItems(face.items)}
+          items={heroItems}
           priority
           className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
           transitionName={stayTransitionName(b.reference)}
@@ -178,6 +186,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
             companions={(companions || []) as CrmCompanion[]}
             refusals={refusals}
             visaRows={(visaRows || []) as { country: string; step?: ClientVisaStep; status?: string; accepted_at?: string | null }[]}
+            hidePrices={hideMoney}
           />
           </div>
         </Suspense>

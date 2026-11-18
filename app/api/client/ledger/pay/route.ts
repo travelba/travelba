@@ -32,6 +32,7 @@ import { cancelOrphanSepaIntents, claimSepaLock, releaseSepaLock, syncSepaIntent
 import type { PayerKind } from "@/lib/crm/payer";
 import type { StayPayMethod } from "@/lib/crm/stripe-pay";
 import type Stripe from "stripe";
+import { clientHidesPrices } from "@/lib/crm/client-price-privacy";
 
 function acceptIp(request: Request) {
   return clientAcceptIp(request.headers.get("x-forwarded-for")) || clientAcceptIp(request.headers.get("x-real-ip"));
@@ -76,6 +77,9 @@ export async function POST(request: Request) {
   if (auth instanceof NextResponse) return auth;
   if (isCompanyMember(auth.customer)) {
     return jsonError("Le règlement se fait depuis le compte qui porte l’encours.", 403);
+  }
+  if (clientHidesPrices(auth.customer)) {
+    return jsonError("Le règlement se fait avec l’agence.", 403);
   }
 
   const body = await request.json().catch(() => null);

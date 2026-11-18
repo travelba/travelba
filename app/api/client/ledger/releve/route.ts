@@ -7,6 +7,7 @@ import { attachStatementTransfer } from "@/lib/crm/statement-wire";
 import { renderStatementPdf } from "@/lib/crm/statement-pdf";
 import { deliverStatementWhatsapp, statementPdfResponse, statementSendResponse } from "@/lib/crm/statement-send";
 import { customerFullName } from "@/lib/crm/types";
+import { clientHidesPrices } from "@/lib/crm/client-price-privacy";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,7 @@ async function statementPdf(auth: Exclude<Awaited<ReturnType<typeof requireCusto
 export async function GET() {
   const auth = await requireCustomer();
   if (auth instanceof NextResponse) return auth;
+  if (clientHidesPrices(auth.customer)) return jsonError("Le relevé n’est pas disponible.", 404);
   const { pdf } = await statementPdf(auth);
   return statementPdfResponse(pdf);
 }
@@ -41,6 +43,7 @@ export async function POST() {
     windowSeconds: 60 * 60,
   });
   if (!allowed) return jsonError(RATE_LIMITED_MESSAGE, 429);
+  if (clientHidesPrices(auth.customer)) return jsonError("Le relevé n’est pas disponible.", 404);
   const { view, pdf } = await statementPdf(auth);
   return statementSendResponse(
     await deliverStatementWhatsapp({
