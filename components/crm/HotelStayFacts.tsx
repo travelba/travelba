@@ -1,5 +1,5 @@
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
-import { hotelStayFacts, type HotelFact } from "@/lib/crm/hotel-gallery";
+import { hotelDescription, hotelStayFacts, type HotelFact } from "@/lib/crm/hotel-gallery";
 import type { CrmBookingItem } from "@/lib/crm/types";
 
 function Fact({ fact }: { fact: HotelFact }) {
@@ -22,11 +22,13 @@ function Fact({ fact }: { fact: HotelFact }) {
 /** Chambre, pension, avantages, horaires, adresse, annulation, nuits, voyageurs. */
 export function HotelStayFacts({ item }: { item: CrmBookingItem }) {
   const facts = hotelStayFacts(item);
-  if (!facts.length) return null;
+  const description = hotelDescription(item);
+  if (!facts.length && !description) return null;
   const benefits = facts.find((fact) => (fact.label === "Avantages" || fact.label === "Inclus") && "lines" in fact);
   const rest = facts.filter((fact) => fact !== benefits);
   return (
     <div className="space-y-3">
+      {description ? <p className="text-sm leading-relaxed text-[var(--admin-navy)]">{description}</p> : null}
       {benefits && "lines" in benefits ? (
         <HotelBenefits lines={benefits.lines} title={benefits.label === "Avantages" ? "Vos avantages exclusifs" : "Inclus"} />
       ) : null}

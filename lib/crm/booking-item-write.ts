@@ -24,6 +24,8 @@ import {
   type ExpensePreset,
 } from "@/lib/crm/expense-presets";
 import { loadExpensePresets } from "@/lib/crm/expense-presets-db";
+import { detailsWithHotelResearch } from "@/lib/crm/hotel-research";
+import { perplexityConfigured } from "@/lib/crm/hotel-research-key";
 
 const SORT_ORDER_ERROR = `Ordre de la carte invalide (0 à ${MAX_SORT_ORDER}).`;
 
@@ -154,6 +156,20 @@ export async function addStaffBookingCard(
   }
   const company = await billingCompanyPatch(supabase, bookingId, body.billing_company_id);
   if ("error" in company && company.error) return { error: company.error, status: 400 };
+  if (kind === "hotel" && perplexityConfigured()) {
+    const stamped = detailsWithHotelResearch({
+      kind,
+      title: String(nextBody.title || title).trim(),
+      supplier: typeof nextBody.supplier === "string" ? nextBody.supplier : null,
+      details: nextDetails,
+    });
+    if (stamped.hotel_research === "attente" && nextDetails.hotel_research !== "attente") {
+      nextDetails = stamped;
+      void import("@/lib/crm/hotel-research-run")
+        .then((mod) => mod.scheduleHotelResearch())
+        .catch(() => undefined);
+    }
+  }
   const { data, error } = await supabase
     .from("crm_booking_items")
     .insert({

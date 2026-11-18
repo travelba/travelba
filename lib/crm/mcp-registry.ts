@@ -1490,7 +1490,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "ajouter_hotel",
     write: true,
     description:
-      "Ajoute une carte hôtel : nom, ville, pays, dates, chambre, pension, inclus, confirmation, fournisseur, prix (THB compris), adresse, heures d’arrivée et de départ, photos https et texte d’annulation s’ils sont indiqués. Le séjour caché ne débite pas. Aucun message.",
+      "Ajoute une carte hôtel : nom, ville, pays, dates, chambre, pension, inclus, confirmation, fournisseur, prix (THB compris), adresse, heures d’arrivée et de départ, photos https et texte d’annulation s’ils sont indiqués. Hors Little Emperors, une recherche complète ensuite les contacts, les photos et la description, sans bloquer et sans rien écraser. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),

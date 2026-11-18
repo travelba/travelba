@@ -1,4 +1,5 @@
 import { detailList, detailStr, hotelRooms, nightsBetween } from "@/lib/crm/carnet";
+import { frenchClientProse } from "@/lib/crm/hotel-fr";
 import type { CrmBookingItem } from "@/lib/crm/types";
 
 /** Catalogue public Little Emperors : les photos de chambre sont dans `images_gallery`, pas dans la réservation. */
@@ -343,24 +344,37 @@ export function benefitLine(raw: string): BenefitLine {
   return { title, note, tone };
 }
 
+/** Photo déposée par la recherche, servie par la route publique de ce préfixe. */
+export function ownHotelPhotoUrl(value: unknown) {
+  const raw = text(value);
+  if (!/^\/api\/hotels\/photos\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-7]$/i.test(raw)) {
+    return "";
+  }
+  return raw;
+}
+
+function photoUrl(value: unknown) {
+  return ownHotelPhotoUrl(value) || safePhotoUrl(value);
+}
+
 export function storedHotelPhotos(details: Record<string, unknown> | null | undefined): HotelPhoto[] {
   const raw = details?.photos;
   if (!Array.isArray(raw)) return [];
   const photos: HotelPhoto[] = [];
   for (const entry of raw) {
     if (typeof entry === "string") {
-      const url = safePhotoUrl(entry);
+      const url = photoUrl(entry);
       if (url) photos.push({ url, thumb: url, caption: "", kind: "hotel" });
       continue;
     }
     const item = record(entry);
     if (!item) continue;
-    const url = safePhotoUrl(item.url);
+    const url = photoUrl(item.url);
     if (!url) continue;
     const kind = item.kind === "room" ? "room" : "hotel";
     photos.push({
       url,
-      thumb: safePhotoUrl(item.thumb) || url,
+      thumb: photoUrl(item.thumb) || url,
       caption: text(item.caption).slice(0, 120),
       kind,
     });
@@ -519,6 +533,11 @@ function guestSummary(item: HotelLike) {
   const fromRooms = unique(hotelRooms(asItem(item)).map((room) => room.guests));
   if (fromRooms.length) return fromRooms.join(", ");
   return detailStr(asItem(item), "guests");
+}
+
+/** Texte de l’établissement, en français. Une phrase encore anglaise ne s’affiche pas. */
+export function hotelDescription(item: HotelLike) {
+  return frenchClientProse(text(item.details?.description));
 }
 
 /** Faits utiles de la carte. Jamais le coût, la marge ni la commission. */

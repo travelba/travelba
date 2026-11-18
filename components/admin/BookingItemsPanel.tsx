@@ -48,6 +48,7 @@ import { IngestItemCard } from "@/components/crm/IngestItemCard";
 import { HotelGallery } from "@/components/crm/HotelGallery";
 import { HotelStayFacts } from "@/components/crm/HotelStayFacts";
 import { hotelPhotos } from "@/lib/crm/hotel-gallery";
+import { hotelResearchNotice } from "@/lib/crm/hotel-research";
 import { AccueilVipForm } from "@/components/admin/AccueilVipForm";
 import { composeAccueilVip, accueilVipQuietLine, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { BusyBar } from "@/components/crm/BusyBar";
@@ -800,8 +801,10 @@ export function BookingItemsPanel({
           const priceDiffers =
             printed != null && (stepAmount == null || Math.abs(printed - stepAmount) > 0.009);
           const counted = item.include_in_ledger && !(clientSettlesStay && !isExtraItemKind(item.kind));
+          const research = item.kind === "hotel" ? hotelResearchNotice(item.details) : "";
           const quiet = [
             retiredLabel,
+            research,
             subtitle,
             docs.length ? `${docs.length} pièce${docs.length > 1 ? "s" : ""}` : "",
             counted ? "Compté" : "",
