@@ -642,6 +642,35 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
   }
   let rememberFailure = true;
   try {
+    if (!ctx.lines.length && piece.pieceNumber && deps.recordPayments) {
+      // Facture déjà imprimée qui couvre tout : plus rien à facturer, mais les règlements en attente partent.
+      const state = piece.printedAt ? "printed" : await deps.findPiece(piece.pieceNumber);
+      if (state === "printed") {
+        let documentId = piece.documentId;
+        if (!piece.printedAt) {
+          documentId = await attachPdf(ctx, deps, piece, piece.pieceNumber);
+          await deps.save(piece.id, { printedAt: new Date().toISOString(), documentId });
+        }
+        const sent = await attachReglements(
+          ctx,
+          deps,
+          {
+            number: piece.pieceNumber,
+            documentId,
+            created: false,
+            replaced: false,
+            printed: true,
+            visibleToClient: ctx.visibleToClient,
+          },
+          piece.amount ?? ctx.amount,
+          piece.folderId,
+          piece.customerUid
+        );
+        // La préparation est finie : on retire un « préparation interrompue » resté d’une reprise.
+        if (piece.attemptStatus || piece.attemptError) await deps.save(piece.id, { attemptStatus: null, attemptError: null });
+        return withNotice(ctx, sent);
+      }
+    }
     if (!ctx.lines.length) {
       if (piece.pieceNumber && !piece.printedAt) {
         const state = await deps.findPiece(piece.pieceNumber);

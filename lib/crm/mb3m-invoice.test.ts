@@ -602,6 +602,140 @@ describe("facture MB3M", () => {
     assert.equal(cancelled, 0);
   });
 
+  it("facture imprimée sans nouvelle ligne : n’échoue pas et envoie les règlements en attente", async () => {
+    const printed = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "01-0002010",
+      folderUid: "folder-uid",
+      pieceNumber: "2203",
+      amount: 2767.61,
+      printedAt: "2026-11-17T13:01:49.000Z",
+      signature: "sig",
+      transactionIds: ["tx-1"],
+      attemptStatus: "preparing",
+    });
+    const saved: Parameters<Mb3mInvoiceDeps["save"]>[1][] = [];
+    const received: Parameters<NonNullable<Mb3mInvoiceDeps["recordPayments"]>>[0][] = [];
+    const calls: string[] = [];
+    const deps: Mb3mInvoiceDeps = {
+      now: () => Date.now(),
+      claim: async () => ({ piece: { ...printed }, created: false, owned: true }),
+      save: async (_id, patch) => {
+        saved.push(patch);
+      },
+      remove: async () => {
+        calls.push("remove");
+      },
+      savePerson: async () => {
+        calls.push("person");
+        return { uid: "customer-uid", partnerId: "11111111222243" };
+      },
+      saveCompany: async () => {
+        throw new Error("fiche société");
+      },
+      saveFolder: async () => {
+        calls.push("folder");
+        return { id: "01-0002010", uid: "folder-uid" };
+      },
+      addInvoice: async () => {
+        calls.push("addInvoice");
+        return { number: "9999", uid: "x" };
+      },
+      findPiece: async () => "printed",
+      cancelInvoice: async () => {
+        calls.push("cancel");
+      },
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+      recordPayments: async (input) => {
+        received.push(input);
+        return [{ date: "2026-11-17", montant: 2767.61, numero_mb3m: "2300", statut: "envoye" }];
+      },
+    };
+    const result = await runMb3mInvoice(context({ lines: [], amount: 0, hadExpenses: true }), deps);
+    assert.equal(result.number, "2203");
+    assert.equal(result.created, false);
+    assert.equal(result.replaced, false);
+    assert.equal(result.printed, true);
+    assert.equal(result.reglements[0]?.numero_mb3m, "2300");
+    assert.equal(received.length, 1);
+    assert.equal(received[0]?.invoiceNumber, "2203");
+    assert.equal(received[0]?.invoiceAmount, 2767.61);
+    assert.equal(received[0]?.folderId, "01-0002010");
+    assert.equal(received[0]?.customerUid, "customer-uid");
+    assert.deepEqual(calls, []);
+    assert.deepEqual(saved, [{ attemptStatus: null, attemptError: null }]);
+  });
+
+  it("facture imprimée sans nouvelle ligne : une erreur de règlement reste une erreur, sans nouvelle pièce", async () => {
+    const printed = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "01-0002010",
+      pieceNumber: "2203",
+      amount: 2767.61,
+      printedAt: "2026-11-17T13:01:49.000Z",
+      transactionIds: ["tx-1"],
+    });
+    let added = 0;
+    const deps: Mb3mInvoiceDeps = {
+      now: () => Date.now(),
+      claim: async () => ({ piece: { ...printed }, created: false, owned: true }),
+      save: async () => undefined,
+      remove: async () => undefined,
+      savePerson: async () => ({ uid: "customer-uid", partnerId: "11111111222243" }),
+      saveCompany: async () => {
+        throw new Error("fiche société");
+      },
+      saveFolder: async () => ({ id: "01-0002010", uid: "folder-uid" }),
+      addInvoice: async () => {
+        added += 1;
+        return { number: "9999", uid: "x" };
+      },
+      findPiece: async () => "printed",
+      cancelInvoice: async () => undefined,
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+      recordPayments: async () => {
+        throw new Mb3mError("Le règlement n’a pas abouti.", -1);
+      },
+    };
+    await assert.rejects(
+      () => runMb3mInvoice(context({ lines: [], amount: 0, hadExpenses: true }), deps),
+      (error: unknown) => error instanceof Mb3mError && /règlement/.test(error.message)
+    );
+    assert.equal(added, 0);
+  });
+
+  it("sans pièce imprimée, plus de ligne garde l’ancien refus", async () => {
+    const open = blankPiece({ customerUid: "customer-uid", folderId: "01-0002010", pieceNumber: "2203", amount: 100, transactionIds: ["tx-1"] });
+    let payments = 0;
+    const deps: Mb3mInvoiceDeps = {
+      now: () => Date.now(),
+      claim: async () => ({ piece: { ...open }, created: false, owned: true }),
+      save: async () => undefined,
+      remove: async () => undefined,
+      savePerson: async () => ({ uid: "customer-uid", partnerId: "11111111222243" }),
+      saveCompany: async () => {
+        throw new Error("fiche société");
+      },
+      saveFolder: async () => ({ id: "01-0002010", uid: "folder-uid" }),
+      addInvoice: async () => ({ number: "9999", uid: "x" }),
+      findPiece: async () => "open",
+      cancelInvoice: async () => undefined,
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+      recordPayments: async () => {
+        payments += 1;
+        return [];
+      },
+    };
+    await assert.rejects(
+      () => runMb3mInvoice(context({ lines: [], amount: 0, hadExpenses: true }), deps),
+      (error: unknown) => error instanceof Mb3mError && /déjà sur une facture validée/.test(error.message)
+    );
+    assert.equal(payments, 0);
+  });
+
   it("écrit l’erreur quand la reprise de 2157 échoue au rangement", async () => {
     const lines = context().lines;
     const open = blankPiece({
