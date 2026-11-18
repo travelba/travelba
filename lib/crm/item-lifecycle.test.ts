@@ -317,6 +317,33 @@ describe("replacementPlan", () => {
     assert.equal(gesture.label, "Mettre à jour le séjour");
   });
 
+  it("ajoute une voiture différente au lieu de remplacer l’autre", () => {
+    const plan = replacementPlan(
+      [
+        {
+          kind: "car",
+          title: "Peugeot 3008 ou similaire",
+          confirmation_ref: "81899756",
+          start_at: "2027-04-04T10:30:00",
+          end_at: "2027-04-11T09:00:00",
+        },
+      ],
+      [
+        {
+          id: "autre",
+          kind: "car",
+          title: "Fiat 500",
+          confirmation_ref: "11111111",
+          start_at: "2027-04-04T10:30:00",
+          end_at: "2027-04-11T09:00:00",
+        },
+      ]
+    );
+    assert.equal(plan.adds, 1);
+    assert.equal(plan.replacements.length, 0);
+    assert.equal(plan.updates.length, 0);
+  });
+
   it("ajoute un vol isolé même s’il reste d’autres vols, sauf si une carte est choisie", () => {
     const existing = [
       {
@@ -393,6 +420,16 @@ describe("replacementPlan", () => {
     assert.equal(hollowHotelCard({ kind: "hotel" }), true);
     assert.equal(
       hollowHotelCard({ kind: "hotel", confirmation_ref: "470705216", start_at: "2026-11-19" }),
+      false
+    );
+    assert.equal(hollowHotelCard({ kind: "hotel", confirmation_ref: "•••", title: "Hôtel" }), true);
+    assert.equal(hollowHotelCard({ kind: "hotel", confirmation_ref: "***", title: "Hotel" }), true);
+    assert.equal(
+      hollowHotelCard({ kind: "hotel", confirmation_ref: "•••", title: "Maison Exemple" }),
+      false
+    );
+    assert.equal(
+      hollowHotelCard({ kind: "hotel", confirmation_ref: "•••", start_at: "2027-04-04", title: "Hôtel" }),
       false
     );
   });

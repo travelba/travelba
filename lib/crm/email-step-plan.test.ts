@@ -151,4 +151,46 @@ describe("mise à jour des étapes depuis un mail", () => {
     assert.equal(title?.apres, "Paris → Tel Aviv");
     assert.equal(filled.etapes[0]?.changements.some((row) => row.champ === "prix"), false);
   });
+
+  it("écarte l’hôtel masqué et complète la location du même jour", () => {
+    const existing: StepCard = {
+      id: "voiture",
+      kind: "car",
+      title: "Location",
+      supplier: "Europcar",
+      confirmation_ref: null,
+      start_at: "2027-04-04T10:30:00",
+      end_at: "2027-04-11T09:00:00",
+      amount: 0,
+      lifecycle: "active",
+      details: {},
+    };
+    const preview = planEmailSteps([existing], {
+      items: [
+        {
+          kind: "hotel",
+          title: "Hôtel",
+          confirmation_ref: "•••",
+          start_at: null,
+          amount: 337.23,
+          details: { document_amount: 337.23 },
+        },
+        {
+          kind: "car",
+          title: "Peugeot 3008 ou similaire",
+          supplier: "Europcar",
+          confirmation_ref: "81899756",
+          start_at: "2027-04-04T10:30:00",
+          end_at: "2027-04-11T09:00:00",
+          amount: null,
+          details: { document_amount: 337.23, vehicle: "Peugeot 3008 ou similaire" },
+        },
+      ],
+    });
+    assert.equal(preview.etapes.length, 1);
+    assert.equal(preview.etapes[0]?.action, "completer");
+    assert.equal(preview.etapes[0]?.carte_id, "voiture");
+    assert.equal(preview.etapes[0]?.prix_fournisseur, 337.23);
+    assert.equal(preview.etapes[0]?.prix_vente, 0);
+  });
 });

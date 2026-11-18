@@ -108,8 +108,7 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
     const end = route.indexOf('if (action === "apply_cards"');
     const block = route.slice(start, end);
     assert.ok(start > 0 && end > start);
-    assert.match(block, /depositFlightsOnBooking/);
-    assert.match(block, /hasUsableFlight/);
+    assert.match(block, /depositCardsOnBooking/);
     assert.match(block, /cartes !== false/);
     assert.match(block, /depositEmailAttachments/);
     assert.match(block, /cards: false/);
@@ -147,7 +146,7 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
     assert.match(block, /body_text/);
     assert.match(block, /cartes: false/);
     assert.match(block, /action\.cartes/);
-    assert.match(block, /depositFlightsOnBooking/);
+    assert.match(block, /depositCardsOnBooking/);
     assert.equal(/applyReplacementToBooking/.test(block), false);
   });
 

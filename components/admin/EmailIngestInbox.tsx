@@ -32,6 +32,7 @@ import { collapseSharedTicketPrice } from "@/lib/crm/item-match";
 import { collapseInboxRows } from "@/lib/crm/email-thread";
 import { proposalLine, type ProposalOp } from "@/lib/crm/import-proposal";
 import { planFlightDeposit } from "@/lib/crm/email-flight-deposit";
+import { planServiceDeposit } from "@/lib/crm/email-service-deposit";
 
 type ExtractItem = {
   kind?: string;
@@ -947,6 +948,11 @@ export function EmailIngestInbox({
                       items: (viewOf(row).items || []).map((item) => ({ ...item, kind: item.kind || "" })),
                     });
                     const withFlights = flightPlan.cartes.length > 0;
+                    const servicePlan = planServiceDeposit({
+                      items: (viewOf(row).items || []).map((item) => ({ ...item, kind: item.kind || "" })),
+                    });
+                    const withServices = servicePlan.cartes.length > 0;
+                    const withCards = withFlights || withServices;
                     return (
                       <>
                         <div className="flex flex-wrap gap-2 sm:col-span-2">
@@ -964,7 +970,7 @@ export function EmailIngestInbox({
                                       booking_id: depositBookingId,
                                       item_id: undefined,
                                       title: cardTitle.trim(),
-                                      cartes: withFlights,
+                                      cartes: true,
                                       ...(repartir ? { repartir: true } : {}),
                                       ...(drafts[row.id]
                                         ? {
@@ -976,7 +982,7 @@ export function EmailIngestInbox({
                                   : {
                                       action: "attach_booking",
                                       booking_id: depositBookingId,
-                                      cartes: withFlights,
+                                      cartes: true,
                                       ...(repartir ? { repartir: true } : {}),
                                     }
                               )
@@ -988,7 +994,7 @@ export function EmailIngestInbox({
                                 ? "Déposer aussi sur un autre dossier"
                                 : "Déposer les pièces"}
                           </button>
-                          {sameStay && withFlights ? (
+                          {sameStay ? (
                             <button
                               type="button"
                               disabled={isBusy || !depositBookingId}
@@ -1002,10 +1008,10 @@ export function EmailIngestInbox({
                                 })
                               }
                             >
-                              Rejouer le billet
+                              {withFlights ? "Rejouer le billet" : "Rejouer les cartes"}
                             </button>
                           ) : null}
-                          {withFlights ? (
+                          {(withCards || !sameStay) ? (
                             <button
                               type="button"
                               disabled={isBusy || !depositBookingId || sameStay}
@@ -1066,7 +1072,7 @@ export function EmailIngestInbox({
                           >
                             {rowNotice[row.id]}
                           </p>
-                        ) : withFlights ? (
+                        ) : withCards ? (
                           <div className="sm:col-span-2 text-xs text-muted">
                             <ul className="space-y-1">
                               {flightPlan.cartes.map((card, index) => (
@@ -1076,13 +1082,26 @@ export function EmailIngestInbox({
                                   {card.cout != null ? ` · coût imprimé ${card.cout}` : " · sans coût imprimé"}
                                 </li>
                               ))}
+                              {servicePlan.cartes.map((card, index) => (
+                                <li key={`${card.type}-${card.titre}-${card.dates}-${index}`}>
+                                  {BOOKING_ITEM_LABELS[card.type as BookingItemKind] || "Prestation"} · {card.titre}
+                                  {card.dates ? ` · ${card.dates}` : ""}
+                                  {card.confirmation ? ` · ${card.confirmation}` : ""} · carte cachée · 0 €
+                                  {card.cout != null ? ` · coût ${card.cout}` : " · sans coût imprimé"}
+                                </li>
+                              ))}
                             </ul>
                             <p className="mt-1">
                               {repartir
-                                ? "Déposer aussi copie les pièces sur l’autre dossier. Le premier dossier les garde. Aucun message."
-                                : "Déposer les pièces ajoute ces vols. Déposer seulement laisse les cartes inchangées."}
+                                ? "Déposer aussi copie les pièces sur l’autre dossier et crée ou complète ces cartes. Le premier dossier les garde. Aucun message."
+                                : withFlights
+                                  ? "Déposer les pièces ajoute ces vols. Déposer seulement laisse les cartes inchangées."
+                                  : "Déposer les pièces crée ou complète ces cartes, cachées. Le prix fournisseur va en coût. Le prix de vente reste 0 s’il n’est pas déjà saisi. Déposer seulement ne dépose que les fichiers."}
+                              {withServices
+                                ? " Les autres cartes lues sont créées ou complétées, cachées. Le prix fournisseur va en coût. Le prix de vente reste 0 s’il n’est pas déjà saisi."
+                                : ""}
                               {sameStay
-                                ? " Rejouer le billet complète les cartes de ce dossier, sans recopier les pièces. Un PNR déjà présent n’est pas écrasé."
+                                ? " Rejouer complète les cartes de ce dossier, sans recopier les pièces. Un PNR déjà présent n’est pas écrasé."
                                 : ""}
                             </p>
                           </div>
@@ -1090,8 +1109,8 @@ export function EmailIngestInbox({
                           <p className="text-xs text-muted sm:col-span-2">
                             {repartir
                               ? "Le mail est déjà traité. Les pièces sont copiées sur l’autre dossier. Le premier dossier les garde. Aucun message."
-                              : "Les fichiers sont copiés sur le dossier, sur l’étape qui correspond. Aucune étape n’est créée ni modifiée."}
-                            {sameStay ? " Choisissez un autre dossier." : ""}
+                              : "Déposer les pièces crée ou complète les cartes lues dans le mail (voiture, hôtel, transfert, train, activité), cachées, prix de vente 0. Déposer seulement ne dépose que les fichiers."}
+                            {sameStay ? " Rejouer les cartes relit le mail sur ce dossier, sans recopier les pièces." : ""}
                           </p>
                         )}
                       </>

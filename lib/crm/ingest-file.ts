@@ -109,6 +109,15 @@ const PROMPT_HOTEL = `Hôtel :
 - Expedia TAAP : le voyageur imprimé va dans travelers et dans customer_first_name / customer_last_name. confirmation_ref = n° de voyage. Une politique d’annulation ne rend pas le document cancelled. Si une phrase d’annulation est imprimée, details.notes = cette phrase, sinon null.
 - Devis Passion Collection / « none are on hold » : document_status=quote, un item hôtel, rooms = les options. Pas de NET.`;
 
+const PROMPT_TAAP_CAR = `Location de voiture Expedia TAAP :
+- UN item kind=car. Jamais un hôtel, même si le mail dit « Confirmation de voyage ».
+- title = véhicule imprimé (« Peugeot 3008 ou similaire »). supplier = loueur s’il est écrit, sinon Expedia TAAP.
+- confirmation_ref = n° de confirmation ou d’itinéraire. Pas un n° de téléphone.
+- start_at / end_at = prise en charge et restitution, avec l’heure si elle est écrite. details.pickup et details.dropoff = les lieux.
+- details.vehicle, details.driver (conducteur), details.phone (téléphone du loueur), details.notes = conditions d’annulation imprimées. Absent = null.
+- details.document_amount = prix payé ou total imprimé. amount = null : ce n’est pas le prix de vente.
+- Ne pas inventer le loueur, l’heure, le téléphone ou l’annulation.`;
+
 const PROMPT_OTHER = `Toucan Discovery = activités (kind=activity). Les « étapes » du cadre ne sont PAS des réservations hôtel.
 Transfert : details.pickup / dropoff. Si « 2 h 30 avant le vol » sans heure clock → details.pickup_note, pas d’heure inventée.
 Train (rail) : comme un vol (n°, gares, horaires si écrits).
@@ -144,6 +153,7 @@ const FAMILY_PROMPT: Record<IngestFamily, string> = {
   toucan: PROMPT_OTHER,
   maeva: `${PROMPT_HOTEL}\n${PROMPT_MAEVA}`,
   transavia: `${PROMPT_FLIGHT}\n${PROMPT_TRANSAVIA}`,
+  expedia_taap_car: PROMPT_TAAP_CAR,
   expedia_taap: `${PROMPT_HOTEL}\nExpedia TAAP : recopier le voyageur imprimé sur le client et les voyageurs. Ne pas classer cancelled à cause d’une politique d’annulation.`,
   identity: "C’est une pièce d’identité. document_status=identity. Aucun item de réservation.",
   unknown: `${PROMPT_FLIGHT}\n${PROMPT_HOTEL}\n${PROMPT_OTHER}\n${PROMPT_MAEVA}\n${PROMPT_TRANSAVIA}`,

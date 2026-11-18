@@ -558,8 +558,75 @@ export function findMatchingItem<T extends MatchableItem>(
   const flight = findFlightCard(existing, incoming);
   if (flight) return flight;
   const key = itemMatchKey(incoming);
-  if (!key) return null;
-  return existing.find((row) => itemMatchKey(row) === key) || null;
+  const keyed = key ? existing.find((row) => itemMatchKey(row) === key) || null : null;
+  if (keyed) return keyed;
+  return findServiceStay(existing, incoming);
+}
+
+const SERVICE_KINDS = new Set(["transfer", "car", "cruise", "activity", "insurance"]);
+
+const GENERIC_SERVICE_TITLE = new Set([
+  "LOCATION",
+  "VOITURE",
+  "TRANSFERT",
+  "ACTIVITE",
+  "PRESTATION",
+  "TRAIN",
+  "ASSURANCE",
+  "BATEAU",
+]);
+
+function serviceTitlesAgree(current: string | null | undefined, incoming: string | null | undefined) {
+  const left = norm(current);
+  const right = norm(incoming);
+  if (!left || !right || GENERIC_SERVICE_TITLE.has(left) || GENERIC_SERVICE_TITLE.has(right)) return true;
+  return left === right || left.includes(right) || right.includes(left);
+}
+
+export function isServiceKind(kind: string | null | undefined) {
+  return SERVICE_KINDS.has(kind || "");
+}
+
+/**
+ * Même prestation : même confirmation, ou mêmes dates et même fournisseur
+ * quand le numéro manque d’un côté. Deux confirmations différentes restent deux cartes.
+ */
+export function findServiceStay<T extends MatchableItem>(existing: T[], incoming: MatchableItem): T | null {
+  const kind = incoming.kind || "";
+  if (!SERVICE_KINDS.has(kind)) return null;
+  const inRef = norm(incoming.confirmation_ref);
+  const inStart = day(incoming.start_at);
+  const inEnd = day(incoming.end_at);
+  const inSupplier = norm(incoming.supplier);
+  return (
+    existing.find((row) => {
+      if ((row.kind || "") !== kind) return false;
+      const exRef = norm(row.confirmation_ref);
+      if (inRef && exRef && inRef !== exRef) return false;
+      if (inRef && exRef && inRef === exRef) return true;
+      if (!inSupplier || norm(row.supplier) !== inSupplier) return false;
+      if (!serviceTitlesAgree(row.title, incoming.title)) return false;
+      const exStart = day(row.start_at);
+      if (!inStart || !exStart || inStart !== exStart) return false;
+      const exEnd = day(row.end_at);
+      if (inEnd && exEnd && inEnd !== exEnd) return false;
+      return true;
+    }) || null
+  );
+}
+
+/** Complète les champs vides. Un champ déjà rempli du mail remplace le vide, pas l’inverse. */
+export function mergeFilledDetails(
+  current: Record<string, unknown> | null | undefined,
+  incoming: Record<string, unknown>
+) {
+  const merged: Record<string, unknown> = { ...(current || {}) };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value == null || value === "") continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    merged[key] = value;
+  }
+  return merged;
 }
 
 function fillEmpty<T>(current: T, incoming: T): T {

@@ -21,6 +21,7 @@ import {
   parseDdMonYy,
   parseHotelConfirmationLetter,
   parseExpediaTaap,
+  parseExpediaTaapCar,
   frenchLeBenefitLine,
   parseLittleEmperorsGuests,
   parseLittleEmperorsHotel,
@@ -533,6 +534,61 @@ describe("Expedia TAAP", () => {
       assert.equal(decision.firstName, "Camille");
       assert.equal(decision.lastName, "Martin");
     }
+  });
+
+  it("lit une location de voiture et n’en fait pas un hôtel", () => {
+    const mail = `
+Confirmation de voyage TAAP
+De : noreply@expediataap.fr
+
+Location de voiture
+Peugeot 3008 ou similaire
+Conducteur : Camille Martin
+
+N° de confirmation : 81899756
+
+Prise en charge et restitution
+Nice (NCE)
+04/04/2027 10:30
+Nice (NCE)
+11/04/2027 09:00
+
+Loueur : Europcar
+Téléphone : +33 4 00 00 00 00
+
+Prix total : 337,23 €
+
+Conditions d'annulation
+Annulation gratuite jusqu'au 1 avril 2027.
+`;
+    assert.equal(classifyIngestFamily(mail, "taap.txt"), "expedia_taap_car");
+    const car = parseExpediaTaapCar(mail);
+    assert.ok(car);
+    assert.equal(car.vehicle, "Peugeot 3008 ou similaire");
+    assert.equal(car.driver, "Camille Martin");
+    assert.equal(car.travelers[0]?.first_name, "Camille");
+    assert.equal(car.travelers[0]?.last_name, "Martin");
+    assert.equal(car.confirmation_ref, "81899756");
+    assert.equal(car.pickup, "Nice (NCE)");
+    assert.equal(car.dropoff, "Nice (NCE)");
+    assert.equal(car.start_at, "2027-04-04T10:30:00");
+    assert.equal(car.end_at, "2027-04-11T09:00:00");
+    assert.equal(car.supplier, "Europcar");
+    assert.equal(car.phone, "+33 4 00 00 00 00");
+    assert.equal(car.amount, 337.23);
+    assert.equal(car.currency, "EUR");
+    assert.match(car.cancellation || "", /Annulation gratuite/);
+
+    const parsed = parsedItemsFromText(mail);
+    assert.equal(parsed.items.some((item) => item.kind === "hotel"), false);
+    const item = parsed.items.find((item) => item.kind === "car");
+    assert.equal(item?.title, "Peugeot 3008 ou similaire");
+    assert.equal(item?.amount, null);
+    assert.equal(item?.details?.document_amount, 337.23);
+    assert.equal(item?.details?.phone, "+33 4 00 00 00 00");
+    assert.match(String(item?.details?.notes || ""), /Annulation gratuite/);
+    assert.notEqual(parsed.status, "cancelled");
+    assert.equal(classifyIngestFamily(TAAP_MAIL, "hotel.txt"), "expedia_taap");
   });
 
   it("laisse vide ce qui n’est pas imprimé", () => {
