@@ -261,6 +261,17 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
     return classify({ permission: "message_client", action: "send", entity: "message", journal: true });
   }
 
+  if (new RegExp(`^/api/admin/bookings/${UUID}/verifier$`, "i").test(path) && mutation) {
+    // La route écrit le titre de chaque carte vérifiée. Pas de seconde ligne générique.
+    return classify({
+      permission: "edit_dossiers",
+      action: "update",
+      entity: "dossier",
+      journal: false,
+      summary: "Carte marquée vérifiée.",
+    });
+  }
+
   if (new RegExp(`^/api/admin/bookings/${UUID}/responsable$`, "i").test(path) && mutation) {
     // « Je prends ce dossier » est ouvert à qui modifie les dossiers ; la route tranche et écrit la ligne.
     return classify({ permission: "edit_dossiers", action: "update", entity: "dossier", journal: false });

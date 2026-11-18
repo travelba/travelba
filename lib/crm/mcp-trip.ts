@@ -3,7 +3,9 @@ import WebSocket from "ws";
 import { createBookingSchema, isIsoDate, parseBody } from "@/lib/crm/admin-schemas";
 import { dossierFlightStamp, timezoneForIata } from "@/lib/crm/airport-time";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
+import { clearBookingCardReview } from "@/lib/crm/clear-card-review";
 import { clearPrintedIataDoubt } from "@/lib/crm/flight-route";
+import { verifiedJournalSummary } from "@/lib/crm/review-doubt";
 import { composeAccueilVip, parseAccueilVipService, readAccueilVipLegs, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
 import { addStaffBookingCard, patchStaffBookingCard } from "@/lib/crm/booking-item-write";
@@ -1590,6 +1592,11 @@ export async function updateHotel(input: Record<string, unknown>, admin?: Admin)
     else delete details.document_currency;
   }
 
+  const eraseWarning = flag(input.effacer_avertissement, "Effacer l’avertissement");
+  if (eraseWarning) {
+    delete details.needs_review;
+    delete details.review_reason;
+  }
   const asked = [
     "reference_le",
     "nom",
@@ -1616,13 +1623,34 @@ export async function updateHotel(input: Record<string, unknown>, admin?: Admin)
     "prix",
     "devise",
   ].some((key) => input[key] != null && input[key] !== "");
-  if (!asked) throw new McpWriteError("Rien à modifier.");
+  if (!asked && !eraseWarning) throw new McpWriteError("Rien à modifier.");
 
   const saved = await patchStaffBookingCard(db, booking.id, carteId, patch);
   if ("error" in saved) throw new McpWriteError(saved.error);
   const savedDetails =
     saved.item.details && typeof saved.item.details === "object" ? (saved.item.details as Record<string, unknown>) : details;
   return hotelReply(saved.item, booking, hasPrix ? price : priceFromHotel(saved.item, savedDetails, booking), saved.ledgerWarning);
+}
+
+/** Lève la lecture douteuse d’une carte ou de toutes les cartes marquées. Aucun message, visibilité inchangée. */
+export async function validerLecture(input: Record<string, unknown>, admin?: Admin) {
+  const db = client(admin);
+  const booking = await loadBooking(db, dossierTarget(input));
+  const rawCarte = input.carte_id;
+  const carteId = rawCarte != null && rawCarte !== "" ? uuid(rawCarte, "Carte") : null;
+  const tout = input.tout == null || input.tout === "" ? !carteId : flag(input.tout, "Tout");
+  if (!tout && !carteId) throw new McpWriteError("Indiquez une carte ou tout le dossier.");
+  const cleared = await clearBookingCardReview(db, booking.id, tout ? null : [carteId as string]);
+  if ("error" in cleared) throw new McpWriteError(cleared.error);
+  const titres = cleared.cartes.map((row) => row.titre);
+  return {
+    dossier_id: booking.id,
+    reference: booking.reference,
+    cartes: cleared.cartes,
+    resume: titres.length ? verifiedJournalSummary(titres) : "",
+    notifie: false,
+    visible_inchangee: true,
+  };
 }
 
 function wholeInput(value: unknown, label: string) {

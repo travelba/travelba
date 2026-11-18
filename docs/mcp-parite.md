@@ -48,6 +48,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Vol, hôtel, accueil VIP | `ajouter_vol`, `modifier_vol`, `ajouter_hotel`, `modifier_hotel`, `ajouter_accueil_vip` — couvert |
 | Classer un courrier hôtel sans écrire | `classer_courrier_hotel` — ajouté. `rouvrir` true rouvre. Aucun e-mail. Un message entrant plus récent rouvre le fil |
 | Train, transfert, activité, frais, dépense, autres types | `ajouter_carte`, `modifier_carte` — ajouté |
+| Marquer une carte vérifiée (lecture douteuse) | `valider_lecture`, et `effacer_avertissement` sur `modifier_vol`, `modifier_hotel`, `modifier_carte` — ajouté. Ne change pas la visibilité, n’envoie rien. |
 | Visibilité d’une carte, inclusion au grand livre | `definir_visibilite_carte` — couvert |
 | Retirer une carte | `retirer_carte` — couvert |
 | Réordonner les étapes | `reordonner_cartes` — ajouté |

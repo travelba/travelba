@@ -63,6 +63,42 @@ test("modifier_carte pose divers terrestres sans changer le type de carte", asyn
   assert.equal(result.carte_id, CARTE);
   assert.equal(seen.body?.mb3m_activity, "land");
   assert.equal(seen.body ? "kind" in seen.body : false, false);
+  const merged: { body: Record<string, unknown> | null } = { body: null };
+  await modifierCarte(
+    {
+      dossier_id: DOSSIER,
+      carte_id: CARTE,
+      effacer_avertissement: true,
+      details: { note: "relu" },
+    },
+    {
+      admin: fakeAdmin(),
+      findBooking: async () => booking,
+      readCard: async () => ({
+        id: CARTE,
+        visible_to_client: false,
+        details: {
+          needs_review: true,
+          review_reason: "À vérifier avant de montrer au client.",
+          hotel_name: "Mondrian",
+          city: "Bordeaux",
+        },
+      }),
+      patchCard: async (_client, bookingId, itemId, body: Record<string, unknown>) => {
+        assert.equal(bookingId, DOSSIER);
+        assert.equal(itemId, CARTE);
+        merged.body = body;
+        return { item: { id: CARTE }, ledgerWarning: null };
+      },
+    }
+  );
+  const details = merged.body?.details as Record<string, unknown>;
+  assert.equal(details.hotel_name, "Mondrian");
+  assert.equal(details.city, "Bordeaux");
+  assert.equal(details.note, "relu");
+  assert.equal(details.needs_review, undefined);
+  assert.equal(details.review_reason, undefined);
+  assert.equal(merged.body ? "visible_to_client" in merged.body : true, false);
   await assert.rejects(
     () =>
       modifierCarte(

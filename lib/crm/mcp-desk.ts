@@ -10,6 +10,7 @@ import {
 } from "@/lib/crm/billing-companies";
 import { addStaffBookingCard, patchStaffBookingCard } from "@/lib/crm/booking-item-write";
 import { parseMb3mActivityInput } from "@/lib/crm/mb3m-activity";
+import { withoutReviewMark } from "@/lib/crm/review-doubt";
 import { setCarnetPublished, syncBookingLedger, syncBookingTotalFromItems } from "@/lib/crm/bookings";
 import { customerDeleteConfirmed, DELETE_CUSTOMER_CONFIRM_ERROR } from "@/lib/crm/delete-confirm";
 import { CustomerDeleteError, deleteCustomerById } from "@/lib/crm/delete-customer";
@@ -93,6 +94,14 @@ export type DeskDeps = {
   syncLedger?: (admin: SupabaseClient, bookingId: string) => Promise<void>;
   addCard?: typeof addStaffBookingCard;
   patchCard?: typeof patchStaffBookingCard;
+  readCard?: (
+    bookingId: string,
+    carteId: string
+  ) => Promise<{
+    id: string;
+    details: Record<string, unknown> | null;
+    visible_to_client: boolean | null;
+  }>;
   reorder?: typeof persistBookingCardOrder;
   attach?: typeof attachBookingDocument;
   readJournal?: (query: JournalQuery) => Promise<JournalPage>;
@@ -541,6 +550,26 @@ export async function ajouterCarte(input: Record<string, unknown>, deps: DeskDep
   };
 }
 
+function boolFlag(value: unknown, label: string) {
+  if (value == null || value === "") return false;
+  if (value === true) return true;
+  if (value === false) return false;
+  throw new McpWriteError(`${label} : vrai ou faux.`);
+}
+
+async function storedCard(deps: DeskDeps, bookingId: string, carteId: string) {
+  if (deps.readCard) return deps.readCard(bookingId, carteId);
+  const admin = clientOf(deps, Boolean(deps.patchCard && !deps.admin));
+  const { data, error } = await admin
+    .from("crm_booking_items")
+    .select("id, details, visible_to_client")
+    .eq("id", carteId)
+    .eq("booking_id", bookingId)
+    .maybeSingle();
+  if (error || !data) throw new McpWriteError("Carte introuvable sur ce dossier.");
+  return data as { id: string; details: Record<string, unknown> | null; visible_to_client: boolean | null };
+}
+
 export async function modifierCarte(input: Record<string, unknown>, deps: DeskDeps = {}) {
   const carteId = requireUuid(input.carte_id, "Carte");
   const booking = await bookingOf(input, deps);
@@ -548,6 +577,19 @@ export async function modifierCarte(input: Record<string, unknown>, deps: DeskDe
   if (input.type && !kind) throw new McpWriteError("Type de carte inconnu.");
   const body = cardBody(input, kind || "fee");
   delete body.kind;
+  const erase = boolFlag(input.effacer_avertissement, "Effacer l’avertissement");
+  if (erase) {
+    const stored = await storedCard(deps, booking.id, carteId);
+    const incoming =
+      body.details && typeof body.details === "object" && !Array.isArray(body.details)
+        ? (body.details as Record<string, unknown>)
+        : {};
+    const base =
+      stored.details && typeof stored.details === "object" && !Array.isArray(stored.details)
+        ? stored.details
+        : {};
+    body.details = withoutReviewMark({ ...base, ...incoming });
+  }
   if ("categorie_mb3m" in input) {
     const chosen = parseMb3mActivityInput(input.categorie_mb3m);
     if ("error" in chosen) throw new McpWriteError(chosen.error);

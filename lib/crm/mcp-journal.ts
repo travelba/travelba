@@ -121,6 +121,7 @@ const PHRASES: Record<string, string> = {
   cacher_carnet: "Carnet caché",
   ajouter_carte: "Carte ajoutée",
   modifier_carte: "Carte modifiée",
+  valider_lecture: "Lecture douteuse validée",
   reordonner_cartes: "Cartes réordonnées",
   deposer_piece_dossier: "Pièce déposée sur le dossier",
   retirer_piece_dossier: "Pièce retirée du dossier",

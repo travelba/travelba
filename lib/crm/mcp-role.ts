@@ -117,6 +117,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   cacher_carnet: "message_client",
   ajouter_carte: "edit_dossiers",
   modifier_carte: "edit_dossiers",
+  valider_lecture: "edit_dossiers",
   reordonner_cartes: "edit_dossiers",
   deposer_piece_dossier: "edit_dossiers",
   retirer_piece_dossier: "edit_dossiers",

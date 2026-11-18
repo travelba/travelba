@@ -90,3 +90,25 @@ export function reviewDoubts(item: ReviewStep): string[] {
   if (!lines.length) lines.push("La lecture est marquée douteuse, sans préciser le champ.");
   return lines;
 }
+
+/** La carte porte encore `needs_review` ou une raison de relecture. */
+export function hasReviewMark(details: Record<string, unknown> | null | undefined) {
+  if (!details) return false;
+  if (details.needs_review === true) return true;
+  return typeof details.review_reason === "string" && details.review_reason.trim().length > 0;
+}
+
+/** Retire le marqueur. Les autres champs de `details` restent. */
+export function withoutReviewMark(details: Record<string, unknown> | null | undefined) {
+  const next = { ...(details || {}) };
+  delete next.needs_review;
+  delete next.review_reason;
+  return next;
+}
+
+/** Phrase de l’Historique du dossier : une carte, ou plusieurs. */
+export function verifiedJournalSummary(titles: string[]) {
+  const names = titles.map((title) => title.trim()).filter(Boolean);
+  if (names.length <= 1) return `Carte vérifiée : ${names[0] || "Étape"}.`;
+  return `Cartes vérifiées : ${names.join(", ")}.`;
+}
