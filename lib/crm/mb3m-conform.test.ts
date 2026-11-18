@@ -18,6 +18,7 @@ import {
   mb3mAccountSyncCanSend,
   mb3mSoapLines,
   mb3mSupplierBlock,
+  mb3mSupplierWarnings,
   mb3mTicketRef,
   mb3mTransaviaProvider,
   resolveMb3mSupplier,
@@ -106,15 +107,73 @@ describe("fournisseur MB3M", () => {
       [{ transactionId: "tx-zz", label: "Vol", amount: 90, activityId: 2, itemId: "zz", chargeKind: "flight" }],
       [{ id: "zz", kind: "flight", supplier: "Compagnie Inconnue", details: { airline_iata: "ZZ", sale_channel: "amadeus" } }]
     );
-    assert.match(mb3mSupplierBlock(unknownAirline) || "", /Compagnie Inconnue/);
-    assert.equal(unknownAirline[0]?.held, false);
-    assert.equal(mb3mSoapLines(unknownAirline, 0.01).length, 0);
+    // Un fournisseur absent du catalogue n’est plus un blocage : avertissement, nom dans la Note.
+    assert.equal(mb3mSupplierBlock(unknownAirline), null);
+    assert.match(unknownAirline[0]?.supplierWarning || "", /Compagnie Inconnue/);
+    assert.equal(unknownAirline[0]?.providerId ?? null, null);
+    assert.equal(unknownAirline[0]?.note, "Fournisseur : Compagnie Inconnue");
+    assert.equal(mb3mInvoiceBlocker(invoiceContext(unknownAirline)), null);
     const lines = conformMb3mAccountLines(
       [{ transactionId: "tx-car", label: "Voiture", amount: 80, activityId: 8, itemId: "car-1", chargeKind: "car" }],
       [{ id: "car-1", kind: "car", supplier: "Sixt", title: "Sixt Nice" }]
     );
-    assert.match(mb3mSupplierBlock(lines) || "", /Sixt/);
-    assert.equal(mb3mSoapLines(lines, 0.01).length, 0);
+    assert.equal(mb3mSupplierBlock(lines), null);
+    assert.match(mb3mSupplierWarnings(lines) || "", /Sixt/);
+    assert.match(mb3mSupplierWarnings(lines) || "", /Note de la ligne/);
+    const sent = mb3mSoapLines(lines, 0.01);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0]?.providerId ?? null, null);
+    assert.equal(sent[0]?.note, "Fournisseur : Sixt");
+    assert.equal(mb3mInvoiceBlocker(invoiceContext(lines)), null);
+  });
+
+  it("TB-2026-0107 : un vol TUI fly absent du catalogue ne bloque plus la facture, il reste retenu", () => {
+    const previous = process.env.MB3M_FLIGHT_EURO_COMMISSION;
+    process.env.MB3M_FLIGHT_EURO_COMMISSION = "0";
+    try {
+      const lines = conformMb3mAccountLines(
+        [
+          { transactionId: "tx-tb", label: "Vol · AGA → ORY", amount: 1063.97, activityId: 2, itemId: "tb", chargeKind: "flight", margin: 0 },
+          { transactionId: "tx-to", label: "Vol · ORY → AGA", amount: 492.99, activityId: 27, itemId: "to", chargeKind: "low_cost", margin: 0 },
+          { transactionId: "tx-h", label: "Hôtel", amount: 3231.83, activityId: 7, itemId: "h", chargeKind: "hotel", margin: 0 },
+        ],
+        [
+          { id: "tb", kind: "flight", supplier: "TUI fly", details: { airline_iata: "TB", airline: "TUI fly", sale_channel: "amadeus" } },
+          { id: "to", kind: "low_cost", supplier: "Transavia", details: { airline_iata: "TO", airline: "Transavia" } },
+          { id: "h", kind: "hotel", supplier: "Sofitel Agadir", title: "Sofitel Agadir" },
+        ]
+      );
+      const tui = lines.find((line) => line.transactionId === "tx-tb");
+      assert.equal(tui?.held, true);
+      assert.equal(tui?.supplierReason ?? null, null);
+      assert.match(tui?.supplierWarning || "", /Compagnie introuvable dans MB3M : TUI fly/);
+      assert.equal(mb3mSupplierBlock(lines), null);
+      assert.equal(mb3mInvoiceBlocker(invoiceContext(lines)), null);
+      const warning = mb3mSupplierWarnings(lines) || "";
+      assert.match(warning, /TUI fly/);
+      assert.match(warning, /retenue/);
+      assert.match(mb3mInvoiceNotice(lines) || "", new RegExp(MB3M_FLIGHT_HOLD_MESSAGE));
+      const soap = mb3mSoapLines(lines, 0.01);
+      assert.equal(soap.length, 1);
+      assert.equal(soap[0]?.activityId, 7);
+    } finally {
+      if (previous === undefined) delete process.env.MB3M_FLIGHT_EURO_COMMISSION;
+      else process.env.MB3M_FLIGHT_EURO_COMMISSION = previous;
+    }
+  });
+
+  it("garde le blocage pour une ligne qui n’est pas une prestation fournisseur", () => {
+    const empty = resolveMb3mSupplier({ kind: "transfer", activityId: 22, supplier: "" });
+    assert.equal(empty.ok, false);
+    assert.equal(!empty.ok && empty.unknown, undefined);
+    const overhead = resolveMb3mSupplier({ kind: "fee", activityId: 14, supplier: "Frais" });
+    assert.equal(overhead.ok, false);
+    assert.equal(!overhead.ok && overhead.unknown, undefined);
+    const noActivity = conformMb3mAccountLines(
+      [{ transactionId: "tx-x", label: "Divers", amount: 10, activityId: null, itemId: "x", chargeKind: "other" }],
+      [{ id: "x", kind: "other", title: "Divers" }]
+    );
+    assert.equal(mb3mSupplierBlock(noActivity), "Activité MB3M inconnue.");
   });
 
   it("range l’hôtel selon la source et le terrestre nommé", () => {

@@ -48,6 +48,8 @@ export type Mb3mAccountLine = {
   /** Vol 2, 1001 ou 27 : pas envoyé tant que l’API n’accepte pas CommissionId. */
   held?: boolean;
   supplierReason?: string | null;
+  /** Fournisseur absent du catalogue MB3M : la ligne n’est pas bloquée, la page avertit. */
+  supplierWarning?: string | null;
   /** Montant global du séjour : hors pièce dès qu’une prestation est détaillée. */
   rollup?: boolean;
 };
