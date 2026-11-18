@@ -46,7 +46,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Voyageurs du dossier | `ajouter_voyageur`, `modifier_voyageur`, `retirer_voyageur`, `fusionner_compagnon` — couvert |
 | Changer le client du dossier | `changer_client_dossier` — ajouté. Sans `confirmer`, aperçu. Crée la fiche si besoin, sans invitation. Voyageurs qui sont l’ancien client, grand livre, paiements et payeur de ce dossier suivent. Aucun message. |
 | Vol, hôtel, accueil VIP | `ajouter_vol`, `modifier_vol`, `ajouter_hotel`, `modifier_hotel`, `ajouter_accueil_vip` — couvert |
-| Rechercher les infos d’une carte hôtel | `enrichir_hotel` (`carte_id`) — ajouté. Seulement les champs vides. Sources dans details. À vérifier. La visibilité ne change pas. Aucun message |
+| Rechercher les infos d’une carte hôtel | `enrichir_hotel` (`carte_id`) — ajouté. Fiche réutilisable, seulement les champs vides. À vérifier. La visibilité ne change pas. Aucun message. `fiche_hotel` lit cette fiche |
 | Classer un courrier hôtel sans écrire | `classer_courrier_hotel` — ajouté. `rouvrir` true rouvre. Aucun e-mail. Un message entrant plus récent rouvre le fil |
 | Train, transfert, activité, frais, dépense, autres types | `ajouter_carte`, `modifier_carte` — ajouté |
 | Marquer une carte vérifiée (lecture douteuse) | `valider_lecture`, et `effacer_avertissement` sur `modifier_vol`, `modifier_hotel`, `modifier_carte` — ajouté. Ne change pas la visibilité, n’envoie rien. |

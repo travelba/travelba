@@ -50,6 +50,7 @@ import {
   updateVol,
   validerLecture,
 } from "@/lib/crm/mcp-trip";
+import { lireFicheHotel } from "@/lib/crm/hotel-enrich";
 import { enrichirHotel } from "@/lib/crm/hotel-web-run";
 import { inviteClientAccess, setCompanyRole, updateCompanionIdentity, updateHolderProfile } from "@/lib/crm/mcp-account";
 import { updateVoyageur } from "@/lib/crm/traveler-update";
@@ -143,7 +144,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 144;
+export const MCP_TOOL_CAP = 145;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1541,11 +1542,25 @@ export const MCP_TOOLS: ToolDef[] = [
     run: (args) => addHotel(args),
   },
   {
+    name: "fiche_hotel",
+    description:
+      "Lit la fiche hôtel réutilisable (hors Little Emperors) : contacts par rôle, photos, description, sources, statut à vérifier ou vérifiée. nom et ville, ou carte_id. Lecture seule. Aucun message.",
+    input: {
+      nom: z.string().trim().max(180).optional().describe("Nom de l’hôtel"),
+      ville: z.string().trim().max(80).optional().describe("Ville"),
+      carte_id: z.string().trim().max(80).optional().describe("Identifiant de la carte hôtel"),
+    },
+    run: async (args) => {
+      const { createServiceClient } = await import("@/lib/supabase/admin");
+      return lireFicheHotel(createServiceClient(), args);
+    },
+  },
+  {
     name: "enrichir_hotel",
     write: true,
     openWorld: true,
     description:
-      "Recherche les informations publiques d’une carte hôtel (adresse, réception, réservations, concierge, site, description en français, photos, heures) et ne remplit que les champs vides. Les sources sont dans details. La carte est marquée à vérifier. La visibilité ne change pas. Aucun message. Sans clé Perplexity, rien n’est écrit par la recherche.",
+      "Recherche les informations publiques d’une carte hôtel et alimente la fiche réutilisable. Ne remplit que les champs vides de la carte. La réponse contient la fiche (contacts, photos, description, sources, statut). Les e-mails restent à vérifier. La visibilité ne change pas. Aucun message. Sans clé Perplexity, la fiche déjà connue est quand même renvoyée.",
     input: {
       carte_id: z.string().trim().max(80).describe("Identifiant de la carte hôtel"),
     },

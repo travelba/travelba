@@ -49,6 +49,7 @@ import { MovePieceButton } from "@/components/admin/MovePieceButton";
 import { FilePreviewGrid } from "@/components/crm/FilePreview";
 import { attachmentPreviews } from "@/lib/crm/preview-files";
 import { IngestItemCard } from "@/components/crm/IngestItemCard";
+import { HotelDirectoryFiche } from "@/components/admin/HotelDirectoryFiche";
 import { HotelGallery } from "@/components/crm/HotelGallery";
 import { HotelStayFacts } from "@/components/crm/HotelStayFacts";
 import { hotelPhotos } from "@/lib/crm/hotel-gallery";
@@ -373,6 +374,7 @@ export function BookingItemsPanel({
   const [draft, setDraft] = useState<ItemDraft>(emptyDraft());
   const [busy, setBusy] = useState(false);
   const [searchingHotel, setSearchingHotel] = useState(false);
+  const [ficheRevision, setFicheRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const rowsRef = useRef(rows);
   const cardRowsRef = useRef<CrmBookingItem[]>([]);
@@ -783,6 +785,7 @@ export function BookingItemsPanel({
         return;
       }
       setNotice(payload?.message || "Recherche terminée.");
+      setFicheRevision((value) => value + 1);
       router.refresh();
     } catch {
       setError("Recherche impossible.");
@@ -1050,6 +1053,16 @@ export function BookingItemsPanel({
                     {doubts.length ? (
                       <span className="mt-1 block text-xs font-semibold text-accent">{doubts.join(" ")}</span>
                     ) : null}
+                    {item.kind === "hotel" && item.details?.hotel_profile_status === "auto" ? (
+                      <span className="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
+                        Fiche à vérifier
+                      </span>
+                    ) : null}
+                    {item.kind === "hotel" && item.details?.hotel_profile_status === "verified" ? (
+                      <span className="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
+                        Fiche vérifiée
+                      </span>
+                    ) : null}
                     {pendingIds.has(item.id) ? (
                       <span className="mt-1 inline-flex rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)]">
                         Pas encore enregistré
@@ -1224,6 +1237,9 @@ export function BookingItemsPanel({
                     >
                       Rechercher les infos de l’hôtel
                     </button>
+                  ) : null}
+                  {item.kind === "hotel" && !isDraftStepId(item.id) ? (
+                    <HotelDirectoryFiche bookingId={bookingId} itemId={item.id} revision={ficheRevision} />
                   ) : null}
                   {item.kind === "hotel" && hotelPhotos(item).length ? (
                     <div className="overflow-hidden rounded-2xl">

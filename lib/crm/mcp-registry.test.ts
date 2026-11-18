@@ -64,6 +64,7 @@ const EXPECTED = [
   "definir_visibilite_carte",
   "preparer_message_carnet",
   "ajouter_hotel",
+  "fiche_hotel",
   "enrichir_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
