@@ -91,7 +91,18 @@ function filenameOf(headers: Record<string, string>, contentType: string) {
   return (fromDisposition || fromType || "").trim();
 }
 
-function walk(raw: string, out: UnfoldedMail, depth: number) {
+function htmlHrefs(html: string) {
+  const out: string[] = [];
+  const re = /href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html))) {
+    const raw = (match[1] ?? match[2] ?? match[3] ?? "").replace(/&amp;/gi, "&").trim();
+    if (/^https:\/\//i.test(raw)) out.push(raw);
+  }
+  return out;
+}
+
+function walk(raw: string, out: UnfoldedMail, depth: number, hrefs: boolean) {
   if (!raw.trim() || depth > MAX_DEPTH) return;
   const { headers, body } = splitMessage(raw);
   const contentType = headers["content-type"] || "text/plain";
@@ -106,13 +117,13 @@ function walk(raw: string, out: UnfoldedMail, depth: number) {
     for (const part of parts) {
       const trimmed = part.replace(/^\n/, "").replace(/\n?--\s*$/, "").trim();
       if (!trimmed || trimmed === "--") continue;
-      walk(trimmed, out, depth + 1);
+      walk(trimmed, out, depth + 1, hrefs);
     }
     return;
   }
 
   if (isNestedMailFile(contentType, filename)) {
-    walk(decodeText(body, encoding), out, depth + 1);
+    walk(decodeText(body, encoding), out, depth + 1, hrefs);
     return;
   }
 
@@ -122,8 +133,12 @@ function walk(raw: string, out: UnfoldedMail, depth: number) {
     return;
   }
   if (/text\/html/i.test(contentType)) {
-    const text = htmlToText(decodeText(body, encoding));
+    const decoded = decodeText(body, encoding);
+    const text = htmlToText(decoded);
     if (text) out.texts.push(text);
+    if (hrefs) {
+      for (const href of htmlHrefs(decoded)) out.texts.push(href);
+    }
     return;
   }
   if (/application\/pdf/i.test(contentType) || filename.toLowerCase().endsWith(".pdf")) {
@@ -140,9 +155,9 @@ function walk(raw: string, out: UnfoldedMail, depth: number) {
   }
 }
 
-export function unfoldMail(raw: string | Uint8Array): UnfoldedMail {
+export function unfoldMail(raw: string | Uint8Array, options?: { hrefs?: boolean }): UnfoldedMail {
   const text = typeof raw === "string" ? raw : Buffer.from(raw).toString("utf8");
   const out: UnfoldedMail = { texts: [], files: [] };
-  walk(text, out, 0);
+  walk(text, out, 0, Boolean(options?.hrefs));
   return out;
 }
