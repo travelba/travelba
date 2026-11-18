@@ -5,9 +5,13 @@ import {
   PERPLEXITY_MISSING_KEY_WARNING,
   hotelCacheKey,
   hotelWebGaps,
+  imageOnOfficialSite,
+  isLittleEmperorsHotel,
   loadPerplexityHotel,
   mergeHotelWebFacts,
   parseHotelWebPayload,
+  readOfficialOgImage,
+  readPerplexityHotelMedia,
   shouldAutoEnrichHotel,
 } from "./hotel-web";
 
@@ -27,6 +31,7 @@ function payload(extra?: Record<string, unknown>) {
     photos: [
       { url: "https://www.ritzparis.com/media/facade.jpg", caption: "Façade" },
       { url: "http://www.ritzparis.com/media/hall.jpg", caption: "Hall" },
+      { url: "https://cdn.example/images/pool.jpg", caption: "Piscine" },
       { url: "https://evil.example/not-an-image", caption: "Lien" },
     ],
     sources: ["https://www.ritzparis.com/fr"],
@@ -125,19 +130,56 @@ test("sans clé Perplexity, aucun appel et un avertissement", async () => {
   }
 });
 
-test("une carte Little Emperors déjà illustrée n’est pas relancée, une carte vide l’est", () => {
+test("une carte Little Emperors sans identifiant réel est recherchée, un le_hotel_id ne l’est pas", () => {
+  assert.equal(
+    isLittleEmperorsHotel({
+      supplier: "Little Emperors",
+      details: { source_family: "little_emperors" },
+    }),
+    false
+  );
+  assert.equal(isLittleEmperorsHotel({ details: { le_hotel_id: 12 } }), true);
+  assert.equal(isLittleEmperorsHotel({ details: { le_hotel_id: "0" } }), false);
+  assert.equal(isLittleEmperorsHotel({ details: {} }, true), true);
   assert.equal(
     shouldAutoEnrichHotel({
       kind: "hotel",
       supplier: "Little Emperors",
+      title: "St. Regis Dubai",
+      details: { city: "Dubai", hotel_name: "St. Regis Dubai", source_family: "little_emperors" },
+    }),
+    true
+  );
+  assert.equal(
+    shouldAutoEnrichHotel({
+      kind: "hotel",
       title: "Ritz",
-      details: { city: "Paris", source_family: "little_emperors", photos: [{ url: "https://cdn.example/a.jpg" }] },
+      details: { city: "Paris", hotel_name: "Ritz", le_hotel_id: 12 },
     }),
     false
   );
   assert.equal(shouldAutoEnrichHotel({ kind: "hotel", title: "Ritz", details: { city: "Paris", hotel_name: "Ritz" } }), true);
   assert.equal(hotelCacheKey("Hôtel Ritz", "Paris"), hotelCacheKey("The Ritz Hotel", "paris"));
   assert.equal(hotelCacheKey("Four Seasons Hotel Milano", "Milano"), hotelCacheKey("Four Seasons Hotel Milano", "Milan"));
+  assert.equal(imageOnOfficialSite("https://www.ritzparis.com/media/facade.jpg", "https://www.ritzparis.com/"), true);
+  assert.equal(imageOnOfficialSite("https://cdn.example/images/pool.jpg", "https://www.ritzparis.com/"), false);
+  assert.equal(imageOnOfficialSite("https://media.ritzparis.com/a.jpg", "https://ritzparis.com/"), true);
+  const media = readPerplexityHotelMedia(
+    {
+      images: [
+        { image_url: "https://www.ritzparis.com/media/facade.jpg" },
+        { image_url: "https://images.unsplash.com/photo.jpg" },
+      ],
+      search_results: [{ url: "https://www.ritzparis.com/fr", title: "Ritz" }],
+    },
+    "https://www.ritzparis.com/"
+  );
+  assert.deepEqual(media.photos.map((photo) => photo.url), ["https://www.ritzparis.com/media/facade.jpg"]);
+  assert.deepEqual(media.sources, ["https://www.ritzparis.com/fr"]);
+  assert.equal(
+    readOfficialOgImage('<meta property="og:image" content="https://cdn.ritzparis.com/og.jpg">', "https://www.ritzparis.com/"),
+    "https://cdn.ritzparis.com/og.jpg"
+  );
   assert.deepEqual(hotelWebGaps({ address: "15 Place Vendôme, Paris", description: DESCRIPTION }), [
     "site",
     "arrivée",
@@ -147,4 +189,51 @@ test("une carte Little Emperors déjà illustrée n’est pas relancée, une car
     "concierge",
     "photos",
   ]);
+});
+
+test("Perplexity demande les images et ne garde que le domaine officiel, sinon og:image", async () => {
+  const calls: string[] = [];
+  const withImages = await loadPerplexityHotel("Ritz", "Paris", {
+    env: { PERPLEXITY_API_KEY: "test" },
+    fetchImpl: async (input, init) => {
+      calls.push(String(input));
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.return_images, true);
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify(payload({ photos: [] })) } }],
+          images: [
+            { image_url: "https://www.ritzparis.com/media/facade.jpg", origin_url: "https://www.ritzparis.com/" },
+            { image_url: "https://images.unsplash.com/photo.jpg", origin_url: "https://unsplash.com/x" },
+          ],
+          search_results: [{ url: "https://www.ritzparis.com/fr" }],
+        }),
+        { status: 200 }
+      );
+    },
+  });
+  assert.equal("facts" in withImages, true);
+  if (!("facts" in withImages)) return;
+  assert.deepEqual(withImages.facts.photos.map((photo) => photo.url), ["https://www.ritzparis.com/media/facade.jpg"]);
+  assert.ok(withImages.facts.sources.includes("https://www.ritzparis.com/fr"));
+  assert.equal(calls.length, 1);
+
+  const og = await loadPerplexityHotel("Ritz", "Paris", {
+    env: { PERPLEXITY_API_KEY: "test" },
+    fetchImpl: async (input) => {
+      if (String(input).includes("perplexity")) {
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify(payload({ photos: [] })) } }],
+            images: [],
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response('<meta property="og:image" content="https://cdn.ritzparis.com/og.jpg">', { status: 200 });
+    },
+  });
+  assert.equal("facts" in og, true);
+  if (!("facts" in og)) return;
+  assert.deepEqual(og.facts.photos.map((photo) => photo.url), ["https://cdn.ritzparis.com/og.jpg"]);
 });
