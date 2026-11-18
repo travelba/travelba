@@ -1446,7 +1446,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "retirer_carte",
     write: true,
     description:
-      "Retire une carte du dossier. Les frais de billeterie ne sont pas recréés, et leur débit au grand livre est annulé. Le séjour caché ne débite pas. Aucun message.",
+      "Retire une carte du dossier et ses justificatifs (pièces liées par la carte ou comme document source). Une pièce encore liée à une autre carte du dossier reste attachée à cette carte. Le retrait est restaurable : le fichier n’est pas effacé du stockage. Les frais de billeterie ne sont pas recréés, et leur débit au grand livre est annulé. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),

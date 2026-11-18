@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { planDocumentRelease, restoredPieceFields, type StayDocumentRow } from "./stay-documents";
+import {
+  justificatifsRetiresAvec,
+  mentionRetraitJustificatifs,
+  planDocumentRelease,
+  restoredPieceFields,
+  type StayDocumentRow,
+  type StayItemRef,
+} from "./stay-documents";
 
 const SHA = "a".repeat(64);
 
@@ -16,59 +23,94 @@ function piece(patch: Partial<StayDocumentRow> & Pick<StayDocumentRow, "id">): S
   };
 }
 
-test("supprimer l’aller et le retour qui partagent un PDF ne laisse qu’une pièce", () => {
-  const release = planDocumentRelease({
+function cartes(...ids: string[]): StayItemRef[] {
+  return ids.map((id) => ({ id, source_document_id: null }));
+}
+
+test("supprimer l’aller et le retour retire les deux copies du PDF", () => {
+  const plan = planDocumentRelease({
     now: "2026-11-18T12:00:00.000Z",
     deletedItemIds: ["aller", "retour"],
+    items: cartes("aller", "retour"),
     documents: [
       piece({ id: "doc-aller", booking_item_id: "aller", created_at: "2026-11-01T10:00:00.000Z" }),
       piece({ id: "doc-retour", booking_item_id: "retour", created_at: "2026-11-01T11:00:00.000Z" }),
     ],
   });
   assert.deepEqual(
-    release.map((row) => row.id),
-    ["doc-retour"]
+    plan.release.map((row) => row.id).sort(),
+    ["doc-aller", "doc-retour"]
   );
-  assert.equal(release[0]?.clearSha, true);
-  const mark = release[0]?.extracted.tri_piece as { empreinte?: string; retiree_at?: string };
+  assert.deepEqual(plan.relink, []);
+  assert.ok(plan.release.every((row) => row.clearSha));
+  const mark = plan.release[0]?.extracted.tri_piece as { empreinte?: string; retiree_at?: string };
   assert.equal(mark.empreinte, SHA);
   assert.equal(mark.retiree_at, "2026-11-18T12:00:00.000Z");
+  assert.equal("storage_path" in (plan.release[0]?.extracted || {}), false);
 });
 
-test("supprimer les deux pièces retire les deux, sans effacer le stockage", () => {
-  const release = planDocumentRelease({
+test("supprimer seulement l’aller retire sa copie et laisse le PDF sur le retour", () => {
+  const plan = planDocumentRelease({
     now: "2026-11-18T12:00:00.000Z",
-    deletedItemIds: ["aller", "retour"],
-    removeIds: ["doc-aller", "doc-retour"],
+    deletedItemIds: ["aller"],
+    items: cartes("aller", "retour"),
     documents: [
       piece({ id: "doc-aller", booking_item_id: "aller" }),
       piece({ id: "doc-retour", booking_item_id: "retour" }),
     ],
   });
   assert.deepEqual(
-    release.map((row) => row.id).sort(),
-    ["doc-aller", "doc-retour"]
+    plan.release.map((row) => row.id),
+    ["doc-aller"]
   );
-  assert.ok(release.every((row) => row.clearSha));
-  assert.equal("storage_path" in (release[0]?.extracted || {}), false);
+  assert.deepEqual(plan.relink, []);
+  assert.equal(justificatifsRetiresAvec("aller", cartes("aller", "retour"), [
+    piece({ id: "doc-aller", booking_item_id: "aller" }),
+    piece({ id: "doc-retour", booking_item_id: "retour" }),
+  ]), 1);
 });
 
-test("supprimer seulement l’aller laisse le PDF sur le retour", () => {
-  const release = planDocumentRelease({
+test("un même PDF lié aux deux cartes reste sur le retour", () => {
+  const shared = piece({ id: "pdf", booking_item_id: "aller" });
+  const items: StayItemRef[] = [
+    { id: "aller", source_document_id: "pdf" },
+    { id: "retour", source_document_id: "pdf" },
+  ];
+  const plan = planDocumentRelease({
     now: "2026-11-18T12:00:00.000Z",
     deletedItemIds: ["aller"],
-    documents: [
-      piece({ id: "doc-aller", booking_item_id: "aller" }),
-      piece({ id: "doc-retour", booking_item_id: "retour" }),
-    ],
+    items,
+    documents: [shared],
   });
-  assert.deepEqual(release, []);
+  assert.deepEqual(plan.release, []);
+  assert.deepEqual(plan.relink, [{ id: "pdf", bookingItemId: "retour" }]);
+  assert.equal(justificatifsRetiresAvec("aller", items, [shared]), 0);
+  assert.equal(mentionRetraitJustificatifs(0), "");
 });
 
-test("une pièce déjà dans le dossier absorbe le doublon de la carte supprimée", () => {
-  const release = planDocumentRelease({
+test("le PDF partagé part quand les deux cartes sont retirées", () => {
+  const plan = planDocumentRelease({
     now: "2026-11-18T12:00:00.000Z",
     deletedItemIds: ["aller", "retour"],
+    items: [
+      { id: "aller", source_document_id: "pdf" },
+      { id: "retour", source_document_id: "pdf" },
+    ],
+    documents: [piece({ id: "pdf", booking_item_id: "aller", content_sha256: null })],
+  });
+  assert.deepEqual(
+    plan.release.map((row) => row.id),
+    ["pdf"]
+  );
+  assert.equal(plan.release[0]?.clearSha, false);
+  assert.deepEqual(plan.relink, []);
+});
+
+test("une pièce déjà dans le dossier n’est pas retirée avec les cartes", () => {
+  const plan = planDocumentRelease({
+    now: "2026-11-18T12:00:00.000Z",
+    deletedItemIds: ["aller", "retour"],
+    items: cartes("aller", "retour"),
     documents: [
       piece({ id: "orpheline", booking_item_id: null, created_at: "2026-10-01T10:00:00.000Z" }),
       piece({ id: "doc-aller", booking_item_id: "aller" }),
@@ -76,22 +118,44 @@ test("une pièce déjà dans le dossier absorbe le doublon de la carte supprimé
     ],
   });
   assert.deepEqual(
-    release.map((row) => row.id).sort(),
+    plan.release.map((row) => row.id).sort(),
     ["doc-aller", "doc-retour"]
   );
 });
 
+test("un justificatif lié seulement par la carte source est retiré avec elle", () => {
+  const plan = planDocumentRelease({
+    now: "2026-11-18T12:00:00.000Z",
+    deletedItemIds: ["hotel"],
+    items: [{ id: "hotel", source_document_id: "confirmation" }],
+    documents: [piece({ id: "confirmation", booking_item_id: null, content_sha256: null })],
+  });
+  assert.deepEqual(
+    plan.release.map((row) => row.id),
+    ["confirmation"]
+  );
+});
+
 test("restaurer une pièce retirée remet son empreinte", () => {
-  const [released] = planDocumentRelease({
+  const plan = planDocumentRelease({
     now: "2026-11-18T12:00:00.000Z",
     deletedItemIds: ["aller"],
-    removeIds: ["doc-aller"],
+    items: cartes("aller"),
     documents: [piece({ id: "doc-aller", booking_item_id: "aller", visible_to_client: true })],
   });
-  const fields = restoredPieceFields({ extracted: released?.extracted, content_sha256: null, visible_to_client: false });
+  const fields = restoredPieceFields({
+    extracted: plan.release[0]?.extracted,
+    content_sha256: null,
+    visible_to_client: false,
+  });
   assert.equal(fields?.content_sha256, SHA);
   assert.equal(fields?.visible_to_client, true);
   assert.equal(fields?.extracted, null);
+});
+
+test("la confirmation nomme le nombre de justificatifs", () => {
+  assert.equal(mentionRetraitJustificatifs(1), "La carte et son justificatif seront retirés.");
+  assert.equal(mentionRetraitJustificatifs(2), "La carte et ses 2 justificatifs seront retirés.");
 });
 
 test("la migration rend l’index partiel et le commit atomique", () => {
