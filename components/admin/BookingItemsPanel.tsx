@@ -372,6 +372,7 @@ export function BookingItemsPanel({
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [draft, setDraft] = useState<ItemDraft>(emptyDraft());
   const [busy, setBusy] = useState(false);
+  const [searchingHotel, setSearchingHotel] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rowsRef = useRef(rows);
   const cardRowsRef = useRef<CrmBookingItem[]>([]);
@@ -762,6 +763,34 @@ export function BookingItemsPanel({
     if (!ok) setError("La vérification n’a pas été enregistrée.");
     else setNotice(ids.length > 1 ? "Cartes vérifiées." : "Carte vérifiée.");
   }
+
+  async function searchHotel(itemId: string) {
+    if (busy || isDraftStepId(itemId)) return;
+    setBusy(true);
+    setSearchingHotel(true);
+    setError(null);
+    setNotice(null);
+    setMenuFor(null);
+    try {
+      const res = await fetch(`/api/admin/bookings/${bookingId}/hotel-web`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId }),
+      });
+      const payload = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+      if (!res.ok) {
+        setError(payload?.error || "Recherche impossible.");
+        return;
+      }
+      setNotice(payload?.message || "Recherche terminée.");
+      router.refresh();
+    } catch {
+      setError("Recherche impossible.");
+    } finally {
+      setSearchingHotel(false);
+      setBusy(false);
+    }
+  }
   useEffect(() => {
     onBindRef.current?.(() => saveDraftRef.current());
     return () => onBindRef.current?.(null);
@@ -852,7 +881,7 @@ export function BookingItemsPanel({
         </p>
       ) : null}
       <div className="mt-3">
-        <BusyBar active={busy} label="Enregistrement…" />
+        <BusyBar active={busy} label={searchingHotel ? "Recherche de l’hôtel…" : "Enregistrement…"} />
       </div>
       {notice ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{notice}</p> : null}
       <LedgerWarningNotice message={ledgerNote} onDismiss={() => setLedgerNote(null)} className="mt-2" />
@@ -1118,6 +1147,16 @@ export function BookingItemsPanel({
                           Vérifié
                         </button>
                       ) : null}
+                      {item.kind === "hotel" && !isDraftStepId(item.id) ? (
+                        <button
+                          type="button"
+                          className={`${flatBtn} h-auto whitespace-normal py-2 text-left`}
+                          disabled={busy}
+                          onClick={() => void searchHotel(item.id)}
+                        >
+                          Rechercher les infos de l’hôtel
+                        </button>
+                      ) : null}
                       {!retired ? (
                       <button
                         type="button"
@@ -1176,6 +1215,16 @@ export function BookingItemsPanel({
               </div>
               {openStep === item.id ? (
                 <div className="mt-3 space-y-3 border-t border-[var(--border)] pt-3">
+                  {item.kind === "hotel" && !isDraftStepId(item.id) ? (
+                    <button
+                      type="button"
+                      className={flatBtn}
+                      disabled={busy}
+                      onClick={() => void searchHotel(item.id)}
+                    >
+                      Rechercher les infos de l’hôtel
+                    </button>
+                  ) : null}
                   {item.kind === "hotel" && hotelPhotos(item).length ? (
                     <div className="overflow-hidden rounded-2xl">
                       <HotelGallery photos={hotelPhotos(item)} title={stepTitle(item)} />

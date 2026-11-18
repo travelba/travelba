@@ -433,6 +433,14 @@ async function commitStaySteps(
   for (const item of preparedCreates) {
     const id = idMap.get(item.clientId);
     if (id && item.visible && countsAsCarnetCard(item.kind)) shown.push({ id, kind: item.kind });
+    if (id && item.kind === "hotel") {
+      try {
+        const { scheduleHotelWebEnrichment } = await import("@/lib/crm/hotel-web-schedule");
+        scheduleHotelWebEnrichment(id);
+      } catch (scheduleError) {
+        console.warn("[hotel-web]", scheduleError instanceof Error ? scheduleError.message : "planification");
+      }
+    }
   }
   let warning: string | null = null;
   try {
