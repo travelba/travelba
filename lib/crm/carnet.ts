@@ -402,6 +402,36 @@ export function keptHiddenFromClient(details: Record<string, unknown> | null | u
   return details?.client_hidden === true;
 }
 
+export type ClientHiddenCard = {
+  id?: string;
+  kind: string;
+  lifecycle?: string | null;
+  visible_to_client?: boolean | null;
+  details?: Record<string, unknown> | null;
+};
+
+/**
+ * Carte que le client ne voit pas, à repérer dans la fiche agence.
+ * Cacher (`client_hidden`) reste marqué même si le séjour est encore Non visible.
+ * Sinon, une carte `visible_to_client` faux ne compte que quand le séjour est déjà montré :
+ * Montrer au client la révèle, et le compteur disparaît.
+ */
+export function cardHiddenFromClient(item: ClientHiddenCard, stayVisible: boolean) {
+  if (!isActiveItem(item) || !countsAsCarnetCard(item.kind)) return false;
+  if (keptHiddenFromClient(item.details)) return true;
+  return stayVisible && item.visible_to_client === false;
+}
+
+export function hiddenClientCards<T extends ClientHiddenCard>(items: T[], stayVisible: boolean) {
+  return items.filter((item) => cardHiddenFromClient(item, stayVisible));
+}
+
+/** Null quand il n’y a rien à signaler : le compteur disparaît. */
+export function hiddenCardsLabel(count: number) {
+  if (count <= 0) return null;
+  return count === 1 ? "1 carte cachée" : `${count} cartes cachées`;
+}
+
 /**
  * Montrer retire le masquage. Un enregistrement avec `visible_to_client` faux
  * ne cache pas la carte : ce drapeau n’existe que si l’agence a choisi Cacher.
