@@ -288,6 +288,11 @@ export type Mb3mInvoiceDeps = {
   saveFolder: typeof mb3mSaveFolder;
   addInvoice: typeof mb3mAddInvoice;
   findPiece: typeof mb3mFindPiece;
+  /**
+   * Dernière facture imprimée, non créditée, du dossier. `claim` ne la renvoie jamais : l’index
+   * unique ne couvre que les pièces ouvertes, donc claim crée une ligne vide à la place.
+   */
+  printedInvoice?: (bookingId: string) => Promise<Mb3mStoredPiece | null>;
   cancelInvoice: typeof mb3mCancelInvoice;
   renderPiece: (number: string) => Promise<{ bytes: Buffer }>;
   /** Agence unique de la base, posée sur le dossier et la pièce. Absente : le serveur prend celle du compte. */
@@ -632,6 +637,31 @@ function withNotice(ctx: Mb3mInvoiceContext, result: Mb3mInvoiceResult): Mb3mInv
 }
 
 export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps): Promise<Mb3mInvoiceResult> {
+  if (!ctx.lines.length && deps.recordPayments && deps.printedInvoice) {
+    // Tout est déjà sur une facture imprimée : pas de nouvelle pièce, seulement les règlements en attente.
+    const printed = await deps.printedInvoice(ctx.bookingId);
+    if (printed?.pieceNumber && printed.printedAt) {
+      const sent = await attachReglements(
+        ctx,
+        deps,
+        {
+          number: printed.pieceNumber,
+          documentId: printed.documentId,
+          created: false,
+          replaced: false,
+          printed: true,
+          visibleToClient: ctx.visibleToClient,
+        },
+        printed.amount ?? ctx.amount,
+        printed.folderId,
+        printed.customerUid
+      );
+      if (printed.attemptStatus || printed.attemptError) {
+        await deps.save(printed.id, { attemptStatus: null, attemptError: null });
+      }
+      return withNotice(ctx, sent);
+    }
+  }
   const sendable = mb3mSendableLines(ctx.lines);
   const signature = mb3mLineSignature(sendable);
   const claimed = await deps.claim(ctx.bookingId, ctx.amount);
@@ -1343,6 +1373,21 @@ function supabaseInvoiceDeps(supabase: SupabaseClient, actorName?: string | null
     recordPayments: (input) => recordMb3mInvoicePayments(supabase, input),
     agencyUid: mb3mSingleAgencyUid,
     findPiece: mb3mFindPiece,
+    printedInvoice: async (bookingId) => {
+      const { data, error } = await supabase
+        .from("crm_mb3m_pieces")
+        .select("*")
+        .eq("booking_id", bookingId)
+        .eq("kind", "invoice")
+        .eq("realm", mb3mRealm())
+        .not("printed_at", "is", null)
+        .is("credited_at", null)
+        .order("printed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) dbFail(error, "La facture n’a pas pu être préparée.");
+      return data ? mapPiece(data as Record<string, unknown>) : null;
+    },
     cancelInvoice: mb3mCancelInvoice,
     renderPiece: async (number) => mb3mRenderPiece({ number }),
     putPdf: async (input) =>
