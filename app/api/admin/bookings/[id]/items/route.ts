@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
+import { dbErrorMessage } from "@/lib/crm/db-error";
 import { refreshBookingDerived } from "@/lib/crm/dossier-refresh";
 import { schedulePendingFlightRematch } from "@/lib/crm/email-flight-rematch";
 import { hotelSignatoryName } from "@/lib/crm/hotel-desk";
@@ -16,7 +17,9 @@ import {
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { noteCarnetAdditions, type CarnetAdditionCard } from "@/lib/crm/carnet-addition";
 import { verifiedJournalSummary } from "@/lib/crm/review-doubt";
-import { detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
+import { cardVisibilityUpdate, detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
+import { planDocumentRelease } from "@/lib/crm/stay-documents";
+import { applyStayCommit } from "@/lib/crm/stay-commit";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { readMb3mActivityOverride, withMb3mActivity } from "@/lib/crm/mb3m-activity";
 import { parseMoney } from "@/lib/crm/money";
@@ -122,7 +125,8 @@ async function insertBookingItem(
   supabase: SupabaseClient,
   bookingId: string,
   body: Record<string, unknown>,
-  sortOrder: number
+  sortOrder: number,
+  persist = true
 ) {
   const title = String(body.title || "").trim();
   const kind = knownKind(body.kind || "fee");
@@ -165,23 +169,24 @@ async function insertBookingItem(
   }
   const company = await billingCompanyPatch(supabase, bookingId, body.billing_company_id);
   if ("error" in company && company.error) return { error: jsonError(company.error) };
+  const row = {
+    kind,
+    title: titleForInsert,
+    supplier,
+    confirmation_ref: confirmation,
+    start_at: startAt,
+    end_at: endAt,
+    amount: amountForInsert,
+    include_in_ledger: ledger,
+    sort_order: sortOrder,
+    details: detailsForInsert,
+    visible_to_client: body.visible_to_client === true,
+    ...("billing_company_id" in company ? { billing_company_id: company.billing_company_id } : {}),
+  };
+  if (!persist) return { row, kind, visible: body.visible_to_client === true };
   const { data, error } = await supabase
     .from("crm_booking_items")
-    .insert({
-      booking_id: bookingId,
-      kind,
-      title: titleForInsert,
-      supplier,
-      confirmation_ref: confirmation,
-      start_at: startAt,
-      end_at: endAt,
-      amount: amountForInsert,
-      include_in_ledger: ledger,
-      sort_order: sortOrder,
-      details: detailsForInsert,
-      visible_to_client: body.visible_to_client === true,
-      ...("billing_company_id" in company ? { billing_company_id: company.billing_company_id } : {}),
-    })
+    .insert({ booking_id: bookingId, ...row })
     .select("id")
     .single();
   if (error || !data) return { error: dbError(error, 400) };
@@ -190,10 +195,22 @@ async function insertBookingItem(
   return { id, shown };
 }
 
+/** Les pièces rattachées à la carte suivent Cacher / Montrer. Une pièce d’une autre carte reste. */
+async function mirrorCardPieces(supabase: SupabaseClient, bookingId: string, itemId: string, visible: boolean) {
+  const { error } = await supabase
+    .from("crm_booking_documents")
+    .update({ visible_to_client: visible })
+    .eq("booking_id", bookingId)
+    .eq("booking_item_id", itemId);
+  if (error) return dbError(error, 400);
+  return null;
+}
+
 async function updateBookingItem(
   supabase: SupabaseClient,
   bookingId: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  persist = true
 ) {
   const itemId = String(body.id || "");
   if (!itemId) return { error: jsonError("id requis") };
@@ -255,17 +272,23 @@ async function updateBookingItem(
     patch.amount = priced.pricing.amount;
     patch.details = priced.details;
   }
+  const visibilityGesture = typeof body.client_hidden === "boolean";
   if ("visible_to_client" in body) {
     const visible = Boolean(body.visible_to_client);
     if (visible && !isActiveItem(current)) {
       return { error: jsonError("Cette carte est archivée. Elle ne revient pas dans le carnet.") };
     }
     patch.visible_to_client = visible;
-    if (visible) {
-      const base =
-        patch.details && typeof patch.details === "object"
-          ? (patch.details as Record<string, unknown>)
-          : ((current.details as Record<string, unknown> | null) || {});
+    const base =
+      patch.details && typeof patch.details === "object" && !Array.isArray(patch.details)
+        ? (patch.details as Record<string, unknown>)
+        : ((current.details as Record<string, unknown> | null) || {});
+    if (visibilityGesture) {
+      const decided = cardVisibilityUpdate({ lifecycle: current.lifecycle, details: base }, visible);
+      if ("error" in decided) return { error: jsonError(decided.error) };
+      patch.visible_to_client = decided.visible_to_client;
+      patch.details = decided.details;
+    } else if (visible) {
       patch.details = detailsForCardVisibility(base, true);
     }
   }
@@ -294,14 +317,6 @@ async function updateBookingItem(
     if (frozen.card.amount == null) patch.include_in_ledger = false;
   }
   if (!Object.keys(patch).length) return { error: jsonError("Rien à mettre à jour") };
-  const { data, error } = await supabase
-    .from("crm_booking_items")
-    .update(patch)
-    .eq("id", itemId)
-    .eq("booking_id", bookingId)
-    .select("*")
-    .single();
-  if (error) return { error: dbError(error, 400) };
   const wasHidden =
     current.visible_to_client !== true ||
     keptHiddenFromClient(
@@ -319,6 +334,29 @@ async function updateBookingItem(
     before.needs_review === true && after && after.needs_review !== true
       ? String(("title" in patch ? patch.title : current.title) || "Étape")
       : null;
+  if (!persist) return { patch, shown, verified, id: itemId };
+  const { data, error } = await supabase
+    .from("crm_booking_items")
+    .update(patch)
+    .eq("id", itemId)
+    .eq("booking_id", bookingId)
+    .select("*")
+    .single();
+  if (error) return { error: dbError(error, 400) };
+  if (visibilityGesture) {
+    const mirrored = await mirrorCardPieces(supabase, bookingId, itemId, Boolean(patch.visible_to_client));
+    if (mirrored) {
+      await supabase
+        .from("crm_booking_items")
+        .update({
+          visible_to_client: current.visible_to_client,
+          details: current.details,
+        })
+        .eq("id", itemId)
+        .eq("booking_id", bookingId);
+      return { error: mirrored };
+    }
+  }
   return { item: data, shown, verified };
 }
 
@@ -335,7 +373,7 @@ async function journalVerifiedCards(bookingId: string, staffId: string, titles: 
   });
 }
 
-/** Modifications et suppressions d’étapes : une seule écriture, au moment d’enregistrer le séjour. */
+/** Modifications et suppressions d’étapes : une seule transaction, au moment d’enregistrer le séjour. */
 async function commitStaySteps(
   supabase: SupabaseClient,
   bookingId: string,
@@ -355,42 +393,76 @@ async function commitStaySteps(
     : [];
   if (order.length > MAX_SORT_ORDER + 1) return jsonError(SORT_ORDER_ERROR);
 
+  const preparedUpdates: { id: string; patch: Record<string, unknown> }[] = [];
   for (const item of updated) {
     if (!item || typeof item !== "object") return jsonError("Étape invalide");
-    const failed = await updateBookingItem(supabase, bookingId, item as Record<string, unknown>);
-    if ("error" in failed) return failed.error;
-    if (failed.shown) shown.push(failed.shown);
-    if (failed.verified) verified.push(failed.verified);
+    const prepared = await updateBookingItem(supabase, bookingId, item as Record<string, unknown>, false);
+    if ("error" in prepared) return prepared.error;
+    if (!("patch" in prepared) || !prepared.patch || !prepared.id) return jsonError("Étape invalide");
+    preparedUpdates.push({ id: prepared.id, patch: prepared.patch });
+    if (prepared.shown) shown.push(prepared.shown);
+    if (prepared.verified) verified.push(prepared.verified);
   }
-  if (deleted.length) {
-    const { error } = await supabase
-      .from("crm_booking_items")
-      .delete()
-      .in("id", deleted)
-      .eq("booking_id", bookingId);
-    if (error) return dbError(error, 400);
-  }
-  const idMap = new Map<string, string>();
+  const preparedCreates: { clientId: string; row: Record<string, unknown>; visible: boolean; kind: string }[] = [];
   for (const [index, item] of created.entries()) {
     if (!item || typeof item !== "object") return jsonError("Étape invalide");
     const row = item as Record<string, unknown>;
-    const inserted = await insertBookingItem(supabase, bookingId, row, order.length + index);
-    if ("error" in inserted) return inserted.error;
-    idMap.set(String(row.client_id || ""), inserted.id);
-    if (inserted.shown) shown.push(inserted.shown);
+    const prepared = await insertBookingItem(supabase, bookingId, row, order.length + index, false);
+    if ("error" in prepared) return prepared.error;
+    if (!prepared.row || !prepared.kind || typeof prepared.visible !== "boolean") {
+      return jsonError("Étape invalide");
+    }
+    preparedCreates.push({
+      clientId: String(row.client_id || ""),
+      row: prepared.row,
+      visible: prepared.visible,
+      kind: prepared.kind,
+    });
   }
+  const removeIds = Array.isArray(body.retirer_documents)
+    ? body.retirer_documents.map((value) => String(value || "")).filter(Boolean)
+    : [];
+  let release: ReturnType<typeof planDocumentRelease> = [];
+  if (deleted.length || removeIds.length) {
+    const { data: docRows, error: docError } = await supabase
+      .from("crm_booking_documents")
+      .select("id, booking_item_id, content_sha256, extracted, visible_to_client, created_at")
+      .eq("booking_id", bookingId);
+    if (docError) return dbError(docError, 400);
+    release = planDocumentRelease({
+      documents: docRows || [],
+      deletedItemIds: deleted,
+      removeIds,
+      now: new Date().toISOString(),
+    });
+  }
+  const written = await applyStayCommit(supabase, {
+    bookingId,
+    updates: preparedUpdates,
+    deleted,
+    created: preparedCreates.map((item) => ({ clientId: item.clientId, row: item.row })),
+    release,
+  });
+  if (!written.ok) return dbError(written.error, 400);
+  const idMap = new Map(Object.entries(written.ids));
+  for (const item of preparedCreates) {
+    const id = idMap.get(item.clientId);
+    if (id && item.visible && countsAsCarnetCard(item.kind)) shown.push({ id, kind: item.kind });
+  }
+  let warning: string | null = null;
   try {
     await persistBookingCardOrder(supabase, bookingId, {
       createdIds: [...idMap.values()],
       submittedIds: order.length ? order.map((id) => idMap.get(id) || id) : null,
     });
   } catch (error) {
-    return dbError(error as { message?: string; code?: string }, 400);
+    warning = dbErrorMessage(error as { message?: string; code?: string }, "L’ordre des étapes n’a pas été repris.");
   }
   try {
     await resyncAccueilVip(supabase, bookingId);
   } catch (error) {
-    return dbError(error as { message?: string; code?: string }, 400);
+    warning =
+      warning || dbErrorMessage(error as { message?: string; code?: string }, "L’accueil VIP n’a pas été recalculé.");
   }
   await refreshBookingDerived(bookingId, { signatory });
   await noteCarnetAdditions(supabase, bookingId, shown);
@@ -398,6 +470,7 @@ async function commitStaySteps(
   return NextResponse.json({
     ok: true,
     ids: Object.fromEntries(idMap),
+    ...(warning ? { warning } : {}),
     ...(await ledgerAfterItemWrite(supabase, bookingId, "Séjour enregistré")),
   });
 }
@@ -442,6 +515,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
   const updated = await updateBookingItem(auth.supabase, bookingId, body || {});
   if ("error" in updated) return updated.error;
+  if (!("item" in updated)) return jsonError("Carte non modifiée.");
   if (updated.shown) await noteCarnetAdditions(auth.supabase, bookingId, [updated.shown]);
   if (updated.verified) await journalVerifiedCards(bookingId, auth.staff.id, [updated.verified]);
   const moved =
@@ -487,12 +561,23 @@ export async function DELETE(request: Request, ctx: Ctx) {
       .eq("id", bookingId);
     if (modeError) return dbError(modeError, 400);
   }
-  const { error } = await auth.supabase
-    .from("crm_booking_items")
-    .delete()
-    .eq("id", itemId)
+  const { data: docRows, error: docError } = await auth.supabase
+    .from("crm_booking_documents")
+    .select("id, booking_item_id, content_sha256, extracted, visible_to_client, created_at")
     .eq("booking_id", bookingId);
-  if (error) return dbError(error, 400);
+  if (docError) return dbError(docError, 400);
+  const written = await applyStayCommit(auth.supabase, {
+    bookingId,
+    updates: [],
+    deleted: [itemId],
+    created: [],
+    release: planDocumentRelease({
+      documents: docRows || [],
+      deletedItemIds: [itemId],
+      now: new Date().toISOString(),
+    }),
+  });
+  if (!written.ok) return dbError(written.error, 400);
   try {
     await resyncAccueilVip(auth.supabase, bookingId);
   } catch (syncError) {

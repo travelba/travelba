@@ -415,6 +415,24 @@ export function detailsForCardVisibility(
   return next;
 }
 
+/**
+ * Geste Cacher / Montrer d’une carte.
+ * Cacher pose `client_hidden` et `visible_to_client` faux. Montrer retire le masquage.
+ * Un enregistrement seul ne cache pas : le drapeau n’existe que par ce geste.
+ */
+export function cardVisibilityUpdate(
+  item: { lifecycle?: string | null; details?: Record<string, unknown> | null },
+  visible: boolean
+): { error: string } | { visible_to_client: boolean; details: Record<string, unknown> } {
+  if (visible && !isActiveItem(item)) {
+    return { error: "Cette carte est archivée. Elle ne revient pas dans le carnet." };
+  }
+  const details = visible
+    ? detailsForCardVisibility(item.details, true)
+    : { ...(item.details || {}), client_hidden: true };
+  return { visible_to_client: visible, details };
+}
+
 /** Cartes du séjour encore à montrer. Une dépense n’est pas une carte du carnet. */
 export function pendingPublishCards<
   T extends {

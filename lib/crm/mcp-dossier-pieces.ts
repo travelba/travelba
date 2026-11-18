@@ -15,6 +15,7 @@ import { McpReadError } from "@/lib/crm/mcp-passport";
 import { McpWriteError } from "@/lib/crm/mcp-write";
 import { missingDbColumn, queryWithOptionalColumn } from "@/lib/crm/optional-column";
 import { redactIngestText } from "@/lib/crm/ingest-redact";
+import { restoredPieceFields } from "@/lib/crm/stay-documents";
 import { redactEmailReadText } from "@/lib/crm/mcp-email";
 import { pdfPlainText } from "@/lib/crm/pdf-raster";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -306,7 +307,8 @@ export async function retirerPieceDossier(input: Record<string, unknown>, deps: 
   const archive = readPieceArchive(piece.extracted);
   if (input.restaurer === true) {
     if (!archive) throw new McpWriteError("Cette pièce n’est pas retirée.");
-    await savePiece(admin, documentId, booking.id, {
+    const fields = restoredPieceFields(piece);
+    await savePiece(admin, documentId, booking.id, fields || {
       extracted: withoutPieceArchive(piece.extracted),
       visible_to_client: archive.visible_avant,
     });
