@@ -457,6 +457,15 @@ function agencyXml(uid: string | null | undefined) {
   return value ? `<Agency><Uid>${escapeMb3mXml(value)}</Uid></Agency>` : "";
 }
 
+/**
+ * Client déjà dans MB3M. Même balise que SaveFolder, AddInvoice et l’avoir :
+ * Uid seul. Pas de PartnerId : CustomerIdentity n’en porte pas ici
+ * (l’Id partenaire est le champ Id de Customer, à la création de la fiche).
+ */
+export function mb3mCustomerIdentityXml(uid: string) {
+  return `<CustomerIdentity><Uid>${escapeMb3mXml(uid.trim())}</Uid></CustomerIdentity>`;
+}
+
 function customerFindXml(query: {
   firstName?: string;
   email?: string;
@@ -679,7 +688,7 @@ export async function mb3mSaveFolder(
   },
   fetchImpl?: FetchImpl
 ) {
-  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${agencyXml(input.agencyUid)}${tag("CodeRef", input.codeRef?.trim())}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}${tag("FolderType", input.folderType)}${tag("Id", input.id?.trim())}${tag("Title", input.title.trim())}</Folder></FolderSaveRequest>`;
+  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${agencyXml(input.agencyUid)}${tag("CodeRef", input.codeRef?.trim())}${mb3mCustomerIdentityXml(input.customerUid)}${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}${tag("FolderType", input.folderType)}${tag("Id", input.id?.trim())}${tag("Title", input.title.trim())}</Folder></FolderSaveRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "Save", inner, fetchImpl);
   assertOperation(xml);
   const id = mb3mXmlTexts(xml, "Id")[0] || "";
@@ -937,29 +946,14 @@ export function mb3mResetBankAccountCache() {
 /** Personne ou société : les deux propriétés du client Partners. */
 export type Mb3mCustomerKind = "person" | "company";
 
-export const MB3M_CUSTOMER_KIND_MISSING =
-  "Le client du règlement n’est pas identifié comme une personne ou une société.";
-
-/**
- * Client envoyé dans SavePayment.
- * Même forme que l’enregistrement Partners : une société est l’élément Company,
- * une personne l’élément Person (mb3mSaveCompany / mb3mSavePerson).
- * L’Uid est dans cette propriété, puis sur Customer. L’ordre est celui du client :
- * Company ou Person, puis Uid (comme Company puis Id, ou Id puis Person).
- * Un Customer qui n’a que l’Uid est refusé : « Un client est forcément une personne ou une société ».
- */
-export function mb3mPaymentCustomerXml(uid: string, kind: Mb3mCustomerKind) {
-  const id = escapeMb3mXml(uid.trim());
-  const property = kind === "company" ? "Company" : "Person";
-  return `<Customer><${property}><Uid>${id}</Uid></${property}><Uid>${id}</Uid></Customer>`;
-}
-
 /**
  * Encaissement client (FolderService.SavePayment). Le schéma est : FolderId au niveau de la requête,
- * puis Payment, dont les champs de Piece (CreationDate, Customer) viennent avant ceux du règlement
+ * puis Payment. Les champs de Piece (CreationDate, puis l’identité du client) viennent avant ceux du règlement
  * (Amount, CustomModeId, Mode, RefNumber, BankAccountId). Un champ hors de cet ordre est ignoré sans erreur :
  * c’est ce qui laissait MB3M sans client (-609 « Un règlement doit toujours être associé à un client »).
- * Le client part donc toujours ; sans lui, ou sans dire s’il est une personne ou une société, on n’appelle pas MB3M.
+ * Un client déjà créé (Uid connu) part en CustomerIdentity, à la place de Customer.
+ * Customer crée une fiche à la volée ; ce chemin n’en crée pas, donc Customer n’est pas envoyé.
+ * Le type personne ou société n’est pas exigé : l’Uid suffit.
  * FolderId est l’Id du dossier (01-0002007). Un Uid à cet endroit est refusé (-401
  * « Il n'existe pas de dossier avec l'identifiant donné »). Sans Id, le champ est omis.
  */
@@ -973,6 +967,7 @@ export async function mb3mSavePayment(
     mode: string;
     customModeId?: number | null;
     customerUid: string;
+    /** Ignoré : un Uid connu part en CustomerIdentity, sans Customer. */
     customerKind?: Mb3mCustomerKind | null;
     bankAccountUid?: string | null;
   },
@@ -980,13 +975,10 @@ export async function mb3mSavePayment(
 ) {
   const customerUid = (input.customerUid || "").trim();
   if (!customerUid) throw new Mb3mError("Le règlement n’a pas de client MB3M.", -1);
-  if (input.customerKind !== "person" && input.customerKind !== "company") {
-    throw new Mb3mError(MB3M_CUSTOMER_KIND_MISSING, -1);
-  }
   const folderId = input.folderId.trim();
   const bankUid = (input.bankAccountUid || "").trim() || (await mb3mBankAccountUid(input.bank, fetchImpl));
   const custom = input.mode === "Custom" && input.customModeId ? tag("CustomModeId", input.customModeId) : "";
-  const customer = mb3mPaymentCustomerXml(customerUid, input.customerKind);
+  const customer = mb3mCustomerIdentityXml(customerUid);
   const inner = `<FolderSavePaymentRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">${tag("FolderId", folderId)}<Payment>${tag("CreationDate", `${dayStamp(input.date)}T00:00:00`)}${customer}${tag("Amount", money(input.amount))}${custom}${tag("Mode", input.mode.trim())}${tag("RefNumber", input.reference.trim())}${tag("BankAccountId", bankUid)}</Payment></FolderSavePaymentRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "SavePayment", inner, fetchImpl);
   assertOperation(xml);
@@ -1485,7 +1477,7 @@ export async function mb3mAddInvoice(
 ) {
   const replaces = (input.replacesNumber || "").trim();
   if (replaces) await mb3mGuardOpenPiece(replaces, "remplacer", fetchImpl);
-  const inner = `<FolderAddPiecesRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${escapeMb3mXml(input.folderId.trim())}</FolderId><Invoice>${agencyXml(input.agencyUid)}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", input.dateEnd ? dayStamp(input.dateEnd) : "")}${tag("DateStart", input.dateStart ? dayStamp(input.dateStart) : "")}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("InvoiceLine", input.lines, input.agencyUid)}</Lines>${travelersXml(input.travelers)}</Invoice></FolderAddPiecesRequest>`;
+  const inner = `<FolderAddPiecesRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${escapeMb3mXml(input.folderId.trim())}</FolderId><Invoice>${agencyXml(input.agencyUid)}${mb3mCustomerIdentityXml(input.customerUid)}${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", input.dateEnd ? dayStamp(input.dateEnd) : "")}${tag("DateStart", input.dateStart ? dayStamp(input.dateStart) : "")}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("InvoiceLine", input.lines, input.agencyUid)}</Lines>${travelersXml(input.travelers)}</Invoice></FolderAddPiecesRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "AddPieces", inner, fetchImpl);
   assertOperation(xml);
   return pieceIdentity(xml, "Invoice");
@@ -1584,7 +1576,7 @@ export async function mb3mAddCreditNote(
 ) {
   assertMb3mCreditNoteAllowed();
   const agency = agencyXml(input.agencyUid);
-  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${agency}<CreditNotes><CreditNote>${agency}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", dayStamp(input.dateEnd))}${tag("DateStart", dayStamp(input.dateStart))}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("CreditNoteLine", input.lines, input.agencyUid)}</Lines></CreditNote></CreditNotes><CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("FolderType", input.folderType)}${tag("Id", input.folderId.trim())}${tag("Title", input.folderTitle.trim())}</Folder></FolderSaveRequest>`;
+  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${agency}<CreditNotes><CreditNote>${agency}${mb3mCustomerIdentityXml(input.customerUid)}${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", dayStamp(input.dateEnd))}${tag("DateStart", dayStamp(input.dateStart))}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("CreditNoteLine", input.lines, input.agencyUid)}</Lines></CreditNote></CreditNotes>${mb3mCustomerIdentityXml(input.customerUid)}${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("FolderType", input.folderType)}${tag("Id", input.folderId.trim())}${tag("Title", input.folderTitle.trim())}</Folder></FolderSaveRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "Save", inner, fetchImpl);
   assertOperation(xml);
   return { number: pieceNumber(xml, "CreditNote") };
