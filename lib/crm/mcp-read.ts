@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { formatAgencyFeePercent, loadResolvedAgencyFees, type ResolvedAgencyFee } from "@/lib/crm/agency-fee-rate";
+import { commercialDiscountPublic } from "@/lib/crm/commercial-discount";
 import { loadAgencyAccounts } from "@/lib/crm/agency-accounts";
 import { attachSearchMatches, attachSearchTokens } from "@/lib/crm/attach-search";
 import { adminBadges } from "@/lib/crm/admin-badges";
@@ -894,8 +895,17 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
   } catch (err) {
     logRead("responsables", err as { code?: string; message?: string });
   }
+  let remise: ReturnType<typeof commercialDiscountPublic> = null;
+  const storedRemise = await admin.from("crm_bookings").select("remise_type, remise_value").eq("id", booking.id);
+  if (storedRemise.error) {
+    if (storedRemise.error.code !== "42703" && storedRemise.error.code !== "PGRST204") logRead("remise", storedRemise.error);
+  } else {
+    const row = Array.isArray(storedRemise.data) ? storedRemise.data[0] : storedRemise.data;
+    remise = commercialDiscountPublic(row as { remise_type?: unknown; remise_value?: unknown } | null);
+  }
   return {
     ...bookingLine(booking, names, amounts, companies),
+    remise,
     en_charge: people.owner?.name ?? null,
     cree_par: people.createdBy?.name ?? null,
     intervenants: people.intervenants.map((person) => person.name),
@@ -1456,7 +1466,7 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
   if (!id && !reference) return { message: "Indiquez l’identifiant ou la référence du dossier." };
   let query = admin
     .from("crm_bookings")
-    .select("id, reference, title, destination, client_settles_stay, agency_commission, customer_id, billing_customer_id");
+    .select("id, reference, title, destination, currency, client_settles_stay, agency_commission, customer_id, billing_customer_id");
   if (id) {
     if (!UUID.test(id)) return { message: "Identifiant inconnu." };
     query = query.eq("id", id);
@@ -1473,6 +1483,7 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
     reference: string;
     title: string | null;
     destination: string | null;
+    currency?: string | null;
     client_settles_stay: boolean | null;
     agency_commission?: boolean | null;
     customer_id?: string | null;

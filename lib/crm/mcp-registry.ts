@@ -842,7 +842,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_dossier",
     write: true,
     description:
-      "Met à jour les notes, les dates, le titre, la couverture, le statut, la commission d’agence, la société de facturation ou une dépense (depense : carte_id, libelle, quantite, prix_unitaire, montant, valider ; le montant vaut quantité × prix unitaire, le montant seul recalcule le prix unitaire ; valider affiche au client une dépense automatique « à valider ») d’un dossier, puis le grand livre. titre est le nom du séjour. statut : non_visible, visible ou annule. Les anciens mots restent acceptés : brouillon et devis deviennent non_visible, confirme devient visible. visible montre le séjour et le confirme, sans prévenir le client : publier_carnet envoie le message. Un séjour visible peut recevoir la carte hôtel. non_visible le cache. annule l’annule ; non_visible le rouvre, caché. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. La réponse renvoie statut non_visible, visible ou annule.",
+      "Met à jour les notes, les dates, le titre, la couverture, le statut, la commission d’agence, la remise commerciale, la société de facturation ou une dépense (depense : carte_id, libelle, quantite, prix_unitaire, montant, valider ; le montant vaut quantité × prix unitaire, le montant seul recalcule le prix unitaire ; valider affiche au client une dépense automatique « à valider ») d’un dossier, puis le grand livre. titre est le nom du séjour. statut : non_visible, visible ou annule. Les anciens mots restent acceptés : brouillon et devis deviennent non_visible, confirme devient visible. visible montre le séjour et le confirme, sans prévenir le client : publier_carnet envoie le message. Un séjour visible peut recevoir la carte hôtel. non_visible le cache. annule l’annule ; non_visible le rouvre, caché. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. remise : { type: montant ou pourcentage, valeur } retire des euros du total TTC après commissions et frais, ou null pour l’effacer. Un pourcentage est entre 0 et 100. Le total ne devient pas négatif. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. La réponse renvoie statut non_visible, visible ou annule.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -887,6 +887,14 @@ export const MCP_TOOLS: ToolDef[] = [
         .max(120)
         .optional()
         .describe("Mention de la couverture importée. Défaut : Image générée par IA"),
+      remise: z
+        .object({
+          type: z.enum(["montant", "pourcentage"]).describe("montant en euros, ou pourcentage"),
+          valeur: z.number().describe("Euros, ou pourcentage entre 0 et 100"),
+        })
+        .nullable()
+        .optional()
+        .describe("Remise commerciale sur le total TTC, après commissions et frais. null retire la remise."),
       depense: z
         .object({
           carte_id: z.string().trim().describe("Identifiant de la dépense (carte_id d’une ligne kind « expense » de fiche_dossier)"),

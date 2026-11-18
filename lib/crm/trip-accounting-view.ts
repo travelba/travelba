@@ -2,7 +2,8 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { mb3mRealm } from "./mb3m";
-import { mb3mDossierLines, mb3mPieceStale, type Mb3mLedgerRow } from "./mb3m-account";
+import { mb3mDossierLines, mb3mPieceStale, withCommercialDiscountLine, type Mb3mLedgerRow } from "./mb3m-account";
+import { loadStayDiscountEuros } from "./displayed-stay";
 import { isStayAmountKind } from "./bookings";
 import {
   accountLines,
@@ -75,7 +76,7 @@ export async function loadDossierAccountingInputs(admin: SupabaseClient, booking
 /** Le bloc « Comptabilité du voyage » de l’onglet Argent. */
 export async function buildTripAccountingView(
   admin: SupabaseClient,
-  booking: { id: string; client_settles_stay?: boolean | null },
+  booking: { id: string; client_settles_stay?: boolean | null; currency?: string | null },
   items: { id?: string | null; kind?: string | null; details?: Record<string, unknown> | null }[],
   inputs: DossierAccountingInputs,
   options?: { skipOutgoingQueue?: boolean }
@@ -91,7 +92,12 @@ export async function buildTripAccountingView(
   ).catch(() => []);
   const sales = saleLines(inputs.charges, booking.id);
   const { lines, unsold } = accountLines(sales, [...inputs.costs, ...pending]);
-  const mbLines = mb3mDossierLines(inputs.charges, items, marginByTransaction(lines));
+  const inEuros = !booking.currency || booking.currency.toUpperCase() === "EUR";
+  const remise = inEuros ? await loadStayDiscountEuros(admin, booking.id).catch(() => 0) : 0;
+  const mbLines = withCommercialDiscountLine(
+    mb3mDossierLines(inputs.charges, items, marginByTransaction(lines)),
+    remise
+  );
   const valid = inputs.pieces.filter((row) => row.printed_at && !row.credited_at);
   const stale = valid.filter((row) =>
     mb3mPieceStale({ transactionIds: row.transaction_ids || [], signature: row.line_signature }, mbLines)
@@ -110,10 +116,18 @@ export async function buildTripAccountingView(
   if (booking.client_settles_stay && unsold.some((cost) => cost.bookingItemId && stayItemIds.has(cost.bookingItemId))) {
     anomalies.push("Le client règle le séjour sur sa carte : un coût est rattaché à une carte sans vente au grand livre.");
   }
+  const raw = tripTotals(lines, unsold);
+  const cut = Math.min(Math.max(0, remise), Math.max(0, raw.sale));
+  const roundedCut = Math.round(cut * 100) / 100;
   return {
     lines,
     unsold,
-    totals: tripTotals(lines, unsold),
+    totals: {
+      ...raw,
+      sale: Math.round((raw.sale - roundedCut) * 100) / 100,
+      margin: Math.round((raw.margin - roundedCut) * 100) / 100,
+      remise: roundedCut,
+    },
     proposed,
     state: tripAccountingState({
       proposedCount: proposed.length,

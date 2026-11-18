@@ -34,6 +34,7 @@ import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
+import { readCommercialDiscount } from "@/lib/crm/commercial-discount";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { loadClientLedger } from "@/lib/crm/client-ledger-load";
@@ -166,6 +167,7 @@ export async function ClientStayRest({
   });
   const agencyFee = await agencyFeeForBooking(supabase, b);
   const stayTotal = bookingTotalFromItems(allItems);
+  const discount = readCommercialDiscount(b);
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: b.agency_commission === true,
@@ -176,6 +178,7 @@ export async function ClientStayRest({
     extras: feeExtras,
     ticketingFee,
     ticketCount,
+    discount,
   });
   const payerLabel = bookingPayerLabel(b, payerCompanies);
   const encoursPay =
@@ -313,6 +316,7 @@ export async function ClientStayRest({
               expenses: expenseChoices,
               extras: feeExtras,
               ticketingFee,
+              discount,
             })}
           </p>
           {insurances.map((item) => {

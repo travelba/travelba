@@ -55,6 +55,8 @@ import {
   type AgencyFeeSource,
 } from "@/lib/crm/agency-fee-rate";
 import { AgencyFeeRateField } from "@/components/admin/AgencyFeeRateField";
+import { readCommercialDiscount } from "@/lib/crm/commercial-discount";
+import { BookingDiscountPanel } from "@/components/admin/BookingDiscountPanel";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee } from "@/lib/crm/ticketing-fee";
 import { passengersFromDetails, peopleNotOnStay } from "@/lib/crm/document-passengers";
@@ -1318,7 +1320,7 @@ export function BookingEditor({
   const payerCaption = payingCompanyCaption(payerKind, payerCompanies, payerCompanyId);
   const previewFeeRate = feeChoice === "compte" ? inheritedFee.inheritedRate : Number(feeChoice);
   const previewFeeSource: AgencyFeeSource = feeChoice === "compte" ? inheritedFee.inheritedSource : "dossier";
-  const stayAmount = stayPriceWithExpenses({
+  const stayPriceInput = {
     stayTotal: bookingTotalFromItems(pricedItems),
     agencyCommission,
     agencyFeeRate: previewFeeRate,
@@ -1332,6 +1334,11 @@ export function BookingEditor({
       travelerCount: travelers.length,
       feeMode: booking.fee_mode,
     }),
+  };
+  const grossStay = stayPriceWithExpenses(stayPriceInput);
+  const stayAmount = stayPriceWithExpenses({
+    ...stayPriceInput,
+    discount: readCommercialDiscount(booking),
   });
   const statementCustomer = billingCustomer || customer;
   // Cartes qui composent le montant : un aller-retour compte une fois, comme dans le total stocké.
@@ -2685,6 +2692,17 @@ export function BookingEditor({
               onCommissionChange={setCommissionOverride}
               onArgentRefresh={refreshArgent}
               presets={expensePresets}
+            />
+            <BookingDiscountPanel
+              bookingId={booking.id}
+              currency={booking.currency}
+              remiseType={booking.remise_type}
+              remiseValue={booking.remise_value}
+              gross={grossStay}
+              net={accounting?.totals.cost ?? null}
+              margin={accounting?.totals.margin ?? null}
+              remiseApplied={accounting?.totals.remise ?? 0}
+              onArgentRefresh={refreshArgent}
             />
           </section>
 

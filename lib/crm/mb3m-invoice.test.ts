@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { mb3mLineSignature } from "./mb3m-account";
+import { mb3mSoapLines } from "./mb3m-conform";
 import { Mb3mError, MB3M_CREDIT_NOTE_REFUSAL } from "./mb3m";
 import {
   buildMb3mInvoiceContext,
@@ -246,6 +247,7 @@ describe("facture MB3M", () => {
       ],
     });
     assert.equal(ctx.amount, 1050);
+    assert.equal(ctx.lines.some((line) => line.transactionId === "remise-commerciale"), false);
     assert.deepEqual(
       ctx.lines.map((line) => [line.transactionId, line.amount, line.activityId]),
       [
@@ -257,6 +259,51 @@ describe("facture MB3M", () => {
     assert.equal(ctx.destinationIso, "FR");
     assert.equal(ctx.destination, "France");
     assert.equal(mb3mInvoiceBlocker(ctx), null);
+  });
+
+  it("porte la remise en ligne négative Custom, avec les actions déjà autorisées", () => {
+    arm();
+    const ctx = buildMb3mInvoiceContext({
+      booking: booking({ remise_type: "percent", remise_value: 10 }),
+      items: [
+        { id: "hotel-1", kind: "hotel", amount: 1000, lifecycle: "active" },
+        { id: "fee-1", kind: "expense", amount: 50, lifecycle: "active" },
+      ],
+      travelers: [{ first_name: "Ada", last_name: "Lovelace" }],
+      payer: payer(),
+      companies: [],
+      charges: [
+        {
+          id: "hotel-debit",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 1000,
+          label: "Hôtel · Avoriaz",
+          external_id: "booking:b:item:hotel-1",
+          booking_id: bookingId,
+        },
+        {
+          id: "fee-debit",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 50,
+          label: "Dépense · Extra",
+          external_id: "booking:b:expense:fee-1",
+          booking_id: bookingId,
+        },
+      ],
+    });
+    const remise = ctx.lines.find((line) => line.transactionId === "remise-commerciale");
+    assert.equal(remise?.amount, -105);
+    assert.equal(remise?.customCode, "4");
+    assert.equal(ctx.amount, 945);
+    const soap = mb3mSoapLines(ctx.lines, 0.01).find((line) => line.customType?.complementary === "4");
+    assert.equal(soap?.type, "Custom");
+    assert.equal(soap?.label, "Remise commerciale");
+    assert.equal(soap?.netPriceUnit, -105);
+    assert.equal(soap?.customType?.lineType, 4);
   });
 
   it("n’invente pas un pays à partir d’une station et reprend l’adresse du domicile", () => {
