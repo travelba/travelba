@@ -40,7 +40,7 @@ import {
   mb3mPaymentAccount,
   mb3mPaymentReference,
   mb3mResetBankAccountCache,
-  mb3mPaymentCustomerXml,
+  mb3mCustomerIdentityXml,
   mb3mSavePayment,
   mb3mSavePerson,
   mb3mPrestationActivityId,
@@ -203,6 +203,7 @@ describe("client MB3M Partners", () => {
       }
     );
     assert.ok(body.includes("<Folder><Agency><Uid>ba3e9d2d-c2a5-4872-b5d2-99e74b483831</Uid></Agency><CustomerIdentity>"));
+    assert.ok(body.includes(mb3mCustomerIdentityXml("6759c8c7-2cb1-40a7-a9e8-91eaf71c8623")));
     assert.deepEqual(folder, { id: "01-0002000", uid: "b74cb0fe-afc2-4210-92a1-202610141546" });
 
     let invoiceBody = "";
@@ -222,6 +223,7 @@ describe("client MB3M Partners", () => {
       }
     );
     assert.ok(invoiceBody.includes("<Invoice><Agency><Uid>ba3e9d2d-c2a5-4872-b5d2-99e74b483831</Uid></Agency><CustomerIdentity>"));
+    assert.ok(invoiceBody.includes(mb3mCustomerIdentityXml("6759c8c7-2cb1-40a7-a9e8-91eaf71c8623")));
     assert.equal(invoiceBody.includes("<ProviderId>"), false);
   });
 
@@ -1079,18 +1081,16 @@ describe("règlements MB3M", () => {
     assert.equal(saved.number, "2154");
     assert.equal(matched.id, "900");
     assert.equal(bodies[0]?.action, '"http://schemas.mb3m.fr/Partners/IFolderService/SavePayment"');
-    const saveOrder = [
-      "<FolderId>01-0002007</FolderId>",
-      "<Payment>",
-      "<CreationDate>2026-10-30T00:00:00</CreationDate>",
-      mb3mPaymentCustomerXml("fb3e41d2-6be4-4998-aef4-851839cc48f3", "company"),
-      "<Amount>2639.96</Amount>",
-      "<Mode>BankTransfer</Mode>",
-      "<RefNumber>CRM 0173733f-95a6-4115-8e49-e81cb3e875c5</RefNumber>",
-      "<BankAccountId>e02187e1-00e0-4a31-a3f2-bd21eadcd731</BankAccountId>",
-    ].map((needle) => (bodies[0]?.body || "").indexOf(needle));
-    assert.ok(saveOrder.every((index) => index >= 0));
-    assert.deepEqual(saveOrder, [...saveOrder].sort((left, right) => left - right));
+    const identity = mb3mCustomerIdentityXml("fb3e41d2-6be4-4998-aef4-851839cc48f3");
+    assert.equal(identity, "<CustomerIdentity><Uid>fb3e41d2-6be4-4998-aef4-851839cc48f3</Uid></CustomerIdentity>");
+    const request = (bodies[0]?.body || "").match(/<FolderSavePaymentRequest[\s\S]*<\/FolderSavePaymentRequest>/)?.[0];
+    assert.equal(
+      request,
+      `<FolderSavePaymentRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>01-0002007</FolderId><Payment><CreationDate>2026-10-30T00:00:00</CreationDate>${identity}<Amount>2639.96</Amount><Mode>BankTransfer</Mode><RefNumber>CRM 0173733f-95a6-4115-8e49-e81cb3e875c5</RefNumber><BankAccountId>e02187e1-00e0-4a31-a3f2-bd21eadcd731</BankAccountId></Payment></FolderSavePaymentRequest>`
+    );
+    assert.equal(request?.includes("<Customer>"), false);
+    assert.equal(request?.includes("<Company>"), false);
+    assert.equal(request?.includes("<Person>"), false);
     assert.equal(bodies[1]?.action, '"http://schemas.mb3m.fr/Partners/IFolderService/WriteMatching"');
     const matchOrder = ["<Amount>2274.96</Amount>", "<PaymentNumber>2154</PaymentNumber>", "<PieceNumber>2152</PieceNumber>"].map(
       (needle) => (bodies[1]?.body || "").indexOf(needle)
@@ -1117,29 +1117,35 @@ describe("règlements MB3M", () => {
       () => mb3mSavePayment({ ...base, folderId: "01-1", customerUid: "" }, fetchImpl),
       (error: unknown) => error instanceof Mb3mError && /client/.test(error.message)
     );
-    await assert.rejects(
-      () => mb3mSavePayment({ ...base, folderId: "01-1", customerUid: "c-uid", customerKind: null }, fetchImpl),
-      (error: unknown) => error instanceof Mb3mError && /personne ou une société/.test(error.message)
-    );
     assert.deepEqual(calls, []);
     const folderUid = "1f0c002c-615e-422b-aff6-202611161249";
-    const person = mb3mPaymentCustomerXml("c-uid", "person");
+    const identity = mb3mCustomerIdentityXml("c-uid");
+    assert.equal(identity, "<CustomerIdentity><Uid>c-uid</Uid></CustomerIdentity>");
     await mb3mSavePayment({ ...base, folderId: "", customerUid: "c-uid" }, fetchImpl);
     const emptyFolder = calls.join(" ");
-    assert.ok(emptyFolder.includes(person));
-    assert.match(person, /<Person><Uid>c-uid<\/Uid><\/Person>/);
+    assert.ok(emptyFolder.includes(identity));
+    assert.equal(emptyFolder.includes("<Customer>"), false);
+    assert.doesNotMatch(emptyFolder, /<Person>/);
+    assert.doesNotMatch(emptyFolder, /<Company>/);
     assert.doesNotMatch(emptyFolder, /<FolderId>/);
     assert.doesNotMatch(emptyFolder, new RegExp(folderUid));
     assert.doesNotMatch(emptyFolder, /BankAccountId/);
+    calls.length = 0;
+    await mb3mSavePayment({ ...base, folderId: "01-1", customerUid: "c-uid", customerKind: null }, fetchImpl);
+    const unknownKind = calls.join(" ");
+    assert.ok(unknownKind.includes(identity));
+    assert.equal(unknownKind.includes("<Customer>"), false);
+    assert.match(unknownKind, /<FolderId>01-1<\/FolderId>/);
     calls.length = 0;
     await mb3mSavePayment({ ...base, folderId: "01-0002007", customerUid: "c-uid" }, fetchImpl);
     const withId = calls.join(" ");
     assert.match(withId, /<FolderId>01-0002007<\/FolderId>/);
     assert.doesNotMatch(withId, new RegExp(folderUid));
-    assert.ok(withId.includes(person));
+    assert.ok(withId.includes(identity));
+    assert.equal(withId.includes("<Customer>"), false);
   });
 
-  it("SavePayment : société porte Company et l’Uid, personne porte Person, type inconnu n’appelle pas", async () => {
+  it("SavePayment : client existant envoie CustomerIdentity, sans Customer, même si le type est inconnu", async () => {
     arm();
     mb3mResetBankAccountCache();
     const calls: string[] = [];
@@ -1159,23 +1165,25 @@ describe("règlements MB3M", () => {
       bankAccountUid: "bank-uid",
     };
     const companyUid = "fb3e41d2-6be4-4998-aef4-851839cc48f3";
+    const company = mb3mCustomerIdentityXml(companyUid);
+    assert.equal(company, `<CustomerIdentity><Uid>${companyUid}</Uid></CustomerIdentity>`);
     await mb3mSavePayment({ ...base, customerUid: companyUid, customerKind: "company" }, fetchImpl);
-    const company = mb3mPaymentCustomerXml(companyUid, "company");
-    assert.equal(company, `<Customer><Company><Uid>${companyUid}</Uid></Company><Uid>${companyUid}</Uid></Customer>`);
     assert.ok(calls[0]?.includes(company));
+    assert.equal(calls[0]?.includes("<Customer>"), false);
+    assert.equal(calls[0]?.includes("<Company>"), false);
     assert.equal(calls[0]?.includes("<Person>"), false);
     calls.length = 0;
     await mb3mSavePayment({ ...base, customerUid: "person-uid", customerKind: "person" }, fetchImpl);
-    const person = mb3mPaymentCustomerXml("person-uid", "person");
-    assert.equal(person, "<Customer><Person><Uid>person-uid</Uid></Person><Uid>person-uid</Uid></Customer>");
+    const person = mb3mCustomerIdentityXml("person-uid");
+    assert.equal(person, "<CustomerIdentity><Uid>person-uid</Uid></CustomerIdentity>");
     assert.ok(calls[0]?.includes(person));
+    assert.equal(calls[0]?.includes("<Customer>"), false);
     assert.equal(calls[0]?.includes("<Company>"), false);
     calls.length = 0;
-    await assert.rejects(
-      () => mb3mSavePayment({ ...base, customerUid: companyUid }, fetchImpl),
-      (error: unknown) => error instanceof Mb3mError && /personne ou une société/.test(error.message)
-    );
-    assert.deepEqual(calls, []);
+    await mb3mSavePayment({ ...base, customerUid: companyUid }, fetchImpl);
+    assert.ok(calls[0]?.includes(company));
+    assert.equal(calls[0]?.includes("<Customer>"), false);
+    assert.equal(calls.length > 0, true);
   });
 
   it("lit les règlements déjà saisis pour ce client", async () => {

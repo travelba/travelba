@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  MB3M_CUSTOMER_KIND_MISSING,
   Mb3mError,
   mb3mFindCustomerPayments,
   mb3mPaymentAccount,
@@ -87,7 +86,7 @@ export function mb3mIsPaymentGap(message: string | null | undefined) {
 /**
  * Société si le dossier est facturé à une société (société du séjour, payer société, fiche société).
  * Personne si le séjour est particulier, ou si on a vérifié qu’il n’y a pas de société.
- * Sinon le type est inconnu : SavePayment ne part pas.
+ * Le règlement d’un client déjà dans MB3M ne s’en sert pas : l’Uid part en CustomerIdentity.
  */
 export function mb3mBilledCustomerKind(input: {
   payerKind?: string | null;
@@ -97,36 +96,6 @@ export function mb3mBilledCustomerKind(input: {
   if ((input.billingCompanyId || "").trim() || input.payerKind === "company" || input.company === true) return "company";
   if (input.payerKind === "personal" || input.company === false) return "person";
   return null;
-}
-
-/** Le type passé par la facture, sinon le dossier, sinon la fiche MB3M de l’Uid porté par la pièce. */
-async function paymentCustomerKind(
-  supabase: SupabaseClient,
-  input: {
-    customerKind?: Mb3mCustomerKind | null;
-    customerUid: string;
-    payerKind?: string | null;
-    billingCompanyId?: string | null;
-  }
-): Promise<Mb3mCustomerKind | null> {
-  if (input.customerKind === "person" || input.customerKind === "company") return input.customerKind;
-  const fromBooking = mb3mBilledCustomerKind({
-    payerKind: input.payerKind,
-    billingCompanyId: input.billingCompanyId,
-  });
-  if (fromBooking) return fromBooking;
-  const uid = input.customerUid.trim();
-  if (!uid) return null;
-  const party = await supabase
-    .from("crm_mb3m_parties")
-    .select("billing_company_id")
-    .eq("realm", mb3mRealm())
-    .eq("mb3m_uid", uid);
-  if (party.error || !party.data?.length) return null;
-  const rows = party.data as { billing_company_id: string | null }[];
-  return mb3mBilledCustomerKind({
-    company: rows.some((row) => Boolean(row.billing_company_id)),
-  });
 }
 
 export function withoutPaymentGap(warning: string | null | undefined) {
@@ -588,7 +557,7 @@ export async function recordMb3mInvoicePayments(
     bookingId: string;
     folderId: string;
     customerUid: string;
-    /** Société ou personne du client facturé. Absent : on le lit sur le dossier, puis sur la fiche MB3M de l’Uid. */
+    /** Ignoré à l’envoi : un client déjà créé est identifié par son Uid. */
     customerKind?: Mb3mCustomerKind | null;
     invoiceNumber: string;
     invoiceAmount: number;
@@ -805,20 +774,11 @@ export async function recordMb3mInvoicePayments(
     folderCompanyName: matchContext.folderCompanyName,
     peers: matchContext.peers,
   });
-  const customerKind = await paymentCustomerKind(supabase, {
-    customerKind: input.customerKind,
-    customerUid: input.customerUid,
-    payerKind: stay.payer_kind,
-    billingCompanyId: stay.billing_company_id,
-  });
   const reglements = await applyMb3mPaymentPlans(
     { folderId: input.folderId, invoiceNumber: input.invoiceNumber, plans: [...plans, ...gdsPlans] },
     {
-      savePayment: (plan) => {
-        if (customerKind !== "person" && customerKind !== "company") {
-          return Promise.reject(new Mb3mError(MB3M_CUSTOMER_KIND_MISSING, -1));
-        }
-        return mb3mSavePayment({
+      savePayment: (plan) =>
+        mb3mSavePayment({
           folderId: input.folderId,
           amount: plan.credit.amount,
           date: plan.credit.date,
@@ -827,9 +787,7 @@ export async function recordMb3mInvoicePayments(
           mode: plan.mode,
           customModeId: plan.customModeId,
           customerUid: input.customerUid,
-          customerKind,
-        });
-      },
+        }),
       writeMatching: (plan, paymentNumber) =>
         mb3mWriteMatching({
           paymentNumber,
