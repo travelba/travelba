@@ -290,7 +290,7 @@ export const MB3M_ALLOWED_CALLS = [
   ["FolderService", "AddPieces"],
   ["FolderService", "CancelInvoice"],
   ["FolderService", "SavePayment"],
-  ["FolderService", "WriteMatching"],
+  ["PieceService", "WriteMatching"],
   ["PieceService", "Get"],
   ["PieceService", "GetInvoice"],
   ["PieceService", "ChangeFolder"],
@@ -898,7 +898,9 @@ export function mb3mPaymentAccount(
     return { mode: "PaymentCard", bank, customModeId: null, warning: null };
   }
   if (source === "stripe" || text.includes("stripe") || text.includes("paiement en ligne") || text.includes("en ligne")) {
-    return { mode: "OnlinePaymentCard", bank, customModeId: null, warning: null };
+    // OnlinePaymentCard (« Carte bancaire (paiement en ligne) ») est refusé par MB3M pour un acompte
+    // client, donc sur une pro forma non imprimée. PaymentCard (carte simple) est le mode sûr.
+    return { mode: "PaymentCard", bank, customModeId: null, warning: null };
   }
   if (source === "pliant" || /carte|card|visa|mastercard|amex/.test(text)) {
     return { mode: "PaymentCard", bank, customModeId: null, warning: null };
@@ -987,15 +989,19 @@ export async function mb3mSavePayment(
   return { number };
 }
 
-/** Lettrage du règlement sur la facture, pour le montant qui reste dû. */
+/**
+ * Lettrage du règlement sur la facture, pour le montant qui reste dû.
+ * WriteMatching est une opération de PieceService (PieceMatchingRequest), pas de FolderService
+ * (ContractFilter). Source : le règlement. Cible : la facture. Les deux sont des PieceIdentity.
+ */
 export async function mb3mWriteMatching(
   input: { paymentNumber: string; invoiceNumber: string; amount: number },
   fetchImpl?: FetchImpl
 ) {
-  const inner = `<FolderWriteMatchingRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Matching>${tag("Amount", money(input.amount))}${tag("PaymentNumber", input.paymentNumber.trim())}${tag("PieceNumber", input.invoiceNumber.trim())}</Matching></FolderWriteMatchingRequest>`;
-  const xml = await mb3mSoap("FolderService", "IFolderService", "WriteMatching", inner, fetchImpl);
+  const inner = `<PieceMatchingRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Source>${tag("Number", input.paymentNumber.trim())}</Source><Target>${tag("Number", input.invoiceNumber.trim())}</Target>${tag("Amount", money(input.amount))}</PieceMatchingRequest>`;
+  const xml = await mb3mSoap("PieceService", "IPieceService", "WriteMatching", inner, fetchImpl);
   assertOperation(xml);
-  return { id: mb3mXmlText(xml, "Id") || mb3mXmlText(xml, "Number") };
+  return { id: mb3mXmlText(xml, "Uid") || mb3mXmlText(xml, "Id") || mb3mXmlText(xml, "Number") };
 }
 
 export type Mb3mRemotePayment = {
@@ -1061,6 +1067,8 @@ function paymentKind(block: string) {
 function isPaymentBlock(block: string) {
   const tag = /^<([A-Za-z]+)/.exec(block)?.[1] || "";
   if (tag === "Payment" || tag === "PaymentSummary") return true;
+  const flag = /<IsPayment>\s*(true|false)\s*</i.exec(block)?.[1];
+  if (flag) return flag.toLowerCase() === "true";
   return /paye?ment|r[eè]glement|encaissement/i.test(paymentKind(block));
 }
 
@@ -1099,6 +1107,7 @@ function paymentFromBlock(block: string): Mb3mRemotePayment | null {
   const date = (
     mb3mXmlText(head, "Date") ||
     mb3mXmlText(head, "CreationDate") ||
+    mb3mXmlText(head, "DateCreation") ||
     mb3mXmlText(head, "PieceDate") ||
     mb3mXmlText(head, "DatePayment") ||
     mb3mXmlText(head, "PaymentDate")
