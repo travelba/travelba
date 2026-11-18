@@ -538,6 +538,14 @@ async function upsertItemsAndTravelers(
         if (error) throw dbFailure(error, "Carte non enregistrée.");
         if (inserted?.id) {
           createdIds.push(inserted.id);
+          if (kind === "hotel") {
+            try {
+              const { scheduleHotelWebEnrichment } = await import("@/lib/crm/hotel-web-schedule");
+              scheduleHotelWebEnrichment(String(inserted.id));
+            } catch (scheduleError) {
+              console.warn("[hotel-web]", scheduleError instanceof Error ? scheduleError.message : "planification");
+            }
+          }
           if (replacing) {
             const { error: retireError } = await supabase
               .from("crm_booking_items")

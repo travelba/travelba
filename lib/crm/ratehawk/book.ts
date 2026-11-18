@@ -458,6 +458,12 @@ async function linkDossier(supabase: SupabaseClient, row: BookingRow) {
     await supabase.from("crm_ratehawk_bookings").update({ crm_booking_id: bookingId, link_error: inserted.error.message }).eq("id", row.id);
     return;
   }
+  try {
+    const { scheduleHotelWebEnrichment } = await import("@/lib/crm/hotel-web-schedule");
+    scheduleHotelWebEnrichment(String((inserted.data as { id: string }).id));
+  } catch (scheduleError) {
+    console.warn("[hotel-web]", scheduleError instanceof Error ? scheduleError.message : "planification");
+  }
   await supabase
     .from("crm_ratehawk_bookings")
     .update({ crm_booking_id: bookingId, crm_booking_item_id: (inserted.data as { id: string }).id, link_error: null })
