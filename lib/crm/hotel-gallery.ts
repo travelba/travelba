@@ -539,6 +539,10 @@ export function hotelStayFacts(item: HotelLike): HotelFact[] {
   if (leave) facts.push({ label: "Départ", value: leave });
   const address = detailStr(asItem(item), "address");
   if (address) facts.push({ label: "Adresse", value: address });
+  const description = detailStr(asItem(item), "description");
+  if (description) facts.push({ label: "Présentation", value: description });
+  const website = detailStr(asItem(item), "website");
+  if (website) facts.push({ label: "Site", value: website });
   const included = detailList(asItem(item), "included");
   if (included.length) facts.push({ label: benefitsLabel(item), lines: included });
   const conditions = detailList(asItem(item), "conditions");

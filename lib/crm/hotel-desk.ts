@@ -216,7 +216,7 @@ export function hotelMailSubjectKey(subject: string) {
     .trim();
 }
 
-function isAgencyMailbox(from: string) {
+export function isAgencyMailbox(from: string) {
   const email = emailAddress(from);
   if (!email || !email.includes("@")) return true;
   if (email === HOTEL_DESK_FROM) return true;
@@ -356,6 +356,8 @@ export function classifyHotelMail(input: {
   cues?: HotelReplyCue[];
   /** Clé du fil déjà lié, quand le message vient de ce fil. */
   threadKey?: string | null;
+  /** Texte des .eml et des mails inline. Le corps reste prioritaire s’il a déjà un lien. */
+  nestedText?: string;
 }): HotelMailClass {
   const subjectKey = hotelMailSubjectKey(input.subject);
   const expected = input.keys.map((key) => hotelMailSubjectKey(key)).filter(Boolean);
@@ -413,7 +415,7 @@ export function classifyHotelMail(input: {
     direction,
     countsAsReply: direction === "in" && !automatic,
     body,
-    link: direction === "in" ? hotelReplyLink(cleaned || input.body) : null,
+    link: direction === "in" ? hotelReplyLink(cleaned || input.body) || hotelReplyLink(input.nestedText || "") : null,
     notice: agency ? "send" : automatic ? "auto" : "reply",
     via: picked?.via || "subject",
   };

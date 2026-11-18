@@ -64,6 +64,7 @@ import {
   canConfirmCarnetPublish,
   publishConfirmHold,
   coverQuery,
+  hiddenClientCards,
   hotelDisplayName,
   keptHiddenFromClient,
   stayNameField,
@@ -88,6 +89,7 @@ import type { ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
 import { DEFAULT_EXPENSE_PRESETS, type ExpensePreset } from "@/lib/crm/expense-presets";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
+import { HiddenCardsCounter } from "@/components/admin/HiddenCards";
 import { BoardingPassSend } from "@/components/admin/BoardingPassSend";
 import { applyExpenseLedgerChange, type ClientLedgerView } from "@/lib/crm/client-ledger";
 import {
@@ -747,6 +749,7 @@ export function BookingEditor({
   const [compact, setCompact] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const pendingStep = useRef<string | null>(null);
+  const [highlightStep, setHighlightStep] = useState<{ id: string; token: number } | null>(null);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const payerCompanies = [...billingCompanies].sort(
     (a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id)
@@ -1274,6 +1277,13 @@ export function BookingEditor({
     Boolean(littleEmperors) &&
     !["cancelled", "canceled"].includes((littleEmperors?.state || "").toLowerCase());
   const factItems = liveSteps ?? items;
+  const hiddenCards = hiddenClientCards(factItems, Boolean(booking.visible_to_client));
+  function jumpToHiddenCard() {
+    const first = hiddenCards[0];
+    if (!first?.id) return;
+    setHighlightStep({ id: first.id, token: Date.now() });
+    showStep(first.id);
+  }
   const facts = staffStayFacts({
     items: factItems,
     savedItems: liveSteps ? items : undefined,
@@ -1623,6 +1633,7 @@ export function BookingEditor({
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <HiddenCardsCounter count={hiddenCards.length} onJump={jumpToHiddenCard} />
               {travelers.length === 0 ? (
                 <button
                   type="button"
@@ -1709,6 +1720,7 @@ export function BookingEditor({
               Prix masqués au client
             </span>
           ) : null}
+          <HiddenCardsCounter count={hiddenCards.length} onJump={jumpToHiddenCard} />
           {ownership ? (
             <ChargeControl
               bookingId={booking.id}
@@ -2408,6 +2420,9 @@ export function BookingEditor({
         onStepsPending={setStepsPending}
         clearedReviewIds={clearedReview}
         onVerify={(ids) => verifyCards(ids)}
+        highlightStepId={highlightStep?.id ?? null}
+        highlightToken={highlightStep?.token ?? 0}
+        onHighlightDone={() => setHighlightStep(null)}
       />
       </div>
       <button

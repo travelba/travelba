@@ -1429,6 +1429,23 @@ body[data-hotel-lock] [data-account-tabs] {
   color: #faf9f6;
 }
 
+@keyframes booking-hidden-flash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(197, 168, 128, 0);
+  }
+  30% {
+    box-shadow: 0 0 0 3px #c5a880;
+    background-color: #f6efe2;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(197, 168, 128, 0);
+  }
+}
+
+.booking-hidden-flash {
+  animation: booking-hidden-flash 1.4s ease;
+}
+
 .admin-af-card {
   background: var(--surface);
   border: 1px solid var(--border);

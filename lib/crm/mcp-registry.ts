@@ -50,6 +50,7 @@ import {
   updateVol,
   validerLecture,
 } from "@/lib/crm/mcp-trip";
+import { enrichirHotel } from "@/lib/crm/hotel-web-run";
 import { inviteClientAccess, setCompanyRole, updateCompanionIdentity, updateHolderProfile } from "@/lib/crm/mcp-account";
 import { updateVoyageur } from "@/lib/crm/traveler-update";
 import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
@@ -142,7 +143,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 143;
+export const MCP_TOOL_CAP = 144;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1538,6 +1539,21 @@ export const MCP_TOOLS: ToolDef[] = [
       voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs du dossier"),
     },
     run: (args) => addHotel(args),
+  },
+  {
+    name: "enrichir_hotel",
+    write: true,
+    openWorld: true,
+    description:
+      "Recherche les informations publiques d’une carte hôtel (adresse, réception, réservations, concierge, site, description en français, photos, heures) et ne remplit que les champs vides. Les sources sont dans details. La carte est marquée à vérifier. La visibilité ne change pas. Aucun message. Sans clé Perplexity, rien n’est écrit par la recherche.",
+    input: {
+      carte_id: z.string().trim().max(80).describe("Identifiant de la carte hôtel"),
+    },
+    run: async (args) => {
+      const result = await enrichirHotel(args);
+      if (result.statut === "introuvable" || result.statut === "pas_hotel") throw new McpWriteError(result.message);
+      return result;
+    },
   },
   {
     name: "modifier_hotel",

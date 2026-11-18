@@ -15,6 +15,7 @@ import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { readDocumentAmount } from "@/lib/crm/booking-issues";
 import { ticketTravelerNames } from "@/lib/crm/document-passengers";
 import {
+  cardHiddenFromClient,
   cardVisibilityUpdate,
   documentsForItems,
   flightCardSubtitle,
@@ -38,6 +39,7 @@ import { flightCheckinViews, type StoredFlightCheckin } from "@/lib/crm/online-c
 import { OnlineCheckinBadge } from "@/components/admin/OnlineCheckinMark";
 import { hasReviewMark, withoutReviewMark, reviewDoubts } from "@/lib/crm/review-doubt";
 import { Icon } from "@/components/crm/icons";
+import { HiddenCardBadge } from "@/components/admin/HiddenCards";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { documentMoney, leStayAmount, printedStayAmount } from "@/lib/crm/hotel-arrival";
 import { HotelChecklistGlance, HotelDesk } from "@/components/admin/HotelDesk";
@@ -279,6 +281,9 @@ export function BookingItemsPanel({
   onStepError,
   onVerify,
   clearedReviewIds = [],
+  highlightStepId = null,
+  highlightToken = 0,
+  onHighlightDone,
   checkins = [],
   tripStart = null,
   tripEnd = null,
@@ -329,6 +334,11 @@ export function BookingItemsPanel({
   onVerify?: (ids: string[]) => Promise<boolean>;
   /** Identifiants déjà vérifiés (bandeau), pour repeindre la carte sans attendre le rechargement. */
   clearedReviewIds?: readonly string[];
+  /** Carte à surligner après le clic sur le compteur. */
+  highlightStepId?: string | null;
+  /** Change à chaque clic, pour rejouer la surbrillance sur la même carte. */
+  highlightToken?: number;
+  onHighlightDone?: () => void;
   checkins?: StoredFlightCheckin[];
 }) {
   const router = useRouter();
@@ -362,6 +372,7 @@ export function BookingItemsPanel({
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [draft, setDraft] = useState<ItemDraft>(emptyDraft());
   const [busy, setBusy] = useState(false);
+  const [searchingHotel, setSearchingHotel] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rowsRef = useRef(rows);
   const cardRowsRef = useRef<CrmBookingItem[]>([]);
@@ -382,6 +393,49 @@ export function BookingItemsPanel({
     if (!openHotelItemId || deskFor !== openHotelItemId) return;
     document.getElementById(`hotel-desk-${openHotelItemId}`)?.scrollIntoView({ block: "center" });
   }, [deskFor, openHotelItemId]);
+
+  const highlightDoneRef = useRef(onHighlightDone);
+  useEffect(() => {
+    highlightDoneRef.current = onHighlightDone;
+  });
+  useEffect(() => {
+    if (!highlightStepId) return;
+    const node = document.getElementById(bookingStepAnchor(highlightStepId));
+    if (!node) return;
+    node.scrollIntoView({ block: "center", behavior: "smooth" });
+    node.classList.add("booking-hidden-flash");
+    const timer = window.setTimeout(() => {
+      node.classList.remove("booking-hidden-flash");
+      highlightDoneRef.current?.();
+    }, 1600);
+    return () => {
+      window.clearTimeout(timer);
+      node.classList.remove("booking-hidden-flash");
+    };
+  }, [highlightStepId, highlightToken]);
+
+  // Montrer au client révèle tout de suite les cartes qui ne sont pas cachées,
+  // sans attendre que la liste serveur remplace les lignes locales.
+  const seenStayVisible = useRef(stayVisible);
+  useEffect(() => {
+    const previous = seenStayVisible.current;
+    seenStayVisible.current = stayVisible;
+    if (previous || !stayVisible || pendingRef.current) return;
+    const current = rowsRef.current;
+    let changed = false;
+    const next = current.map((row) => {
+      if (row.visible_to_client || keptHiddenFromClient(row.details) || !countsAsCarnetCard(row.kind)) return row;
+      changed = true;
+      return { ...row, visible_to_client: true };
+    });
+    if (!changed) return;
+    rowsRef.current = next;
+    baselineRef.current = baselineRef.current.map((row) => {
+      if (row.visible_to_client || keptHiddenFromClient(row.details) || !countsAsCarnetCard(row.kind)) return row;
+      return { ...row, visible_to_client: true };
+    });
+    setRows(next);
+  }, [stayVisible]);
 
   const [offerVerify, setOfferVerify] = useState(false);
   const [markVerified, setMarkVerified] = useState(true);
@@ -709,6 +763,34 @@ export function BookingItemsPanel({
     if (!ok) setError("La vérification n’a pas été enregistrée.");
     else setNotice(ids.length > 1 ? "Cartes vérifiées." : "Carte vérifiée.");
   }
+
+  async function searchHotel(itemId: string) {
+    if (busy || isDraftStepId(itemId)) return;
+    setBusy(true);
+    setSearchingHotel(true);
+    setError(null);
+    setNotice(null);
+    setMenuFor(null);
+    try {
+      const res = await fetch(`/api/admin/bookings/${bookingId}/hotel-web`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId }),
+      });
+      const payload = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+      if (!res.ok) {
+        setError(payload?.error || "Recherche impossible.");
+        return;
+      }
+      setNotice(payload?.message || "Recherche terminée.");
+      router.refresh();
+    } catch {
+      setError("Recherche impossible.");
+    } finally {
+      setSearchingHotel(false);
+      setBusy(false);
+    }
+  }
   useEffect(() => {
     onBindRef.current?.(() => saveDraftRef.current());
     return () => onBindRef.current?.(null);
@@ -799,7 +881,7 @@ export function BookingItemsPanel({
         </p>
       ) : null}
       <div className="mt-3">
-        <BusyBar active={busy} label="Enregistrement…" />
+        <BusyBar active={busy} label={searchingHotel ? "Recherche de l’hôtel…" : "Enregistrement…"} />
       </div>
       {notice ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{notice}</p> : null}
       <LedgerWarningNotice message={ledgerNote} onDismiss={() => setLedgerNote(null)} className="mt-2" />
@@ -824,12 +906,7 @@ export function BookingItemsPanel({
           const cancelled = item.lifecycle === "cancelled";
           const retiredLabel = cancelled ? "" : retired ? "Remplacée" : "";
           const doubts = reviewDoubts(item);
-          const unshown =
-            stayVisible &&
-            !retired &&
-            !item.visible_to_client &&
-            !keptHiddenFromClient(item.details) &&
-            countsAsCarnetCard(item.kind);
+          const concealed = cardHiddenFromClient(item, stayVisible);
           const price = retired || !flightCountsInStay(item, rows) ? null : itemPriceLabel(item, currency);
           const printed = readDocumentAmount(item.details);
           const stepAmount = item.amount == null ? null : Number(item.amount);
@@ -853,16 +930,22 @@ export function BookingItemsPanel({
             {(handle) => (
             <div
               id={bookingStepAnchor(item.id)}
-              className={`scroll-mt-40 rounded-2xl border px-3 py-3 lg:scroll-mt-28 ${
-                retired
-                  ? "border-[var(--border)] bg-[#F4F1EA] text-muted"
-                  : doubts.length
-                    ? "border-accent bg-[var(--admin-peach)]"
-                    : unshown
-                      ? "border-[var(--admin-gold)] bg-[var(--admin-peach)]"
+              className={`relative scroll-mt-40 rounded-2xl border px-3 py-3 lg:scroll-mt-28 ${
+                concealed
+                  ? "border-dashed border-[#0B192C]/45 bg-[#F4F1EA]"
+                  : retired
+                    ? "border-[var(--border)] bg-[#F4F1EA] text-muted"
+                    : doubts.length
+                      ? "border-accent bg-[var(--admin-peach)]"
                       : "border-[var(--border)] bg-white"
               }`}
             >
+            {concealed ? (
+              <div className="mb-2 flex justify-end">
+                <HiddenCardBadge />
+              </div>
+            ) : null}
+            <div className={concealed && editingId !== item.id ? "opacity-60" : undefined}>
             {editingId === item.id ? (
               <div className="space-y-2">
                 {draft.kind === "accueil_vip" ? (
@@ -972,9 +1055,6 @@ export function BookingItemsPanel({
                         Pas encore enregistré
                       </span>
                     ) : null}
-                    {unshown ? (
-                      <span className="block text-xs font-semibold text-[var(--admin-gold-dark)]">Pas encore montré au client</span>
-                    ) : null}
                   </span>
                   {price ? <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-[var(--admin-navy)] lg:block">{price}</span> : null}
                   <Icon
@@ -1067,6 +1147,16 @@ export function BookingItemsPanel({
                           Vérifié
                         </button>
                       ) : null}
+                      {item.kind === "hotel" && !isDraftStepId(item.id) ? (
+                        <button
+                          type="button"
+                          className={`${flatBtn} h-auto whitespace-normal py-2 text-left`}
+                          disabled={busy}
+                          onClick={() => void searchHotel(item.id)}
+                        >
+                          Rechercher les infos de l’hôtel
+                        </button>
+                      ) : null}
                       {!retired ? (
                       <button
                         type="button"
@@ -1125,6 +1215,16 @@ export function BookingItemsPanel({
               </div>
               {openStep === item.id ? (
                 <div className="mt-3 space-y-3 border-t border-[var(--border)] pt-3">
+                  {item.kind === "hotel" && !isDraftStepId(item.id) ? (
+                    <button
+                      type="button"
+                      className={flatBtn}
+                      disabled={busy}
+                      onClick={() => void searchHotel(item.id)}
+                    >
+                      Rechercher les infos de l’hôtel
+                    </button>
+                  ) : null}
                   {item.kind === "hotel" && hotelPhotos(item).length ? (
                     <div className="overflow-hidden rounded-2xl">
                       <HotelGallery photos={hotelPhotos(item)} title={stepTitle(item)} />
@@ -1145,6 +1245,7 @@ export function BookingItemsPanel({
               ) : null}
               </>
             )}
+            </div>
             </div>
             )}
           </ReorderStep>
