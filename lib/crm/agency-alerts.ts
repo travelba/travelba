@@ -96,7 +96,7 @@ export function agencyAlerts(input: {
       {
         id: `pay:${row.id}`,
         at: row.createdAt,
-        title: "Paiement client",
+        title: /Prélèvement SEPA (reçu|rejeté)/.test(row.summary || "") ? "Prélèvement SEPA" : "Paiement client",
         body: clip(row.summary || "") || "Un client a payé.",
         href: row.queue || !row.customerId ? "/admin/argent?onglet=a-encaisser" : `/admin/clients/${row.customerId}`,
         kicker: "Paiement",

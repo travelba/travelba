@@ -418,3 +418,33 @@ test("le filtre Recherches hôtels ne garde que la rubrique, avec le nom dans la
   assert.equal(JSON.stringify(hotel).includes("A ouvert l’accueil"), false);
   assert.equal(JSON.stringify(hotel).includes("Connexion"), false);
 });
+
+test("le webhook SEPA de 3 h n’est pas une visite des paiements", () => {
+  const groups = buildClientActivityFeed({
+    today: TODAY,
+    staffAuthIds: [],
+    customers: [CAMILLE],
+    bookings: [],
+    logins: [],
+    activity: [
+      gesture({
+        id: "webhook",
+        created_at: "2026-10-19T01:06:00.000Z",
+        action: "pay_settled",
+        summary: "A réglé l’encours société par prélèvement SEPA · 7 198,00 € · Paiement reçu",
+        detail: "Paiement reçu",
+        path: "pi:pi_3UYj4N",
+      }),
+      gesture({
+        id: "real",
+        created_at: "2026-10-19T16:00:00.000Z",
+        summary: "A ouvert ses transactions",
+        path: "/mon-compte/transactions",
+      }),
+    ],
+  });
+  const events = groups.flatMap((group) => group.rows.flatMap((row) => row.events.map((event) => event.text)));
+  assert.deepEqual(events, ["A ouvert ses transactions"]);
+  assert.equal(JSON.stringify(groups).includes("03h06"), false);
+  assert.equal(JSON.stringify(groups).includes("A réglé"), false);
+});

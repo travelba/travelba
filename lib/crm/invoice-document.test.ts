@@ -87,6 +87,30 @@ test("sans RIB, la facture le dit et n’invente pas d’IBAN", () => {
   assert.match(doc.message, /buy\.stripe\.com/);
 });
 
+test("un prélèvement SEPA en cours retire le lien de la même somme", () => {
+  const doc = invoiceDocument({
+    ...base,
+    deposits: [],
+    lines: [{ label: "Séjour", amount: 7198 }],
+    stripeUrl: "https://buy.stripe.com/test_boukris",
+    heldSepa: 7198,
+  });
+  assert.equal(doc.balance, 0);
+  assert.equal(doc.stripeUrl, null);
+  assert.match(doc.message, /Prélèvement SEPA en cours/);
+  assert.match(doc.message, /ne pas repayer/);
+  assert.equal(doc.message.includes("buy.stripe.com"), false);
+  const partial = invoiceDocument({
+    ...base,
+    deposits: [],
+    lines: [{ label: "Séjour", amount: 7198 }],
+    stripeUrl: "https://buy.stripe.com/test_boukris",
+    heldSepa: 2000,
+  });
+  assert.equal(partial.balance, 5198);
+  assert.equal(partial.stripeUrl, null);
+});
+
 test("un lien qui n’est pas Stripe est ignoré", () => {
   assert.equal(stripePayUrlOf("https://example.com/pay"), null);
   assert.equal(stripePayUrlOf("http://buy.stripe.com/abc"), null);

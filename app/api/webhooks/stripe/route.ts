@@ -9,7 +9,7 @@ import { enrichStripeIntents, snapshotFromPaymentIntent, upsertStripeInbox } fro
 import { alertMandateRevoked, alertSepaReturned, cancelOrphanSepaIntents, syncSepaIntent, viewFromStripeIntent } from "@/lib/crm/sepa-ledger";
 import { notifyClientPayment } from "@/lib/crm/pay-notice";
 import { payerKindOf } from "@/lib/crm/payer";
-import { readSepaIntent } from "@/lib/crm/sepa-hold";
+import { checkoutSessionStartsSepa, readSepaIntent } from "@/lib/crm/sepa-hold";
 
 export const runtime = "nodejs";
 
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     event.type === "payment_intent.payment_failed" ||
     event.type === "payment_intent.canceled"
   ) {
-    const intent = event.data.object as Stripe.PaymentIntent;
+    const intent = await expandedIntent(stripe, event.data.object as Stripe.PaymentIntent);
     const synced = await syncSepaIntent(admin, intent);
     if (!synced.ok) return NextResponse.json({ error: "prélèvement" }, { status: 500 });
     if (event.type === "payment_intent.processing" && readSepaIntent(viewFromStripeIntent(intent)).kind === "flight") {
@@ -88,16 +88,41 @@ export async function POST(request: Request) {
         }
       }
     }
-    if (event.type === "payment_intent.payment_failed") await noteClientPayment(admin, intent, "refusé");
-    if (event.type === "payment_intent.canceled") await noteClientPayment(admin, intent, "abandonné");
+    const sepa = readSepaIntent(viewFromStripeIntent(intent));
+    if (sepa.kind !== "failed" && sepa.kind !== "canceled") {
+      if (event.type === "payment_intent.payment_failed") await noteClientPayment(admin, intent, "refusé", stripeRequestId(event));
+      if (event.type === "payment_intent.canceled") await noteClientPayment(admin, intent, "abandonné", stripeRequestId(event));
+    }
+  }
+
+  if (
+    event.type === "checkout.session.completed" ||
+    event.type === "checkout.session.async_payment_succeeded" ||
+    event.type === "checkout.session.async_payment_failed"
+  ) {
+    const session = event.data.object as Stripe.Checkout.Session;
+    if (checkoutSessionStartsSepa({ paymentStatus: session.payment_status, event: event.type })) {
+      const loaded = await intentFromSession(stripe, session);
+      if (loaded) {
+        const synced = await syncSepaIntent(admin, loaded);
+        if (!synced.ok) return NextResponse.json({ error: "prélèvement" }, { status: 500 });
+        if (event.type === "checkout.session.async_payment_succeeded" && loaded.status === "succeeded") {
+          await noteClientPayment(admin, loaded, "reçu", stripeRequestId(event));
+        }
+      }
+    }
   }
 
   if (event.type === "payment_intent.succeeded") {
-    const intent = event.data.object as Stripe.PaymentIntent;
+    const intent = await expandedIntent(stripe, event.data.object as Stripe.PaymentIntent);
     const sepa = readSepaIntent(viewFromStripeIntent(intent)).kind === "succeeded";
+    let noted = intent;
     if (sepa) {
       const synced = await syncSepaIntent(admin, intent);
       if (!synced.ok) return NextResponse.json({ error: "prélèvement" }, { status: 500 });
+      if ("customerId" in synced && synced.customerId && !(intent.metadata?.crm_customer_id || "").trim()) {
+        noted = { ...intent, metadata: { ...(intent.metadata || {}), crm_customer_id: synced.customerId } };
+      }
     }
     const credit = sepa
       ? null
@@ -123,7 +148,7 @@ export async function POST(request: Request) {
       console.error("[stripe] file", err instanceof Error ? err.message : "file");
       return NextResponse.json({ error: "file" }, { status: 500 });
     }
-    await noteClientPayment(admin, intent, "reçu");
+    await noteClientPayment(admin, noted, "reçu", stripeRequestId(event));
   }
 
   if (event.type === "payment_method.detached") {
@@ -190,21 +215,63 @@ export async function POST(request: Request) {
   return NextResponse.json({ received: true });
 }
 
+function stripeRequestId(event: Stripe.Event) {
+  const request = event.request;
+  if (!request) return null;
+  if (typeof request === "string") return request;
+  return request.id || null;
+}
+
+async function expandedIntent(stripe: Stripe, intent: Stripe.PaymentIntent) {
+  const view = viewFromStripeIntent(intent);
+  if (view.chargeType || view.paymentMethodType) return intent;
+  try {
+    return await stripe.paymentIntents.retrieve(intent.id, { expand: ["latest_charge", "payment_method"] });
+  } catch (err) {
+    console.error("[sepa] lecture", err instanceof Error ? err.message : "lecture");
+    return intent;
+  }
+}
+
+async function intentFromSession(stripe: Stripe, session: Stripe.Checkout.Session) {
+  const payment = session.payment_intent;
+  const id = !payment ? "" : typeof payment === "string" ? payment : payment.id;
+  if (!id) return null;
+  try {
+    const loaded =
+      payment && typeof payment !== "string" && typeof payment.latest_charge === "object"
+        ? payment
+        : await stripe.paymentIntents.retrieve(id, { expand: ["latest_charge", "payment_method"] });
+    const metadata = { ...(session.metadata || {}) };
+    for (const [key, value] of Object.entries(loaded.metadata || {})) {
+      if (value) metadata[key] = value;
+    }
+    return { ...loaded, metadata };
+  } catch (err) {
+    console.error("[sepa] session", err instanceof Error ? err.message : "lecture");
+    return null;
+  }
+}
+
 async function noteClientPayment(
   admin: ReturnType<typeof createServiceClient>,
   intent: Stripe.PaymentIntent,
-  result: "reçu" | "refusé" | "abandonné"
+  result: "reçu" | "refusé" | "abandonné",
+  requestId: string | null
 ) {
   try {
     const meta = intent.metadata || {};
     if (meta.purpose === "hotel_direct" || meta.pay_method === "revolut") return;
     const customerId = (meta.crm_customer_id || "").trim();
-    const method = stayPayMethodOf(meta.pay_method) || meta.pay_method || "card";
+    const charge = intent.latest_charge;
+    const chargeType =
+      charge && typeof charge !== "string" ? charge.payment_method_details?.type || "" : "";
+    const method =
+      chargeType === "sepa_debit" ? "sepa_debit" : stayPayMethodOf(meta.pay_method) || meta.pay_method || "card";
     if (!customerId) return;
     const payer = payerKindOf(meta.payer_kind) || "personal";
     const { data } = await admin.from("crm_customers").select("first_name, last_name").eq("id", customerId).maybeSingle();
     const name = [data?.first_name, data?.last_name].filter(Boolean).join(" ");
-    const charge = intent.latest_charge;
     const wallet =
       charge && typeof charge !== "string" && charge.payment_method_details?.type === "card"
         ? charge.payment_method_details.card?.wallet?.type || null
@@ -222,6 +289,7 @@ async function noteClientPayment(
       bookingId: bookingId || null,
       paymentIntentId: intent.id,
       result,
+      requestId,
     });
   } catch (err) {
     console.error("[pay] avis", err instanceof Error ? err.message : "avis");

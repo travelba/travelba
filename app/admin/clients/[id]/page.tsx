@@ -58,7 +58,7 @@ import { identityPreview } from "@/lib/crm/preview-files";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
 import { ficheBookingTravelerLine, ficheTravelerCaption, mergeFicheBookings } from "@/lib/crm/fiche-bookings";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
-import { displayedEncours } from "@/lib/crm/sepa-hold";
+import { displayedEncours, sepaHoldBadge } from "@/lib/crm/sepa-hold";
 import { loadCustomerSepaState } from "@/lib/crm/sepa-ledger";
 import { SepaInFlight } from "@/components/account/SepaInFlight";
 import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
@@ -283,11 +283,13 @@ export default async function AdminClientDetailPage({ params }: Props) {
                     .join(" · ")
                 : "—"}
             </p>
-            {sepaHeld >= 0.5 ? (
-              <p className="mt-1 text-xs text-white/80">
-                {formatMoney(sepaHeld, "EUR")} en cours de prélèvement SEPA
-              </p>
-            ) : null}
+            {sepa.holds
+              .filter((hold) => hold.currency === "EUR")
+              .map((hold) => (
+                <p key={hold.paymentIntentId || hold.launchedAt} className="mt-1 text-xs text-white/80">
+                  {sepaHoldBadge(hold)}
+                </p>
+              ))}
           </Link>
           <div className="border-l border-white/10 px-6 py-4 sm:border-0 sm:px-8">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">Dossiers</p>

@@ -7,6 +7,7 @@ import {
   JOURNAL_ENTITIES,
   JOURNAL_ENTITY_LABELS,
   journalCsv,
+  journalActorName,
   journalRowsMatch,
   type JournalAction,
   type JournalEntity,
@@ -92,7 +93,7 @@ export async function GET(request: Request) {
   const shaped = rows.map((row) => ({
     seq: row.seq,
     occurred_at: row.occurred_at,
-    actor: names.get(row.staff_id || "") || "Agence",
+    actor: journalActorName(row.staff_id, names.get(row.staff_id || ""), row.summary),
     action: row.action,
     entity_type: row.entity_type,
     entity_id: row.entity_id,

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { journalActorName } from "./agency-journal";
 import {
   activitySharesViewWindow,
   cleanClientPath,
@@ -12,6 +13,7 @@ import {
   formalitiesActivitySummary,
   payActivitySummary,
   payFailureSummary,
+  isStripeSystemActivity,
   paySettledSummary,
   settleStartedPayDetail,
   openedStaySummary,
@@ -241,4 +243,22 @@ test("un téléchargement ne recopie ni le nom du fichier ni un numéro", () => 
     downloadActivityPath("11111111-1111-4111-8111-111111111111"),
     "download/11111111-1111-4111-8111-111111111111"
   );
+});
+
+test("une confirmation SEPA du webhook n’est pas une visite du client", () => {
+  assert.equal(
+    isStripeSystemActivity({
+      action: "pay_settled",
+      summary: "A réglé l’encours société par prélèvement SEPA · 7 198,00 € · Paiement reçu",
+      detail: "Paiement reçu",
+    }),
+    true
+  );
+  assert.equal(isStripeSystemActivity({ action: "stripe_sepa", summary: "Prélèvement SEPA reçu — Ada — 7 198,00 € (confirmé par Stripe)" }), true);
+  assert.equal(isStripeSystemActivity({ action: "view", summary: "A ouvert ses transactions" }), false);
+  assert.equal(isStripeSystemActivity({ action: "pay", summary: "A lancé un prélèvement pour l’encours société" }), false);
+  assert.equal(journalActorName(null, null, "Prélèvement SEPA reçu — Ada — 7 198,00 € (confirmé par Stripe)"), "Système / Stripe");
+  assert.equal(journalActorName(null, null, "Prélèvement SEPA rejeté — Ada — 7 198,00 €"), "Système / Stripe");
+  assert.equal(journalActorName("staff-1", "Benjamin", "Prélèvement SEPA reçu — Ada — 1,00 € (confirmé par Stripe)"), "Benjamin");
+  assert.equal(journalActorName(null, null, "A ouvert ses transactions"), "Agence");
 });
