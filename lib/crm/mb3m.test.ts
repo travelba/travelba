@@ -1087,7 +1087,7 @@ describe("règlements MB3M", () => {
     assert.deepEqual(matchOrder, [...matchOrder].sort((left, right) => left - right));
   });
 
-  it("SavePayment : sans client, rien ne part ; sans Id de dossier, l’Uid sert", async () => {
+  it("SavePayment : sans client, rien ne part ; un Uid de dossier n’entre pas dans FolderId", async () => {
     arm();
     mb3mResetBankAccountCache();
     const calls: string[] = [];
@@ -1106,9 +1106,19 @@ describe("règlements MB3M", () => {
       (error: unknown) => error instanceof Mb3mError && /client/.test(error.message)
     );
     assert.deepEqual(calls, []);
-    await mb3mSavePayment({ ...base, folderId: "", folderUid: "1f0c002c-615e-422b-aff6-202611161249", customerUid: "c-uid" }, fetchImpl);
-    assert.match(calls.join(" "), /<FolderId>1f0c002c-615e-422b-aff6-202611161249<\/FolderId>/);
-    assert.doesNotMatch(calls.join(" "), /BankAccountId/);
+    const folderUid = "1f0c002c-615e-422b-aff6-202611161249";
+    await mb3mSavePayment({ ...base, folderId: "", customerUid: "c-uid" }, fetchImpl);
+    const emptyFolder = calls.join(" ");
+    assert.match(emptyFolder, /<Customer><Uid>c-uid<\/Uid><\/Customer>/);
+    assert.doesNotMatch(emptyFolder, /<FolderId>/);
+    assert.doesNotMatch(emptyFolder, new RegExp(folderUid));
+    assert.doesNotMatch(emptyFolder, /BankAccountId/);
+    calls.length = 0;
+    await mb3mSavePayment({ ...base, folderId: "01-0002007", customerUid: "c-uid" }, fetchImpl);
+    const withId = calls.join(" ");
+    assert.match(withId, /<FolderId>01-0002007<\/FolderId>/);
+    assert.doesNotMatch(withId, new RegExp(folderUid));
+    assert.match(withId, /<Customer><Uid>c-uid<\/Uid><\/Customer>/);
   });
 
   it("lit les règlements déjà saisis pour ce client", async () => {

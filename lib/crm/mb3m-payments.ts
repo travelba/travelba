@@ -541,8 +541,6 @@ export async function recordMb3mInvoicePayments(
     bookingId: string;
     folderId: string;
     customerUid: string;
-    /** Uid du dossier MB3M : sert quand son Id est vide. */
-    folderUid?: string | null;
     invoiceNumber: string;
     invoiceAmount: number;
     gdsInvoices?: Mb3mGdsInvoiceTarget[];
@@ -770,7 +768,6 @@ export async function recordMb3mInvoicePayments(
           mode: plan.mode,
           customModeId: plan.customModeId,
           customerUid: input.customerUid,
-          folderUid: input.folderUid,
         }),
       writeMatching: (plan, paymentNumber) =>
         mb3mWriteMatching({

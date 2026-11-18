@@ -866,6 +866,8 @@ export function mb3mResetBankAccountCache() {
  * (Amount, CustomModeId, Mode, RefNumber, BankAccountId). Un champ hors de cet ordre est ignoré sans erreur :
  * c’est ce qui laissait MB3M sans client (-609 « Un règlement doit toujours être associé à un client »).
  * Le client part donc toujours ; sans lui, on n’appelle pas MB3M.
+ * FolderId est l’Id du dossier (01-0002007). Un Uid à cet endroit est refusé (-401
+ * « Il n'existe pas de dossier avec l'identifiant donné »). Sans Id, le champ est omis.
  */
 export async function mb3mSavePayment(
   input: {
@@ -877,18 +879,16 @@ export async function mb3mSavePayment(
     mode: string;
     customModeId?: number | null;
     customerUid: string;
-    folderUid?: string | null;
     bankAccountUid?: string | null;
   },
   fetchImpl?: FetchImpl
 ) {
   const customerUid = (input.customerUid || "").trim();
   if (!customerUid) throw new Mb3mError("Le règlement n’a pas de client MB3M.", -1);
-  const folder = input.folderId.trim() || (input.folderUid || "").trim();
-  if (!folder) throw new Mb3mError("Le règlement n’a pas de dossier MB3M.", -1);
+  const folderId = input.folderId.trim();
   const bankUid = (input.bankAccountUid || "").trim() || (await mb3mBankAccountUid(input.bank, fetchImpl));
   const custom = input.mode === "Custom" && input.customModeId ? tag("CustomModeId", input.customModeId) : "";
-  const inner = `<FolderSavePaymentRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">${tag("FolderId", folder)}<Payment>${tag("CreationDate", `${dayStamp(input.date)}T00:00:00`)}<Customer>${tag("Uid", customerUid)}</Customer>${tag("Amount", money(input.amount))}${custom}${tag("Mode", input.mode.trim())}${tag("RefNumber", input.reference.trim())}${tag("BankAccountId", bankUid)}</Payment></FolderSavePaymentRequest>`;
+  const inner = `<FolderSavePaymentRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">${tag("FolderId", folderId)}<Payment>${tag("CreationDate", `${dayStamp(input.date)}T00:00:00`)}<Customer>${tag("Uid", customerUid)}</Customer>${tag("Amount", money(input.amount))}${custom}${tag("Mode", input.mode.trim())}${tag("RefNumber", input.reference.trim())}${tag("BankAccountId", bankUid)}</Payment></FolderSavePaymentRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "SavePayment", inner, fetchImpl);
   assertOperation(xml);
   const number = mb3mXmlText(xml, "Number");

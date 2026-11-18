@@ -308,7 +308,6 @@ export type Mb3mInvoiceDeps = {
     bookingId: string;
     folderId: string;
     customerUid: string;
-    folderUid?: string | null;
     invoiceNumber: string;
     invoiceAmount: number;
     gdsInvoices?: { number: string; amount: number }[];
@@ -588,8 +587,7 @@ async function attachReglements(
   result: Omit<Mb3mInvoiceResult, "reglements">,
   invoiceAmount: number,
   folderId: string | null,
-  customerUid: string | null,
-  folderUid: string | null = null
+  customerUid: string | null
 ): Promise<Mb3mInvoiceResult> {
   let folder = folderId || "";
   if (deps.finishGds) folder = (await deps.finishGds(folderId)) || folder;
@@ -600,7 +598,6 @@ async function attachReglements(
       bookingId: ctx.bookingId,
       folderId: folder,
       customerUid: customerUid || ctx.gdsPlan?.customerUid || "",
-      folderUid,
       invoiceNumber: result.number,
       invoiceAmount,
       gdsInvoices: ctx.gdsPlan?.invoices,
@@ -668,8 +665,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
           },
           piece.amount ?? ctx.amount,
           piece.folderId,
-          piece.customerUid,
-          piece.folderUid
+          piece.customerUid
         );
         // La préparation est finie : on retire un « préparation interrompue » resté d’une reprise.
         if (piece.attemptStatus || piece.attemptError) await deps.save(piece.id, { attemptStatus: null, attemptError: null });
@@ -713,8 +709,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
             },
             piece.amount ?? ctx.amount,
             piece.folderId,
-            piece.customerUid,
-            piece.folderUid
+            piece.customerUid
           ));
         }
         return await runMb3mInvoice(
@@ -736,8 +731,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
           },
           piece.amount ?? ctx.amount,
           piece.folderId,
-          piece.customerUid,
-          piece.folderUid
+          piece.customerUid
         ));
       }
       // L’ancienne pro forma s’annule après la nouvelle : un refus de MB3M ne laisse pas le dossier sans pièce.
@@ -837,8 +831,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
         },
         invoiceAmount,
         savedPiece.folderId,
-        savedPiece.customerUid,
-        savedPiece.folderUid
+        savedPiece.customerUid
       )
     );
   } catch (error) {
