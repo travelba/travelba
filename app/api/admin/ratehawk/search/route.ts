@@ -4,6 +4,7 @@ import { ratehawkJson, staffOrResponse } from "@/lib/crm/ratehawk/http";
 import { validateStay, type RoomGuests } from "@/lib/crm/ratehawk/limits";
 import { searchGeo, searchHids, searchRegion, withStoredFacts, type HotelCard, type StoredHotelFacts } from "@/lib/crm/ratehawk/search";
 import { ratehawkDb } from "@/lib/crm/ratehawk/store";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
     if (body.mode === "region") {
       if (!Number.isInteger(body.region_id)) return ratehawkJson({ error: "Choisissez une destination." }, 400);
       const result = await searchRegion(input, body.region_id as number, config);
-      return ratehawkJson({ hotels: await withStaticFacts(result.hotels, config), error: result.call.error });
+      return ratehawkJson({ hotels: await withStaticFacts(result.hotels, config, auth.supabase), error: result.call.error });
     }
     if (body.mode === "geo") {
       if (typeof body.latitude !== "number" || typeof body.longitude !== "number") {
@@ -55,10 +56,10 @@ export async function POST(request: Request) {
       }
       const radius = Math.min(70_000, Math.max(1, Math.trunc(body.radius || 5_000)));
       const result = await searchGeo(input, body.latitude, body.longitude, radius, config);
-      return ratehawkJson({ hotels: await withStaticFacts(result.hotels, config), error: result.call.error });
+      return ratehawkJson({ hotels: await withStaticFacts(result.hotels, config, auth.supabase), error: result.call.error });
     }
     const result = await searchHids(input, body.hids || [], config);
-    return ratehawkJson({ hotels: await withStaticFacts(result.hotels, config), error: result.call.error });
+    return ratehawkJson({ hotels: await withStaticFacts(result.hotels, config, auth.supabase), error: result.call.error });
   } catch (caught) {
     const message = caught instanceof RatehawkConfigError ? caught.message : "La recherche Ratehawk a échoué.";
     return ratehawkJson({ error: message }, 502);
@@ -66,24 +67,32 @@ export async function POST(request: Request) {
 }
 
 /** Nom, étoiles, adresse et photo du contenu statique. Le slug et le hid ne sortent pas. */
-async function withStaticFacts(hotels: HotelCard[], config: NonNullable<ReturnType<typeof safeConfig>>): Promise<HotelCard[]> {
+const HOTEL_FACT_COLUMNS = "hid, name, address, star_rating, images, images_ext:raw->images_ext";
+
+async function readFacts(reader: SupabaseClient, hids: number[]): Promise<StoredHotelFacts[]> {
+  const { data } = await reader.from("crm_ratehawk_hotels").select(HOTEL_FACT_COLUMNS).in("hid", hids);
+  return (data || []).map((row) => ({
+    hid: Number(row.hid),
+    name: typeof row.name === "string" ? row.name : null,
+    address: typeof row.address === "string" ? row.address : null,
+    star_rating: row.star_rating == null ? null : Number(row.star_rating),
+    images: row.images,
+    images_ext: row.images_ext,
+  }));
+}
+
+async function withStaticFacts(
+  hotels: HotelCard[],
+  config: NonNullable<ReturnType<typeof safeConfig>>,
+  reader: SupabaseClient
+): Promise<HotelCard[]> {
   if (!hotels.length) return hotels;
   const hids = hotels.map((hotel) => hotel.hid);
+  await fillThinHotelFacts(hids.slice(0, 8), config).catch(() => undefined);
+  const own = await readFacts(reader, hids).catch(() => []);
+  if (own.length) return withStoredFacts(hotels, own);
   try {
-    await fillThinHotelFacts(hids.slice(0, 8), config);
-    const { data } = await ratehawkDb()
-      .from("crm_ratehawk_hotels")
-      .select("hid, name, address, star_rating, images, images_ext:raw->images_ext")
-      .in("hid", hids);
-    const stored = (data || []).map((row) => ({
-      hid: Number(row.hid),
-      name: typeof row.name === "string" ? row.name : null,
-      address: typeof row.address === "string" ? row.address : null,
-      star_rating: row.star_rating == null ? null : Number(row.star_rating),
-      images: row.images,
-      images_ext: row.images_ext,
-    })) satisfies StoredHotelFacts[];
-    return withStoredFacts(hotels, stored);
+    return withStoredFacts(hotels, await readFacts(ratehawkDb(), hids));
   } catch {
     return withStoredFacts(hotels, []);
   }

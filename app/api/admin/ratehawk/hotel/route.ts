@@ -31,15 +31,19 @@ export async function POST(request: Request) {
   });
   if (stayError) return ratehawkJson({ error: stayError }, 400);
   try {
-    const supabase = ratehawkDb();
-    await fillThinHotelFacts([body.hid], config, supabase);
-    const { data } = await supabase
-      .from("crm_ratehawk_hotels")
-      .select(
-        "name, address, star_rating, metapolicy_struct, metapolicy_extra_info, room_groups, check_in_time, check_out_time, images, images_ext:raw->images_ext, description_struct:raw->description_struct, amenity_groups:raw->amenity_groups, policy_struct:raw->policy_struct"
-      )
-      .eq("hid", body.hid)
-      .maybeSingle();
+    const columns =
+      "name, address, star_rating, metapolicy_struct, metapolicy_extra_info, room_groups, check_in_time, check_out_time, images, images_ext:raw->images_ext, description_struct:raw->description_struct, amenity_groups:raw->amenity_groups, policy_struct:raw->policy_struct";
+    await fillThinHotelFacts([body.hid], config).catch(() => undefined);
+    const own = await auth.supabase.from("crm_ratehawk_hotels").select(columns).eq("hid", body.hid).maybeSingle();
+    let data = own.data;
+    if (!data) {
+      try {
+        const fallback = await ratehawkDb().from("crm_ratehawk_hotels").select(columns).eq("hid", body.hid).maybeSingle();
+        data = fallback.data;
+      } catch {
+        data = null;
+      }
+    }
     const groups = (Array.isArray(data?.room_groups) ? data.room_groups : []) as RoomGroupStatic[];
     const facts = readHotelFacts(data, body.hid);
     const result = await hotelPage(
