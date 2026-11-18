@@ -22,9 +22,9 @@ Trois statuts : **Non visible** (`status=draft`, `visible_to_client=false`), **V
 | Geste | Effet |
 |-------|--------|
 | **Enregistrer** | sauve le dossier ; ne le montre pas et ne débite pas un séjour encore caché. Il s’allume dès qu’une étape est retirée, ajoutée, modifiée ou réordonnée. Il ne cache pas l’étape : `client_hidden` vient seulement du geste Cacher |
-| **Montrer au client** | le client voit ; le séjour passe **Visible** (confirmé). Items + PDFs du dossier passent visibles. Le séjour entre au grand livre |
+| **Montrer au client** | enregistre d’abord (même effet qu’Enregistrer). Puis toutes les cartes encore cachées passent visibles, par la même écriture que le Montrer d’une carte (`detailsForCardVisibility`, une requête). Le séjour passe **Visible** (confirmé) et entre au grand livre. `client_hidden` marque l’import jamais montré et le bouton Cacher : le modèle ne les sépare pas, les deux sont montrées. Annulée, remplacée et dépense restent. Aucun message en plus de ceux déjà confirmés |
 
-Un seul interrupteur séjour (plus de case fichier séparée). Guard serveur `canPublishCarnet` : au moins **une** carte `kind !== "fee"`. Confirmer reste éteint, et le dit, si les étapes sont cachées et qu’il ne reste que des fichiers.
+Un seul interrupteur séjour (plus de case fichier séparée). Guard serveur `canPublishCarnet` : au moins **une** carte `kind !== "fee"`. Confirmer reste éteint, et le dit, s’il ne reste que des fichiers.
 
 Quotes (`status=quoted`, devis Little Emperors) : dans le dossier, **invisibles** jusqu’à publication / confirmation. Pas d’écran Devis public. Pas d’e-mail auto à la publication.
 

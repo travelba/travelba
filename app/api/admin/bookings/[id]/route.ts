@@ -217,9 +217,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
           .eq("booking_id", id);
         if (!before.error) beforeCards = (before.data || []) as typeof beforeCards;
       }
-      await setCarnetPublished(auth.supabase, id, Boolean(body.visible_to_client));
+      const showing = Boolean(body.visible_to_client);
+      await setCarnetPublished(auth.supabase, id, showing, { includeKeptHidden: showing });
       if (beforeCards.length) {
-        const reveal = new Set(publishRevealIds(beforeCards));
+        const reveal = new Set(publishRevealIds(beforeCards, { includeKeptHidden: true }));
         const additions = beforeCards
           .filter((row) => reveal.has(row.id) && row.visible_to_client !== true && countsAsCarnetCard(row.kind))
           .map((row) => ({ id: row.id, kind: row.kind }));

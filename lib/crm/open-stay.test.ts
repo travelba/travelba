@@ -28,7 +28,7 @@ function fakeSupabase(state: {
           if (prop === "then") {
             const first = calls[0];
             let result: { data: unknown; error: null } = { data: null, error: null };
-            if (first && (first.method === "update" || first.method === "insert" || first.method === "delete")) {
+            if (first && (first.method === "update" || first.method === "insert" || first.method === "delete" || first.method === "upsert")) {
               writes.push({ table, op: first.method, payload: first.args[0], filters: calls.slice(1) });
               if (first.method === "update" && table === "crm_bookings") {
                 Object.assign(state.booking, first.args[0] as Record<string, unknown>);
@@ -120,6 +120,35 @@ test("sans carte, la formalité ne publie pas", async () => {
   const { client, writes } = fakeSupabase({ booking: { ...hidden }, items: [{ id: "f", kind: "fee", title: "Frais", details: {} }], documents: [] });
   await assert.rejects(() => openStayForVisa(client, hidden), /au moins une carte/);
   assert.equal(writes.length, 0);
+});
+
+test("Montrer au client révèle aussi les cartes masquées, en une écriture", async () => {
+  const hidden = booking({ visible_to_client: false, prices_visible: false });
+  const { client, writes } = fakeSupabase({
+    booking: { ...hidden },
+    items: cards.map((row) => ({ ...row, title: row.title || "Étape" })),
+    documents,
+  });
+  await setCarnetPublished(client, "b1", true, { includeKeptHidden: true });
+  const revealItems = writes.find((w) => w.table === "crm_booking_items" && w.op === "upsert");
+  const patches = revealItems?.payload as {
+    id: string;
+    visible_to_client: boolean;
+    details: Record<string, unknown>;
+    booking_id: string;
+  }[];
+  assert.deepEqual(
+    patches.map((row) => row.id),
+    ["i1", "i2"]
+  );
+  assert.equal(patches.every((row) => row.visible_to_client === true && row.booking_id === "b1"), true);
+  assert.equal("client_hidden" in (patches.find((row) => row.id === "i2")?.details || {}), false);
+  const revealDocs = writes.find((w) => w.table === "crm_booking_documents" && w.op === "update");
+  assert.deepEqual(revealDocs?.filters[0], { method: "in", args: ["id", ["d1", "d2", "d3"]] });
+  assert.equal(
+    writes.filter((w) => w.table === "crm_booking_items").length,
+    1
+  );
 });
 
 test("cacher le carnet masque aussi les prix ; montrer suit l’option", async () => {
