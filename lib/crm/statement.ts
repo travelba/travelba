@@ -57,6 +57,16 @@ export type StatementAllowance = {
   allowance: string;
 };
 
+/** Coordonnées de virement imprimées sur le relevé. Absentes si l’IBAN n’est pas connu. */
+export type StatementTransfer = {
+  holder: string;
+  /** IBAN déjà groupé par 4 caractères. */
+  iban: string;
+  bic: string;
+  bank: string;
+  reference: string;
+};
+
 export type StatementModel = {
   title: string;
   issuedOn: string;
@@ -67,6 +77,7 @@ export type StatementModel = {
   allowances: StatementAllowance[];
   sections: StatementSection[];
   emptyNote: string | null;
+  transfer: StatementTransfer | null;
 };
 
 export type StatementAudience = "client" | "staff";
@@ -228,6 +239,7 @@ export function buildStatement(input: {
   holderName: string;
   holderLines: string[];
   issuedAt: Date;
+  transfer?: StatementTransfer | null;
 }): StatementModel {
   const { view } = input;
   const member = view.member;
@@ -336,6 +348,7 @@ export function buildStatement(input: {
     allowances,
     sections,
     emptyNote: hasLines ? null : "Aucun mouvement comptabilisé à cette date.",
+    transfer: input.transfer ?? null,
   };
 }
 
