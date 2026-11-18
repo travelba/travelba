@@ -28,6 +28,7 @@ import {
 import { flightCountsInStay } from "@/lib/crm/bookings";
 import { groupAttachedEmails } from "@/lib/crm/email-duplicates";
 import { bookingStepAnchor } from "@/lib/crm/booking-tabs";
+import { justificatifsRetiresAvec, mentionRetraitJustificatifs } from "@/lib/crm/stay-documents";
 import { DRAFT_STEP_PREFIX, isDraftStepId, stepCommitPlan, type StepSnapshot } from "@/lib/crm/step-draft";
 import { formatMoney } from "@/lib/crm/money";
 import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
@@ -351,12 +352,9 @@ export function BookingItemsPanel({
   }, [pending, rows]);
   const onStepsPendingRef = useRef(onStepsPending);
   const onStepErrorRef = useRef(onStepError);
-  const documentsRef = useRef(documents);
-  const pieceChoiceRef = useRef(new Map<string, "retirer" | "garder">());
   useEffect(() => {
     onStepsPendingRef.current = onStepsPending;
     onStepErrorRef.current = onStepError;
-    documentsRef.current = documents;
   });
   useEffect(() => {
     onStepsPendingRef.current?.(pending);
@@ -364,6 +362,7 @@ export function BookingItemsPanel({
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [draft, setDraft] = useState<ItemDraft>(emptyDraft());
   const [busy, setBusy] = useState(false);
+  const [searchingHotel, setSearchingHotel] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rowsRef = useRef(rows);
   const cardRowsRef = useRef<CrmBookingItem[]>([]);
@@ -612,13 +611,6 @@ export function BookingItemsPanel({
     }
     const plan = stepCommitPlan(baselineRef.current.map(toSnapshot), stayCards(current).map(toSnapshot));
     if (!plan.pending) return true;
-    const retirerDocuments: string[] = [];
-    for (const id of plan.deleted) {
-      if (pieceChoiceRef.current.get(id) !== "retirer") continue;
-      const item = baselineRef.current.find((row) => row.id === id);
-      if (!item) continue;
-      for (const doc of documentsForItems([item], documentsRef.current)) retirerDocuments.push(doc.id);
-    }
     setBusy(true);
     setError(null);
     const res = await fetch(`/api/admin/bookings/${bookingId}/items`, {
@@ -630,7 +622,6 @@ export function BookingItemsPanel({
         updated: plan.updated,
         created: plan.created.map((step) => ({ ...step, client_id: step.id })),
         order: plan.order,
-        retirer_documents: retirerDocuments,
       }),
     });
     const json = (await res.json().catch(() => ({}))) as {
@@ -646,7 +637,6 @@ export function BookingItemsPanel({
       onStepErrorRef.current?.(message);
       return false;
     }
-    for (const id of plan.deleted) pieceChoiceRef.current.delete(id);
     onStepErrorRef.current?.(null);
     if (json.warning) setNotice(json.warning);
     setLedgerNote(readLedgerWarning(json));
@@ -719,6 +709,34 @@ export function BookingItemsPanel({
     setBusy(false);
     if (!ok) setError("La vérification n’a pas été enregistrée.");
     else setNotice(ids.length > 1 ? "Cartes vérifiées." : "Carte vérifiée.");
+  }
+
+  async function searchHotel(itemId: string) {
+    if (busy || isDraftStepId(itemId)) return;
+    setBusy(true);
+    setSearchingHotel(true);
+    setError(null);
+    setNotice(null);
+    setMenuFor(null);
+    try {
+      const res = await fetch(`/api/admin/bookings/${bookingId}/hotel-web`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId }),
+      });
+      const payload = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+      if (!res.ok) {
+        setError(payload?.error || "Recherche impossible.");
+        return;
+      }
+      setNotice(payload?.message || "Recherche terminée.");
+      router.refresh();
+    } catch {
+      setError("Recherche impossible.");
+    } finally {
+      setSearchingHotel(false);
+      setBusy(false);
+    }
   }
   useEffect(() => {
     onBindRef.current?.(() => saveDraftRef.current());
@@ -810,7 +828,7 @@ export function BookingItemsPanel({
         </p>
       ) : null}
       <div className="mt-3">
-        <BusyBar active={busy} label="Enregistrement…" />
+        <BusyBar active={busy} label={searchingHotel ? "Recherche de l’hôtel…" : "Enregistrement…"} />
       </div>
       {notice ? <p className="mt-2 text-sm text-[var(--admin-navy)]">{notice}</p> : null}
       <LedgerWarningNotice message={ledgerNote} onDismiss={() => setLedgerNote(null)} className="mt-2" />
@@ -823,6 +841,7 @@ export function BookingItemsPanel({
         {cardRows.map((item) => {
           const locked = editingId === item.id || busy;
           const docs = documentsForItems([item], documents);
+          const exclusifs = justificatifsRetiresAvec(item.id, rows, documents);
           const subtitle = stepSubtitle(item);
           const ticketNames = item.kind === "flight" ? ticketTravelerNames(item.details) : [];
           const airport = item.kind === "flight" || item.kind === "rail" ? flightCardSubtitle(item) : "";
@@ -1077,6 +1096,16 @@ export function BookingItemsPanel({
                           Vérifié
                         </button>
                       ) : null}
+                      {item.kind === "hotel" && !isDraftStepId(item.id) ? (
+                        <button
+                          type="button"
+                          className={`${flatBtn} h-auto whitespace-normal py-2 text-left`}
+                          disabled={busy}
+                          onClick={() => void searchHotel(item.id)}
+                        >
+                          Rechercher les infos de l’hôtel
+                        </button>
+                      ) : null}
                       {!retired ? (
                       <button
                         type="button"
@@ -1116,37 +1145,35 @@ export function BookingItemsPanel({
                           buttonClassName="admin-tap flex w-full items-center justify-start rounded-full border border-[var(--border)] bg-white px-3 py-2 text-left text-xs font-semibold text-[var(--admin-navy)]"
                         />
                       ) : null}
-                      {docs.length ? (
-                      <RemoveStepChoice
-                        count={docs.length}
-                        disabled={busy}
-                        title={stepTitle(item)}
-                        onChoose={(mode) => {
-                          pieceChoiceRef.current.set(item.id, mode);
-                          removeItem(item.id);
-                        }}
-                      />
-                      ) : (
                       <ConfirmAction
                         size="sm"
                         tone="danger"
                         label="Retirer"
                         confirmLabel="Retirer l’étape"
                         ariaLabel={`Retirer ${stepTitle(item)}`}
-                        question="L’étape quitte la liste. Elle quitte le voyage à l’enregistrement du séjour."
+                        question={retraitQuestion(exclusifs, docs.length)}
+                        hint={exclusifs ? "Le fichier reste stocké. Un retrait se restaure." : null}
                         disabled={busy}
                         onConfirm={async () => {
-                          pieceChoiceRef.current.delete(item.id);
                           removeItem(item.id);
                         }}
                       />
-                      )}
                     </div>
                   ) : null}
                   </div>
               </div>
               {openStep === item.id ? (
                 <div className="mt-3 space-y-3 border-t border-[var(--border)] pt-3">
+                  {item.kind === "hotel" && !isDraftStepId(item.id) ? (
+                    <button
+                      type="button"
+                      className={flatBtn}
+                      disabled={busy}
+                      onClick={() => void searchHotel(item.id)}
+                    >
+                      Rechercher les infos de l’hôtel
+                    </button>
+                  ) : null}
                   {item.kind === "hotel" && hotelPhotos(item).length ? (
                     <div className="overflow-hidden rounded-2xl">
                       <HotelGallery photos={hotelPhotos(item)} title={stepTitle(item)} />
@@ -1209,54 +1236,19 @@ export function BookingItemsPanel({
       ) : null}
       {error ? <p className="mt-2 text-sm text-accent">{error}</p> : null}
       <p className="mt-2 text-xs text-muted">
-        Retirer une étape la retire de la liste. Le voyage change à l’enregistrement. S’il y a des pièces, on les garde dans le dossier ou on les retire. Le fichier reste stocké.
+        Retirer une étape la retire de la liste. Le voyage change à l’enregistrement. Ses justificatifs partent avec elle, sauf s’ils restent sur une autre carte. Le fichier reste stocké.
       </p>
     </section>
   );
 }
 
-function RemoveStepChoice({
-  count,
-  disabled,
-  title,
-  onChoose,
-}: {
-  count: number;
-  disabled: boolean;
-  title: string;
-  onChoose: (mode: "retirer" | "garder") => void;
-}) {
-  const [open, setOpen] = useState(false);
-  if (!open) {
-    return (
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen(true)}
-        className="admin-tap inline-flex h-11 w-full items-center justify-start rounded-full px-3 text-xs font-semibold text-[var(--admin-red)] ring-1 ring-[var(--admin-red)]/30 disabled:opacity-40 lg:h-8"
-      >
-        Retirer
-      </button>
-    );
+function retraitQuestion(exclusifs: number, lies: number) {
+  const mention = mentionRetraitJustificatifs(exclusifs);
+  if (mention) return `${mention} Le voyage change à l’enregistrement.`;
+  if (lies > 0) {
+    return "La carte sera retirée. Ses justificatifs restent sur les autres cartes. Le voyage change à l’enregistrement.";
   }
-  const choice =
-    "admin-tap inline-flex min-h-9 w-full items-center justify-start rounded-full px-3 py-2 text-left text-xs font-semibold disabled:opacity-40";
-  return (
-    <div className="flex w-full flex-col gap-2">
-      <p className="text-xs text-muted">
-        {count > 1 ? `${count} pièces` : "Une pièce"} sur {title}. Le fichier reste stocké. Un retrait se restaure.
-      </p>
-      <button type="button" disabled={disabled} className={`${choice} bg-[var(--admin-red)] text-white`} onClick={() => onChoose("retirer")}>
-        Supprimer aussi les billets/pièces
-      </button>
-      <button type="button" disabled={disabled} className={`${choice} bg-white text-[var(--admin-navy)] ring-1 ring-[var(--border)]`} onClick={() => onChoose("garder")}>
-        Garder les pièces dans le dossier
-      </button>
-      <button type="button" disabled={disabled} className={`${choice} bg-white text-muted ring-1 ring-[var(--border)]`} onClick={() => setOpen(false)}>
-        Annuler
-      </button>
-    </div>
-  );
+  return "L’étape quitte la liste. Elle quitte le voyage à l’enregistrement du séjour.";
 }
 
 function TicketMailForm({ bookingId, itemId }: { bookingId: string; itemId?: string }) {

@@ -29,6 +29,7 @@ type PayerCustomer = Pick<
 import {
   mb3mDossierLines,
   mb3mFactureHref,
+  withCommercialDiscountLine,
   mb3mLedgerMention,
   mb3mLineSignature,
   mb3mPieceStale,
@@ -64,6 +65,7 @@ import {
   mb3mSupplierAlertMail,
   mb3mSupplierBlock,
 } from "@/lib/crm/mb3m-conform";
+import { loadStayDiscountEuros, stayDiscountEuros } from "@/lib/crm/displayed-stay";
 import { deliverServiceRequestMail } from "@/lib/crm/service-request-mail";
 import {
   assertMb3mCreditNoteAllowed,
@@ -440,7 +442,8 @@ export function buildMb3mInvoiceContext(input: {
     | "visible_to_client"
     | "payer_kind"
     | "billing_company_id"
-  >;
+  > &
+    Partial<Pick<CrmBooking, "total_amount" | "fee_mode" | "agency_fee_rate" | "remise_type" | "remise_value">>;
   items: StayItem[];
   travelers: { first_name: string | null; last_name: string | null }[];
   payer: PayerCustomer | null;
@@ -449,6 +452,8 @@ export function buildMb3mInvoiceContext(input: {
   coveredIds?: string[];
   /** Coûts rattachés (Pliant, Revolut) : la marge de chaque ligne. */
   costs?: TripCost[];
+  /** Euros de remise déjà calculés sur le total du carnet. Absent : recalcul sur les cartes. */
+  discountEuros?: number;
 }): Mb3mInvoiceContext {
   const facts = staffStayFacts({
     items: input.items,
@@ -482,9 +487,36 @@ export function buildMb3mInvoiceContext(input: {
       )
     : null;
   const posted = mb3mDossierLines(input.charges || [], input.items, margins);
-  const lines = conformMb3mAccountLines(
-    posted.filter((line) => !covered.has(line.transactionId)),
-    input.items
+  const inEuros = stayCurrency(input.booking.currency) === "EUR";
+  const pricedItems = input.items.map((item) => ({
+    ...item,
+    amount: item.amount == null || item.amount === "" ? null : Number(item.amount),
+  }));
+  const discountEuros = !inEuros
+    ? 0
+    : input.discountEuros != null
+      ? input.discountEuros
+      : stayDiscountEuros(
+          {
+            status: input.booking.status,
+            total_amount: input.booking.total_amount ?? bookingTotalFromItems(pricedItems),
+            agency_commission: input.booking.agency_commission,
+            fee_mode: input.booking.fee_mode,
+            remise_type: input.booking.remise_type,
+            remise_value: input.booking.remise_value,
+          },
+          pricedItems,
+          input.travelers.length,
+          input.booking.agency_fee_rate == null || input.booking.agency_fee_rate === ""
+            ? undefined
+            : Number(input.booking.agency_fee_rate)
+        );
+  const lines = withCommercialDiscountLine(
+    conformMb3mAccountLines(
+      posted.filter((line) => !covered.has(line.transactionId)),
+      input.items
+    ),
+    discountEuros
   );
   const sendable = mb3mSendableLines(lines);
   return {
@@ -1121,6 +1153,7 @@ export async function loadMb3mInvoiceContext(supabase: SupabaseClient, bookingId
     .limit(1)
     .maybeSingle();
   const folderId = (openFolder.data as { folder_id?: string } | null)?.folder_id || null;
+  const discountEuros = await loadStayDiscountEuros(supabase, bookingId).catch(() => 0);
   const gdsPlan = await readMb3mGdsPlan(supabase, {
     bookingId,
     payerId,
@@ -1139,6 +1172,7 @@ export async function loadMb3mInvoiceContext(supabase: SupabaseClient, bookingId
       charges: chargesWithoutGdsFlights(inputs.charges, gdsPlan.covered),
       coveredIds: inputs.coveredIds,
       costs: inputs.costs,
+      discountEuros,
     }),
     gdsPlan,
   };
@@ -1231,6 +1265,7 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
     supabase.from("crm_booking_items").select("*").eq("booking_id", bookingId),
     dossierInvoiceInputs(supabase, bookingId),
   ]);
+  const discountEuros = await loadStayDiscountEuros(supabase, bookingId).catch(() => 0);
   const ctx = buildMb3mInvoiceContext({
     booking: stay,
     items: (items || []) as StayItem[],
@@ -1239,6 +1274,7 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
     companies: [],
     charges: inputs.charges,
     costs: inputs.costs,
+    discountEuros,
   });
   const stale = mb3mStalePieces(inputs.printed, ctx.lines);
   if (!stale.length) throw new Mb3mError("Aucune facture imprimée à corriger.", 0);

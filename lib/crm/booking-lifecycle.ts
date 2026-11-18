@@ -33,6 +33,8 @@ export type DuplicateSource = {
   offer_greeter?: boolean | null;
   offer_checkin?: boolean | null;
   offer_visa?: boolean | null;
+  remise_type?: "amount" | "percent" | null;
+  remise_value?: number | string | null;
 };
 
 export function isBookingArchived(booking: { archived_at?: string | null } | null | undefined) {
@@ -92,6 +94,9 @@ export function duplicateBookingInsert(source: DuplicateSource, reference: strin
     offer_greeter: Boolean(source.offer_greeter),
     offer_checkin: Boolean(source.offer_checkin),
     offer_visa: Boolean(source.offer_visa),
+    ...(source.remise_type === "amount" || source.remise_type === "percent"
+      ? { remise_type: source.remise_type, remise_value: source.remise_value ?? null }
+      : {}),
     visible_to_client: false,
     archived_at: null,
     archived_was_visible: null,

@@ -43,6 +43,7 @@ import { countsAsCarnetCard, isActiveItem, isLedgerExpenseKind, type CrmBooking,
 import { createServiceClient } from "@/lib/supabase/admin";
 import { MCP_BOOKING_COLUMNS, MCP_ITEM_COLUMNS } from "@/lib/crm/mcp-columns";
 import { McpWriteError } from "@/lib/crm/mcp-write";
+import { applyStayCommit, planDeletedCardDocuments } from "@/lib/crm/stay-commit";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOCAL = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/;
@@ -2127,7 +2128,11 @@ export async function prepareCarnetMessage(input: Record<string, unknown>, admin
   };
 }
 
-/** Retire une carte. Les frais de billeterie ne reviennent pas, et leur débit est annulé. Aucun message. */
+/**
+ * Retire une carte et les justificatifs qui ne sont plus liés à aucune autre carte.
+ * Le fichier reste stocké (retrait restaurable). Une pièce encore sur une autre carte reste.
+ * Les frais de billeterie ne reviennent pas, et leur débit est annulé. Aucun message.
+ */
 export async function removeCarte(input: Record<string, unknown>, admin?: Admin) {
   const booking = await loadBooking(client(admin), dossierTarget(input));
   const carteId = uuid(input.carte_id, "Carte");
@@ -2143,8 +2148,17 @@ export async function removeCarte(input: Record<string, unknown>, admin?: Admin)
   if (isAutoTicketingExpense(item) || (item.kind === "expense" && /^Frais de billeterie/.test(item.title || ""))) {
     await dismissTicketing(db, booking.id);
   }
-  const { error: deleteError } = await db.from("crm_booking_items").delete().eq("id", carteId).eq("booking_id", booking.id);
-  if (deleteError) throw new McpWriteError("Carte non retirée.");
+  const documents = await planDeletedCardDocuments(db, booking.id, [carteId]);
+  if (!documents.ok) throw new McpWriteError("Carte non retirée.");
+  const written = await applyStayCommit(db, {
+    bookingId: booking.id,
+    updates: [],
+    deleted: [carteId],
+    created: [],
+    release: documents.release,
+    relink: documents.relink,
+  });
+  if (!written.ok) throw new McpWriteError("Carte non retirée.");
   await resyncAccueilVip(db, booking.id);
   const warning = await ledgerWarning("Carte retirée", () => refreshBookingLedger(db, booking.id));
   await import("@/lib/crm/dossier-refresh")
@@ -2155,6 +2169,7 @@ export async function removeCarte(input: Record<string, unknown>, admin?: Admin)
     dossier_id: booking.id,
     reference: booking.reference,
     retiree: true,
+    justificatifs_retires: documents.release.length,
     notifie: false,
     ...(warning ? { avertissement: warning } : {}),
   };

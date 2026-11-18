@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DbErrorLike } from "@/lib/crm/db-error";
-import type { DocumentRelease } from "@/lib/crm/stay-documents";
+import {
+  planDocumentRelease,
+  type DocumentRelease,
+  type DocumentRelink,
+  type StayDocumentRow,
+  type StayItemRef,
+} from "@/lib/crm/stay-documents";
 
 /** Une écriture d’étape préparée côté serveur. Seules ces colonnes partent en base. */
 export type StayCommitUpdate = {
@@ -19,6 +25,8 @@ export type StayCommitPayload = {
   deleted: string[];
   created: StayCommitInsert[];
   release: DocumentRelease[];
+  /** Pièces partagées : `booking_item_id` suit une carte qui reste, avant le DELETE. */
+  relink?: DocumentRelink[];
 };
 
 export type StayCommitResult =
@@ -69,12 +77,31 @@ function missingCommitFunction(error: DbErrorLike) {
 }
 
 /**
+ * Une pièce encore liée à une carte restante suit cette carte avant le DELETE,
+ * pour que `ON DELETE SET NULL` ne la détache pas. La fonction SQL ne connaît
+ * que les retraits : ce report est écrit juste avant, et il est idempotent.
+ */
+async function applyRelinks(supabase: SupabaseClient, payload: StayCommitPayload): Promise<StayCommitResult | null> {
+  for (const link of payload.relink || []) {
+    const { error } = await supabase
+      .from("crm_booking_documents")
+      .update({ booking_item_id: link.bookingItemId })
+      .eq("id", link.id)
+      .eq("booking_id", payload.bookingId);
+    if (error) return { ok: false, error };
+  }
+  return null;
+}
+
+/**
  * Modifications, retraits de pièces, suppressions et créations : une seule transaction
  * (`crm_commit_stay_steps`). Sans la fonction (migration pas encore jouée), le même
  * ordre part en appels séparés : les pièces d’abord, pour que le DELETE ne heurte pas
  * l’index d’empreinte.
  */
 export async function applyStayCommit(supabase: SupabaseClient, payload: StayCommitPayload): Promise<StayCommitResult> {
+  const relinked = await applyRelinks(supabase, payload);
+  if (relinked) return relinked;
   const { data, error } = await supabase.rpc("crm_commit_stay_steps", rpcArgs(payload));
   if (!error) {
     const ids =
@@ -85,6 +112,31 @@ export async function applyStayCommit(supabase: SupabaseClient, payload: StayCom
   }
   if (!missingCommitFunction(error)) return { ok: false, error };
   return applyStayCommitDirect(supabase, payload);
+}
+
+const DOCUMENT_COLUMNS = "id, booking_item_id, content_sha256, extracted, visible_to_client, created_at";
+
+/** Justificatifs à retirer ou à reporter quand ces cartes quittent le dossier. */
+export async function planDeletedCardDocuments(
+  supabase: SupabaseClient,
+  bookingId: string,
+  deletedItemIds: string[]
+): Promise<{ ok: true; release: DocumentRelease[]; relink: DocumentRelink[] } | { ok: false; error: DbErrorLike }> {
+  if (!deletedItemIds.length) return { ok: true, release: [], relink: [] };
+  const docs = await supabase
+    .from("crm_booking_documents")
+    .select(DOCUMENT_COLUMNS)
+    .eq("booking_id", bookingId);
+  if (docs.error) return { ok: false, error: docs.error };
+  const items = await supabase.from("crm_booking_items").select("id, source_document_id").eq("booking_id", bookingId);
+  if (items.error) return { ok: false, error: items.error };
+  const plan = planDocumentRelease({
+    documents: (docs.data || []) as StayDocumentRow[],
+    items: (items.data || []) as StayItemRef[],
+    deletedItemIds,
+    now: new Date().toISOString(),
+  });
+  return { ok: true, release: plan.release, relink: plan.relink };
 }
 
 async function applyStayCommitDirect(supabase: SupabaseClient, payload: StayCommitPayload): Promise<StayCommitResult> {

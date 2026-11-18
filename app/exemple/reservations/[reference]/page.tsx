@@ -25,6 +25,7 @@ import { chargeableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketin
 import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
+import { readCommercialDiscount } from "@/lib/crm/commercial-discount";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { isActiveItem } from "@/lib/crm/types";
 import { expenseCountsForClient } from "@/lib/crm/expense-validation";
@@ -141,6 +142,7 @@ export default async function ExampleReservationPage({ params }: Props) {
     }));
   const feeExtras = agencyFeeExtraAmounts(session.items);
   const stayTotal = bookingTotalFromItems(session.items);
+  const discount = readCommercialDiscount(b);
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: b.agency_commission === true,
@@ -150,6 +152,7 @@ export default async function ExampleReservationPage({ params }: Props) {
     extras: feeExtras,
     ticketingFee,
     ticketCount,
+    discount,
   });
 
   return (
@@ -288,6 +291,7 @@ export default async function ExampleReservationPage({ params }: Props) {
               expenses: expenseChoices,
               extras: feeExtras,
               ticketingFee,
+              discount,
             })}
           </p>
           {insurances.map((item) => {

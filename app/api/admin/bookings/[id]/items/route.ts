@@ -18,8 +18,7 @@ import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { noteCarnetAdditions, type CarnetAdditionCard } from "@/lib/crm/carnet-addition";
 import { verifiedJournalSummary } from "@/lib/crm/review-doubt";
 import { cardVisibilityUpdate, detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
-import { planDocumentRelease } from "@/lib/crm/stay-documents";
-import { applyStayCommit } from "@/lib/crm/stay-commit";
+import { applyStayCommit, planDeletedCardDocuments } from "@/lib/crm/stay-commit";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { readMb3mActivityOverride, withMb3mActivity } from "@/lib/crm/mb3m-activity";
 import { parseMoney } from "@/lib/crm/money";
@@ -419,35 +418,29 @@ async function commitStaySteps(
       kind: prepared.kind,
     });
   }
-  const removeIds = Array.isArray(body.retirer_documents)
-    ? body.retirer_documents.map((value) => String(value || "")).filter(Boolean)
-    : [];
-  let release: ReturnType<typeof planDocumentRelease> = [];
-  if (deleted.length || removeIds.length) {
-    const { data: docRows, error: docError } = await supabase
-      .from("crm_booking_documents")
-      .select("id, booking_item_id, content_sha256, extracted, visible_to_client, created_at")
-      .eq("booking_id", bookingId);
-    if (docError) return dbError(docError, 400);
-    release = planDocumentRelease({
-      documents: docRows || [],
-      deletedItemIds: deleted,
-      removeIds,
-      now: new Date().toISOString(),
-    });
-  }
+  const documents = await planDeletedCardDocuments(supabase, bookingId, deleted);
+  if (!documents.ok) return dbError(documents.error, 400);
   const written = await applyStayCommit(supabase, {
     bookingId,
     updates: preparedUpdates,
     deleted,
     created: preparedCreates.map((item) => ({ clientId: item.clientId, row: item.row })),
-    release,
+    release: documents.release,
+    relink: documents.relink,
   });
   if (!written.ok) return dbError(written.error, 400);
   const idMap = new Map(Object.entries(written.ids));
   for (const item of preparedCreates) {
     const id = idMap.get(item.clientId);
     if (id && item.visible && countsAsCarnetCard(item.kind)) shown.push({ id, kind: item.kind });
+    if (id && item.kind === "hotel") {
+      try {
+        const { scheduleHotelWebEnrichment } = await import("@/lib/crm/hotel-web-schedule");
+        scheduleHotelWebEnrichment(id);
+      } catch (scheduleError) {
+        console.warn("[hotel-web]", scheduleError instanceof Error ? scheduleError.message : "planification");
+      }
+    }
   }
   let warning: string | null = null;
   try {
@@ -561,21 +554,15 @@ export async function DELETE(request: Request, ctx: Ctx) {
       .eq("id", bookingId);
     if (modeError) return dbError(modeError, 400);
   }
-  const { data: docRows, error: docError } = await auth.supabase
-    .from("crm_booking_documents")
-    .select("id, booking_item_id, content_sha256, extracted, visible_to_client, created_at")
-    .eq("booking_id", bookingId);
-  if (docError) return dbError(docError, 400);
+  const documents = await planDeletedCardDocuments(auth.supabase, bookingId, [itemId]);
+  if (!documents.ok) return dbError(documents.error, 400);
   const written = await applyStayCommit(auth.supabase, {
     bookingId,
     updates: [],
     deleted: [itemId],
     created: [],
-    release: planDocumentRelease({
-      documents: docRows || [],
-      deletedItemIds: [itemId],
-      now: new Date().toISOString(),
-    }),
+    release: documents.release,
+    relink: documents.relink,
   });
   if (!written.ok) return dbError(written.error, 400);
   try {

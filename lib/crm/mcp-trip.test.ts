@@ -1107,7 +1107,110 @@ test("sans_frais retire les frais déjà créés, et retirer_carte annule le dé
   const removed = await removeCarte({ dossier_id: dossier.id, carte_id: again.id }, client);
   assert.equal(removed.retiree, true);
   assert.equal(removed.notifie, false);
+  assert.equal(removed.justificatifs_retires, 0);
   assert.equal(db.tables.crm_booking_items.some((row) => row.id === again.id), false);
+});
+
+test("retirer_carte retire le justificatif de la carte, pas le PDF encore sur l’autre vol", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Tel Aviv", devise: "EUR" }, client);
+  const aller = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "El Al",
+      numero: "LY320",
+      depart_iata: "CDG",
+      arrivee_iata: "TLV",
+      depart: "2026-12-01T10:00",
+      arrivee: "2026-12-01T16:00",
+      prix: 0,
+    },
+    client
+  );
+  const retour = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "El Al",
+      numero: "LY325",
+      depart_iata: "TLV",
+      arrivee_iata: "CDG",
+      depart: "2026-12-08T10:00",
+      arrivee: "2026-12-08T14:00",
+      prix: 0,
+    },
+    client
+  );
+  const sha = "ab".repeat(32);
+  const docAller = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
+  const docRetour = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2";
+  const shared = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3";
+  db.tables.crm_booking_documents = [
+    {
+      id: docAller,
+      booking_id: dossier.id,
+      booking_item_id: aller.id,
+      content_sha256: sha,
+      extracted: null,
+      visible_to_client: true,
+      storage_path: "billets/aller.pdf",
+      created_at: "2026-11-01T10:00:00.000Z",
+    },
+    {
+      id: docRetour,
+      booking_id: dossier.id,
+      booking_item_id: retour.id,
+      content_sha256: sha,
+      extracted: null,
+      visible_to_client: true,
+      storage_path: "billets/retour.pdf",
+      created_at: "2026-11-01T11:00:00.000Z",
+    },
+    {
+      id: shared,
+      booking_id: dossier.id,
+      booking_item_id: aller.id,
+      content_sha256: "cd".repeat(32),
+      extracted: { page: 1 },
+      visible_to_client: true,
+      storage_path: "billets/partage.pdf",
+      created_at: "2026-11-01T12:00:00.000Z",
+    },
+  ];
+  const allerRow = db.tables.crm_booking_items.find((row) => row.id === aller.id);
+  const retourRow = db.tables.crm_booking_items.find((row) => row.id === retour.id);
+  if (allerRow) allerRow.source_document_id = shared;
+  if (retourRow) retourRow.source_document_id = shared;
+
+  const removed = await removeCarte({ dossier_id: dossier.id, carte_id: aller.id }, client);
+  assert.equal(removed.retiree, true);
+  assert.equal(removed.notifie, false);
+  assert.equal(removed.justificatifs_retires, 1);
+  assert.equal(db.tables.crm_booking_items.some((row) => row.id === aller.id), false);
+  assert.equal(db.tables.crm_booking_items.some((row) => row.id === retour.id), true);
+
+  const gone = db.tables.crm_booking_documents.find((row) => row.id === docAller);
+  assert.equal(gone?.content_sha256, null);
+  assert.equal(gone?.booking_item_id, null);
+  assert.equal(gone?.visible_to_client, false);
+  assert.equal(gone?.storage_path, "billets/aller.pdf");
+  const archive = (gone?.extracted as { tri_piece?: { empreinte?: string } } | null)?.tri_piece;
+  assert.equal(archive?.empreinte, sha);
+
+  const kept = db.tables.crm_booking_documents.find((row) => row.id === docRetour);
+  assert.equal(kept?.booking_item_id, retour.id);
+  assert.equal(kept?.content_sha256, sha);
+  assert.equal(kept?.storage_path, "billets/retour.pdf");
+  assert.equal((kept?.extracted as { tri_piece?: unknown } | null)?.tri_piece, undefined);
+
+  const still = db.tables.crm_booking_documents.find((row) => row.id === shared);
+  assert.equal(still?.booking_item_id, retour.id);
+  assert.equal(still?.content_sha256, "cd".repeat(32));
+  assert.equal(still?.storage_path, "billets/partage.pdf");
+  assert.equal((still?.extracted as { page?: number; tri_piece?: unknown }).page, 1);
+  assert.equal((still?.extracted as { tri_piece?: unknown }).tri_piece, undefined);
 });
 
 test("ajouter le titulaire avec sa date et ses prénoms ne crée pas de compagnon", async () => {

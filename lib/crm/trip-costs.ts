@@ -325,6 +325,8 @@ export type TripAccountingTotals = {
   cost: number;
   margin: number;
   unsoldCost: number;
+  /** Euros de remise déjà retirés de la vente et de la marge. */
+  remise?: number;
 };
 
 export function tripTotals(lines: AccountedLine[], unsold: TripCost[]): TripAccountingTotals {

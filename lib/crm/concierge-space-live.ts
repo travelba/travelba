@@ -84,6 +84,7 @@ async function sendStatement(customerId: string) {
   const { createServiceClient } = await import("@/lib/supabase/admin");
   const { loadClientLedger } = await import("@/lib/crm/client-ledger-load");
   const { buildStatement, statementHolderLines } = await import("@/lib/crm/statement");
+  const { attachStatementTransfer } = await import("@/lib/crm/statement-wire");
   const { renderStatementPdf } = await import("@/lib/crm/statement-pdf");
   const { deliverStatementWhatsapp } = await import("@/lib/crm/statement-send");
   const admin = createServiceClient();
@@ -92,12 +93,14 @@ async function sendStatement(customerId: string) {
   if (!customer) return { ok: false, message: "Le relevé part depuis Transactions. Je vous ouvre l’espace." };
   const view = await loadClientLedger(admin, customer, "client");
   const pdf = await renderStatementPdf(
-    buildStatement({
-      view,
-      holderName: customerFullName(customer),
-      holderLines: statementHolderLines(customer),
-      issuedAt: new Date(),
-    })
+    await attachStatementTransfer(
+      buildStatement({
+        view,
+        holderName: customerFullName(customer),
+        holderLines: statementHolderLines(customer),
+        issuedAt: new Date(),
+      })
+    )
   );
   const sent = await deliverStatementWhatsapp({
     customerId: customer.id,

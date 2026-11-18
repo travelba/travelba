@@ -396,7 +396,11 @@ export function mb3mFeeCode(input: { label?: string | null; amount?: number | nu
 }
 
 export function mb3mFeeLabel(code: Mb3mFeeCode, fallback?: string | null) {
-  if (code === "4") return "Remise";
+  if (code === "4") {
+    const text = (fallback || "").trim();
+    if (/^remise commerciale$/i.test(text)) return "Remise commerciale";
+    return "Remise";
+  }
   if (code === "401") return "Frais Agence Billetterie";
   if (code === "12") return "Frais agence";
   if (code === "13") return (fallback || "").trim().match(/tourisme/i) ? (fallback || "").trim() : "Frais Agence Tourisme";

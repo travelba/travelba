@@ -36,6 +36,11 @@ import { ledgerDebitPayer } from "@/lib/crm/payer";
 import { emptyToNull } from "@/lib/crm/identity";
 import { stayCurrency } from "@/lib/crm/stay-currency";
 import { agencyFeeForBooking, agencyFeeRateColumn, agencyFeeRateField } from "@/lib/crm/agency-fee-rate";
+import {
+  COMMERCIAL_DISCOUNT_LABEL,
+  commercialDiscountExternalId,
+  commercialDiscountPatch,
+} from "@/lib/crm/commercial-discount";
 import { agencyFeeBaseAmount, agencyFeeFromGross } from "@/lib/crm/money";
 import { must } from "@/lib/crm/must";
 import { visibilityOnRequest } from "@/lib/crm/visa-flow";
@@ -100,6 +105,8 @@ const BOOKING_META_KEYS = [
   "offer_greeter",
   "offer_checkin",
   "offer_visa",
+  "remise_type",
+  "remise_value",
 ] as const;
 
 /** Champs dossier envoyés par le formulaire admin. Dates vides = null, titre trimé. */
@@ -157,16 +164,30 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
       patch[key] = stayCurrency(body[key]);
       continue;
     }
+    if (key === "remise_type" || key === "remise_value") continue;
     patch[key] = body[key];
+  }
+  if ("remise_type" in body || "remise_value" in body) {
+    const parsed = commercialDiscountPatch(body.remise_type, body.remise_value);
+    if (!("error" in parsed)) {
+      patch.remise_type = parsed.remise_type;
+      patch.remise_value = parsed.remise_value;
+    }
   }
   return patch;
 }
 
 /** Message si le taux envoyé n’est pas 10 %, 7,5 % ou 5 %. Absent du corps : rien. */
 export function bookingMetaError(body: Record<string, unknown>) {
-  if (!("agency_fee_rate" in body)) return null;
-  const parsed = agencyFeeRateField(body.agency_fee_rate);
-  return "error" in parsed ? parsed.error : null;
+  if ("agency_fee_rate" in body) {
+    const parsed = agencyFeeRateField(body.agency_fee_rate);
+    if ("error" in parsed) return parsed.error;
+  }
+  if ("remise_type" in body || "remise_value" in body) {
+    const parsed = commercialDiscountPatch(body.remise_type, body.remise_value);
+    if ("error" in parsed) return parsed.error;
+  }
+  return null;
 }
 
 export function bookingDebitIntent(input: {
@@ -884,6 +905,85 @@ export async function dropCoveredStayRollup(supabase: SupabaseClient, bookingId:
   return true;
 }
 
+/**
+ * Crédit « Remise commerciale » : le client doit le total après remise.
+ * Le montant est celui du carnet. Il ne dépasse pas les débits du dossier, pour ne pas créer d’avoir au-delà.
+ * Séjour caché, annulé ou archivé : la ligne est annulée.
+ */
+export async function syncCommercialDiscount(supabase: SupabaseClient, booking: CrmBooking) {
+  const { loadStayDiscountEuros } = await import("@/lib/crm/displayed-stay");
+  const externalId = commercialDiscountExternalId(booking.id);
+  const shown = !booking.archived_at && booking.visible_to_client !== false && booking.status !== "cancelled";
+  let amount = 0;
+  if (shown) {
+    amount = await loadStayDiscountEuros(supabase, booking.id);
+    if (amount > 0) {
+      const debits = must(
+        await supabase
+          .from("crm_transactions")
+          .select("amount")
+          .eq("booking_id", booking.id)
+          .eq("direction", "debit")
+          .eq("status", "posted"),
+        "Remise commerciale"
+      );
+      const billed = (debits || []).reduce((sum, row) => sum + Number((row as { amount: number | string }).amount || 0), 0);
+      amount = Math.min(amount, Math.round(billed * 100) / 100);
+      amount = Math.round(amount * 100) / 100;
+    }
+  }
+  const { data: existing } = await supabase
+    .from("crm_transactions")
+    .select("*")
+    .eq("source", "manual")
+    .eq("external_id", externalId)
+    .maybeSingle();
+  const credit = existing as CrmTransaction | null;
+  const payerId = booking.billing_customer_id || booking.customer_id;
+  const companyId = debitBillingCompanyId(booking);
+  if (amount <= 0) {
+    if (credit && credit.status !== "void") {
+      must(await supabase.from("crm_transactions").update({ status: "void" }).eq("id", credit.id), "Remise commerciale");
+    }
+    return;
+  }
+  if (!credit) {
+    must(
+      await supabase.from("crm_transactions").insert({
+        customer_id: payerId,
+        booking_id: booking.id,
+        ...debitParty(booking, companyId),
+        direction: "credit",
+        kind: "adjustment",
+        amount,
+        currency: booking.currency || "EUR",
+        label: COMMERCIAL_DISCOUNT_LABEL,
+        source: "manual",
+        external_id: externalId,
+        status: "posted",
+      }),
+      "Remise commerciale"
+    );
+    return;
+  }
+  must(
+    await supabase
+      .from("crm_transactions")
+      .update({
+        customer_id: payerId,
+        ...debitParty(booking, companyId),
+        direction: "credit",
+        kind: "adjustment",
+        amount,
+        currency: booking.currency || "EUR",
+        label: COMMERCIAL_DISCOUNT_LABEL,
+        status: "posted",
+      })
+      .eq("id", credit.id),
+    "Remise commerciale"
+  );
+}
+
 export async function syncBookingLedger(
   supabase: SupabaseClient,
   booking: CrmBooking,
@@ -892,6 +992,7 @@ export async function syncBookingLedger(
 ) {
   if (booking.archived_at) {
     await clearBookingCharges(supabase, booking.id);
+    await syncCommercialDiscount(supabase, booking);
     return;
   }
   try {
@@ -901,6 +1002,7 @@ export async function syncBookingLedger(
     await syncAgencyCommission(supabase, booking);
   } finally {
     await dropCoveredStayRollup(supabase, booking.id);
+    await syncCommercialDiscount(supabase, booking);
   }
 }
 

@@ -3,6 +3,7 @@ import { jsonError } from "@/lib/crm/auth";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
 import { buildStatement, statementHolderLines } from "@/lib/crm/statement";
+import { attachStatementTransfer } from "@/lib/crm/statement-wire";
 import { renderStatementPdf } from "@/lib/crm/statement-pdf";
 import { statementPdfResponse } from "@/lib/crm/statement-send";
 import { customerFullName } from "@/lib/crm/types";
@@ -19,12 +20,14 @@ export async function GET() {
   const preview = previewPdf();
   if (preview instanceof NextResponse) return preview;
   const pdf = await renderStatementPdf(
-    buildStatement({
-      view: preview.ledger,
-      holderName: customerFullName(preview.customer),
-      holderLines: statementHolderLines(preview.customer),
-      issuedAt: new Date(),
-    })
+    await attachStatementTransfer(
+      buildStatement({
+        view: preview.ledger,
+        holderName: customerFullName(preview.customer),
+        holderLines: statementHolderLines(preview.customer),
+        issuedAt: new Date(),
+      })
+    )
   );
   return statementPdfResponse(pdf);
 }

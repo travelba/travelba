@@ -50,6 +50,7 @@ import {
   updateVol,
   validerLecture,
 } from "@/lib/crm/mcp-trip";
+import { enrichirHotel } from "@/lib/crm/hotel-web-run";
 import { inviteClientAccess, setCompanyRole, updateCompanionIdentity, updateHolderProfile } from "@/lib/crm/mcp-account";
 import { updateVoyageur } from "@/lib/crm/traveler-update";
 import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
@@ -142,7 +143,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 143;
+export const MCP_TOOL_CAP = 144;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -842,7 +843,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_dossier",
     write: true,
     description:
-      "Met à jour les notes, les dates, le titre, la couverture, le statut, la commission d’agence, la société de facturation ou une dépense (depense : carte_id, libelle, quantite, prix_unitaire, montant, valider ; le montant vaut quantité × prix unitaire, le montant seul recalcule le prix unitaire ; valider affiche au client une dépense automatique « à valider ») d’un dossier, puis le grand livre. titre est le nom du séjour. statut : non_visible, visible ou annule. Les anciens mots restent acceptés : brouillon et devis deviennent non_visible, confirme devient visible. visible montre le séjour et le confirme, sans prévenir le client : publier_carnet envoie le message. Un séjour visible peut recevoir la carte hôtel. non_visible le cache. annule l’annule ; non_visible le rouvre, caché. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. La réponse renvoie statut non_visible, visible ou annule.",
+      "Met à jour les notes, les dates, le titre, la couverture, le statut, la commission d’agence, la remise commerciale, la société de facturation ou une dépense (depense : carte_id, libelle, quantite, prix_unitaire, montant, valider ; le montant vaut quantité × prix unitaire, le montant seul recalcule le prix unitaire ; valider affiche au client une dépense automatique « à valider ») d’un dossier, puis le grand livre. titre est le nom du séjour. statut : non_visible, visible ou annule. Les anciens mots restent acceptés : brouillon et devis deviennent non_visible, confirme devient visible. visible montre le séjour et le confirme, sans prévenir le client : publier_carnet envoie le message. Un séjour visible peut recevoir la carte hôtel. non_visible le cache. annule l’annule ; non_visible le rouvre, caché. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. remise : { type: montant ou pourcentage, valeur } retire des euros du total TTC après commissions et frais, ou null pour l’effacer. Un pourcentage est entre 0 et 100. Le total ne devient pas négatif. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. La réponse renvoie statut non_visible, visible ou annule.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -887,6 +888,14 @@ export const MCP_TOOLS: ToolDef[] = [
         .max(120)
         .optional()
         .describe("Mention de la couverture importée. Défaut : Image générée par IA"),
+      remise: z
+        .object({
+          type: z.enum(["montant", "pourcentage"]).describe("montant en euros, ou pourcentage"),
+          valeur: z.number().describe("Euros, ou pourcentage entre 0 et 100"),
+        })
+        .nullable()
+        .optional()
+        .describe("Remise commerciale sur le total TTC, après commissions et frais. null retire la remise."),
       depense: z
         .object({
           carte_id: z.string().trim().describe("Identifiant de la dépense (carte_id d’une ligne kind « expense » de fiche_dossier)"),
@@ -1446,7 +1455,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "retirer_carte",
     write: true,
     description:
-      "Retire une carte du dossier. Les frais de billeterie ne sont pas recréés, et leur débit au grand livre est annulé. Le séjour caché ne débite pas. Aucun message.",
+      "Retire une carte du dossier et ses justificatifs (pièces liées par la carte ou comme document source). Une pièce encore liée à une autre carte du dossier reste attachée à cette carte. Le retrait est restaurable : le fichier n’est pas effacé du stockage. Les frais de billeterie ne sont pas recréés, et leur débit au grand livre est annulé. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -1526,6 +1535,21 @@ export const MCP_TOOLS: ToolDef[] = [
       voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs du dossier"),
     },
     run: (args) => addHotel(args),
+  },
+  {
+    name: "enrichir_hotel",
+    write: true,
+    openWorld: true,
+    description:
+      "Recherche les informations publiques d’une carte hôtel (adresse, réception, réservations, concierge, site, description en français, photos, heures) et ne remplit que les champs vides. Les sources sont dans details. La carte est marquée à vérifier. La visibilité ne change pas. Aucun message. Sans clé Perplexity, rien n’est écrit par la recherche.",
+    input: {
+      carte_id: z.string().trim().max(80).describe("Identifiant de la carte hôtel"),
+    },
+    run: async (args) => {
+      const result = await enrichirHotel(args);
+      if (result.statut === "introuvable" || result.statut === "pas_hotel") throw new McpWriteError(result.message);
+      return result;
+    },
   },
   {
     name: "modifier_hotel",

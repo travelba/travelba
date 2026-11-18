@@ -177,6 +177,14 @@ export async function addStaffBookingCard(
     .select("*")
     .single();
   if (error || !data) return { error: dbErrorMessage(error as DbErrorLike, "Carte non créée."), status: 400 };
+  if (kind === "hotel") {
+    try {
+      const { scheduleHotelWebEnrichment } = await import("@/lib/crm/hotel-web-schedule");
+      scheduleHotelWebEnrichment(String(data.id));
+    } catch (scheduleError) {
+      console.warn("[hotel-web]", scheduleError instanceof Error ? scheduleError.message : "planification");
+    }
+  }
   if (!isLedgerExpenseKind(kind)) {
     try {
       await persistBookingCardOrder(supabase, bookingId, { createdIds: [String(data.id)] });

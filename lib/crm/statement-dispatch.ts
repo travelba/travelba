@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadClientLedger } from "./client-ledger";
 import { dbErrorMessage, type DbErrorLike } from "./db-error";
 import { RATE_LIMITED_MESSAGE, rateLimit, rateLimitKey } from "./rate-limit";
+import { attachStatementTransfer } from "./statement-wire";
 import { buildStatement, STATEMENT_CUSTOMER_COLUMNS, statementHolderLines, type StatementAudience } from "./statement";
 import { renderStatementPdf } from "./statement-pdf";
 import { deliverStatementWhatsapp } from "./statement-send";
@@ -135,12 +136,14 @@ export async function buildCustomerStatementPdf(
   }
   const view = await loadClientLedger(supabase, customer, audience);
   const pdf = await renderStatementPdf(
-    buildStatement({
-      view,
-      holderName: customerFullName(customer),
-      holderLines: statementHolderLines(customer),
-      issuedAt: now,
-    })
+    await attachStatementTransfer(
+      buildStatement({
+        view,
+        holderName: customerFullName(customer),
+        holderLines: statementHolderLines(customer),
+        issuedAt: now,
+      })
+    )
   );
   return { pdf, member: view.member };
 }

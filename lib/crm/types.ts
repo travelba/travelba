@@ -289,6 +289,10 @@ export type CrmBooking = {
   include_in_ledger: boolean;
   /** Si true : commission d’agence des étapes et des dépenses, en une ligne du dossier. */
   agency_commission?: boolean;
+  /** Remise commerciale : amount (euros) ou percent (0 à 100). Null : pas de remise. */
+  remise_type?: "amount" | "percent" | null;
+  /** Valeur de la remise, appliquée après commissions et frais. */
+  remise_value?: number | string | null;
   /** Dérogation du dossier. Null = taux du compte, sinon 10 %. */
   agency_fee_rate?: number | string | null;
   /** `ticketing_off` : la billeterie automatique ne se recrée pas après un retrait. */
