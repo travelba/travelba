@@ -3,7 +3,7 @@ import { loadClientLedger } from "./client-ledger";
 import { dbErrorMessage, type DbErrorLike } from "./db-error";
 import { RATE_LIMITED_MESSAGE, rateLimit, rateLimitKey } from "./rate-limit";
 import { buildStatement, STATEMENT_CUSTOMER_COLUMNS, statementHolderLines, type StatementAudience } from "./statement";
-import { renderStatementPdf } from "./statement-pdf";
+import { renderAccountStatementPdf } from "./statement-wire";
 import { deliverStatementWhatsapp } from "./statement-send";
 import { STATEMENT_SESSION_KEY, STATEMENT_TEMPLATE_KEY, type StatementDeliveryResult } from "./statement-whatsapp";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -134,7 +134,7 @@ export async function buildCustomerStatementPdf(
     console.error("[sepa]", error instanceof Error ? error.message : "rapprochement");
   }
   const view = await loadClientLedger(supabase, customer, audience);
-  const pdf = await renderStatementPdf(
+  const pdf = await renderAccountStatementPdf(
     buildStatement({
       view,
       holderName: customerFullName(customer),

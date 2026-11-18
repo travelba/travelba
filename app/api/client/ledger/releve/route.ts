@@ -3,7 +3,7 @@ import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { loadClientLedger } from "@/lib/crm/client-ledger-load";
 import { RATE_LIMITED_MESSAGE, rateLimit, rateLimitKey } from "@/lib/crm/rate-limit";
 import { buildStatement, statementHolderLines } from "@/lib/crm/statement";
-import { renderStatementPdf } from "@/lib/crm/statement-pdf";
+import { renderAccountStatementPdf } from "@/lib/crm/statement-wire";
 import { deliverStatementWhatsapp, statementPdfResponse, statementSendResponse } from "@/lib/crm/statement-send";
 import { customerFullName } from "@/lib/crm/types";
 
@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 
 async function statementPdf(auth: Exclude<Awaited<ReturnType<typeof requireCustomer>>, NextResponse>) {
   const view = await loadClientLedger(auth.supabase, auth.customer, "client");
-  const pdf = await renderStatementPdf(
+  const pdf = await renderAccountStatementPdf(
     buildStatement({
       view,
       holderName: customerFullName(auth.customer),

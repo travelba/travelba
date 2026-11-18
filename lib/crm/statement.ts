@@ -67,6 +67,12 @@ export type StatementModel = {
   allowances: StatementAllowance[];
   sections: StatementSection[];
   emptyNote: string | null;
+  /** Faux pour le relevé de frais d’un collaborateur : il ne règle pas. */
+  includeWire: boolean;
+  /** Reste à virer, euros, un seul encours. Vide si le compte est soldé ou partagé. */
+  wireAmount: string | null;
+  /** Lignes du RIB. Absentes tant que le PDF n’a pas lu Revolut. */
+  wireLines?: string[];
 };
 
 export type StatementAudience = "client" | "staff";
@@ -173,6 +179,17 @@ function movementRow(row: LedgerMovementRow): StatementRow {
     debit: row.credit ? "" : amount,
     credit: row.credit ? amount : "",
   };
+}
+
+/** Montant à virer : le reste en euros d’un seul encours. Un collaborateur, ou crédit et Pro, n’en ont pas. */
+export function statementWireAmount(
+  view: Pick<ClientLedgerView, "member" | "pockets" | "wallets">
+): string | null {
+  if (view.member || view.pockets?.length) return null;
+  const eur = (view.wallets || []).filter((wallet) => (wallet.currency || "EUR").toUpperCase() === "EUR");
+  if (eur.length !== 1) return null;
+  if (!(eur[0].remaining > 0.004)) return null;
+  return formatStatementMoney(eur[0].remaining, "EUR");
 }
 
 function encoursHint(wallet: ClientLedgerWallet) {
@@ -336,6 +353,8 @@ export function buildStatement(input: {
     allowances,
     sections,
     emptyNote: hasLines ? null : "Aucun mouvement comptabilisé à cette date.",
+    includeWire: !member,
+    wireAmount: statementWireAmount(view),
   };
 }
 
