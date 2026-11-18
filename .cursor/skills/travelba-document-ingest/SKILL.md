@@ -75,6 +75,7 @@ Pièces iOS parfois absentes du VM : le dire, demander le trombone desktop, ou l
 | The Leela / lettre EN | `14-SEP-26`, RESERVATION CONFIRMATION | `parseHotelConfirmationLetter` — date only, TENTATIVE → `needs_review` |
 | TAAP / Talixo | TRANSFER CONFIRMATION, DROPOFF, Itinéraire | `parseTransferConfirmation` |
 | SIXT | Pickup on / Return on / catégorie | `parseSixtCar` — `kind=car` |
+| Expedia TAAP voiture | « Location de voiture », « Prise en charge et restitution » | `parseExpediaTaapCar` — `kind=car`, pas un hôtel. Prix payé = coût, prix de vente null |
 | Passion Collection | Devis, NET, options | quote — **pas** de NET |
 | Toucan Discovery | étapes du cadre + excursions | `activity` — les étapes **ne sont pas** des hôtels |
 | Maeva / Pierre & Vacances | maeva.com + N° DE DOSSIER / VOS OPTIONS | `parseMaevaStay` — **1 hôtel** + forfaits / matériel / cours (`activity`) + assurance. Réf. dossier **sur l’hôtel seulement**. Dates only. Pas de frais de dossier, PAN, totaux à 0 |

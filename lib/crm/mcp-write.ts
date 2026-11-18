@@ -1101,12 +1101,10 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
   }
   if (action.action === "rattacher") {
     if (action.cartes !== false && extract && !isCancellationExtract(extract)) {
-      const { hasUsableFlight } = await import("@/lib/crm/email-flight-deposit");
-      const { depositFlightsOnBooking } = await import("@/lib/crm/email-flight-deposit-run");
-      if (hasUsableFlight(extract)) {
-        try {
-          const flown = await depositFlightsOnBooking(db, row, booking.id, booking.customer_id, null);
-          if (flown.wrote) {
+      const { depositCardsOnBooking } = await import("@/lib/crm/email-card-deposit-run");
+      try {
+        const flown = await depositCardsOnBooking(db, row, booking.id, booking.customer_id, null);
+        if (flown.wrote) {
             if (gate.repartir) {
               const { noteEmailRepartition } = await import("@/lib/crm/email-attach-run");
               await noteEmailRepartition(db, {
@@ -1117,19 +1115,20 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
                 actorId: null,
               });
             }
-            return {
-              id: row.id,
-              statut: "attached" as const,
-              dossier_id: booking.id,
-              pieces: flown.pieces,
-              cartes: true as const,
-              message: flown.message,
-              repartir: gate.repartir,
-            };
-          }
-        } catch (err) {
-          raise(err, "E-mail non traité.");
+          return {
+            id: row.id,
+            statut: "attached" as const,
+            dossier_id: booking.id,
+            pieces: flown.pieces,
+            cartes: true as const,
+            message: flown.message,
+            etapes: "etapes" in flown ? flown.etapes : undefined,
+            depenses_pliant: "pliant" in flown ? flown.pliant : [],
+            repartir: gate.repartir,
+          };
         }
+      } catch (err) {
+        raise(err, "E-mail non traité.");
       }
     }
     let deposited;

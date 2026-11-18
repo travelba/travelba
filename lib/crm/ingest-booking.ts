@@ -60,7 +60,9 @@ import {
   findHotelExactStay,
   findMatchingItem,
   hotelMatchKeepsStay,
+  isServiceKind,
   keptHotelStayFields,
+  mergeFilledDetails,
   mergeFlightPassengers,
 } from "@/lib/crm/item-match";
 import { planTicketOnExistingCard } from "@/lib/crm/flight-ticket";
@@ -430,6 +432,18 @@ async function upsertItemsAndTravelers(
       confirmationRef = planned.confirmationRef;
       flightDetails = planned.details;
     }
+    if (match && isServiceKind(kind) && !confirmationRef) {
+      confirmationRef = emptyToNull(match.confirmation_ref);
+    }
+    const serviceDetails =
+      match && isServiceKind(kind)
+        ? mergeFilledDetails(
+            match.details && typeof match.details === "object" && !Array.isArray(match.details)
+              ? (match.details as Record<string, unknown>)
+              : null,
+            details
+          )
+        : details;
     const incomingAmount = parseMoney(item.amount);
     const replacing =
       !match && opts?.replacements
@@ -460,22 +474,28 @@ async function upsertItemsAndTravelers(
     const fromMail = Boolean(emailIngestId) && !match;
     const mailDetails = fromMail
       ? {
-          ...details,
+          ...serviceDetails,
           needs_review: true,
           review_reason:
-            typeof details.review_reason === "string" && details.review_reason.trim()
-              ? details.review_reason
+            typeof serviceDetails.review_reason === "string" && serviceDetails.review_reason.trim()
+              ? serviceDetails.review_reason
               : MAIL_REVIEW_REASON,
           client_hidden: true,
         }
-      : details;
+      : serviceDetails;
     const payload = {
       kind,
       title: kept?.title || title,
-      supplier: kept ? kept.supplier : emptyToNull(item.supplier),
+      supplier: kept
+        ? kept.supplier
+        : emptyToNull(item.supplier) || (match && isServiceKind(kind) ? emptyToNull(match.supplier) : null),
       confirmation_ref: kept ? kept.confirmation_ref : confirmationRef,
-      start_at: kept ? kept.start_at : emptyToNull(item.start_at),
-      end_at: kept ? kept.end_at : emptyToNull(item.end_at),
+      start_at: kept
+        ? kept.start_at
+        : emptyToNull(item.start_at) || (match && isServiceKind(kind) ? emptyToNull(match.start_at) : null),
+      end_at: kept
+        ? kept.end_at
+        : emptyToNull(item.end_at) || (match && isServiceKind(kind) ? emptyToNull(match.end_at) : null),
       amount,
       details: kept?.details || flightDetails || mailDetails,
       visible_to_client: fromMail ? false : cardStaysShown(match, Boolean(opts?.keepSellingPrice)),

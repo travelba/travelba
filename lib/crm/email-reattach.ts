@@ -7,6 +7,7 @@ export type TreatedEmailGate =
 
 const CARD_WRITE_ACTIONS = new Set([
   "apply_cards",
+  "attach_cards",
   "attach_flights",
   "auto_attach",
   "auto_create",

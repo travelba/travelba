@@ -31,6 +31,7 @@ test("un mail déjà traité est refusé sans l’option, et accepté vers un au
 test("un dépôt de pièces seules, ou forcer, rejoue le même dossier", () => {
   assert.equal(emailDepositedFilesOnly(["suggest", "attach_files"]), true);
   assert.equal(emailDepositedFilesOnly(["attach_files", "auto_attach"]), false);
+  assert.equal(emailDepositedFilesOnly(["attach_files", "attach_cards"]), false);
   assert.equal(emailDepositedFilesOnly(["auto_attach"]), false);
   const files = treatedEmailGate("attached", SOURCE, SOURCE, false, { piecesSeules: true });
   assert.equal("rejouer" in files && files.rejouer, true);

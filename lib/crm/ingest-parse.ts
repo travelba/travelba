@@ -45,8 +45,9 @@ const MONTHS: Record<string, string> = {
   march: "03",
   mars: "03",
   apr: "04",
-  april: "04",
   avril: "04",
+  avr: "04",
+  april: "04",
   may: "05",
   mai: "05",
   jun: "06",
@@ -1008,6 +1009,7 @@ export function parseExpediaTaap(text: string): {
   currency: string | null;
 } | null {
   if (!/(\btaap\b|\bexpedia\b)/i.test(text)) return null;
+  if (isExpediaTaapCar(text)) return null;
   if (/Reservation Details/i.test(text) && /Booking Reference/i.test(text)) return null;
   const blocks = readStayBlocks(text);
   const ref =
@@ -1062,6 +1064,134 @@ export function parseExpediaTaap(text: string): {
     printed_cancellation,
     amount: money?.amount ?? null,
     currency: money?.currency ?? null,
+  };
+}
+
+/** Location de voiture Expedia TAAP : pas un hôtel. */
+export function isExpediaTaapCar(text: string) {
+  if (!/(\btaap\b|\bexpedia\b)/i.test(text)) return false;
+  return /location de voiture|car rental|prise en charge et restitution/i.test(text);
+}
+
+function parseTaapMoment(chunk: string): string | null {
+  const numeric = chunk.match(
+    /(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})(?:\s*(?:à|a|,)?\s*(\d{1,2})[:h](\d{2}))?/i
+  );
+  if (numeric) {
+    const iso = `${numeric[3]}-${numeric[2].padStart(2, "0")}-${numeric[1].padStart(2, "0")}`;
+    if (!numeric[4]) return iso;
+    return `${iso}T${numeric[4].padStart(2, "0")}:${numeric[5]}:00`;
+  }
+  const named = parseFrEnDate(chunk);
+  if (!named) return null;
+  if (named.includes("T")) return named;
+  const clock = chunk.match(/(\d{1,2})[:h](\d{2})\s*$/);
+  if (!clock) return named;
+  return `${named.slice(0, 10)}T${clock[1].padStart(2, "0")}:${clock[2]}:00`;
+}
+
+function taapMoneyLine(text: string): { amount: number; currency: string } | null {
+  for (const line of text.split(/\n/)) {
+    if (!/pay[eé]|prix|total/i.test(line)) continue;
+    if (/annul/i.test(line)) continue;
+    const hit = line.match(/(\d{1,3}(?:[\s\u00a0.]\d{3})*,\d{2}|\d+[.,]\d{2})/);
+    if (!hit) continue;
+    const amount = parsePrintedAmount(hit[1]);
+    if (!amount) continue;
+    const currency = /£|\bGBP\b/.test(line) ? "GBP" : /\$|\bUSD\b/.test(line) ? "USD" : "EUR";
+    return { amount, currency };
+  }
+  return null;
+}
+
+const TAAP_SECTION_STOP =
+  /^(loueur|t[eé]l[eé]phone|prix|total|pay[eé]|conditions|politique|conducteur|location de voiture|n[°ºo]?\s*de)\b/i;
+
+function taapMoments(block: string) {
+  const moments: { place: string | null; at: string }[] = [];
+  let place: string | null = null;
+  for (const raw of block.split(/\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (TAAP_SECTION_STOP.test(line) && moments.length) break;
+    const inline = line.match(/^([^:：]{0,40})[:：]\s*(.+)$/);
+    const candidate = inline && /prise|restitution|retour|d[eé]part/i.test(inline[1]) ? inline[2] : line;
+    const at = parseTaapMoment(candidate);
+    if (at) {
+      const placePart = candidate
+        .replace(/(\d{1,2}[\/.]\d{1,2}[\/.]\d{4}.*|\d{1,2}\s+[A-Za-zàâéèêëïîôùûüç.]+\s+20\d{2}.*)/, "")
+        .replace(/[,;]\s*$/, "")
+        .trim();
+      moments.push({ place: placePart || place, at });
+      place = null;
+      continue;
+    }
+    if (/^prise en charge\b|^restitution\b|^retour\b/i.test(line)) continue;
+    place = place ? `${place}, ${line}` : line;
+  }
+  return moments;
+}
+
+export type ParsedTaapCar = ParsedCar & {
+  driver: string | null;
+  phone: string | null;
+  cancellation: string | null;
+  amount: number | null;
+  currency: string | null;
+  travelers: BookingExtract["travelers"];
+};
+
+/** Location Expedia TAAP : véhicule, conducteur, prise et restitution. Jamais un hôtel. */
+export function parseExpediaTaapCar(text: string): ParsedTaapCar | null {
+  if (!isExpediaTaapCar(text)) return null;
+  const similar = text.match(/([A-Za-z0-9ÉÈÀÂÊÎÔÛéèàùâêîôû][^\n]{0,80}ou similaire)/i);
+  const afterHeading = text.match(/location de voiture\s*\n+\s*([^\n]+)/i);
+  let vehicle = (similar?.[1] || afterHeading?.[1] || "").replace(/\s+/g, " ").trim();
+  if (/prise en charge|conducteur|confirmation|loueur|itin[eé]raire/i.test(vehicle)) vehicle = "";
+  const driver = text.match(/conducteur\s*[:：]\s*([^\n]+)/i)?.[1]?.replace(/\s+/g, " ").trim() || null;
+  const ref =
+    text.match(/(?:confirmation|itin[eé]raire)\s*[:：n°º\s]*(\d{6,12})/i)?.[1] ||
+    text.match(/n[°ºo]?\s*de voyage\s*[:：]\s*(\d{6,12})/i)?.[1] ||
+    null;
+  const combined = text.split(/prise en charge et restitution/i)[1] || "";
+  let moments = combined ? taapMoments(combined) : [];
+  if (moments.length < 2) {
+    const pickupBlock = text.split(/prise en charge(?!\s+et\s+restitution)/i)[1] || "";
+    const returnBlock = text.split(/restitution|drop[\s-]?off/i)[1] || "";
+    const pickup = taapMoments(pickupBlock).slice(0, 1);
+    const back = taapMoments(returnBlock).slice(0, 1);
+    if (pickup.length || back.length) moments = [...pickup, ...back];
+  }
+  const loueur = text.match(/loueur\s*[:：]\s*([^\n]+)/i)?.[1]?.replace(/\s+/g, " ").trim() || null;
+  const phone =
+    text.match(/t[eé]l[eé]phone(?:\s+du\s+loueur)?\s*[:：]\s*([+\d][\d\s().-]{5,})/i)?.[1]?.replace(/\s+/g, " ").trim() ||
+    null;
+  const money = taapMoneyLine(text);
+  const cancellation =
+    text
+      .match(/(?:conditions|politique)\s+d['’]annulation\s*[:：]?\s*([\s\S]{0,400})/i)?.[1]
+      ?.split(/\n{2,}/)[0]
+      ?.replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 400) || null;
+  const start_at = moments[0]?.at || null;
+  const end_at = moments[1]?.at || null;
+  if (!ref && !vehicle && !start_at) return null;
+  const person = driver ? splitPersonName(driver) : null;
+  return {
+    confirmation_ref: ref,
+    supplier: loueur || "Expedia TAAP",
+    vehicle: vehicle || null,
+    pickup: moments[0]?.place || null,
+    dropoff: moments[1]?.place || moments[0]?.place || null,
+    start_at,
+    end_at,
+    driver,
+    phone,
+    cancellation,
+    amount: money?.amount ?? null,
+    currency: money?.currency ?? null,
+    travelers: person ? [person] : [],
   };
 }
 
@@ -1584,6 +1714,7 @@ export const INGEST_FAMILIES = [
   "toucan",
   "maeva",
   "transavia",
+  "expedia_taap_car",
   "expedia_taap",
   "identity",
   "unknown",
@@ -1610,6 +1741,7 @@ export function classifyIngestFamily(text: string, filename = ""): IngestFamily 
     return "transavia";
   }
   if (/\bSIXT\b/i.test(text) && /Pickup on/i.test(text)) return "sixt";
+  if (isExpediaTaapCar(text)) return "expedia_taap_car";
   if (
     (/TRANSFER CONFIRMATION/i.test(text) || /DROPOFF/i.test(text)) &&
     /Itin[eé]raire/i.test(text)
@@ -1666,9 +1798,13 @@ export function parserItemsComplete(
         Boolean(item.start_at)
     );
   }
-  if (family === "sixt") {
+  if (family === "sixt" || family === "expedia_taap_car") {
     return items.some(
-      (item) => item.kind === "car" && Boolean(item.confirmation_ref) && Boolean(item.start_at)
+      (item) =>
+        item.kind === "car" &&
+        Boolean(item.confirmation_ref) &&
+        Boolean(item.start_at) &&
+        Boolean(item.details?.vehicle || item.details?.pickup || item.title)
     );
   }
   if (family === "transfer") {
@@ -1718,7 +1854,28 @@ export function structuredHintFromPdfText(text: string): string {
       "Plusieurs e-tickets du même vol (même n°, même jour) = UN item, details.ticket_count = nombre de billets. Prix saisi par l’agent = aller-retour (aller simple : ce vol). Aller-retour dans UN PDF = DEUX items. IATA 8 chiffres = code agence, pas un PNR. « Scan for check-in » n’est pas un hôtel. Ne pas extraire la carte fidélité."
     );
   }
-  const expedia = parseExpediaTaap(clean);
+  const taapCar = parseExpediaTaapCar(clean);
+  if (taapCar) {
+    bits.push(
+      `VOITURE ${JSON.stringify({
+        vehicle: taapCar.vehicle,
+        driver: taapCar.driver,
+        pickup: taapCar.pickup,
+        dropoff: taapCar.dropoff,
+        start_at: taapCar.start_at,
+        end_at: taapCar.end_at,
+        confirmation_ref: taapCar.confirmation_ref,
+        supplier: taapCar.supplier,
+        phone: taapCar.phone,
+        total: taapCar.amount,
+        currency: taapCar.currency,
+      })}`
+    );
+    bits.push(
+      "Expedia TAAP location de voiture = UN item kind=car. Pas d’hôtel. amount = null. details.document_amount = prix payé. details.driver, details.phone, details.notes = conditions d’annulation imprimées, sinon null."
+    );
+  }
+  const expedia = taapCar ? null : parseExpediaTaap(clean);
   const hotel =
     expedia?.hotel ||
     parseLittleEmperorsHotel(clean) ||
@@ -1874,6 +2031,24 @@ function transferToItem(transfer: ParsedTransfer): ExtractItem {
       pickup: transfer.pickup,
       dropoff: transfer.dropoff,
       vehicle: transfer.vehicle,
+    },
+  };
+}
+
+function taapCarToItem(car: ParsedTaapCar): ExtractItem {
+  const item = carToItem(car);
+  return {
+    ...item,
+    title: car.vehicle || item.title,
+    amount: null,
+    details: {
+      ...(item.details || {}),
+      driver: car.driver || undefined,
+      phone: car.phone || undefined,
+      notes: car.cancellation || undefined,
+      document_amount: car.amount ?? undefined,
+      document_currency: car.currency || undefined,
+      source_family: "expedia_taap_car",
     },
   };
 }
@@ -2040,12 +2215,18 @@ export function parsedItemsFromText(text: string): {
   if (amadeus.length && !travelers.length) {
     travelers = parseTicketPassengers(clean);
   }
+  const taapCar = parseExpediaTaapCar(clean);
+  if (taapCar) {
+    items.push(taapCarToItem(taapCar));
+    if (!travelers.length && taapCar.travelers.length) travelers = taapCar.travelers;
+    status = status || "confirmed";
+  }
   const maeva = parseMaevaStay(clean);
   if (maeva) {
     items.push(withDocumentPrice(hotelToItem(maeva.hotel), money));
     for (const extra of maeva.extras) items.push(maevaExtraToItem(extra));
     if (maeva.confirmed) status = status || "confirmed";
-  } else {
+  } else if (!taapCar) {
     const expedia = parseExpediaTaap(clean);
     const hotel =
       expedia?.hotel ||

@@ -17,8 +17,7 @@ import {
 } from "@/lib/crm/email-attach-run";
 import { emailDepositedFilesOnly, treatedEmailGate } from "@/lib/crm/email-reattach";
 import { applyBookingSteps, EmailStepError, previewBookingSteps } from "@/lib/crm/email-step-run";
-import { hasUsableFlight } from "@/lib/crm/email-flight-deposit";
-import { depositFlightsOnBooking } from "@/lib/crm/email-flight-deposit-run";
+import { depositCardsOnBooking } from "@/lib/crm/email-card-deposit-run";
 import { dismissEmailWarnings } from "@/lib/crm/email-duplicates";
 import { detachAttachedEmail } from "@/lib/crm/email-detach-run";
 import { closeIngestSiblings, loadEmailIngestFiles, noteIngestDecision, rematchEmailIngestRow } from "@/lib/crm/email-ingest";
@@ -224,8 +223,8 @@ export async function POST(request: Request, ctx: Ctx) {
         .eq("id", bookingId)
         .maybeSingle();
       if (!booking) return jsonError("Voyage introuvable", 404);
-      if (body.cartes !== false && extract && hasUsableFlight(extract) && !isCancellationExtract(extract)) {
-        const flown = await depositFlightsOnBooking(admin, row, bookingId, booking.customer_id, auth.user.id);
+      if (body.cartes !== false && extract && !isCancellationExtract(extract)) {
+        const flown = await depositCardsOnBooking(admin, row, bookingId, booking.customer_id, auth.user.id);
         if (flown.wrote) {
           if (gate.repartir) {
             await noteEmailRepartition(admin, {
@@ -294,11 +293,11 @@ export async function POST(request: Request, ctx: Ctx) {
         .eq("id", bookingId)
         .maybeSingle();
       if (!booking) return jsonError("Voyage introuvable", 404);
-      if (body.cartes !== false && extract && hasUsableFlight(extract) && !isCancellationExtract(extract)) {
+      if (body.cartes !== false && extract && !isCancellationExtract(extract)) {
         if (extractPatch.extract) {
           await admin.from("crm_email_ingest").update(extractPatch).eq("id", id);
         }
-        const flown = await depositFlightsOnBooking(
+        const flown = await depositCardsOnBooking(
           admin,
           extractPatch.extract ? { ...row, extract } : row,
           bookingId,
