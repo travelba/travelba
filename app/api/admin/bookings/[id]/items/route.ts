@@ -23,6 +23,8 @@ import { parseMoney } from "@/lib/crm/money";
 import { applyExpensePricing } from "@/lib/crm/expense-pricing";
 import { awaitingExpenseDetails, validatedExpenseDetails } from "@/lib/crm/expense-validation";
 import { addStaffBookingCard } from "@/lib/crm/booking-item-write";
+import { detailsWithHotelResearch } from "@/lib/crm/hotel-research";
+import { perplexityConfigured } from "@/lib/crm/hotel-research-key";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
 import { composeAccueilVip, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
@@ -165,6 +167,20 @@ async function insertBookingItem(
   }
   const company = await billingCompanyPatch(supabase, bookingId, body.billing_company_id);
   if ("error" in company && company.error) return { error: jsonError(company.error) };
+  if (kind === "hotel" && perplexityConfigured()) {
+    const stamped = detailsWithHotelResearch({
+      kind,
+      title: titleForInsert,
+      supplier: typeof supplier === "string" ? supplier : null,
+      details: detailsForInsert,
+    });
+    if (stamped.hotel_research === "attente" && detailsForInsert.hotel_research !== "attente") {
+      detailsForInsert = stamped;
+      void import("@/lib/crm/hotel-research-run")
+        .then((mod) => mod.scheduleHotelResearch())
+        .catch(() => undefined);
+    }
+  }
   const { data, error } = await supabase
     .from("crm_booking_items")
     .insert({

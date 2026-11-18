@@ -84,6 +84,18 @@ function sourcesFor(matches: HotelDirectoryEntry[], contactRows: HotelContactRow
   }));
 }
 
+/** Une seule fiche du catalogue, ou aucune. Sert à ne pas chercher un hôtel déjà connu. */
+export async function directoryMatchFor(item: CrmBookingItem, admin?: ContactDb) {
+  const client = admin || createServiceClient();
+  const known = knownLeHotelId(item);
+  if (known != null) {
+    const rows = await loadHotelsByIds(client, [known]);
+    return rows.find((row) => row.hotel_id === known) || null;
+  }
+  const directory = await loadDirectory(client);
+  return matchHotelDirectory(item, directory);
+}
+
 /** Contacts du catalogue Little Emperors, en mémoire, sur les cartes hôtel reconnues. */
 export async function attachLittleEmperorsCatalog(items: CrmBookingItem[], admin?: ContactDb) {
   if (!items.some((item) => item.kind === "hotel")) return items;

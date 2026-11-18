@@ -18,6 +18,8 @@ import {
   uploadCrmFile,
 } from "@/lib/crm/files";
 import { emptyToNull } from "@/lib/crm/identity";
+import { detailsWithHotelResearch } from "@/lib/crm/hotel-research";
+import { perplexityConfigured } from "@/lib/crm/hotel-research-key";
 import { dossierTitleFromImport } from "@/lib/crm/ingest-title";
 import { routeMailExtract, type ImportTask } from "@/lib/crm/import-routing";
 import { importTitleGuard, TITLE_REVIEW_MARK } from "@/lib/crm/import-title";
@@ -525,13 +527,27 @@ async function upsertItemsAndTravelers(
         const insertedDetails = emailIngestId
           ? { ...mailDetails, email_ingest_id: emailIngestId }
           : mailDetails;
+        const queuedDetails =
+          kind === "hotel" && perplexityConfigured()
+            ? detailsWithHotelResearch({
+                kind,
+                title,
+                supplier: typeof payload.supplier === "string" ? payload.supplier : null,
+                details: insertedDetails,
+              })
+            : insertedDetails;
+        if (queuedDetails.hotel_research === "attente" && insertedDetails.hotel_research !== "attente") {
+          void import("@/lib/crm/hotel-research-run")
+            .then((mod) => mod.scheduleHotelResearch())
+            .catch(() => undefined);
+        }
         const { data: inserted, error } = await supabase
           .from("crm_booking_items")
           .insert({
             booking_id: bookingId,
             sort_order: sort++,
             ...payload,
-            details: insertedDetails,
+            details: queuedDetails,
           })
           .select("id")
           .single();

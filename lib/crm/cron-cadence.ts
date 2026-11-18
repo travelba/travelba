@@ -1,5 +1,5 @@
 /**
- * Cadence des 15 crons Vercel. L’heure est UTC.
+ * Cadence des 16 crons Vercel. L’heure est UTC.
  * Les minutes sont décalées : plus rien ne part ensemble à :00, :15, :30 et :45.
  * Le détail de chaque choix est `reason`. Le test compare `schedule` à vercel.json.
  */
@@ -68,6 +68,12 @@ export const CRON_CADENCE: CronCadence[] = [
     schedule: "11,41 * * * *",
     reason:
       "L’arrivée à l’hôtel et le ménage des cartes peuvent attendre 30 minutes. Les fils d’hôtel sont déjà relus par l’ingestion Gmail, toutes les 5 minutes.",
+  },
+  {
+    path: "/api/cron/hotel-research",
+    schedule: "9,24,39,54 * * * *",
+    reason:
+      "Une fiche d’hôtel hors annuaire peut attendre un quart d’heure. Une recherche à la fois, décalée à la minute 9, reprend les cartes encore en attente.",
   },
   {
     path: "/api/cron/flight-status",
