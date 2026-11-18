@@ -18,7 +18,7 @@ import { companionsForShare, isTripShareCode, tripShareUrl } from "@/lib/crm/tri
 import { loadEstaForBookingId } from "@/lib/crm/esta-run";
 import { readUkEtaLines } from "@/lib/crm/uk-eta-run";
 import { buildMb3mInvoiceContext, mb3mInvoiceBlocker } from "@/lib/crm/mb3m-invoice";
-import { mb3mRealm } from "@/lib/crm/mb3m";
+import { mb3mCreditNoteAllowed, mb3mRealm } from "@/lib/crm/mb3m";
 import { mb3mFicheBlocker } from "@/lib/crm/mb3m-party";
 import { mb3mPreparationFromRow } from "@/lib/crm/mb3m-prep";
 import {
@@ -448,6 +448,7 @@ export async function loadAdminBookingCritical(input: {
       piece: null,
       preparation: { state: null, message: null, resume: false },
       amadeus: [],
+      creditNoteAllowed: mb3mCreditNoteAllowed(),
     },
     accounting: costFace.accounting,
     panels,
@@ -645,6 +646,7 @@ function startDossierPanels(input: {
         piece: mb3mPiece,
         preparation: mb3mPreparationFromRow(mb3mDraft),
         amadeus,
+        creditNoteAllowed: mb3mCreditNoteAllowed(),
       },
     };
   });

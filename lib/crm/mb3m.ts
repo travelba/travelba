@@ -274,6 +274,62 @@ function addressXml(address: Mb3mAddress, fallbackName: string) {
   return `${tag("Name", address.name.trim() || fallbackName)}${tag("Line1", address.line1.trim())}${tag("Line2", address.line2?.trim())}${tag("Line3", address.line3?.trim())}${tag("PostalCode", postal)}${tag("City", address.city.trim())}${tag("CountryCode", mb3mCountryCode(address.countryCode))}`;
 }
 
+/**
+ * Actions réellement utilisées : lecture, pro forma (AddPieces), fiche client, dossier,
+ * annulation d’une pièce non imprimée, encaissement et lettrage.
+ * Impression, validation et finalisation n’y sont pas.
+ */
+export const MB3M_ALLOWED_CALLS = [
+  ["ConfigurationService", "GetAgencies"],
+  ["ConfigurationService", "GetBankAccounts"],
+  ["CustomerService", "FindAll"],
+  ["CustomerService", "Save"],
+  ["FolderService", "Get"],
+  ["FolderService", "FindAllPieces"],
+  ["FolderService", "Save"],
+  ["FolderService", "AddPieces"],
+  ["FolderService", "CancelInvoice"],
+  ["FolderService", "SavePayment"],
+  ["FolderService", "WriteMatching"],
+  ["PieceService", "Get"],
+  ["PieceService", "GetInvoice"],
+  ["PieceService", "ChangeFolder"],
+  ["RenderService", "Piece"],
+] as const;
+
+const MB3M_ISSUE_ACTION = /print|validate|validation|finali[sz]e|impress|valider|imprimer/i;
+
+const MB3M_ISSUE_FIELD =
+  /<(?:[\w.]+:)?(DatePrint|PrintedDate|PrintDate|DatePrinted|Printed|IsPrinted|ToPrint|PrintInvoice|Print|Impression|DateImpression|Validate|Validated|IsValidated|DateValidate|ValidationDate|ValidateInvoice|Validation|Finalize|Finalized|DateFinalize|FinalizeInvoice|Finalise|Finalised|DateFinalise)\b/i;
+
+/** Seule valeur qui autorise un avoir. Absente en production. */
+export function mb3mCreditNoteAllowed() {
+  return process.env.MB3M_ALLOW_CREDIT_NOTE === "true";
+}
+
+export const MB3M_CREDIT_NOTE_REFUSAL =
+  "L’avoir MB3M n’est pas émis depuis le CRM. Les pièces restent des pro forma.";
+
+export function assertMb3mCreditNoteAllowed() {
+  if (mb3mCreditNoteAllowed()) return;
+  console.error(`[mb3m] avoir refusé : ${MB3M_CREDIT_NOTE_REFUSAL}`);
+  throw new Mb3mError(MB3M_CREDIT_NOTE_REFUSAL, -1);
+}
+
+/** Nom du champ d’impression ou de validation, s’il est dans le corps SOAP. */
+export function mb3mIssueField(inner: string) {
+  return inner.match(MB3M_ISSUE_FIELD)?.[1] || null;
+}
+
+function mb3mCallAllowed(service: string, action: string) {
+  return MB3M_ALLOWED_CALLS.some(([allowedService, allowedAction]) => allowedService === service && allowedAction === action);
+}
+
+function refuseMb3mCall(service: string, action: string, reason: string): never {
+  console.error(`[mb3m] ${service}/${action} refusé : ${reason}`);
+  throw new Mb3mError(`Le CRM refuse ${service}/${action}. ${reason}`, -1);
+}
+
 /** Dernier appel parti : un refus (ResultCode ≠ 1) est journalisé avec sa requête, pour le support MB3M. */
 let lastCall: { service: string; action: string; inner: string } | null = null;
 
@@ -305,6 +361,24 @@ export async function mb3mSoap(
   inner: string,
   fetchImpl: FetchImpl = fetch
 ) {
+  if (MB3M_ISSUE_ACTION.test(action) || !mb3mCallAllowed(service, action)) {
+    refuseMb3mCall(
+      service,
+      action,
+      "Le CRM n’imprime pas, ne valide pas et ne finalise pas une pièce MB3M. Elle reste une pro forma."
+    );
+  }
+  if (action === "AddPieces") {
+    const field = mb3mIssueField(inner);
+    if (field) {
+      refuseMb3mCall(
+        service,
+        action,
+        `Le corps contient le champ ${field}. Une pro forma n’est ni imprimée ni validée.`
+      );
+    }
+  }
+  if (action === "Save" && /<CreditNote\b/i.test(inner)) assertMb3mCreditNoteAllowed();
   const user = mb3mUser();
   const password = mb3mPassword();
   if (!user || !password) {
@@ -1404,9 +1478,13 @@ export async function mb3mAddInvoice(
     refCommand?: string;
     travelers?: Mb3mTraveler[];
     agencyUid?: string | null;
+    /** Pièce que celle-ci remplace. Relue juste avant l’envoi : une pièce imprimée bloque l’ajout. */
+    replacesNumber?: string | null;
   },
   fetchImpl?: FetchImpl
 ) {
+  const replaces = (input.replacesNumber || "").trim();
+  if (replaces) await mb3mGuardOpenPiece(replaces, "remplacer", fetchImpl);
   const inner = `<FolderAddPiecesRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${escapeMb3mXml(input.folderId.trim())}</FolderId><Invoice>${agencyXml(input.agencyUid)}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", input.dateEnd ? dayStamp(input.dateEnd) : "")}${tag("DateStart", input.dateStart ? dayStamp(input.dateStart) : "")}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("InvoiceLine", input.lines, input.agencyUid)}</Lines>${travelersXml(input.travelers)}</Invoice></FolderAddPiecesRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "AddPieces", inner, fetchImpl);
   assertOperation(xml);
@@ -1459,9 +1537,30 @@ export async function mb3mFindPiece(number: string, fetchImpl?: FetchImpl) {
   return mb3mPieceState(xml);
 }
 
+/**
+ * Relit la pièce juste avant de l’annuler ou de la remplacer.
+ * DatePrint ou PrintedDate : refus, l’appel d’écriture ne part pas.
+ */
+export async function mb3mGuardOpenPiece(
+  number: string,
+  purpose: "annuler" | "remplacer",
+  fetchImpl?: FetchImpl
+) {
+  const pieceNumber = number.trim();
+  const state = await mb3mFindPiece(pieceNumber, fetchImpl);
+  if (state !== "printed") return state;
+  const message =
+    purpose === "annuler"
+      ? `La pièce MB3M n° ${pieceNumber} est imprimée. Le CRM ne l’annule pas.`
+      : `La pièce MB3M n° ${pieceNumber} est imprimée. Le CRM n’ajoute pas de pièce à la place.`;
+  console.error(`[mb3m] ${message}`);
+  throw new Mb3mError(message, -1);
+}
+
 export async function mb3mCancelInvoice(folderId: string, number: string, fetchImpl?: FetchImpl) {
   const pieceNumber = number.trim();
   if (!/^[1-9]\d*$/.test(pieceNumber)) throw new Mb3mError("Numéro de facture MB3M invalide.", -1);
+  await mb3mGuardOpenPiece(pieceNumber, "annuler", fetchImpl);
   const inner = `<FolderCancelPieceRequest xmlns="http://schemas.mb3m.fr/Partners"><FolderId>${escapeMb3mXml(folderId.trim())}</FolderId><Number>${pieceNumber}</Number></FolderCancelPieceRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "CancelInvoice", inner, fetchImpl);
   assertOperation(xml);
@@ -1483,6 +1582,7 @@ export async function mb3mAddCreditNote(
   },
   fetchImpl?: FetchImpl
 ) {
+  assertMb3mCreditNoteAllowed();
   const agency = agencyXml(input.agencyUid);
   const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${agency}<CreditNotes><CreditNote>${agency}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", dayStamp(input.dateEnd))}${tag("DateStart", dayStamp(input.dateStart))}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("CreditNoteLine", input.lines, input.agencyUid)}</Lines></CreditNote></CreditNotes><CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("FolderType", input.folderType)}${tag("Id", input.folderId.trim())}${tag("Title", input.folderTitle.trim())}</Folder></FolderSaveRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "Save", inner, fetchImpl);

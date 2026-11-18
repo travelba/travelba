@@ -486,6 +486,7 @@ export function BookingEditor({
     piece: { number: string } | null;
     preparation: { state: "running" | "failed" | null; message: string | null; resume: boolean };
     amadeus?: { label: string; invoiceNumber: string; placement: "move" | "here" | "other" }[];
+    creditNoteAllowed?: boolean;
   };
   /** Comptabilité du voyage déjà en base : ventes, coûts rattachés, marge, totaux. Les propositions arrivent ensuite. */
   accounting?: TripAccountingView | null;
@@ -2659,6 +2660,7 @@ export function BookingEditor({
                 preparation: mb3m.preparation,
                 amadeus: mb3m.amadeus,
               }}
+              creditNoteAllowed={mb3m.creditNoteAllowed === true}
               cards={pricedItems
                 .filter(
                   (item) =>

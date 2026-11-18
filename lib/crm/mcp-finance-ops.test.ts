@@ -16,48 +16,58 @@ const DOSSIER = "22222222-2222-4222-8222-222222222222";
 const CLIENT = "11111111-1111-4111-8111-111111111111";
 const MOVE = "33333333-3333-4333-8333-333333333333";
 
-test("reprendre une facture exige confirmer et renvoie l’avoir", async () => {
+test("reprendre une facture exige le drapeau, puis confirmer", async () => {
+  const previous = process.env.MB3M_ALLOW_CREDIT_NOTE;
+  delete process.env.MB3M_ALLOW_CREDIT_NOTE;
   let called = false;
-  await assert.rejects(
-    () =>
-      reprendreFactureMb3m(
-        { dossier_id: DOSSIER },
-        { findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }), reissue: async () => { called = true; throw new Error("non"); } }
-      ),
-    /confirmer true/
-  );
+  const deps = {
+    findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }),
+    reissue: async () => {
+      called = true;
+      throw new Error("non");
+    },
+  };
+  await assert.rejects(() => reprendreFactureMb3m({ dossier_id: DOSSIER, confirmer: true }, deps), /n’est pas émis/);
   assert.equal(called, false);
-  const done = await reprendreFactureMb3m(
-    { reference: "TB-1", confirmer: true },
-    {
-      findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }),
-      reissue: async () => ({
-        creditNote: "AV-1",
-        number: "FA-2",
-        documentId: null,
-        created: true,
-        replaced: false,
-        printed: false,
-        visibleToClient: false,
-        reglements: [],
-      }),
-    }
-  );
-  assert.equal(done.avoir, "AV-1");
-  assert.equal(done.numero_mb3m, "FA-2");
-  await assert.rejects(
-    () =>
-      reprendreFactureMb3m(
-        { dossier_id: DOSSIER, confirmer: true },
-        {
-          findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }),
-          reissue: async () => {
-            throw new Mb3mError("Aucune facture imprimée à corriger.", 0);
-          },
-        }
-      ),
-    /Aucune facture imprimée/
-  );
+  process.env.MB3M_ALLOW_CREDIT_NOTE = "true";
+  try {
+    await assert.rejects(() => reprendreFactureMb3m({ dossier_id: DOSSIER }, deps), /confirmer true/);
+    assert.equal(called, false);
+    const done = await reprendreFactureMb3m(
+      { reference: "TB-1", confirmer: true },
+      {
+        findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }),
+        reissue: async () => ({
+          creditNote: "AV-1",
+          number: "FA-2",
+          documentId: null,
+          created: true,
+          replaced: false,
+          printed: false,
+          visibleToClient: false,
+          reglements: [],
+        }),
+      }
+    );
+    assert.equal(done.avoir, "AV-1");
+    assert.equal(done.numero_mb3m, "FA-2");
+    await assert.rejects(
+      () =>
+        reprendreFactureMb3m(
+          { dossier_id: DOSSIER, confirmer: true },
+          {
+            findBooking: async () => ({ id: DOSSIER, reference: "TB-1" }),
+            reissue: async () => {
+              throw new Mb3mError("Aucune facture imprimée à corriger.", 0);
+            },
+          }
+        ),
+      /Aucune facture imprimée/
+    );
+  } finally {
+    if (previous === undefined) delete process.env.MB3M_ALLOW_CREDIT_NOTE;
+    else process.env.MB3M_ALLOW_CREDIT_NOTE = previous;
+  }
 });
 
 test("la fiche MB3M reprend le clic Créer dans MB3M", async () => {

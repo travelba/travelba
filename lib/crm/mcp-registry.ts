@@ -2338,16 +2338,19 @@ export const MCP_TOOLS: ToolDef[] = [
     openWorld: true,
     destructive: true,
     description:
-      "Avoir et nouvelle facture MB3M, comme le bouton quand la marge d’une facture imprimée a changé. dossier_id ou reference. N’imprime pas la nouvelle pièce dans MB3M. La réponse donne le numéro d’avoir et le nouveau numéro. Sans confirmer, aperçu seulement : aucun avoir n’est émis.",
+      "Avoir et nouvelle facture MB3M, seulement si MB3M_ALLOW_CREDIT_NOTE vaut true. Sinon l’outil refuse : le CRM n’émet pas d’avoir et n’imprime pas la pièce. dossier_id ou reference. N’imprime pas la nouvelle pièce dans MB3M. La réponse donne le numéro d’avoir et le nouveau numéro. Sans confirmer, aperçu seulement : aucun avoir n’est émis.",
     input: {
       dossier_id: z.string().trim().max(80).optional(),
       reference: z.string().trim().max(80).optional(),
       confirmer: confirmOpt,
     },
-    run: (args) =>
-      runIfConfirmed(args, { action: "reprendre_facture_mb3m", dossier_id: args.dossier_id, reference: args.reference }, () =>
+    run: async (args) => {
+      const { MB3M_CREDIT_NOTE_REFUSAL, mb3mCreditNoteAllowed } = await import("@/lib/crm/mb3m");
+      if (!mb3mCreditNoteAllowed()) throw new McpWriteError(MB3M_CREDIT_NOTE_REFUSAL);
+      return runIfConfirmed(args, { action: "reprendre_facture_mb3m", dossier_id: args.dossier_id, reference: args.reference }, () =>
         reprendreFactureMb3m(args)
-      ),
+      );
+    },
   },
   {
     name: "creer_fiche_mb3m",

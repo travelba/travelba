@@ -57,6 +57,7 @@ Reprendre `.env.example`. Toutes **sauf** `NEXT_PUBLIC_*` sont server-only.
 `LITTLE_EMPERORS_API_KEY` n’est pas un `productionOnlySecret` : Preview garde la clé de test, Production la clé de production, même nom de variable. L’hôte suit `VERCEL_ENV`. Actualiser ne fait qu’un `GET /v2/hotels/bookings`.
 | `MB3M_PROD_API_USER` / `MB3M_PROD_API_PASSWORD` | login de la base agence. Vides tant que MB3M n’a pas ouvert l’accès. Jamais le user `@partner` |
 | `MB3M_PROD_ACTIVITY_ID` | inutilisé. Chaque dépense du dossier prend l’activité du fichier agence |
+| `MB3M_ALLOW_CREDIT_NOTE` | non définie en production. Seule la valeur `true` autorise l’avoir. Sans elle, le CRM refuse |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | compte WhatsApp déjà en Production |
 | `TWILIO_CONTENT_CONNEXION` | SID du modèle Utility `connexion_espace`. Hors git. Sans elle, l’invitation reste e-mail seul. `npx tsx scripts/arm-whatsapp-connexion.ts`, puis approbation Meta |
 | `TWILIO_CONTENT_ACCES_CLIENT` | SID du modèle Utility `espace_client_lien` (renvoi du lien vers l’espace). Hors git. `acces_client` a été refusé et ne se réutilise pas. Un bouton, « Ouvrir mon espace ». Sans SID approuvé, le bouton et `renvoyer_acces_whatsapp` n’envoient rien |

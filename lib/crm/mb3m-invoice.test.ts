@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { mb3mLineSignature } from "./mb3m-account";
-import { Mb3mError } from "./mb3m";
+import { Mb3mError, MB3M_CREDIT_NOTE_REFUSAL } from "./mb3m";
 import {
   buildMb3mInvoiceContext,
   mb3mInvoiceBlocker,
   mb3mInvoiceLine,
+  reissueMb3mInvoice,
   runMb3mInvoice,
   storeMb3mPdf,
   type Mb3mInvoiceContext,
@@ -1377,5 +1378,19 @@ describe("facture MB3M", () => {
     assert.equal(stored.customerUid, null);
     assert.equal(stored.attemptStatus, "failed");
     assert.match(stored.attemptError || "", /Plusieurs sociétés/);
+  });
+
+  it("refuse l’avoir tant que MB3M_ALLOW_CREDIT_NOTE n’est pas true", async () => {
+    const previous = process.env.MB3M_ALLOW_CREDIT_NOTE;
+    delete process.env.MB3M_ALLOW_CREDIT_NOTE;
+    try {
+      await assert.rejects(
+        () => reissueMb3mInvoice({ from() { throw new Error("base"); } } as never, "dossier"),
+        (error: unknown) => error instanceof Mb3mError && error.message === MB3M_CREDIT_NOTE_REFUSAL
+      );
+    } finally {
+      if (previous === undefined) delete process.env.MB3M_ALLOW_CREDIT_NOTE;
+      else process.env.MB3M_ALLOW_CREDIT_NOTE = previous;
+    }
   });
 });

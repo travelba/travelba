@@ -22,6 +22,7 @@ import {
   mb3mAddInvoice,
   mb3mCancelInvoice,
   mb3mFindPiece,
+  mb3mGuardOpenPiece,
   mb3mRealm,
   mb3mRenderPiece,
   mb3mSaveCompany,
@@ -212,8 +213,9 @@ async function syncBucket(
   const savedParty = await ensureParty(admin, open, customer, companies, companyId);
   const span = mb3mStaySpan(rows, companyId, split);
   const folder = await ensureFolder(admin, savedParty, span);
-  if (action === "replace" && folder.piece_number && folder.folder_id) {
-    await mb3mCancelInvoice(folder.folder_id, folder.piece_number);
+  if (action === "replace" && folder.piece_number) {
+    const state = await mb3mGuardOpenPiece(folder.piece_number, "remplacer");
+    if (state === "open" && folder.folder_id) await mb3mCancelInvoice(folder.folder_id, folder.piece_number);
   }
   const created = await mb3mAddInvoice({
     folderId: folder.folder_id!,
@@ -229,6 +231,7 @@ async function syncBucket(
     })),
     dateStart: span.start,
     dateEnd: span.end,
+    replacesNumber: action === "replace" ? folder.piece_number : null,
   });
   const { error } = await admin
     .from("crm_mb3m_account_invoices")
@@ -264,7 +267,7 @@ async function closePrinted(admin: SupabaseClient, customerId: string, invoice: 
 
 async function dropOpenInvoice(admin: SupabaseClient, invoice: InvoiceRow) {
   if (invoice.piece_number && invoice.folder_id) {
-    const state = await mb3mFindPiece(invoice.piece_number);
+    const state = await mb3mGuardOpenPiece(invoice.piece_number, "annuler");
     if (state === "open") await mb3mCancelInvoice(invoice.folder_id, invoice.piece_number);
   }
   const { error } = await admin.from("crm_mb3m_account_invoices").delete().eq("id", invoice.id);

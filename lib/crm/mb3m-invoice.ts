@@ -66,6 +66,7 @@ import {
 } from "@/lib/crm/mb3m-conform";
 import { deliverServiceRequestMail } from "@/lib/crm/service-request-mail";
 import {
+  assertMb3mCreditNoteAllowed,
   Mb3mError,
   type Mb3mCustomerKind,
   mb3mAddCreditNote,
@@ -814,6 +815,16 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
     const replaced = Boolean(piece.pieceNumber);
     const soapLines = mb3mSoapLines(sendable, MB3M_MIN_NET);
     const invoiceAmount = Math.round(sendable.reduce((sum, line) => sum + line.amount, 0) * 100) / 100;
+    if (previous) {
+      const again = await deps.findPiece(previous.number);
+      if (again === "printed") {
+        throw new Mb3mError(
+          `La pièce MB3M n° ${previous.number} est imprimée. Le CRM n’ajoute pas de pièce à la place.`,
+          -1
+        );
+      }
+      if (again !== "open") previous = null;
+    }
     const invoice = await deps.addInvoice({
       folderId: savedPiece.folderId || "",
       customerUid: savedPiece.customerUid || "",
@@ -826,6 +837,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
       lines: soapLines,
       travelers: ctx.travelers.map((traveler) => ({ firstName: traveler.firstName, name: traveler.lastName })),
       agencyUid: savedPiece.agencyUid,
+      replacesNumber: previous?.number,
     });
     if (previous && previous.number !== invoice.number) {
       try {
@@ -1211,6 +1223,7 @@ export function mb3mStalePieces(printed: Mb3mStoredPiece[], lines: Mb3mAccountLi
  * repart avec la même vente et la marge corrigée. Les deux se valident dans MB3M, à l’impression.
  */
 export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: string, actorName?: string | null) {
+  assertMb3mCreditNoteAllowed();
   const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", bookingId).maybeSingle();
   if (!booking) throw new Mb3mError("Réservation introuvable.", 0);
   const stay = booking as CrmBooking;
@@ -1238,6 +1251,13 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
       : ctx.lines
           .filter((line) => piece.transactionIds.includes(line.transactionId))
           .map((line) => mb3mInvoiceLine({ ...line, margin: line.amount, note: null }));
+    const state = await mb3mFindPiece(piece.pieceNumber);
+    if (state !== "printed") {
+      throw new Mb3mError(
+        `La pièce MB3M n° ${piece.pieceNumber} n’est pas imprimée. Le CRM met à jour la pro forma, il n’émet pas d’avoir.`,
+        0
+      );
+    }
     const credit = await mb3mAddCreditNote({
       folderId: piece.folderId,
       customerUid: piece.customerUid,
