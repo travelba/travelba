@@ -16,6 +16,18 @@ export type StayDocumentRow = {
   created_at?: string | null;
 };
 
+/** Carte du dossier : le lien `source_document_id` compte autant que `booking_item_id`. */
+export type StayItemRef = {
+  id: string;
+  source_document_id?: string | null;
+};
+
+/** La pièce reste sur une carte qui n’est pas supprimée : on y reporte `booking_item_id`. */
+export type DocumentRelink = {
+  id: string;
+  bookingItemId: string;
+};
+
 /** Retrait restaurable : le fichier de stockage reste. `clearSha` sort la ligne de l’index unique. */
 export type DocumentRelease = {
   id: string;
@@ -43,65 +55,68 @@ function releaseOf(doc: StayDocumentRow, now: string): DocumentRelease {
   };
 }
 
+function linkedItemIds(doc: StayDocumentRow, items: StayItemRef[]) {
+  const links = new Set<string>();
+  if (doc.booking_item_id) links.add(doc.booking_item_id);
+  if (!doc.id) return links;
+  for (const item of items) {
+    if (item.id && item.source_document_id === doc.id) links.add(item.id);
+  }
+  return links;
+}
+
 /**
- * Avant de supprimer des cartes : une empreinte ne doit laisser qu’une pièce active sans carte.
- * Les autres sont retirées (marqueur `tri_piece`), pas effacées du stockage.
- * `removeIds` : l’agence a choisi « Supprimer aussi les billets/pièces » pour ces lignes.
- * Une pièce encore liée à une carte qui reste n’est pas touchée.
+ * Avant de supprimer des cartes : chaque justificatif qui n’est plus lié à aucune carte
+ * restante est retiré (marqueur `tri_piece`), pas effacé du stockage.
+ * Une pièce encore liée à une carte qui reste n’est pas retirée. Si son `booking_item_id`
+ * pointait une carte supprimée, il est reporté sur une carte restante.
  */
 export function planDocumentRelease(input: {
   documents: StayDocumentRow[];
+  items?: StayItemRef[];
   deletedItemIds: string[];
-  removeIds?: string[];
   now: string;
-}): DocumentRelease[] {
+}): { release: DocumentRelease[]; relink: DocumentRelink[] } {
   const deleted = new Set(input.deletedItemIds.filter(Boolean));
-  const remove = new Set((input.removeIds || []).filter(Boolean));
-  if (!deleted.size && !remove.size) return [];
+  if (!deleted.size) return { release: [], relink: [] };
+  const items = input.items || [];
   const active = input.documents.filter((doc) => doc.id && !pieceEstRetiree(doc.extracted));
-  const stays = (doc: StayDocumentRow) => Boolean(doc.booking_item_id) && !deleted.has(doc.booking_item_id || "");
-  const orphanSha = new Set(
-    active
-      .filter((doc) => !doc.booking_item_id && (doc.content_sha256 || "").trim())
-      .map((doc) => (doc.content_sha256 || "").trim())
-  );
-
-  const forced = new Set<string>();
-  const candidates: StayDocumentRow[] = [];
+  const release: StayDocumentRow[] = [];
+  const relink: DocumentRelink[] = [];
   for (const doc of active) {
-    if (stays(doc)) continue;
-    const onDeleted = Boolean(doc.booking_item_id) && deleted.has(doc.booking_item_id || "");
-    const chosen = remove.has(doc.id) && (onDeleted || !doc.booking_item_id);
-    if (chosen) {
-      forced.add(doc.id);
+    const links = linkedItemIds(doc, items);
+    const onDeleted = [...links].some((id) => deleted.has(id));
+    if (!onDeleted) continue;
+    const remaining = [...links].filter((id) => !deleted.has(id)).sort();
+    if (remaining.length) {
+      if (doc.booking_item_id && deleted.has(doc.booking_item_id)) {
+        relink.push({ id: doc.id, bookingItemId: remaining[0] });
+      }
       continue;
     }
-    if (onDeleted) candidates.push(doc);
+    release.push(doc);
   }
+  return {
+    release: release.sort(byAge).map((doc) => releaseOf(doc, input.now)),
+    relink,
+  };
+}
 
-  const release = new Map<string, StayDocumentRow>();
-  const bySha = new Map<string, StayDocumentRow[]>();
-  for (const doc of candidates) {
-    const sha = (doc.content_sha256 || "").trim();
-    if (!sha) continue;
-    const group = bySha.get(sha) || [];
-    group.push(doc);
-    bySha.set(sha, group);
-  }
-  for (const [sha, group] of bySha) {
-    const sorted = group.slice().sort(byAge);
-    if (orphanSha.has(sha)) {
-      for (const doc of sorted) release.set(doc.id, doc);
-      continue;
-    }
-    if (sorted.length > 1) {
-      for (const doc of sorted.slice(1)) release.set(doc.id, doc);
-    }
-  }
-  for (const doc of active) {
-    if (forced.has(doc.id)) release.set(doc.id, doc);
-  }
-  return [...release.values()].sort(byAge).map((doc) => releaseOf(doc, input.now));
+/** Justificatifs qui partent si cette seule carte est retirée, les autres cartes restant. */
+export function justificatifsRetiresAvec(itemId: string, items: StayItemRef[], documents: StayDocumentRow[]) {
+  return planDocumentRelease({
+    documents,
+    items,
+    deletedItemIds: [itemId],
+    now: "1970-01-01T00:00:00.000Z",
+  }).release.length;
+}
+
+/** Phrase de confirmation. Vide s’il n’y a aucun justificatif à retirer. */
+export function mentionRetraitJustificatifs(count: number) {
+  if (count <= 0) return "";
+  if (count === 1) return "La carte et son justificatif seront retirés.";
+  return `La carte et ses ${count} justificatifs seront retirés.`;
 }
 
 /** Restaure l’empreinte mise de côté, pour que le retrait reste réversible. */
