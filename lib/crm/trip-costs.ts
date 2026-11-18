@@ -12,6 +12,7 @@ import {
   type CostTargetBooking,
   type CostTargetItem,
 } from "./cost-match";
+import { COMMERCIAL_DISCOUNT_LABEL, COMMERCIAL_DISCOUNT_LINE_ID } from "./commercial-discount";
 import { isStayRollupDebit } from "./ledger-display";
 import { matchTokens, normalizeMatchText } from "./revolut-match";
 
@@ -243,13 +244,39 @@ export type SaleLedgerRow = {
 
 export type SaleLine = {
   transactionId: string;
-  /** Carte ou dépense. Nul pour le montant global du séjour et les frais. */
+  /** Carte ou dépense. Nul pour le montant global du séjour, les frais et la remise. */
   itemId: string | null;
-  /** `item`, `stay`, `fee` */
-  nature: "item" | "stay" | "fee";
+  /** `item` carte ou dépense, `stay` montant du séjour, `fee` frais, `discount` remise sans coût. */
+  nature: "item" | "stay" | "fee" | "discount";
   label: string;
   sale: number;
 };
+
+export function isCommercialDiscountSale(line: Pick<SaleLine, "nature" | "transactionId">) {
+  return line.nature === "discount" || line.transactionId === COMMERCIAL_DISCOUNT_LINE_ID;
+}
+
+/**
+ * Ligne de vente de l’onglet Argent. Montant négatif, sans coût, plafonné à la vente.
+ * Ce n’est pas une écriture du grand livre : le crédit y est déjà.
+ * La pro forma MB3M, le relevé et le carnet gardent leur ligne, on n’en ajoute pas une seconde.
+ */
+export function withCommercialDiscountSale(lines: SaleLine[], euros: number): SaleLine[] {
+  const rest = lines.filter((line) => !isCommercialDiscountSale(line));
+  const sale = round(rest.reduce((sum, line) => sum + line.sale, 0));
+  const cut = Math.min(Math.max(0, round(euros)), Math.max(0, sale));
+  if (!(cut > 0)) return rest;
+  return [
+    ...rest,
+    {
+      transactionId: COMMERCIAL_DISCOUNT_LINE_ID,
+      itemId: null,
+      nature: "discount",
+      label: COMMERCIAL_DISCOUNT_LABEL,
+      sale: round(-cut),
+    },
+  ];
+}
 
 const ITEM_ID = /:(?:item|expense):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
@@ -305,8 +332,12 @@ export function accountLines(lines: SaleLine[], costs: TripCost[]) {
       byItem.set(cost.bookingItemId, list);
     } else loose.push(cost);
   }
-  const stay = lines.find((line) => line.nature === "stay") || null;
+  const stay = lines.find((line) => line.nature === "stay" && !isCommercialDiscountSale(line)) || null;
   const accounted: AccountedLine[] = lines.map((line) => {
+    // La remise ne reçoit aucun coût : sa marge est le montant négatif, sans division.
+    if (isCommercialDiscountSale(line)) {
+      return { ...line, itemId: null, nature: "discount", costs: [], cost: 0, margin: round(line.sale) };
+    }
     const own = line.itemId ? byItem.get(line.itemId) || [] : [];
     const attached = line === stay ? [...own, ...loose] : own;
     const cost = round(attached.filter((item) => !tripCostIsPending(item)).reduce((sum, item) => sum + item.amountEur, 0));
@@ -314,7 +345,7 @@ export function accountLines(lines: SaleLine[], costs: TripCost[]) {
   });
   const unsold: TripCost[] = [];
   for (const [itemId, list] of byItem) {
-    if (!lines.some((line) => line.itemId === itemId)) unsold.push(...list);
+    if (!lines.some((line) => line.itemId === itemId && !isCommercialDiscountSale(line))) unsold.push(...list);
   }
   if (!stay) unsold.push(...loose);
   return { lines: accounted, unsold };
@@ -325,7 +356,7 @@ export type TripAccountingTotals = {
   cost: number;
   margin: number;
   unsoldCost: number;
-  /** Euros de remise déjà retirés de la vente et de la marge. */
+  /** Euros de remise déjà inclus dans la vente et la marge, via la ligne négative. */
   remise?: number;
 };
 
@@ -333,7 +364,26 @@ export function tripTotals(lines: AccountedLine[], unsold: TripCost[]): TripAcco
   const sale = round(lines.reduce((sum, line) => sum + line.sale, 0));
   const unsoldCost = round(unsold.filter((cost) => !tripCostIsPending(cost)).reduce((sum, cost) => sum + cost.amountEur, 0));
   const cost = round(lines.reduce((sum, line) => sum + line.cost, 0) + unsoldCost);
-  return { sale, cost, margin: round(sale - cost), unsoldCost };
+  const remise = round(
+    lines.filter(isCommercialDiscountSale).reduce((sum, line) => sum + Math.abs(line.sale), 0)
+  );
+  return {
+    sale,
+    cost,
+    margin: round(sale - cost),
+    unsoldCost,
+    ...(remise > 0 ? { remise } : {}),
+  };
+}
+
+/** Chiffres d’une ligne à l’écran. La remise n’a pas de coût : on n’affiche pas 0 €. */
+export function saleLineFigures(line: Pick<AccountedLine, "nature" | "sale" | "cost" | "margin">) {
+  const discount = line.nature === "discount";
+  return {
+    sale: line.sale,
+    cost: discount ? null : line.cost,
+    margin: line.margin,
+  };
 }
 
 export type TripAccountingState = "a_pointer" | "pointe" | "comptabilise";
@@ -390,7 +440,8 @@ export function visibleTripState(
 export function marginByTransaction(lines: AccountedLine[]) {
   const map = new Map<string, { margin: number; suppliers: string[] }>();
   for (const line of lines) {
-    if (!line.costs.length) continue;
+    // La remise n’entre pas dans la marge MB3M : la pro forma a déjà sa ligne négative.
+    if (isCommercialDiscountSale(line) || !line.costs.length) continue;
     const suppliers = [...new Set(line.costs.map((cost) => (cost.supplier || "").trim()).filter(Boolean))];
     map.set(line.transactionId, { margin: line.margin, suppliers });
   }

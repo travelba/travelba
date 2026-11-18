@@ -9,6 +9,7 @@ import {
   isFixedCostParty,
   marginByTransaction,
   referenceInText,
+  saleLineFigures,
   saleLines,
   settlementLabel,
   costSuggestionReasonLabel,
@@ -22,6 +23,7 @@ import {
   tripCostFromPliant,
   tripCostFromRevolut,
   tripTotals,
+  withCommercialDiscountSale,
   type CostSuggestion,
   type TripCost,
 } from "./trip-costs";
@@ -146,6 +148,101 @@ describe("coûts du voyage", () => {
     const margins = marginByTransaction(accounted);
     // Le mode de règlement reste au CRM : rien de plus que la marge et les fournisseurs ne part à MB3M.
     assert.deepEqual(margins.get("t-flight"), { margin: -50, suppliers: ["AIR FRANCE"] });
+  });
+
+  it("ajoute la remise commerciale en vente négative, une fois, sans coût", () => {
+    const sales = saleLines(
+      [
+        ...ledger,
+        {
+          id: "t-remise",
+          booking_id: BOOKING,
+          direction: "credit",
+          kind: "adjustment",
+          status: "posted",
+          currency: "EUR",
+          amount: 12.5,
+          label: "Remise commerciale",
+          external_id: `booking:${BOOKING}:commercial-discount`,
+        },
+      ],
+      BOOKING
+    );
+    // Le crédit du grand livre n’est pas une seconde ligne : le relevé le porte déjà.
+    assert.equal(sales.some((line) => line.label === "Remise commerciale"), false);
+    const costs = [cost({ id: "a", bookingItemId: HOTEL, amountEur: 900 }), cost({ id: "loose", amountEur: 40 })];
+    const before = accountLines(sales, costs);
+    const beforeTotals = tripTotals(before.lines, before.unsold);
+    const withCut = withCommercialDiscountSale(sales, 12.5);
+    assert.equal(withCut.filter((line) => line.nature === "discount").length, 1);
+    const again = withCommercialDiscountSale(withCut, 12.5);
+    assert.equal(again.filter((line) => line.nature === "discount").length, 1);
+    assert.equal(again.at(-1)?.sale, -12.5);
+    const { lines, unsold } = accountLines(withCut, costs);
+    const discount = lines.find((line) => line.nature === "discount");
+    assert.ok(discount);
+    assert.equal(discount.label, "Remise commerciale");
+    assert.equal(discount.sale, -12.5);
+    assert.equal(discount.itemId, null);
+    assert.equal(discount.cost, 0);
+    assert.deepEqual(discount.costs, []);
+    assert.equal(discount.margin, -12.5);
+    assert.equal(unsold.some((row) => row.id === "loose"), true);
+    assert.deepEqual(saleLineFigures(discount), { sale: -12.5, cost: null, margin: -12.5 });
+    assert.deepEqual(saleLineFigures({ nature: "item", sale: 1200, cost: 900, margin: 300 }), {
+      sale: 1200,
+      cost: 900,
+      margin: 300,
+    });
+    const totals = tripTotals(lines, unsold);
+    assert.equal(totals.sale, Math.round((beforeTotals.sale - 12.5) * 100) / 100);
+    assert.equal(totals.margin, Math.round((beforeTotals.margin - 12.5) * 100) / 100);
+    assert.equal(totals.cost, beforeTotals.cost);
+    assert.equal(totals.remise, 12.5);
+    assert.equal(marginByTransaction(lines).has("remise-commerciale"), false);
+    const capped = withCommercialDiscountSale(sales, 9_999);
+    assert.equal(capped.find((line) => line.nature === "discount")?.sale, -beforeTotals.sale);
+    assert.equal(tripTotals(accountLines(capped, []).lines, []).sale, 0);
+    assert.equal(withCommercialDiscountSale(sales, 0).some((line) => line.nature === "discount"), false);
+    assert.equal(withCommercialDiscountSale(sales, -12.5).some((line) => line.nature === "discount"), false);
+    const stay = saleLines(
+      [
+        {
+          id: "t-stay",
+          booking_id: BOOKING,
+          direction: "debit",
+          kind: "booking",
+          status: "posted",
+          currency: "EUR",
+          amount: 100,
+          label: "Séjour",
+          external_id: null,
+        },
+      ],
+      BOOKING
+    );
+    const onStay = accountLines(withCommercialDiscountSale(stay, 12.5), [cost({ id: "loose", amountEur: 30 })]);
+    assert.equal(onStay.lines.find((line) => line.nature === "stay")?.cost, 30);
+    assert.equal(onStay.lines.find((line) => line.nature === "discount")?.cost, 0);
+    assert.equal(onStay.unsold.length, 0);
+    assert.equal(tripTotals(onStay.lines, onStay.unsold).sale, 87.5);
+    assert.equal(tripTotals(onStay.lines, onStay.unsold).margin, 57.5);
+    const stolen = accountLines(
+      [
+        ...sales,
+        {
+          transactionId: "remise-commerciale",
+          itemId: HOTEL,
+          nature: "discount",
+          label: "Remise commerciale",
+          sale: -12.5,
+        },
+      ],
+      [cost({ id: "a", bookingItemId: HOTEL, amountEur: 900 })]
+    );
+    assert.equal(stolen.lines.find((line) => line.transactionId === "t-hotel")?.cost, 900);
+    assert.equal(stolen.lines.find((line) => line.nature === "discount")?.costs.length, 0);
+    assert.equal(stolen.unsold.length, 0);
   });
 
   it("sans carte au grand livre, le coût rejoint le montant du séjour ; sans séjour, il reste hors vente", () => {

@@ -1,4 +1,4 @@
-import { COMMERCIAL_DISCOUNT_LABEL } from "@/lib/crm/commercial-discount";
+import { COMMERCIAL_DISCOUNT_LABEL, COMMERCIAL_DISCOUNT_LINE_ID } from "@/lib/crm/commercial-discount";
 import { MB3M_ACTIVITY, mb3mChooseActivity, type Mb3mFeeCode } from "@/lib/crm/mb3m-conform";
 import { mb3mActivityId, mb3mConfigured, mb3mRealm } from "@/lib/crm/mb3m";
 import { isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
@@ -124,7 +124,7 @@ export function withChargeKinds(
 /** Ligne Custom code 4, montant négatif. Les actions SOAP restent celles déjà autorisées. */
 export function commercialDiscountAccountLine(euros: number): Mb3mAccountLine {
   return {
-    transactionId: "remise-commerciale",
+    transactionId: COMMERCIAL_DISCOUNT_LINE_ID,
     label: COMMERCIAL_DISCOUNT_LABEL,
     amount: -Math.round(Math.abs(euros) * 100) / 100,
     activityId: null,
@@ -140,7 +140,7 @@ export function commercialDiscountAccountLine(euros: number): Mb3mAccountLine {
 
 /** Ajoute la remise sans faire passer le total des lignes sous zéro. */
 export function withCommercialDiscountLine(lines: Mb3mAccountLine[], euros: number) {
-  const rest = lines.filter((line) => line.transactionId !== "remise-commerciale");
+  const rest = lines.filter((line) => line.transactionId !== COMMERCIAL_DISCOUNT_LINE_ID);
   const positive = rest
     .filter((line) => !line.held && !line.rollup && line.amount > 0)
     .reduce((sum, line) => sum + line.amount, 0);
