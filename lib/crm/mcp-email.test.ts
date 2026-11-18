@@ -366,6 +366,10 @@ test("un mail déjà traité ne se rattache pas sans repartir", async () => {
     /autre dossier/
   );
   await assert.rejects(
+    () => settleEmail({ id: MAIL, action: "rattacher", dossier_id: BOOKING, forcer: true }, store.client),
+    /introuvable/
+  );
+  await assert.rejects(
     () => settleEmail({ id: MAIL, action: "rattacher", dossier_id: other, repartir: true }, store.client),
     /introuvable/
   );

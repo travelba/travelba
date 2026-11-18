@@ -74,6 +74,14 @@ export function JournalDesk({
                     </Link>
                   </>
                 ) : null}
+                {alert.entity_type === "booking" && alert.entity_id ? (
+                  <>
+                    {" "}
+                    <Link href={`/admin/reservations/${alert.entity_id}`} className="font-semibold underline">
+                      Ouvrir le dossier
+                    </Link>
+                  </>
+                ) : null}
               </li>
             ))}
           </ul>

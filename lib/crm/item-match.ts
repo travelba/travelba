@@ -1,4 +1,5 @@
 import { catalogNameAgrees } from "@/lib/crm/hotel-gallery";
+import { namesReferToSamePerson } from "@/lib/crm/person-match";
 import type { BookingItemKind } from "@/lib/crm/types";
 
 export type MatchableItem = {
@@ -91,20 +92,56 @@ function pnrsOverlap(left: MatchableItem, right: MatchableItem) {
   return false;
 }
 
+function flightPeople(item: MatchableItem) {
+  const rows = item.details?.passengers;
+  if (!Array.isArray(rows)) return [];
+  const people: { first_name: string; last_name: string }[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const person = row as { first_name?: unknown; last_name?: unknown };
+    const first_name = typeof person.first_name === "string" ? person.first_name.trim() : "";
+    const last_name = typeof person.last_name === "string" ? person.last_name.trim() : "";
+    if (!first_name && !last_name) continue;
+    people.push({ first_name, last_name });
+  }
+  return people;
+}
+
+function flightPartiesOverlap(left: MatchableItem, right: MatchableItem) {
+  const incoming = flightPeople(left);
+  const current = flightPeople(right);
+  if (!incoming.length || !current.length) return false;
+  return incoming.some((person) =>
+    current.some((other) =>
+      namesReferToSamePerson(
+        { first_name: person.first_name, last_name: person.last_name },
+        { first_name: other.first_name, last_name: other.last_name }
+      )
+    )
+  );
+}
+
 /**
  * Même jour : le numéro de vol d’abord (`U2 4692` = `EJU4692`).
  * Le PNR ne réunit pas deux segments différents (EK 706 puis EK 75).
- * Il complète seulement une carte du même PNR qui n’a pas encore de numéro.
+ * Même vol, même jour : la carte déjà là, même si le PNR diffère.
+ * Deux groupes de passagers distincts restent deux cartes.
  */
 export function findFlightCard<T extends MatchableItem>(existing: T[], incoming: MatchableItem): T | null {
   if ((incoming.kind || "") !== "flight" || !day(incoming.start_at)) return null;
   const sameDay = existing.filter((row) => (row.kind || "") === "flight" && sameFlightDay(row, incoming));
   const number = detail(incoming, "flight_number");
   if (number) {
-    const byNumber = sameDay.find(
-      (row) => flightNumbersAlign(number, detail(row, "flight_number")) && pnrsCompatible(incoming, row)
-    );
-    if (byNumber) return byNumber;
+    const aligned = sameDay.filter((row) => flightNumbersAlign(number, detail(row, "flight_number")));
+    const compatible = aligned.find((row) => pnrsCompatible(incoming, row));
+    if (compatible) return compatible;
+    const incomingPeople = flightPeople(incoming);
+    const sameParty = aligned.find((row) => {
+      const current = flightPeople(row);
+      if (!incomingPeople.length || !current.length) return true;
+      return flightPartiesOverlap(incoming, row);
+    });
+    if (sameParty) return sameParty;
     return sameDay.find((row) => !detail(row, "flight_number") && pnrsOverlap(incoming, row)) || null;
   }
   return sameDay.find((row) => pnrsOverlap(incoming, row)) || null;
@@ -594,25 +631,82 @@ function mergeDetails(
   return out;
 }
 
+export type FlightPassengerRow = {
+  first_name: string;
+  last_name: string;
+  ticket_last4?: string;
+  ticket_number?: string;
+  seat?: string;
+};
+
+function passengerTokens(person: { first_name?: string; last_name?: string }) {
+  return `${person.first_name || ""} ${person.last_name || ""}`.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function readPassenger(value: unknown): FlightPassengerRow | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as {
+    first_name?: unknown;
+    last_name?: unknown;
+    ticket_last4?: unknown;
+    ticket_number?: unknown;
+    seat?: unknown;
+  };
+  const first_name = String(record.first_name || "").trim();
+  const last_name = String(record.last_name || "").trim();
+  if (!first_name && !last_name) return null;
+  const ticket = String(record.ticket_number || "").replace(/\D/g, "");
+  const ticket_number = ticket.length === 13 ? ticket : "";
+  const seat = String(record.seat || "").trim();
+  const ticket_last4 = ticket_number ? ticket_number.slice(-4) : String(record.ticket_last4 || "").trim();
+  return {
+    first_name,
+    last_name,
+    ...(ticket_number ? { ticket_number } : {}),
+    ...(ticket_last4 ? { ticket_last4 } : {}),
+    ...(seat ? { seat } : {}),
+  };
+}
+
+function absorbPassenger(current: FlightPassengerRow, incoming: FlightPassengerRow, writeTicket: boolean) {
+  const keepIncomingName = passengerTokens(incoming) > passengerTokens(current);
+  if (keepIncomingName) {
+    current.first_name = incoming.first_name;
+    current.last_name = incoming.last_name;
+  }
+  if (writeTicket && !current.ticket_number && incoming.ticket_number) {
+    current.ticket_number = incoming.ticket_number;
+    current.ticket_last4 = incoming.ticket_number.slice(-4);
+  }
+  if (writeTicket && !current.seat && incoming.seat) current.seat = incoming.seat;
+}
+
+/**
+ * Même personne : le nom le plus complet reste (un reçu ne raccourcit pas un passeport).
+ * Le numéro de billet et la place se complètent seulement s’ils manquent.
+ */
 export function mergeFlightPassengers(
   target: Record<string, unknown> | null | undefined,
-  incoming: Record<string, unknown> | null | undefined
+  incoming: Record<string, unknown> | null | undefined,
+  writeTicket = true
 ) {
-  const rows: { first_name: string; last_name: string; ticket_last4?: string }[] = [];
-  const seen = new Set<string>();
+  const rows: FlightPassengerRow[] = [];
   for (const list of [target?.passengers, incoming?.passengers]) {
     if (!Array.isArray(list)) continue;
     for (const person of list) {
-      if (!person || typeof person !== "object") continue;
-      const record = person as { first_name?: unknown; last_name?: unknown; ticket_last4?: unknown };
-      const first_name = String(record.first_name || "").trim();
-      const last_name = String(record.last_name || "").trim();
-      if (!first_name && !last_name) continue;
-      const key = `${first_name}|${last_name}`.toLocaleLowerCase("fr");
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const ticket_last4 = String(record.ticket_last4 || "").trim();
-      rows.push(ticket_last4 ? { first_name, last_name, ticket_last4 } : { first_name, last_name });
+      const read = readPassenger(person);
+      if (!read) continue;
+      const hit = rows.find((row) =>
+        namesReferToSamePerson(
+          { first_name: row.first_name, last_name: row.last_name },
+          { first_name: read.first_name, last_name: read.last_name }
+        )
+      );
+      if (!hit) {
+        rows.push(read);
+        continue;
+      }
+      absorbPassenger(hit, read, writeTicket);
     }
   }
   return rows;

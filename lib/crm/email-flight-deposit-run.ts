@@ -16,8 +16,25 @@ import {
 import { applyBookingSteps } from "@/lib/crm/email-step-run";
 import { enterFlightRematch, leaveFlightRematch } from "@/lib/crm/email-flight-rematch";
 import { parseExtractPayloadSafe, type BookingExtract } from "@/lib/crm/ingest-types";
-import type { MatchableItem } from "@/lib/crm/item-match";
+import { findFlightCard, type MatchableItem } from "@/lib/crm/item-match";
 import type { CrmEmailIngest } from "@/lib/crm/types";
+
+async function flightCardIdsForExtract(admin: SupabaseClient, bookingId: string, extract: BookingExtract) {
+  const { data } = await admin
+    .from("crm_booking_items")
+    .select("id, kind, title, confirmation_ref, start_at, end_at, details, lifecycle")
+    .eq("booking_id", bookingId);
+  const cards = ((data || []) as (MatchableItem & { id: string; lifecycle?: string | null })[]).filter(
+    (row) => row.lifecycle !== "cancelled" && row.lifecycle !== "superseded"
+  );
+  const ids: string[] = [];
+  for (const item of extract.items || []) {
+    if ((item.kind || "") !== "flight") continue;
+    const hit = findFlightCard(cards, item);
+    if (hit?.id && !ids.includes(hit.id)) ids.push(hit.id);
+  }
+  return ids;
+}
 
 function asExtract(value: unknown): BookingExtract | null {
   if (!value || typeof value !== "object") return null;
@@ -112,12 +129,21 @@ export async function depositFlightsOnBooking(
     visibleToClient: false,
     skipTicketingFee: opts?.automatic ? false : true,
   });
-  const cardId = await resolveEmailCardId(admin, bookingId, prepared);
-  const deposited = await depositEmailAttachments(admin, bookingId, row.id, row.attachments, cardId, {
-    subject: row.subject,
-    text: row.body_text,
-    html: row.body_html,
-  });
+  const cardIds = await flightCardIdsForExtract(admin, bookingId, prepared);
+  const cardId = cardIds[0] || (await resolveEmailCardId(admin, bookingId, prepared));
+  const deposited = await depositEmailAttachments(
+    admin,
+    bookingId,
+    row.id,
+    row.attachments,
+    cardId,
+    {
+      subject: row.subject,
+      text: row.body_text,
+      html: row.body_html,
+    },
+    cardIds
+  );
   const message = flightDepositSummary(prepared);
   const reason = opts?.reason ? ` (${opts.reason})` : "";
   const lead = opts?.automatic ? `Billet rattaché automatiquement${reason}. ` : "";

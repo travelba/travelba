@@ -162,6 +162,7 @@ test("an email leaves the queue only with an explicit action", () => {
     id: WIRE,
     dossierId: "",
     cartes: false,
+    forcer: false,
   });
   assert.equal(prepareEmailAction({ id: WIRE, action: "rattacher", dossier_id: BOOKING, cartes: true }).cartes, true);
   assert.equal(prepareEmailAction({ id: WIRE, action: "rattacher", dossier_id: BOOKING }).dossierId, BOOKING);

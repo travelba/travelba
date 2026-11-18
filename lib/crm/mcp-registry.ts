@@ -330,7 +330,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "tableau_de_bord",
     description:
-      "À faire aujourd’hui : liens de paiement hôtel, visas, enregistrements, demandes WhatsApp et réponses d’hôtel. Les e-mails, Little Emperors, encaissements, coûts et pièces à échéance n’y sont pas : ils restent dans la Boîte, Argent et Clients. Soldes Revolut, Stripe et Pliant. courriers_hotel : fils d’hôtel encore à traiter, statut synchronisé avec Gmail (Réponse à traiter, En attente de réponse, Sans réponse), qui a écrit en dernier. Un fil où l’agence a répondu en dernier, un paiement fait, une confirmation, un dossier annulé, un séjour passé sans nouveau message, ou un classement manuel encore valable n’y figurent pas. Un lien de paiement déjà réglé sur Pliant n’y figure plus, sauf si l’hôtel a écrit après ce paiement pour poser une question. Lecture seule.",
+      "À faire aujourd’hui : liens de paiement hôtel, visas, enregistrements, demandes WhatsApp et réponses d’hôtel. Les e-mails, Little Emperors, encaissements, coûts et pièces à échéance n’y sont pas : ils restent dans la Boîte, Argent et Clients. Soldes Revolut, Stripe et Pliant. courriers_hotel : fils d’hôtel encore à traiter, statut synchronisé avec Gmail (Réponse à traiter, En attente de réponse, Sans réponse), qui a écrit en dernier. Un fil où l’agence a répondu en dernier, un paiement fait, une confirmation, un dossier annulé, un séjour passé sans nouveau message, ou un classement manuel encore valable n’y figurent pas. Un lien de paiement déjà réglé sur Pliant n’y figure plus, sauf si l’hôtel a écrit après ce paiement pour poser une question. doublons_billets : un reçu dont le PNR n’est pas celui déjà sur la carte (même vol, même jour, mêmes passagers), sans écraser. Lecture seule.",
     run: () => readTableauDeBord(),
   },
   {
@@ -933,7 +933,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "traiter_email",
     write: true,
     description:
-      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher dépose les pièces sur la carte qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le dossier. cartes true, si le billet a un vol (numéro et date), crée ou complète aussi la carte vol : une carte par trajet, le même vol le même jour et le même PNR ajoute le voyageur, cartes nouvelles cachées, prix de vente 0, coût seulement s’il est imprimé. Sans cartes, aucune carte n’est créée. Un mail déjà traité (déposé) est refusé, sauf repartir true : les pièces sont copiées sur un autre dossier, le premier dossier les garde, le mail reste traité, aucun message. mettre_a_jour met à jour les étapes du dossier : sans confirmer, aperçu (étapes à créer ou à compléter, confirmation, dates, vols, prix fournisseur, voyageurs, écarts). confirmer true écrit. Une étape vide du même type est remplie. Chaque trajet reste une carte, même s’il partage le PNR. Le prix de vente n’est pas pris dans le mail. Une annulation ne met pas les étapes à jour. creer_dossier est le bouton Créer un dossier : il trouve ou crée la fiche (client_id, ou email, ou le nom du billet ; sans e-mail si le billet n’en a pas), crée le dossier caché, les cartes du billet (une carte par trajet, le PNR sur chacune) et dépose les fichiers. Une annulation ne crée pas de dossier. Aucune invitation.",
+      "Sort un e-mail de la file. refuser le classe sans dossier. rattacher dépose les pièces sur la carte qui correspond (PNR, puis compagnie et trajet, puis fournisseur), ou sur le dossier. cartes true, si le billet a un vol (numéro et date), crée ou complète aussi la carte vol : une carte par trajet, le même vol le même jour et le même PNR ajoute le voyageur, cartes nouvelles cachées, prix de vente 0, coût seulement s’il est imprimé. Sans cartes, aucune carte n’est créée. Un reçu ou e-billet (Amadeus, compagnie) complète par défaut les cartes vol du même numéro, du même jour et des mêmes passagers : PNR, numéro de billet, place, PDF sur l’aller et le retour. cartes false ne dépose que les pièces. Un mail déjà traité est refusé, sauf repartir true (autre dossier, les pièces du premier restent) ou forcer true (même dossier, pièces non recopiées ; aussi quand le mail n’a fait que déposer des fichiers). Un nouveau PNR sur une carte qui en a déjà un ne l’écrase pas : alerte « Possible doublon de billets ». Les cartes nouvelles restent cachées. Aucun message. mettre_a_jour met à jour les étapes du dossier : sans confirmer, aperçu (étapes à créer ou à compléter, confirmation, dates, vols, prix fournisseur, voyageurs, écarts). confirmer true écrit. Une étape vide du même type est remplie. Chaque trajet reste une carte, même s’il partage le PNR. Le prix de vente n’est pas pris dans le mail. Une annulation ne met pas les étapes à jour. creer_dossier est le bouton Créer un dossier : il trouve ou crée la fiche (client_id, ou email, ou le nom du billet ; sans e-mail si le billet n’en a pas), crée le dossier caché, les cartes du billet (une carte par trajet, le PNR sur chacune) et dépose les fichiers. Une annulation ne crée pas de dossier. Aucune invitation.",
     input: {
       id: z.string().trim().describe("Identifiant de l’e-mail en attente"),
       action: z
@@ -952,6 +952,10 @@ export const MCP_TOOLS: ToolDef[] = [
         .boolean()
         .optional()
         .describe("rattacher seulement : true redépose un mail déjà traité sur un autre dossier. Les pièces du premier restent"),
+      forcer: z
+        .boolean()
+        .optional()
+        .describe("rattacher seulement : true rejoue un mail déjà traité sur le même dossier. Les pièces déjà là ne sont pas recopiées"),
       confirmer: confirmOpt,
       client_id: z
         .string()

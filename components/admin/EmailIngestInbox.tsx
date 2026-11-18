@@ -450,6 +450,7 @@ export function EmailIngestInbox({
       confirmer?: boolean;
       cartes?: boolean;
       repartir?: boolean;
+      forcer?: boolean;
     },
     opts?: { refresh?: boolean }
   ) {
@@ -987,6 +988,23 @@ export function EmailIngestInbox({
                                 ? "Déposer aussi sur un autre dossier"
                                 : "Déposer les pièces"}
                           </button>
+                          {sameStay && withFlights ? (
+                            <button
+                              type="button"
+                              disabled={isBusy || !depositBookingId}
+                              className="admin-af-btn admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+                              onClick={() =>
+                                act(row.id, {
+                                  action: "attach_booking",
+                                  booking_id: depositBookingId,
+                                  cartes: true,
+                                  forcer: true,
+                                })
+                              }
+                            >
+                              Rejouer le billet
+                            </button>
+                          ) : null}
                           {withFlights ? (
                             <button
                               type="button"
@@ -1063,7 +1081,9 @@ export function EmailIngestInbox({
                               {repartir
                                 ? "Déposer aussi copie les pièces sur l’autre dossier. Le premier dossier les garde. Aucun message."
                                 : "Déposer les pièces ajoute ces vols. Déposer seulement laisse les cartes inchangées."}
-                              {sameStay ? " Choisissez un autre dossier." : ""}
+                              {sameStay
+                                ? " Rejouer le billet complète les cartes de ce dossier, sans recopier les pièces. Un PNR déjà présent n’est pas écrasé."
+                                : ""}
                             </p>
                           </div>
                         ) : (

@@ -81,6 +81,42 @@ export function bookingDocumentKind(name: string, mime: string) {
 }
 
 /**
+ * Une empreinte déjà sur une carte n’y est pas recopiée.
+ * Le même fichier peut rejoindre l’autre segment (aller et retour).
+ */
+export function planEmailCardCopies(
+  incoming: { sha256: string }[],
+  existing: { sha256: string | null; itemId?: string | null }[],
+  itemIds: string[]
+) {
+  const targets = itemIds.filter(Boolean);
+  const known = new Set(
+    existing
+      .map((row) => `${row.itemId || ""}:${(row.sha256 || "").trim()}`)
+      .filter((key) => !key.endsWith(":"))
+  );
+  const copies: { itemId: string; index: number }[] = [];
+  const skipped: number[] = [];
+  for (let index = 0; index < incoming.length; index += 1) {
+    const hash = incoming[index].sha256.trim();
+    if (!hash) {
+      skipped.push(index);
+      continue;
+    }
+    let placed = false;
+    for (const itemId of targets) {
+      const key = `${itemId}:${hash}`;
+      if (known.has(key)) continue;
+      known.add(key);
+      copies.push({ itemId, index });
+      placed = true;
+    }
+    if (!placed) skipped.push(index);
+  }
+  return { copies, skipped };
+}
+
+/**
  * Indexes à copier. Une empreinte déjà sur le dossier, ou répétée dans le mail, est sautée.
  * N’écrit aucune carte.
  */

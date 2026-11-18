@@ -21,6 +21,7 @@ import { flightCities, flightIata, hotelDisplayName } from "@/lib/crm/carnet";
 import { ticketTravelerNames } from "@/lib/crm/document-passengers";
 import { mb3mActivityChoiceLabel, readMb3mActivityOverride } from "@/lib/crm/mb3m-activity";
 import { flightGate, flightTerminal } from "@/lib/crm/flight-watch";
+import { loadTicketDuplicateAlerts } from "@/lib/crm/ticket-duplicate-alerts";
 import { checkinMcpLine, type FlightCheckinView } from "@/lib/crm/online-checkin";
 import { loadCheckinContext, viewsFromContext } from "@/lib/crm/online-checkin-db";
 import { loadLedgerCountedStayAmounts } from "@/lib/crm/displayed-stay";
@@ -405,6 +406,11 @@ export async function readTableauDeBord() {
     })),
     departs_sous_7_jours: departSoon.count ?? 0,
     dossiers_actifs: bookingCount.count ?? 0,
+    doublons_billets: (await loadTicketDuplicateAlerts(admin)).map((row) => ({
+      reference: row.reference,
+      message: "Possible doublon de billets.",
+      lien: `/admin/reservations/${row.bookingId}`,
+    })),
     courriers_hotel: courriers.map((mail) => ({
       hotel: mail.title,
       reference: mail.reference,

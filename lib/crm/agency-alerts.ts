@@ -34,6 +34,13 @@ function clip(value: string, max = 140) {
   return flat.length <= max ? flat : `${flat.slice(0, max).trimEnd()}…`;
 }
 
+export type TicketDuplicateAlert = {
+  id: string;
+  at: string;
+  bookingId: string;
+  reference?: string | null;
+};
+
 export type PaymentAlert = {
   id: string;
   summary: string | null;
@@ -49,6 +56,7 @@ export function agencyAlerts(input: {
   chats: InboundChatAlert[];
   changes?: ConciergeChangeAlert[];
   payments?: PaymentAlert[];
+  tickets?: TicketDuplicateAlert[];
 }): AgencyAlert[] {
   const emails = input.emails.flatMap((row) => {
     if (!row.id || !row.receivedAt) return [];
@@ -90,6 +98,20 @@ export function agencyAlerts(input: {
       },
     ];
   });
+  const tickets = (input.tickets || []).flatMap((row) => {
+    if (!row.id || !row.at || !row.bookingId) return [];
+    const reference = (row.reference || "").trim();
+    return [
+      {
+        id: `ticket:${row.id}`,
+        at: row.at,
+        title: "Possible doublon de billets",
+        body: reference ? `${reference} : un autre PNR est arrivé pour le même vol.` : "Un autre PNR est arrivé pour le même vol.",
+        href: `/admin/reservations/${row.bookingId}`,
+        kicker: "Billet",
+      },
+    ];
+  });
   const payments = (input.payments || []).flatMap((row) => {
     if (!row.id || !row.createdAt) return [];
     return [
@@ -103,5 +125,7 @@ export function agencyAlerts(input: {
       },
     ];
   });
-  return [...emails, ...chats, ...changes, ...payments].sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
+  return [...emails, ...chats, ...changes, ...payments, ...tickets].sort(
+    (a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id)
+  );
 }
