@@ -9,6 +9,11 @@ import {
   mb3mWriteMatching,
   type Mb3mRemotePayment,
 } from "@/lib/crm/mb3m";
+import {
+  mb3mCreditMatchContext,
+  unattachedCreditBelongsToFolder,
+  type Mb3mCreditPeer,
+} from "@/lib/crm/mb3m-credit-match";
 import { formatMoney } from "@/lib/crm/money";
 import { mb3mPaymentUnchanged } from "@/lib/crm/sync-delta";
 
@@ -131,10 +136,34 @@ function sameMoney(left: number, right: number) {
   return Math.abs(left - right) < CENT;
 }
 
+export type Mb3mFolderCreditMatch = {
+  /** Société facturée du séjour en cours. */
+  folderCompanyId?: string | null;
+  folderCompanyName?: string | null;
+  /**
+   * Autres séjours ouverts : société et numéros de facture.
+   * Absent ou null : on ne tranche pas (lecture impossible, ou ancien appel).
+   */
+  peers?: Mb3mCreditPeer[] | null;
+};
+
+function creditNamedForFolder(credit: Mb3mCredit, invoiceNumber: string, input: Mb3mFolderCreditMatch) {
+  return unattachedCreditBelongsToFolder({
+    label: credit.label,
+    amount: credit.amount,
+    billingCompanyId: credit.billingCompanyId,
+    invoiceNumber,
+    folderCompanyId: input.folderCompanyId ?? null,
+    folderCompanyName: input.folderCompanyName ?? null,
+    peers: input.peers,
+  });
+}
+
 /**
  * Crédits à envoyer sur cette facture.
- * Un crédit sans dossier n’est pris que s’il n’y a pas d’autre dossier ouvert,
- * et le lettrage ne dépasse pas le reste à payer. Le booking_id n’est posé
+ * Un crédit sans dossier est pris s’il n’y a pas d’autre dossier ouvert,
+ * ou si son libellé cite cette facture, ou à défaut la société facturée.
+ * Le lettrage ne dépasse pas le reste à payer. Le booking_id n’est posé
  * que si le crédit entier tient dans ce reste.
  */
 export function planMb3mPayments(input: {
@@ -149,7 +178,7 @@ export function planMb3mPayments(input: {
   remoteReady: boolean;
   /** Dossier de la facture. Les règlements de ce dossier passent avant les autres. */
   folderId?: string | null;
-}): Mb3mPlannedPayment[] {
+} & Mb3mFolderCreditMatch): Mb3mPlannedPayment[] {
   const linked = new Map(input.links.map((link) => [link.transactionId, link]));
   const taken = new Set(input.links.map((link) => link.paymentNumber));
   const invoiceNumber = input.invoiceNumber.trim();
@@ -219,7 +248,15 @@ export function planMb3mPayments(input: {
       .reduce((sum, link) => sum + link.matchedAmount, 0);
     if (remoteLeft && remote && coveredHere + CENT >= Math.min(remote.unmatched, remaining)) continue;
     if (!remoteLeft && (known?.invoiceNumber || (known && known.matchedAmount > CENT))) continue;
-    if (!credit.bookingId && input.otherOpenBookings > 0 && !remote && !known?.paymentNumber) continue;
+    if (
+      !credit.bookingId &&
+      input.otherOpenBookings > 0 &&
+      !remote &&
+      !known?.paymentNumber &&
+      !creditNamedForFolder(credit, invoiceNumber, input)
+    ) {
+      continue;
+    }
     if (!input.remoteReady && !known?.paymentNumber) {
       plans.push({
         ...base,
@@ -428,7 +465,7 @@ export function planMb3mGdsMatchings(input: {
   links: Mb3mPaymentLink[];
   gdsInvoices: Mb3mGdsInvoiceTarget[];
   otherOpenBookings: number;
-}): Mb3mPlannedPayment[] {
+} & Mb3mFolderCreditMatch): Mb3mPlannedPayment[] {
   const gdsNumbers = new Set(input.gdsInvoices.map((invoice) => invoice.number));
   const crmInvoice = input.crmInvoiceNumber.trim();
   const used = new Map<string, number>();
@@ -465,7 +502,13 @@ export function planMb3mGdsMatchings(input: {
     for (const credit of credits) {
       if (blocked.has(credit.id)) continue;
       if (credit.bookingId && credit.bookingId !== input.bookingId) continue;
-      if (!credit.bookingId && input.otherOpenBookings > 0) continue;
+      if (
+        !credit.bookingId &&
+        input.otherOpenBookings > 0 &&
+        !creditNamedForFolder(credit, input.crmInvoiceNumber, input)
+      ) {
+        continue;
+      }
       const remainder = cents(credit.amount - (used.get(credit.id) || 0));
       if (remainder <= CENT || remaining <= CENT) continue;
       const matched = cents(Math.min(remainder, remaining));
@@ -590,15 +633,47 @@ export async function recordMb3mInvoicePayments(
   const unique = credits.filter((credit) => (seen.has(credit.id) ? false : (seen.add(credit.id), true)));
   let remote: Mb3mRemotePayment[] = [];
   const remoteReady = Boolean(input.customerUid.trim());
-  const peerIds = ((peers.data || []) as { id: string }[]).map((row) => row.id);
+  const peerRows = (peers.data || []) as { id: string; billing_company_id: string | null }[];
+  const peerIds = peerRows.map((row) => row.id);
   const folderScope = peerIds.length ? [stay.id, ...peerIds] : [stay.id];
-  const folderRows = await supabase
-    .from("crm_mb3m_pieces")
-    .select("folder_id")
-    .eq("realm", mb3mRealm())
-    .in("booking_id", folderScope)
-    .not("folder_id", "is", null);
+  const companyIds = [
+    ...new Set(
+      [stay.billing_company_id, ...peerRows.map((row) => row.billing_company_id)].filter((id): id is string => Boolean(id))
+    ),
+  ];
+  const [folderRows, companies, pieces] = await Promise.all([
+    supabase
+      .from("crm_mb3m_pieces")
+      .select("folder_id")
+      .eq("realm", mb3mRealm())
+      .in("booking_id", folderScope)
+      .not("folder_id", "is", null),
+    companyIds.length
+      ? supabase.from("crm_billing_companies").select("id, company_name").in("id", companyIds)
+      : Promise.resolve({ data: [] as { id: string; company_name: string | null }[], error: null }),
+    peerIds.length
+      ? supabase
+          .from("crm_mb3m_pieces")
+          .select("booking_id, piece_number")
+          .eq("realm", mb3mRealm())
+          .eq("kind", "invoice")
+          .in("booking_id", peerIds)
+      : Promise.resolve({ data: [] as { booking_id: string; piece_number: string | null }[], error: null }),
+  ]);
   if (folderRows.error) throw new Mb3mError("Les dossiers MB3M du client n’ont pas pu être lus.", -1);
+  const matchContext = mb3mCreditMatchContext({
+    folderCompanyId: stay.billing_company_id,
+    peers: peerRows.map((row) => ({ id: row.id, billingCompanyId: row.billing_company_id })),
+    companies: ((companies.data || []) as { id: string; company_name: string | null }[]).map((row) => ({
+      id: row.id,
+      companyName: row.company_name,
+    })),
+    pieces: ((pieces.data || []) as { booking_id: string; piece_number: string | null }[]).map((row) => ({
+      bookingId: row.booking_id,
+      pieceNumber: row.piece_number,
+    })),
+    failed: Boolean(companies.error || pieces.error),
+  });
   const folderIds = [
     input.folderId,
     ...((folderRows.data || []) as { folder_id?: string | null }[]).map((row) => row.folder_id || ""),
@@ -659,11 +734,14 @@ export async function recordMb3mInvoicePayments(
     invoiceNumber: input.invoiceNumber,
     invoiceAmount: input.invoiceAmount,
     credits: unique,
-    otherOpenBookings: ((peers.data || []) as { id: string }[]).length,
+    otherOpenBookings: peerRows.length,
     links: linkRows,
     remote,
     remoteReady,
     folderId: input.folderId,
+    folderCompanyId: stay.billing_company_id,
+    folderCompanyName: matchContext.folderCompanyName,
+    peers: matchContext.peers,
   });
   const gdsPlans = planMb3mGdsMatchings({
     bookingId: stay.id,
@@ -672,7 +750,10 @@ export async function recordMb3mInvoicePayments(
     primary: plans,
     links: linkRows,
     gdsInvoices: input.gdsInvoices || [],
-    otherOpenBookings: ((peers.data || []) as { id: string }[]).length,
+    otherOpenBookings: peerRows.length,
+    folderCompanyId: stay.billing_company_id,
+    folderCompanyName: matchContext.folderCompanyName,
+    peers: matchContext.peers,
   });
   const reglements = await applyMb3mPaymentPlans(
     { folderId: input.folderId, invoiceNumber: input.invoiceNumber, plans: [...plans, ...gdsPlans] },
