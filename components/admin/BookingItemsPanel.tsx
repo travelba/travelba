@@ -15,6 +15,7 @@ import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { readDocumentAmount } from "@/lib/crm/booking-issues";
 import { ticketTravelerNames } from "@/lib/crm/document-passengers";
 import {
+  cardVisibilityUpdate,
   documentsForItems,
   flightCardSubtitle,
   flightCardTitle,
@@ -274,6 +275,7 @@ export function BookingItemsPanel({
   reference = null,
   onLiveItems,
   onStepsPending,
+  onStepError,
   onVerify,
   clearedReviewIds = [],
   checkins = [],
@@ -320,6 +322,8 @@ export function BookingItemsPanel({
   onLiveItems?: (items: CrmBookingItem[]) => void;
   /** Une étape retirée ou modifiée attend l’enregistrement du séjour. */
   onStepsPending?: (pending: boolean) => void;
+  /** L’erreur d’enregistrement, pour l’afficher en haut du dossier. */
+  onStepError?: (message: string | null) => void;
   /** Lève needs_review. L’appelant écrit le journal et renvoie les identifiants vérifiés. */
   onVerify?: (ids: string[]) => Promise<boolean>;
   /** Identifiants déjà vérifiés (bandeau), pour repeindre la carte sans attendre le rechargement. */
@@ -346,8 +350,13 @@ export function BookingItemsPanel({
     baselineRef.current = stayCards(rows);
   }, [pending, rows]);
   const onStepsPendingRef = useRef(onStepsPending);
+  const onStepErrorRef = useRef(onStepError);
+  const documentsRef = useRef(documents);
+  const pieceChoiceRef = useRef(new Map<string, "retirer" | "garder">());
   useEffect(() => {
     onStepsPendingRef.current = onStepsPending;
+    onStepErrorRef.current = onStepError;
+    documentsRef.current = documents;
   });
   useEffect(() => {
     onStepsPendingRef.current?.(pending);
@@ -603,6 +612,13 @@ export function BookingItemsPanel({
     }
     const plan = stepCommitPlan(baselineRef.current.map(toSnapshot), stayCards(current).map(toSnapshot));
     if (!plan.pending) return true;
+    const retirerDocuments: string[] = [];
+    for (const id of plan.deleted) {
+      if (pieceChoiceRef.current.get(id) !== "retirer") continue;
+      const item = baselineRef.current.find((row) => row.id === id);
+      if (!item) continue;
+      for (const doc of documentsForItems([item], documentsRef.current)) retirerDocuments.push(doc.id);
+    }
     setBusy(true);
     setError(null);
     const res = await fetch(`/api/admin/bookings/${bookingId}/items`, {
@@ -614,14 +630,25 @@ export function BookingItemsPanel({
         updated: plan.updated,
         created: plan.created.map((step) => ({ ...step, client_id: step.id })),
         order: plan.order,
+        retirer_documents: retirerDocuments,
       }),
     });
-    const json = await res.json().catch(() => ({}));
+    const json = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      ids?: Record<string, string>;
+      warning?: string;
+    };
     setBusy(false);
     if (!res.ok) {
-      setError(json.error || "Les étapes n’ont pas été enregistrées.");
+      const message =
+        typeof json.error === "string" && json.error ? json.error : "Les étapes n’ont pas été enregistrées.";
+      setError(message);
+      onStepErrorRef.current?.(message);
       return false;
     }
+    for (const id of plan.deleted) pieceChoiceRef.current.delete(id);
+    onStepErrorRef.current?.(null);
+    if (json.warning) setNotice(json.warning);
     setLedgerNote(readLedgerWarning(json));
     const ids = (json.ids || {}) as Record<string, string>;
     const remapped = current.map((item) => {
@@ -698,22 +725,41 @@ export function BookingItemsPanel({
     return () => onBindRef.current?.(null);
   }, []);
 
-  function setCardVisible(item: CrmBookingItem, visible: boolean) {
-    if (visible && (item.lifecycle === "cancelled" || item.lifecycle === "superseded")) {
-      setError("Cette carte est archivée. Elle ne revient pas dans le carnet.");
+  async function setCardVisible(item: CrmBookingItem, visible: boolean) {
+    const decided = cardVisibilityUpdate(item, visible);
+    if ("error" in decided) {
+      setError(decided.error);
+      onStepErrorRef.current?.(decided.error);
       return;
     }
     setMenuFor(null);
-    const ids = new Set([item.id]);
-    remember(
-      rowsRef.current.map((row) => {
-        if (!ids.has(row.id)) return row;
-        const details = { ...(row.details || {}) };
-        if (visible) delete details.client_hidden;
-        else details.client_hidden = true;
-        return { ...row, visible_to_client: visible, details };
-      })
-    );
+    const paint = (row: CrmBookingItem) =>
+      row.id === item.id
+        ? { ...row, visible_to_client: decided.visible_to_client, details: decided.details }
+        : row;
+    if (isDraftStepId(item.id)) {
+      remember(rowsRef.current.map(paint));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`/api/admin/bookings/${bookingId}/items`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: item.id, visible_to_client: visible, client_hidden: !visible }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { error?: string };
+    setBusy(false);
+    if (!res.ok) {
+      const message = json.error || "La visibilité de la carte n’a pas été enregistrée.";
+      setError(message);
+      onStepErrorRef.current?.(message);
+      return;
+    }
+    baselineRef.current = baselineRef.current.map(paint);
+    remember(rowsRef.current.map(paint));
+    onStepErrorRef.current?.(null);
+    router.refresh();
   }
 
   async function dismissEmail(emailId: string) {
@@ -1070,16 +1116,31 @@ export function BookingItemsPanel({
                           buttonClassName="admin-tap flex w-full items-center justify-start rounded-full border border-[var(--border)] bg-white px-3 py-2 text-left text-xs font-semibold text-[var(--admin-navy)]"
                         />
                       ) : null}
+                      {docs.length ? (
+                      <RemoveStepChoice
+                        count={docs.length}
+                        disabled={busy}
+                        title={stepTitle(item)}
+                        onChoose={(mode) => {
+                          pieceChoiceRef.current.set(item.id, mode);
+                          removeItem(item.id);
+                        }}
+                      />
+                      ) : (
                       <ConfirmAction
                         size="sm"
                         tone="danger"
                         label="Retirer"
                         confirmLabel="Retirer l’étape"
                         ariaLabel={`Retirer ${stepTitle(item)}`}
-                        question="L’étape quitte la liste. Elle quitte le voyage à l’enregistrement du séjour. Le fichier reste dans le dossier."
+                        question="L’étape quitte la liste. Elle quitte le voyage à l’enregistrement du séjour."
                         disabled={busy}
-                        onConfirm={() => removeItem(item.id)}
+                        onConfirm={async () => {
+                          pieceChoiceRef.current.delete(item.id);
+                          removeItem(item.id);
+                        }}
                       />
+                      )}
                     </div>
                   ) : null}
                   </div>
@@ -1147,8 +1208,54 @@ export function BookingItemsPanel({
         </div>
       ) : null}
       {error ? <p className="mt-2 text-sm text-accent">{error}</p> : null}
-      <p className="mt-2 text-xs text-muted">Retirer une étape la retire de la liste. Le voyage change à l’enregistrement. Le fichier reste dans le dossier.</p>
+      <p className="mt-2 text-xs text-muted">
+        Retirer une étape la retire de la liste. Le voyage change à l’enregistrement. S’il y a des pièces, on les garde dans le dossier ou on les retire. Le fichier reste stocké.
+      </p>
     </section>
+  );
+}
+
+function RemoveStepChoice({
+  count,
+  disabled,
+  title,
+  onChoose,
+}: {
+  count: number;
+  disabled: boolean;
+  title: string;
+  onChoose: (mode: "retirer" | "garder") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+        className="admin-tap inline-flex h-11 w-full items-center justify-start rounded-full px-3 text-xs font-semibold text-[var(--admin-red)] ring-1 ring-[var(--admin-red)]/30 disabled:opacity-40 lg:h-8"
+      >
+        Retirer
+      </button>
+    );
+  }
+  const choice =
+    "admin-tap inline-flex min-h-9 w-full items-center justify-start rounded-full px-3 py-2 text-left text-xs font-semibold disabled:opacity-40";
+  return (
+    <div className="flex w-full flex-col gap-2">
+      <p className="text-xs text-muted">
+        {count > 1 ? `${count} pièces` : "Une pièce"} sur {title}. Le fichier reste stocké. Un retrait se restaure.
+      </p>
+      <button type="button" disabled={disabled} className={`${choice} bg-[var(--admin-red)] text-white`} onClick={() => onChoose("retirer")}>
+        Supprimer aussi les billets/pièces
+      </button>
+      <button type="button" disabled={disabled} className={`${choice} bg-white text-[var(--admin-navy)] ring-1 ring-[var(--border)]`} onClick={() => onChoose("garder")}>
+        Garder les pièces dans le dossier
+      </button>
+      <button type="button" disabled={disabled} className={`${choice} bg-white text-muted ring-1 ring-[var(--border)]`} onClick={() => setOpen(false)}>
+        Annuler
+      </button>
+    </div>
   );
 }
 

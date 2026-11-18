@@ -113,6 +113,8 @@ import { bookingHasFlight, findVisaExtra, type ServiceRefusal } from "@/lib/crm/
 import { groupAttachedEmails } from "@/lib/crm/email-duplicates";
 import {
   clientStayAction,
+  PRIMARY_STAY_LABEL,
+  primaryStayButton,
   staffBlockingChips,
   staffLedgerCaption,
   staffStayFacts,
@@ -596,6 +598,9 @@ export function BookingEditor({
   const searchParams = useSearchParams();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
   const [pricedItems, setPricedItems] = useState(items);
+  const [liveSteps, setLiveSteps] = useState<CrmBookingItem[] | null>(null);
+  const [stepError, setStepError] = useState<string | null>(null);
+  const stepErrorRef = useRef<string | null>(null);
   const ledgerKey = ledgerMoneyKey(accountLedger);
   const [seenLedgerKey, setSeenLedgerKey] = useState(ledgerKey);
   const [liveLedger, setLiveLedger] = useState(accountLedger);
@@ -662,6 +667,7 @@ export function BookingEditor({
     setLiveSource(next);
   }, []);
   const onLiveItems = useCallback((next: CrmBookingItem[]) => {
+    setLiveSteps(next);
     setPricedItems((current) => (stayAmountKey(current) === stayAmountKey(next) ? current : next));
   }, []);
   const onExpenseWrite = useCallback(
@@ -923,6 +929,27 @@ export function BookingEditor({
     travelers
   );
 
+  function noteStepError(message: string | null) {
+    stepErrorRef.current = message;
+    setStepError(message);
+  }
+
+  async function persistSteps() {
+    if (!saveOpenCard.current) return true;
+    const cardOk = await Promise.race([
+      saveOpenCard.current().catch(() => false),
+      new Promise<boolean>((resolve) => {
+        window.setTimeout(() => resolve(false), 25000);
+      }),
+    ]);
+    if (!cardOk) {
+      noteStepError(stepErrorRef.current || "Les étapes n’ont pas été enregistrées. Le séjour n’a pas changé.");
+      return false;
+    }
+    noteStepError(null);
+    return true;
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const payload = metaPayload();
@@ -934,19 +961,7 @@ export function BookingEditor({
     setFlash(null);
     setIssues([]);
     try {
-      let cardOk = true;
-      if (saveOpenCard.current) {
-        cardOk = await Promise.race([
-          saveOpenCard.current().catch(() => false),
-          new Promise<boolean>((resolve) => {
-            window.setTimeout(() => resolve(false), 25000);
-          }),
-        ]);
-        if (!cardOk) {
-          setFlash("Les étapes n’ont pas été enregistrées. Le séjour n’a pas changé.");
-          return;
-        }
-      }
+      if (!(await persistSteps())) return;
       const res = await fetch(`/api/admin/bookings/${booking.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -995,47 +1010,69 @@ export function BookingEditor({
     router.refresh();
   }
 
+  async function publishStay(visible: boolean, stepsJustSaved: boolean) {
+    const payload = dirty ? metaPayload() : null;
+    if (dirty && !payload) {
+      noteStepError("Enregistrement impossible. Réessayez.");
+      return;
+    }
+    setBusy("publish");
+    setFlash(null);
+    setIssues([]);
+    try {
+      const res = await fetch(`/api/admin/bookings/${booking.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...(payload || {}), visible_to_client: visible }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setIssues(issuesFromResponse(json));
+        const message = json.error || (visible ? "Le carnet n’a pas été montré." : "Le séjour n’a pas été caché.");
+        noteStepError(stepsJustSaved ? `Les étapes sont enregistrées. ${message}` : message);
+        setFlash(null);
+        return;
+      }
+      noteStepError(null);
+      const saved = payload ? "Enregistré. " : "";
+      setFlash(`${saved}${visible ? "Le client voit ce séjour." : "Le client ne voit plus ce séjour."}`);
+      await refreshArgent();
+      router.refresh();
+    } catch {
+      noteStepError("Enregistrement impossible. Réessayez.");
+    } finally {
+      setBusy("idle");
+    }
+  }
+
   async function setPublished(visible: boolean) {
     if (visible) {
-      const publishIssues = collectPublishIssues(items);
+      const publishIssues = collectPublishIssues(liveSteps ?? items);
       if (publishIssues.length) {
         setIssues(publishIssues);
         setFlash(null);
         return;
       }
     }
-    if (saveOpenCard.current) {
-      const cardOk = await saveOpenCard.current().catch(() => false);
-      if (!cardOk) {
-        setFlash("Les étapes n’ont pas été enregistrées. Le séjour n’a pas changé.");
-        return;
-      }
-    }
-    // Les champs modifiés partent dans le même PATCH : la route applique le méta puis la publication.
-    const payload = dirty ? metaPayload() : null;
-    if (dirty && !payload) {
-      setFlash("Enregistrement impossible. Réessayez.");
+    setBusy("publish");
+    const hadSteps = stepsPending;
+    if (!(await persistSteps())) {
+      setBusy("idle");
       return;
     }
+    await publishStay(visible, hadSteps);
+  }
+
+  async function saveAndShow() {
     setBusy("publish");
     setFlash(null);
     setIssues([]);
-    const res = await fetch(`/api/admin/bookings/${booking.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...(payload || {}), visible_to_client: visible }),
-    });
-    const json = await res.json().catch(() => ({}));
-    setBusy("idle");
-    if (!res.ok) {
-      setIssues(issuesFromResponse(json));
-      setFlash(null);
+    const hadSteps = stepsPending || dirty;
+    if (!(await persistSteps())) {
+      setBusy("idle");
       return;
     }
-    const saved = payload ? "Enregistré. " : "";
-    setFlash(`${saved}${visible ? "Le client voit ce séjour." : "Le client ne voit plus ce séjour."}`);
-    await refreshArgent();
-    router.refresh();
+    await publishStay(true, hadSteps);
   }
 
   /** Ajout d’un voyageur : le retour serveur (déjà sur le séjour, hors du foyer…) s’affiche sous le formulaire. */
@@ -1234,8 +1271,10 @@ export function BookingEditor({
   const leOpen =
     Boolean(littleEmperors) &&
     !["cancelled", "canceled"].includes((littleEmperors?.state || "").toLowerCase());
+  const factItems = liveSteps ?? items;
   const facts = staffStayFacts({
-    items,
+    items: factItems,
+    savedItems: liveSteps ? items : undefined,
     destination: booking.destination,
     startDate: booking.start_date,
     endDate: booking.end_date,
@@ -1340,6 +1379,7 @@ export function BookingEditor({
   const hideButtonClass =
     "admin-tap whitespace-nowrap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50";
   const showButtonClass = "admin-af-btn admin-tap whitespace-nowrap rounded-full px-4 py-2 text-sm disabled:opacity-50";
+  const stayButton = primaryStayButton({ visible: stayAction === "cacher", unsaved });
   const primaryAction =
     stayAction === "restaurer" ? (
       <RestoreBookingButton bookingId={booking.id} />
@@ -1352,6 +1392,22 @@ export function BookingEditor({
       >
         Rouvrir
       </button>
+    ) : unsaved && (stayAction === "montrer" || stayAction === "cacher") ? (
+      <>
+        <button
+          type="button"
+          disabled={busy !== "idle"}
+          onClick={() => void saveAndShow()}
+          className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm disabled:opacity-50"
+        >
+          {PRIMARY_STAY_LABEL[stayButton]}
+        </button>
+        {stayAction === "cacher" ? (
+          <button type="button" disabled={busy !== "idle"} onClick={() => setConfirm("unpublish")} className={hideButtonClass}>
+            Cacher au client
+          </button>
+        ) : null}
+      </>
     ) : (
       <>
         {stayAction === "montrer" ? (
@@ -1556,6 +1612,7 @@ export function BookingEditor({
                   />
                 ) : null}
                 {unsaved ? <span>· Modifications non enregistrées</span> : null}
+                {stepError ? <span className="font-semibold text-[var(--admin-red)]">· {stepError}</span> : null}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1635,6 +1692,7 @@ export function BookingEditor({
         <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted">
           <span>{facts.dates || "Dates à confirmer"}</span>
           {facts.placeLine ? <span>· {facts.placeLine}</span> : null}
+          {facts.draft ? <span className="font-semibold text-[var(--admin-gold-dark)]">· pas encore enregistré</span> : null}
           <span>· {travelerLabel}</span>
         </p>
         <div className="flex flex-wrap items-center gap-2">
@@ -1718,9 +1776,12 @@ export function BookingEditor({
           active={busy !== "idle"}
           label={busy === "publish" ? "Mise à jour du carnet…" : busy === "invoice" ? "Facturation…" : "Enregistrement…"}
         />
-        {unsaved && busy === "idle" ? (
+        {unsaved || stepError ? (
           <p role="status" className="text-sm font-semibold text-[var(--admin-gold-dark)]">
-            Modifications non enregistrées · ⌘S ou Ctrl+S pour enregistrer
+            {unsaved ? "Modifications non enregistrées · ⌘S ou Ctrl+S pour enregistrer" : null}
+            {stepError ? (
+              <span className={unsaved ? "mt-1 block text-[var(--admin-red)]" : "text-[var(--admin-red)]"}>{stepError}</span>
+            ) : null}
           </p>
         ) : null}
         {more && !compact ? moreMenu : null}
@@ -2010,12 +2071,28 @@ export function BookingEditor({
                 </span>
               ) : null}
             </div>
-            {facts.segments.length ? (
+            {facts.segments.length || facts.removed.length ? (
               <ul className="divide-y divide-[var(--border)]">
                 {facts.segments.map((segment) => (
                   <li key={segment.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-2 text-sm text-[var(--admin-navy)]">
-                    <span className="min-w-0 break-words font-semibold">{segment.place}</span>
+                    <span className="min-w-0 break-words font-semibold">
+                      {segment.place}
+                      {segment.pending ? (
+                        <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-gold-dark)]">
+                          Pas encore enregistré
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="shrink-0 text-muted">{segment.when}</span>
+                  </li>
+                ))}
+                {facts.removed.map((segment) => (
+                  <li key={`retire-${segment.id}`} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-2 text-sm text-muted">
+                    <span className="min-w-0 break-words font-semibold line-through">{segment.place}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--admin-gold-dark)]">
+                      Retiré · pas encore enregistré
+                    </span>
+                    <span className="shrink-0">{segment.when}</span>
                   </li>
                 ))}
               </ul>
@@ -2312,6 +2389,7 @@ export function BookingEditor({
         tripStart={startDraft || booking.start_date}
         tripEnd={endDraft || booking.end_date}
         onLiveItems={onLiveItems}
+        onStepError={noteStepError}
         onBindDraftSave={(save) => {
           saveOpenCard.current = save;
         }}

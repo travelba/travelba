@@ -17,12 +17,15 @@ Code : `lib/crm/carnet.ts`, `lib/crm/bookings.ts`, `components/admin/BookingEdit
 
 ## Enregistrer ≠ Montrer au client
 
-Trois statuts : **Non visible** (`status=draft`, `visible_to_client=false`), **Visible** (`status=confirmed` et montré : c’est le confirmé), **Annulé**. L’archive reste **Archivée**. Pas de pastille À l’étude, Devis, Confirmée, En voyage, Terminée, ni « Visible · Brouillon ». Le bouton dit **Montrer au client** quand le séjour est Non visible, et **Cacher au client** quand il est Visible. Il suit `visible_to_client`, pas le fait que les cartes soient déjà montrées. **Mettre à jour le carnet** s’ajoute seulement si une étape est encore cachée sur un séjour déjà montré. Pas Publier. **Annuler le dossier** et **Rouvrir** sont dans le menu. Archiver dit **Archiver**.
+Trois statuts : **Non visible** (`status=draft`, `visible_to_client=false`), **Visible** (`status=confirmed` et montré : c’est le confirmé), **Annulé**. L’archive reste **Archivée**. Pas de pastille À l’étude, Devis, Confirmée, En voyage, Terminée, ni « Visible · Brouillon ». Sans changement en attente, le bouton dit **Montrer au client** quand le séjour est Non visible, et **Cacher au client** quand il est Visible. Avec des changements en attente, il devient **Enregistrer et montrer au client** ou **Enregistrer et mettre à jour le carnet** : un clic enregistre puis publie, et si l’enregistrement échoue rien n’est publié. **Enregistrer** reste à côté, sans publier. Il suit `visible_to_client`, pas le fait que les cartes soient déjà montrées. **Mettre à jour le carnet** s’ajoute seulement si une étape est encore cachée sur un séjour déjà montré et que rien n’attend. Pas Publier. **Annuler le dossier** et **Rouvrir** sont dans le menu. Archiver dit **Archiver**.
 
 | Geste | Effet |
 |-------|--------|
 | **Enregistrer** | sauve le dossier ; ne le montre pas et ne débite pas un séjour encore caché. Il s’allume dès qu’une étape est retirée, ajoutée, modifiée ou réordonnée. Il ne cache pas l’étape : `client_hidden` vient seulement du geste Cacher |
-| **Montrer au client** | le client voit ; le séjour passe **Visible** (confirmé). Items + PDFs du dossier passent visibles. Le séjour entre au grand livre |
+| **Cacher / Montrer** (une carte) | écrit tout de suite `client_hidden` et `visible_to_client`. N’attend pas Enregistrer. Les pièces de la carte suivent. Rien n’est envoyé |
+| **Enregistrer et montrer au client** | quand des changements attendent et le séjour est Non visible : un clic enregistre les étapes, puis montre tout sauf les cartes cachées. Si l’enregistrement échoue, rien n’est publié |
+| **Enregistrer et mettre à jour le carnet** | même geste quand le séjour est déjà Visible |
+| **Montrer au client** | quand rien n’attend : le client voit ; le séjour passe **Visible** (confirmé). Items + PDFs du dossier passent visibles, sauf une carte cachée et ses pièces. Le séjour entre au grand livre |
 
 Un seul interrupteur séjour (plus de case fichier séparée). Guard serveur `canPublishCarnet` : au moins **une** carte `kind !== "fee"`. Confirmer reste éteint, et le dit, si les étapes sont cachées et qu’il ne reste que des fichiers.
 

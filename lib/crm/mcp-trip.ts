@@ -21,7 +21,7 @@ import {
 } from "@/lib/crm/bookings";
 import { toAuditRow } from "@/lib/crm/audit-events";
 import { noteCarnetAdditions } from "@/lib/crm/carnet-addition";
-import { detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
+import { cardVisibilityUpdate, keptHiddenFromClient } from "@/lib/crm/carnet";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-email";
 import { addIsoDays } from "@/lib/crm/dates";
@@ -1885,19 +1885,7 @@ function ledgerInclusion(
   return requested;
 }
 
-/** Même geste que Cacher / Montrer dans l’agence : le masquage n’existe que si on le choisit. */
-export function cardVisibilityUpdate(
-  item: { lifecycle?: string | null; details?: Record<string, unknown> | null },
-  visible: boolean
-): { error: string } | { visible_to_client: boolean; details: Record<string, unknown> } {
-  if (visible && !isActiveItem(item)) {
-    return { error: "Cette carte est archivée. Elle ne revient pas dans le carnet." as const };
-  }
-  const details = visible
-    ? detailsForCardVisibility(item.details, true)
-    : { ...(item.details || {}), client_hidden: true };
-  return { visible_to_client: visible, details };
-}
+export { cardVisibilityUpdate } from "@/lib/crm/carnet";
 
 type LedgerRow = {
   id?: string;
