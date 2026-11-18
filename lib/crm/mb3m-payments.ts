@@ -767,6 +767,7 @@ export async function recordMb3mInvoicePayments(
           bank: plan.bank,
           mode: plan.mode,
           customModeId: plan.customModeId,
+          customerUid: input.customerUid,
         }),
       writeMatching: (plan, paymentNumber) =>
         mb3mWriteMatching({

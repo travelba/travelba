@@ -268,7 +268,8 @@ function airlineProvider(iata: string, name: string) {
 
 export type Mb3mSupplierResolution =
   | { ok: true; provider: Mb3mCatalogProvider; genericLand: boolean }
-  | { ok: false; reason: string };
+  /** `unknown` : le nom du fournisseur absent du catalogue MB3M. La ligne part sans ProviderId, le nom dans la Note. */
+  | { ok: false; reason: string; unknown?: string };
 
 function found(provider: Mb3mCatalogProvider | null, genericLand = false): Mb3mSupplierResolution {
   if (!provider) return { ok: false, reason: "Fournisseur introuvable dans MB3M." };
@@ -276,8 +277,9 @@ function found(provider: Mb3mCatalogProvider | null, genericLand = false): Mb3mS
 }
 
 function missing(kind: string, name: string): Mb3mSupplierResolution {
-  const who = name.trim() || "sans nom";
-  return { ok: false, reason: `${kind} introuvable dans MB3M : ${who}.` };
+  const clean = name.trim();
+  const who = clean || "sans nom";
+  return { ok: false, reason: `${kind} introuvable dans MB3M : ${who}.`, ...(clean ? { unknown: clean } : {}) };
 }
 
 export function resolveMb3mSupplier(input: {
@@ -501,13 +503,17 @@ export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mCon
       MB3M_FLIGHT_ACTIVITIES.has(activityId) && !mb3mFlightLinesEnabled() && !mb3mFlightEuroCommissionEnabled();
     const generic = supplier.ok && supplier.genericLand;
     const tickets = ticketRefs(item?.details);
-    const providerName = supplier.ok ? supplier.provider.name : null;
-    const providerId = providerName ? mb3mVerifiedProviderId(providerName) : null;
+    // Fournisseur absent du catalogue : jamais bloquant. Le vol est de toute façon retenu ; les autres lignes
+    // partent sans ProviderId, avec son nom dans la Note, et la page affiche un avertissement.
+    const unknownSupplier = !supplier.ok && supplier.unknown ? supplier.unknown : null;
+    const providerName = supplier.ok ? supplier.provider.name : unknownSupplier;
+    const providerId = supplier.ok && providerName ? mb3mVerifiedProviderId(providerName) : null;
     return {
       ...line,
       activityId,
       providerId,
       providerName,
+      supplierWarning: unknownSupplier && !supplier.ok ? supplier.reason : null,
       note: providerName && !providerId ? noteWithResolvedProvider(line.note, providerName) : line.note,
       refPiece:
         activityId === MB3M_ACTIVITY.hotel || activityId === MB3M_ACTIVITY.land ? bookingRef(item) || null : tickets[0] || null,
@@ -515,7 +521,7 @@ export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mCon
       refCommand: MB3M_FLIGHT_ACTIVITIES.has(activityId) ? bookingRef(item) || null : null,
       fareScope: commissionScope(item),
       held,
-      supplierReason: supplier.ok ? null : supplier.reason,
+      supplierReason: supplier.ok || unknownSupplier ? null : supplier.reason,
       label: generic ? landLabel(line.label, supplierName) : line.label,
       customCode: null,
       agencyProvider: false,
@@ -534,6 +540,20 @@ export function mb3mSendableLines(lines: Mb3mAccountLine[]) {
 
 export function mb3mInvoiceNotice(lines: Mb3mAccountLine[]) {
   return lines.some((line) => line.held) ? MB3M_FLIGHT_HOLD_MESSAGE : null;
+}
+
+/** Fournisseurs absents du catalogue MB3M : avertissement, la facture n’est pas bloquée. */
+export function mb3mSupplierWarnings(lines: Mb3mAccountLine[]) {
+  const reasons = lines.filter((line) => line.supplierWarning && !line.rollup).map((line) => line.supplierWarning || "");
+  const unique = [...new Set(reasons.filter(Boolean))];
+  if (!unique.length) return null;
+  const held = lines.some((line) => line.supplierWarning && line.held);
+  const sent = lines.some((line) => line.supplierWarning && !line.held);
+  const tail = [
+    sent ? "Sans ProviderId, son nom est dans la Note de la ligne." : "",
+    held && !sent ? "La ligne est retenue : rien n’est envoyé à MB3M pour elle." : "",
+  ].filter(Boolean);
+  return [...unique, ...tail].join(" ");
 }
 
 export function mb3mInvoiceRefCommand(dossierRef: string, lines: Mb3mLine[]) {

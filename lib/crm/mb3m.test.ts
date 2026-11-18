@@ -34,6 +34,7 @@ import {
   MB3M_PAYMENT_MODES,
   mb3mPaymentAccount,
   mb3mPaymentReference,
+  mb3mResetBankAccountCache,
   mb3mSavePayment,
   mb3mSavePerson,
   mb3mPrestationActivityId,
@@ -1030,12 +1031,18 @@ describe("règlements MB3M", () => {
     assert.equal(mb3mPaymentReference("0173733f-95a6-4115-8e49-e81cb3e875c5"), "CRM 0173733f-95a6-4115-8e49-e81cb3e875c5");
   });
 
-  it("envoie SavePayment puis WriteMatching dans l’ordre des champs", async () => {
+  it("envoie SavePayment avec le client, puis WriteMatching, dans l’ordre du schéma", async () => {
     arm();
+    mb3mResetBankAccountCache();
     const bodies: { action: string; body: string }[] = [];
     const fetchImpl = async (_url: RequestInfo | URL, init?: RequestInit) => {
-      bodies.push({ action: String(new Headers(init?.headers).get("SOAPAction")), body: String(init?.body) });
       const action = String(new Headers(init?.headers).get("SOAPAction"));
+      if (action.includes("GetBankAccounts")) {
+        return new Response(
+          `<GetBankAccountsResponse><GetBankAccountsResult><BankAccount><Uid>e02187e1-00e0-4a31-a3f2-bd21eadcd731</Uid><Name>REVOLUT</Name></BankAccount><BankAccount><Uid>b1c53247-dedd-4554-88dc-34bfe2c38193</Uid><Name>PLIANT</Name></BankAccount></GetBankAccountsResult></GetBankAccountsResponse>`
+        );
+      }
+      bodies.push({ action, body: String(init?.body) });
       const number = action.includes("SavePayment") ? "2154" : "900";
       return new Response(
         `<FolderOperationResponse><ResultCode>1</ResultCode><Result><Payment><Number>${number}</Number><Id>${number}</Id></Payment></Result></FolderOperationResponse>`
@@ -1049,6 +1056,7 @@ describe("règlements MB3M", () => {
         reference: "CRM 0173733f-95a6-4115-8e49-e81cb3e875c5",
         bank: "REVOLUT",
         mode: "BankTransfer",
+        customerUid: "fb3e41d2-6be4-4998-aef4-851839cc48f3",
       },
       fetchImpl
     );
@@ -1059,9 +1067,16 @@ describe("règlements MB3M", () => {
     assert.equal(saved.number, "2154");
     assert.equal(matched.id, "900");
     assert.equal(bodies[0]?.action, '"http://schemas.mb3m.fr/Partners/IFolderService/SavePayment"');
-    const saveOrder = ["<Amount>2639.96</Amount>", "<BankAccount>REVOLUT</BankAccount>", "<Date>2026-10-30T00:00:00</Date>", "<FolderId>01-0002007</FolderId>", "<Mode>BankTransfer</Mode>", "<Reference>CRM 0173733f-95a6-4115-8e49-e81cb3e875c5</Reference>"].map(
-      (needle) => (bodies[0]?.body || "").indexOf(needle)
-    );
+    const saveOrder = [
+      "<FolderId>01-0002007</FolderId>",
+      "<Payment>",
+      "<CreationDate>2026-10-30T00:00:00</CreationDate>",
+      "<Customer><Uid>fb3e41d2-6be4-4998-aef4-851839cc48f3</Uid></Customer>",
+      "<Amount>2639.96</Amount>",
+      "<Mode>BankTransfer</Mode>",
+      "<RefNumber>CRM 0173733f-95a6-4115-8e49-e81cb3e875c5</RefNumber>",
+      "<BankAccountId>e02187e1-00e0-4a31-a3f2-bd21eadcd731</BankAccountId>",
+    ].map((needle) => (bodies[0]?.body || "").indexOf(needle));
     assert.ok(saveOrder.every((index) => index >= 0));
     assert.deepEqual(saveOrder, [...saveOrder].sort((left, right) => left - right));
     assert.equal(bodies[1]?.action, '"http://schemas.mb3m.fr/Partners/IFolderService/WriteMatching"');
@@ -1070,6 +1085,40 @@ describe("règlements MB3M", () => {
     );
     assert.ok(matchOrder.every((index) => index >= 0));
     assert.deepEqual(matchOrder, [...matchOrder].sort((left, right) => left - right));
+  });
+
+  it("SavePayment : sans client, rien ne part ; un Uid de dossier n’entre pas dans FolderId", async () => {
+    arm();
+    mb3mResetBankAccountCache();
+    const calls: string[] = [];
+    const fetchImpl = async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const action = String(new Headers(init?.headers).get("SOAPAction"));
+      calls.push(action);
+      if (action.includes("GetBankAccounts")) {
+        return new Response(`<GetBankAccountsResponse><GetBankAccountsResult></GetBankAccountsResult></GetBankAccountsResponse>`);
+      }
+      calls.push(String(init?.body));
+      return new Response(`<FolderOperationResponse><ResultCode>1</ResultCode><Result><Payment><Number>77</Number></Payment></Result></FolderOperationResponse>`);
+    };
+    const base = { amount: 10, date: "2026-11-17", reference: "CRM x", bank: "REVOLUT", mode: "BankTransfer" };
+    await assert.rejects(
+      () => mb3mSavePayment({ ...base, folderId: "01-1", customerUid: "" }, fetchImpl),
+      (error: unknown) => error instanceof Mb3mError && /client/.test(error.message)
+    );
+    assert.deepEqual(calls, []);
+    const folderUid = "1f0c002c-615e-422b-aff6-202611161249";
+    await mb3mSavePayment({ ...base, folderId: "", customerUid: "c-uid" }, fetchImpl);
+    const emptyFolder = calls.join(" ");
+    assert.match(emptyFolder, /<Customer><Uid>c-uid<\/Uid><\/Customer>/);
+    assert.doesNotMatch(emptyFolder, /<FolderId>/);
+    assert.doesNotMatch(emptyFolder, new RegExp(folderUid));
+    assert.doesNotMatch(emptyFolder, /BankAccountId/);
+    calls.length = 0;
+    await mb3mSavePayment({ ...base, folderId: "01-0002007", customerUid: "c-uid" }, fetchImpl);
+    const withId = calls.join(" ");
+    assert.match(withId, /<FolderId>01-0002007<\/FolderId>/);
+    assert.doesNotMatch(withId, new RegExp(folderUid));
+    assert.match(withId, /<Customer><Uid>c-uid<\/Uid><\/Customer>/);
   });
 
   it("lit les règlements déjà saisis pour ce client", async () => {
