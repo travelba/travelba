@@ -26,6 +26,8 @@ import { BoardingReadyNote } from "@/components/account/BoardingPassStack";
 import { boardingPassBookingIds } from "@/lib/crm/client-boarding-pass-load";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
+import { clientHidesPrices, stayHidesPrices, stripClientMoneyItem } from "@/lib/crm/client-price-privacy";
+import { hiddenPriceCustomerIds } from "@/lib/crm/client-price-privacy-load";
 
 export const metadata = { title: `Réservations — ${siteConfig.shortName}` };
 
@@ -44,9 +46,17 @@ export default async function ReservationsPage({
   const loaded = await loadVisibleCarnets(supabase, customer.id, await clientTripOwnerIds(customer));
   const faces = await loadClientStayFaces(supabase, loaded, customer.city);
   const all = loaded.map((booking) => applyClientStayFace(booking, faces[booking.id]));
+  const viewerHides = clientHidesPrices(customer);
+  const hiddenOwners = viewerHides
+    ? new Set<string>()
+    : await hiddenPriceCustomerIds(all.map((row) => row.customer_id).filter((id) => id !== customer.id));
+  const hidesStay = (ownerId: string) => stayHidesPrices(customer, ownerId, hiddenOwners);
+  const priced = viewerHides ? [] : all.filter((row) => !hidesStay(row.customer_id));
   const walletIds = [...new Set(all.map((row) => row.billing_customer_id || row.customer_id))];
   const [displayedAmounts, payerResult, boardingReady] = await Promise.all([
-    loadDisplayedStayAmounts(createServiceClient(), all).catch(() => new Map<string, number>()),
+    priced.length
+      ? loadDisplayedStayAmounts(createServiceClient(), priced).catch(() => new Map<string, number>())
+      : Promise.resolve(new Map<string, number>()),
     walletIds.length
       ? supabase
           .from("crm_billing_companies")
@@ -146,10 +156,18 @@ export default async function ReservationsPage({
           const countdown = !showPast ? jMinusLabel(b.start_date) : null;
           const nights = tripDurationDays(b.start_date, b.end_date);
           // Même montant que le détail (cartes + commission + billetterie + dépenses) ; sinon « — », jamais le total nu.
-          const displayed = displayedAmounts.get(b.id);
-          const amountLabel =
-            b.prices_visible === false ? HIDDEN_PRICE_LABEL : displayed == null ? "—" : formatMoney(displayed, b.currency);
-          const payerLabel = bookingPayerLabel(
+          const hideMoney = hidesStay(b.customer_id);
+          const displayed = hideMoney ? null : displayedAmounts.get(b.id);
+          const amountLabel = hideMoney
+            ? null
+            : b.prices_visible === false
+              ? HIDDEN_PRICE_LABEL
+              : displayed == null
+                ? "—"
+                : formatMoney(displayed, b.currency);
+          const payerLabel = hideMoney
+            ? null
+            : bookingPayerLabel(
             b,
             companiesByWallet.get(b.billing_customer_id || b.customer_id) || []
           );
@@ -159,7 +177,7 @@ export default async function ReservationsPage({
                 <BookingHero
                   booking={toPublicBooking(b)}
                   places={faces[b.id]?.places}
-                  items={faces[b.id]?.items}
+                  items={hideMoney ? faces[b.id]?.items?.map((item) => stripClientMoneyItem(item)) : faces[b.id]?.items}
                   width={800}
                   list
                   resolvedSrc={covers[b.id] ?? null}
@@ -195,12 +213,14 @@ export default async function ReservationsPage({
                         {b.reference}
                       </span>
                     </div>
+                    {amountLabel ? (
                     <div className="flex flex-col min-[400px]:items-end min-[400px]:text-right">
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-[#44474c]">
                         Montant
                       </span>
                       <span className="text-[16px] font-bold tabular-nums text-[var(--admin-navy)]">{amountLabel}</span>
                     </div>
+                    ) : null}
                   </div>
                   {payerLabel ? (
                     <p className="text-[13px] font-semibold text-[var(--admin-navy)]">Réglé par {payerLabel}</p>

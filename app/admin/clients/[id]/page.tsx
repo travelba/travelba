@@ -246,6 +246,11 @@ export default async function AdminClientDetailPage({ params }: Props) {
                   En veille
                 </span>
               ) : null}
+              {c.hide_client_prices ? (
+                <span className="ml-3 align-middle rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+                  Prix masqués au client
+                </span>
+              ) : null}
             </h1>
             <p className="mt-2 max-w-xl break-words text-sm text-white/70">
               {[contactLine, `Dernière visite · ${lastVisit}`].filter(Boolean).join("  ·  ")}

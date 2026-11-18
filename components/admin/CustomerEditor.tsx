@@ -102,6 +102,7 @@ function ficheSnapshot(values: {
   billingParentId: string;
   spendingAllowance: string;
   onHold: boolean;
+  hidePrices: boolean;
   companyDrafts: unknown;
   feeChoice: string;
 }) {
@@ -157,6 +158,7 @@ export function CustomerEditor({
   const [saving, setSaving] = useState(false);
   const savingLock = useRef(false);
   const [onHold, setOnHold] = useState(Boolean(customer.on_hold));
+  const [hidePrices, setHidePrices] = useState(Boolean(customer.hide_client_prices));
   const storedFeeKey = agencyFeeRateKey(parseStoredAgencyFeeRate(customer.agency_fee_rate) ?? 0.1);
   const [feeChoice, setFeeChoice] = useState(storedFeeKey);
   const hasPassport = vaultDocumentsForPerson(documents, null).length > 0;
@@ -196,6 +198,7 @@ export function CustomerEditor({
     billingParentId,
     spendingAllowance,
     onHold,
+    hidePrices,
     companyDrafts,
     feeChoice,
   });
@@ -259,6 +262,7 @@ export function CustomerEditor({
           billing_parent_id: companyRole === "member" ? billingParentId || null : null,
           spending_allowance: companyRole ? spendingAllowance : null,
           on_hold: onHold,
+          hide_client_prices: hidePrices,
           billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),
           ...(feeChoice === storedFeeKey ? {} : { agency_fee_rate: Number(feeChoice) }),
         }),
@@ -293,6 +297,7 @@ export function CustomerEditor({
           billingParentId,
           spendingAllowance,
           onHold,
+          hidePrices,
           companyDrafts: nextDrafts,
           feeChoice,
         })
@@ -309,6 +314,7 @@ export function CustomerEditor({
     birthCaption(birthDate, sex),
     pieceSummary(documents, null),
     onHold ? "En veille" : "",
+    hidePrices ? "Prix masqués au client" : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -351,6 +357,21 @@ export function CustomerEditor({
           <span>
             <span className="font-semibold">Compte en veille</span>
             <span className="mt-0.5 block text-xs text-muted">Badge interne. Aucun changement pour le client.</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)]">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={hidePrices}
+            onChange={(e) => setHidePrices(e.target.checked)}
+          />
+          <span>
+            <span className="font-semibold">Masquer prix et transactions dans l’espace client</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              L’espace client, le carnet, l’aperçu et les partages de ce client ne reçoivent plus aucun montant. L’itinéraire
+              et les documents de voyage restent. L’agence continue de tout voir.
+            </span>
           </span>
         </label>
 

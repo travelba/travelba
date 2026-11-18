@@ -480,6 +480,10 @@ export function prepareClientUpdate(input: Record<string, unknown>) {
     if ("error" in parsed) throw new McpWriteError(parsed.error);
     patch.agency_fee_rate = agencyFeeRateColumn(parsed.rate);
   }
+  if ("masquer_prix" in input) {
+    if (typeof input.masquer_prix !== "boolean") throw new McpWriteError("masquer_prix : vrai ou faux.");
+    patch.hide_client_prices = input.masquer_prix;
+  }
   const removeCompanyId =
     input.supprimer_societe_id == null || input.supprimer_societe_id === ""
       ? ""
@@ -1298,7 +1302,12 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
       .eq("id", id)
       .select("id, first_name, last_name, email, phone, company_name")
       .single();
-    if (error || !data) failDb(error, "Client non enregistré.");
+    if (error || !data) {
+      if ("hide_client_prices" in patch && (error?.code === "42703" || error?.code === "PGRST204")) {
+        throw new McpWriteError("Le masquage des prix n’est pas encore en place. Appliquez la migration, puis réessayez.");
+      }
+      failDb(error, "Client non enregistré.");
+    }
     row = data as typeof row;
   }
   let saved: { id: string; company_name: string | null; siret: string | null; vat_number: string | null } | null = null;
@@ -1325,12 +1334,16 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
     }
   }
   const rateRead = await db.from("crm_customers").select("agency_fee_rate").eq("id", id).maybeSingle();
+  const hideRead = await db.from("crm_customers").select("hide_client_prices").eq("id", id).maybeSingle();
   const storedRate = rateRead.error
     ? "agency_fee_rate" in patch
       ? patch.agency_fee_rate
       : null
     : rateRead.data?.agency_fee_rate;
   const commission_agence = formatAgencyFeePercent(typeof storedRate === "number" ? storedRate : Number(storedRate));
+  const masquer_prix = hideRead.error
+    ? patch.hide_client_prices === true
+    : (hideRead.data as { hide_client_prices?: boolean | null } | null)?.hide_client_prices === true;
   return {
     id: row.id,
     nom: customerFullName(row),
@@ -1342,5 +1355,6 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
     tva: saved?.vat_number ?? null,
     societe_retiree: societeRetiree,
     commission_agence,
+    masquer_prix,
   };
 }

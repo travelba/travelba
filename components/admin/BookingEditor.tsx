@@ -1715,6 +1715,11 @@ export function BookingEditor({
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {stateChip}
+          {customer?.hide_client_prices ? (
+            <span className="inline-flex items-center rounded-full bg-[#f8f3eb] px-3 py-1 text-sm font-semibold text-[var(--admin-navy)] ring-1 ring-[var(--admin-gold)]">
+              Prix masqués au client
+            </span>
+          ) : null}
           <HiddenCardsCounter count={hiddenCards.length} onJump={jumpToHiddenCard} />
           {ownership ? (
             <ChargeControl
@@ -1937,7 +1942,7 @@ export function BookingEditor({
           pliantReady={pliantReady}
           shareUrl={shareUrl}
           shareCompanions={shareCompanions}
-          ledger={shownPreview}
+          ledger={customer?.hide_client_prices ? null : shownPreview}
           settled={settledAuthorizationCountries({
             travelerIds: travelers.map((traveler) => traveler.id),
             estaTones: estaLines,

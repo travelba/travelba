@@ -35,6 +35,12 @@ import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { shownClientNote } from "@/lib/crm/public-booking";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
+import {
+  CLIENT_MONEY_NOTICE,
+  clientHidesPrices,
+  stripClientMoneyItem,
+  withoutClientInvoices,
+} from "@/lib/crm/client-price-privacy";
 import { chargeableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { missingPassportCount } from "@/lib/crm/trip-documents";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
@@ -123,19 +129,24 @@ export function ClientInterfacePreview({
   settled?: string[];
 }) {
   const [screen, setScreen] = useState<ClientPreviewScreen>(initialScreen);
-  const items = withoutHotelRosterItems(sourceItems);
+  const hidePrices = clientHidesPrices(customer);
+  const source = hidePrices ? sourceItems.map((item) => stripClientMoneyItem(item)) : sourceItems;
+  const items = withoutHotelRosterItems(source);
   const published = booking.visible_to_client === true;
   const reveal = new Set(publishRevealIds(items));
   const liveItems = clientVisibleItems(items);
   const shownItems = published ? liveItems : items.filter((item) => reveal.has(item.id));
   const hiddenIds = new Set(items.map((item) => item.id).filter((id) => !reveal.has(id)));
   const liveDocuments = piecesActives(documents);
-  const shownDocs = published
+  const shownDocs = (published
     ? liveDocuments.filter((doc) => doc.visible_to_client)
-    : liveDocuments.filter((doc) => !doc.booking_item_id || !hiddenIds.has(doc.booking_item_id));
-  const screenBooking: CrmBooking = published
-    ? booking
-    : { ...booking, visible_to_client: true, prices_visible: true };
+    : liveDocuments.filter((doc) => !doc.booking_item_id || !hiddenIds.has(doc.booking_item_id))
+  ).filter((doc) => (hidePrices ? !withoutClientInvoices([doc]).length : true));
+  const screenBooking: CrmBooking = hidePrices
+    ? { ...(published ? booking : { ...booking, visible_to_client: true }), prices_visible: false }
+    : published
+      ? booking
+      : { ...booking, visible_to_client: true, prices_visible: true };
   const hasCarnet = published ? carnetVisible(booking, liveItems) : shownItems.some((item) => item.kind !== "fee" && !isLedgerExpenseKind(item.kind));
   const initials = [customer?.first_name, customer?.last_name]
     .map((part) => (part || "").trim().charAt(0))
@@ -173,7 +184,8 @@ export function ClientInterfacePreview({
           shareCompanions={shareCompanions}
           screen={screen}
           onScreen={setScreen}
-          ledger={ledger}
+          ledger={hidePrices ? null : ledger}
+          hidePrices={hidePrices}
           showStay={hasCarnet}
           settled={settled}
           agencyFeeRate={agencyFeeRate}
@@ -243,6 +255,7 @@ function ClientScreen({
   showStay,
   settled = [],
   agencyFeeRate,
+  hidePrices = false,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -270,6 +283,7 @@ function ClientScreen({
   showStay: boolean;
   settled?: string[];
   agencyFeeRate?: number;
+  hidePrices?: boolean;
 }) {
   const insurances = items.filter((item) => item.kind === "insurance");
   const holder = {
@@ -322,7 +336,7 @@ function ClientScreen({
     travelerCount: travelers.length,
     feeMode: booking.fee_mode,
   });
-  const pricesVisible = booking.prices_visible !== false;
+  const pricesVisible = !hidePrices && booking.prices_visible !== false;
   const discount = readCommercialDiscount(booking);
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
@@ -338,7 +352,7 @@ function ClientScreen({
   });
   const passportRows = passportVaultRows(travelers, identityDocs, todayIsoDate(), holder, booking, companions);
   const encoursPay =
-    ledger && !ledger.member && ledger.owed.total > 0 ? (
+    hidePrices || !ledger || ledger.member || ledger.owed.total <= 0 ? null : (
       <EncoursPayment
         compact={screen === "transactions"}
         company={ledger.owed.company}
@@ -349,7 +363,7 @@ function ClientScreen({
         pockets={ledger.pockets}
         holds={ledger.sepaHolds}
       />
-    ) : null;
+    );
   const title = screen === "transactions" ? "Transactions" : "Réservations";
   return (
     <ClientPreviewScope>
@@ -367,7 +381,9 @@ function ClientScreen({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {screen === "transactions" ? (
             <div className="px-4 py-4">
-              {ledger ? (
+              {hidePrices ? (
+                <p className="text-sm text-[var(--admin-navy)]">{CLIENT_MONEY_NOTICE}</p>
+              ) : ledger ? (
                 <ClientTransactionsPanel view={ledger} payments={encoursPay} />
               ) : (
                 <p className="text-sm text-muted">Le grand livre n’est pas lisible pour le moment.</p>
@@ -489,6 +505,7 @@ function ClientScreen({
               ) : null
             }
             amount={
+              hidePrices ? null : (
               <section className="aura-card space-y-2 rounded-[1.35rem] bg-white p-4">
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
                   Montant du séjour
@@ -516,8 +533,9 @@ function ClientScreen({
                   );
                 })}
               </section>
+              )
             }
-            expenses={expenseLines.length ? <StayExpenses lines={expenseLines} /> : null}
+            expenses={hidePrices || !expenseLines.length ? null : <StayExpenses lines={expenseLines} />}
             tail={
               <>
                 <ReservationFiles

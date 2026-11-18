@@ -632,8 +632,17 @@ export async function readFicheClient(input: { id?: string; q?: string }, admin 
     };
   });
   const pieces = reviewIdentityPieces((docs || []) as CrmTravelDocument[]);
+  const priceFlag = await admin
+    .from("crm_customers")
+    .select("hide_client_prices")
+    .eq("id", customer.id)
+    .maybeSingle();
+  const masquer_prix = priceFlag.error
+    ? false
+    : (priceFlag.data as { hide_client_prices?: boolean | null } | null)?.hide_client_prices === true;
   return {
     ...customerLine(customer),
+    masquer_prix,
     societes: billingCompaniesPublic(companies.companies),
     en_veille: customer.on_hold === true,
     encours: wallets,

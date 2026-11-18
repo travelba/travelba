@@ -69,6 +69,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20261104140000_dossier_trois_statuts.sql` | aligne `status` et `visible_to_client` : Visible, Non visible, Annulé. N’écrit pas les paiements. L’archive reste. À jouer à la main |
 | `20261110100000_expense_presets.sql` | `crm_expense_presets` : raccourcis du bloc Dépenses. Trois lignes seulement si la table est vide. Aucune dépense existante. Lecture staff, écriture service_role |
 | `20261118190000_stay_step_commit.sql` | index d’empreinte partiel (`booking_item_id` non nul) et `crm_commit_stay_steps` (transaction). À jouer à la main |
+| `20261118223000_customer_hide_client_prices.sql` | `crm_customers.hide_client_prices` (défaut faux). Pas de grant client. À jouer à la main |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

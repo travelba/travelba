@@ -44,6 +44,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     patch.agency_fee_rate = agencyFeeRateColumn(parsed.rate);
   }
   if (flags.data.on_hold !== undefined) patch.on_hold = flags.data.on_hold;
+  if (flags.data.hide_client_prices !== undefined) patch.hide_client_prices = flags.data.hide_client_prices;
 
   const { data: current } = await auth.supabase
     .from("crm_customers")
@@ -108,6 +109,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (error) {
     if ("agency_fee_rate" in patch && agencyFeeColumnMissing(error)) {
       return jsonError("Le taux de commission n’est pas encore en place. Appliquez la migration, puis enregistrez.");
+    }
+    if ("hide_client_prices" in patch && (error.code === "42703" || error.code === "PGRST204")) {
+      return jsonError("Le masquage des prix n’est pas encore en place. Appliquez la migration, puis enregistrez.");
     }
     return dbError(error, 400);
   }

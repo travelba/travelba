@@ -143,6 +143,9 @@ export const billingCompanyInputSchema = z.object({
 /** Champs du PATCH client hors `customerPatchFromBody`. Le reste du corps passe tel quel. */
 export const patchCustomerSchema = z.object({
   on_hold: z.boolean({ error: "« Compte en veille » : vrai ou faux attendu." }).optional(),
+  hide_client_prices: z
+    .boolean({ error: "« Masquer prix et transactions » : vrai ou faux attendu." })
+    .optional(),
   billing_companies: z
     .array(billingCompanyInputSchema, { error: "Liste de sociétés invalide." })
     .max(20, { error: "20 sociétés maximum." })
