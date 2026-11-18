@@ -348,3 +348,51 @@ test("la réservation client liste les frais d’agence puis les dépenses libre
   assert.equal(four[0]?.title, "Frais de billeterie (4 billets)");
   assert.equal(four[0]?.amountLabel, formatMoney(100, "EUR"));
 });
+
+test("le carnet porte la remise une seule fois, masquée si les prix sont cachés", () => {
+  const discount = { type: "amount" as const, value: 12.5 };
+  const shown = clientStayExpenseLines({
+    expenses: [],
+    agencyCommission: false,
+    stayTotal: 100,
+    currency: "EUR",
+    pricesVisible: true,
+    discount,
+  });
+  assert.deepEqual(
+    shown.filter((line) => line.title === "Remise commerciale").map((line) => line.amountLabel),
+    [formatMoney(-12.5, "EUR")]
+  );
+  assert.equal(
+    clientStayPriceLabel({
+      stayTotal: 100,
+      currency: "EUR",
+      pricesVisible: true,
+      agencyCommission: false,
+      expenses: [],
+      discount,
+    }),
+    formatMoney(87.5, "EUR")
+  );
+  const hidden = clientStayExpenseLines({
+    expenses: [],
+    agencyCommission: false,
+    stayTotal: 100,
+    currency: "EUR",
+    pricesVisible: false,
+    discount,
+  });
+  assert.equal(hidden.filter((line) => line.title === "Remise commerciale").length, 1);
+  assert.equal(hidden[0]?.amountLabel, null);
+  assert.equal(
+    clientStayPriceLabel({
+      stayTotal: 100,
+      currency: "EUR",
+      pricesVisible: false,
+      agencyCommission: false,
+      expenses: [],
+      discount,
+    }),
+    HIDDEN_PRICE_LABEL
+  );
+});

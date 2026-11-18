@@ -3,6 +3,12 @@ import { MIN_MARGIN_OF_NET } from "@/lib/crm/concierge-pricing";
 /** Ligne lue par le client et portée au grand livre. */
 export const COMMERCIAL_DISCOUNT_LABEL = "Remise commerciale";
 
+/**
+ * Même identifiant pour la vente de l’onglet Argent et la ligne de la pro forma MB3M.
+ * Une seule ligne de chaque côté : on ne la recopie pas d’un document à l’autre.
+ */
+export const COMMERCIAL_DISCOUNT_LINE_ID = "remise-commerciale";
+
 export type CommercialDiscountType = "amount" | "percent";
 
 export type CommercialDiscount = {

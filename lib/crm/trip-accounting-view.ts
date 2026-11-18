@@ -11,6 +11,7 @@ import {
   saleLines,
   tripAccountingState,
   tripTotals,
+  withCommercialDiscountSale,
   type SaleLedgerRow,
   type TripAccountingView,
   type TripCost,
@@ -90,10 +91,12 @@ export async function buildTripAccountingView(
     booking.id,
     inputs.costs.map((cost) => cost.sourceId)
   ).catch(() => []);
-  const sales = saleLines(inputs.charges, booking.id);
-  const { lines, unsold } = accountLines(sales, [...inputs.costs, ...pending]);
   const inEuros = !booking.currency || booking.currency.toUpperCase() === "EUR";
   const remise = inEuros ? await loadStayDiscountEuros(admin, booking.id).catch(() => 0) : 0;
+  // Ligne synthétique, sommée une fois par tripTotals. Les charges MB3M restent les débits :
+  // withCommercialDiscountLine ajoute la remise de la pro forma, sans seconde ligne.
+  const sales = withCommercialDiscountSale(saleLines(inputs.charges, booking.id), remise);
+  const { lines, unsold } = accountLines(sales, [...inputs.costs, ...pending]);
   const mbLines = withCommercialDiscountLine(
     mb3mDossierLines(inputs.charges, items, marginByTransaction(lines)),
     remise
@@ -116,18 +119,10 @@ export async function buildTripAccountingView(
   if (booking.client_settles_stay && unsold.some((cost) => cost.bookingItemId && stayItemIds.has(cost.bookingItemId))) {
     anomalies.push("Le client règle le séjour sur sa carte : un coût est rattaché à une carte sans vente au grand livre.");
   }
-  const raw = tripTotals(lines, unsold);
-  const cut = Math.min(Math.max(0, remise), Math.max(0, raw.sale));
-  const roundedCut = Math.round(cut * 100) / 100;
   return {
     lines,
     unsold,
-    totals: {
-      ...raw,
-      sale: Math.round((raw.sale - roundedCut) * 100) / 100,
-      margin: Math.round((raw.margin - roundedCut) * 100) / 100,
-      remise: roundedCut,
-    },
+    totals: tripTotals(lines, unsold),
     proposed,
     state: tripAccountingState({
       proposedCount: proposed.length,
