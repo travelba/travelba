@@ -29,6 +29,7 @@ import {
 import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { findVisaExtra, visaProposed, type ServiceRefusal } from "@/lib/crm/extras";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
+import { readCommercialDiscount } from "@/lib/crm/commercial-discount";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { shownClientNote } from "@/lib/crm/public-booking";
@@ -322,6 +323,7 @@ function ClientScreen({
     feeMode: booking.fee_mode,
   });
   const pricesVisible = booking.prices_visible !== false;
+  const discount = readCommercialDiscount(booking);
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: booking.agency_commission === true,
@@ -332,6 +334,7 @@ function ClientScreen({
     extras: feeExtras,
     ticketingFee,
     ticketCount,
+    discount,
   });
   const passportRows = passportVaultRows(travelers, identityDocs, todayIsoDate(), holder, booking, companions);
   const encoursPay =
@@ -500,6 +503,7 @@ function ClientScreen({
                     expenses: expenseChoices,
                     extras: feeExtras,
                     ticketingFee,
+                    discount,
                   })}
                 </p>
                 {insurances.map((item) => {

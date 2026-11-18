@@ -3,6 +3,7 @@ import { assertStaffPermission } from "@/lib/crm/agency-guard";
 import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { collectPublishIssues } from "@/lib/crm/booking-issues";
 import { agencyFeeColumnMissing } from "@/lib/crm/agency-fee-rate";
+import { missingDbColumn } from "@/lib/crm/optional-column";
 import {
   bookingMetaError,
   bookingMetaPatch,
@@ -148,6 +149,12 @@ export async function PATCH(request: Request, ctx: Ctx) {
     if (error) {
       if ("agency_fee_rate" in patch && agencyFeeColumnMissing(error)) {
         return jsonError("Le taux de commission n’est pas encore en place. Appliquez la migration, puis enregistrez.");
+      }
+      if (
+        ("remise_type" in patch || "remise_value" in patch) &&
+        (missingDbColumn(error, "remise_type") || missingDbColumn(error, "remise_value"))
+      ) {
+        return jsonError("La remise commerciale n’est pas encore en place. Appliquez la migration, puis enregistrez.");
       }
       return dbError(error, 400);
     }

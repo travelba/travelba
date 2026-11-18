@@ -24,6 +24,8 @@ import {
   syncBookingTotalFromItems,
   syncInheritedAgencyFees,
 } from "@/lib/crm/bookings";
+import { commercialDiscountPatch, commercialDiscountPublic } from "@/lib/crm/commercial-discount";
+import { missingDbColumn } from "@/lib/crm/optional-column";
 import { deleteEmptyBillingCompany, upsertBillingCompany, type BillingCompanyInput } from "@/lib/crm/billing-companies";
 import { customerEmailError, normalizeCustomerEmail, otherCustomerEmailBlock, CUSTOMER_EMAIL_COPY } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
@@ -201,6 +203,21 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
     const parsed = agencyFeeRateField(input.commission_agence);
     if ("error" in parsed) throw new McpWriteError(parsed.error);
     body.agency_fee_rate = parsed.rate;
+  }
+  if ("remise" in input) {
+    const remise = input.remise;
+    if (remise == null) {
+      body.remise_type = null;
+      body.remise_value = null;
+    } else if (typeof remise === "object" && !Array.isArray(remise)) {
+      const row = remise as { type?: unknown; valeur?: unknown };
+      const parsed = commercialDiscountPatch(row.type, row.valeur);
+      if ("error" in parsed) throw new McpWriteError(parsed.error);
+      body.remise_type = parsed.remise_type;
+      body.remise_value = parsed.remise_value;
+    } else {
+      throw new McpWriteError("Remise invalide.");
+    }
   }
   if ("titre" in input) {
     const title = text(input.titre, "Titre", 200);
@@ -872,7 +889,15 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
       .eq("id", prev.id)
       .select(MCP_BOOKING_COLUMNS)
       .single();
-    if (error || !data) failDb(error, "Dossier non enregistré.");
+    if (error || !data) {
+      if (
+        ("remise_type" in nextPatch || "remise_value" in nextPatch) &&
+        (missingDbColumn(error, "remise_type") || missingDbColumn(error, "remise_value"))
+      ) {
+        throw new McpWriteError("La remise commerciale n’est pas encore en place. Appliquez la migration, puis réessayez.");
+      }
+      failDb(error, "Dossier non enregistré.");
+    }
     booking = data as CrmBooking;
   } else {
     const { data, error } = await db.from("crm_bookings").select(MCP_BOOKING_COLUMNS).eq("id", prev.id).maybeSingle();
@@ -971,6 +996,14 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     notes_internes: row.notes_internal,
     commission_agence,
     commission_source,
+    ...("remise_type" in nextPatch
+      ? {
+          remise: commercialDiscountPublic({
+            remise_type: nextPatch.remise_type,
+            remise_value: nextPatch.remise_value,
+          }),
+        }
+      : {}),
     paye_par: factureSociete ? ("société" as const) : ("particulier" as const),
     societe: factureSociete ? societe : null,
     societe_id: factureSociete ? row.billing_company_id || null : null,

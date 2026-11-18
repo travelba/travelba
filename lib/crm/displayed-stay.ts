@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadResolvedAgencyFees } from "@/lib/crm/agency-fee-rate";
 import { bookingTotalFromItems, itemIncludedInLedger, itemSellingAmount } from "@/lib/crm/bookings";
+import { commercialDiscountAmount, readCommercialDiscount } from "@/lib/crm/commercial-discount";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee } from "@/lib/crm/ticketing-fee";
 import { expenseCountsForClient } from "@/lib/crm/expense-validation";
@@ -15,10 +16,12 @@ type StayRow = {
   fee_mode?: string | null;
   customer_id?: string | null;
   billing_customer_id?: string | null;
+  remise_type?: string | null;
+  remise_value?: number | string | null;
 };
 
 type StayItemRow = {
-  kind: string;
+  kind?: string | null;
   amount: number | string | null;
   start_at?: string | null;
   lifecycle?: string | null;
@@ -31,7 +34,7 @@ type StayItemRow = {
  * La commission porte sur le total vendu, billeterie comprise. Une seule formule pour la liste, le détail et l’aperçu.
  */
 export function displayedStayAmount(
-  booking: Pick<StayRow, "status" | "total_amount" | "agency_commission" | "fee_mode">,
+  booking: Pick<StayRow, "status" | "total_amount" | "agency_commission" | "fee_mode" | "remise_type" | "remise_value">,
   items: StayItemRow[],
   travelerCount: number,
   agencyFeeRate?: number | null
@@ -54,7 +57,26 @@ export function displayedStayAmount(
       feeMode: booking.fee_mode,
     }),
     agencyFeeRate,
+    discount: readCommercialDiscount(booking),
   });
+}
+
+/** Euros de remise sur le même total que le carnet, avant de la retirer. */
+export function stayDiscountEuros(
+  booking: Pick<StayRow, "status" | "total_amount" | "agency_commission" | "fee_mode" | "remise_type" | "remise_value">,
+  items: StayItemRow[],
+  travelerCount: number,
+  agencyFeeRate?: number | null
+) {
+  const spec = readCommercialDiscount(booking);
+  if (!spec.type) return 0;
+  const gross = displayedStayAmount(
+    { ...booking, remise_type: null, remise_value: null },
+    items,
+    travelerCount,
+    agencyFeeRate
+  );
+  return commercialDiscountAmount(gross, spec);
 }
 
 /**
@@ -157,13 +179,17 @@ export async function loadDisplayedStayAmounts(supabase: SupabaseClient, booking
     }
   }
   const fees = await loadResolvedAgencyFees(supabase, bookings);
+  const discounts = await loadStoredDiscounts(supabase, bookings.map((booking) => booking.id));
   const amounts = new Map<string, number>();
   for (const booking of bookings) {
     const rows = itemsByBooking.get(booking.id) || [];
     amounts.set(
       booking.id,
       displayedStayAmount(
-        { ...booking, total_amount: bookingTotalFromItems(stayAmountItems(rows)) },
+        {
+          ...withStoredDiscount(booking, discounts),
+          total_amount: bookingTotalFromItems(stayAmountItems(rows)),
+        },
         rows,
         travelers.get(booking.id) || 0,
         fees.get(booking.id)?.rate
@@ -197,12 +223,13 @@ export async function loadLedgerCountedStayAmounts(
     }
   }
   const fees = await loadResolvedAgencyFees(supabase, bookings);
+  const discounts = await loadStoredDiscounts(supabase, bookings.map((booking) => booking.id));
   const amounts = new Map<string, number>();
   for (const booking of bookings) {
     amounts.set(
       booking.id,
       ledgerCountedStayAmount(
-        booking,
+        withStoredDiscount(booking, discounts),
         itemsByBooking.get(booking.id) || [],
         travelers.get(booking.id) || 0,
         fees.get(booking.id)?.rate
@@ -210,4 +237,52 @@ export async function loadLedgerCountedStayAmounts(
     );
   }
   return amounts;
+}
+
+function withStoredDiscount<T extends StayRow>(booking: T, discounts: Map<string, CommercialDiscountRow> | null): T {
+  if (!discounts || !discounts.has(booking.id)) return booking;
+  const stored = discounts.get(booking.id);
+  return { ...booking, remise_type: stored?.remise_type ?? null, remise_value: stored?.remise_value ?? null };
+}
+
+type CommercialDiscountRow = { remise_type: string | null; remise_value: number | string | null };
+
+/** Colonnes absentes tant que la migration n’est pas jouée : aucune remise, la lecture continue. */
+async function loadStoredDiscounts(supabase: SupabaseClient, ids: string[]) {
+  const map = new Map<string, CommercialDiscountRow>();
+  if (!ids.length) return map;
+  const { data, error } = await supabase.from("crm_bookings").select("id, remise_type, remise_value").in("id", ids);
+  if (error) {
+    if (error.code === "42703" || error.code === "PGRST204") return null;
+    throw error;
+  }
+  for (const row of (data || []) as { id: string; remise_type: string | null; remise_value: number | string | null }[]) {
+    map.set(row.id, { remise_type: row.remise_type, remise_value: row.remise_value });
+  }
+  return map;
+}
+
+/** Même remise que le carnet, lue en base. 0 si les colonnes ne sont pas encore là. */
+export async function loadStayDiscountEuros(supabase: SupabaseClient, bookingId: string) {
+  const { data, error } = await supabase
+    .from("crm_bookings")
+    .select(
+      "id, status, total_amount, agency_commission, agency_fee_rate, fee_mode, customer_id, billing_customer_id, remise_type, remise_value"
+    )
+    .eq("id", bookingId)
+    .limit(1);
+  if (error) {
+    if (error.code === "42703" || error.code === "PGRST204") return 0;
+    throw error;
+  }
+  const booking = (Array.isArray(data) ? data[0] : data) as StayRow | null;
+  if (!booking || !readCommercialDiscount(booking).type) return 0;
+  const loaded = await loadStayItemRows(supabase, [bookingId], "booking_id, kind, amount, lifecycle, details, start_at");
+  const fees = await loadResolvedAgencyFees(supabase, [booking]);
+  return stayDiscountEuros(
+    { ...booking, total_amount: bookingTotalFromItems(stayAmountItems(loaded.items)) },
+    loaded.items,
+    loaded.travelers.length,
+    fees.get(bookingId)?.rate
+  );
 }
