@@ -3,7 +3,7 @@ import zlib from "node:zlib";
 import { CERTIFICATION_HOTELS, CERTIFICATION_REGION } from "./catalog";
 import { requireConfig, type RatehawkConfig } from "./config";
 import { etgDownload, etgPost } from "./client";
-import { collectImageUrls } from "./display";
+import { collectImageUrls, publicHotelName } from "./display";
 import { ratehawkDb } from "./store";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -118,6 +118,32 @@ async function upsertContent(supabase: SupabaseClient, rows: Record<string, unkn
   const { error } = await supabase.from("crm_ratehawk_hotels").upsert(rows, { onConflict: "hid" });
   if (error) throw new Error(error.message);
   return rows.length;
+}
+
+/** Complète les hôtels sans nom public ou sans adresse, avant de les montrer. Vingt au plus. */
+export async function fillThinHotelFacts(hids: number[], config = requireConfig(), supabase = ratehawkDb()) {
+  const unique = [...new Set(hids.filter((hid) => Number.isInteger(hid) && hid > 0))].slice(0, 20);
+  if (!unique.length) return;
+  try {
+    const { data } = await supabase.from("crm_ratehawk_hotels").select("hid, name, address").in("hid", unique);
+    const byHid = new Map((data || []).map((row) => [Number(row.hid), row]));
+    const missing = unique.filter((hid) => {
+      const row = byHid.get(hid);
+      if (!row) return true;
+      if (publicHotelName(typeof row.name === "string" ? row.name : null, null, hid) === "Hôtel") return true;
+      return !(typeof row.address === "string" && row.address.trim());
+    });
+    for (let offset = 0; offset < missing.length; offset += CONTENT_CHUNK) {
+      const slice = missing.slice(offset, offset + CONTENT_CHUNK);
+      const call = await etgPost("/api/content/v1/hotel_content_by_ids/", { hids: slice, language: config.language }, 60_000, null, config);
+      const rows = hotelsOf(call.data)
+        .map((hotel) => hotelRecord(hotel as Record<string, unknown>, config.language))
+        .filter((row): row is NonNullable<typeof row> => Boolean(row));
+      await upsertContent(supabase, rows);
+    }
+  } catch {
+    // La recherche garde le contenu déjà en base.
+  }
 }
 
 export async function decompressDump(bytes: Uint8Array) {

@@ -4,7 +4,6 @@ import { requireStaffPage } from "@/lib/crm/auth";
 import { CERTIFICATION_HOTELS } from "@/lib/crm/ratehawk/catalog";
 import { certificationEnvironmentAllowed, safeConfig } from "@/lib/crm/ratehawk/config";
 import { validateUserPhone } from "@/lib/crm/ratehawk/limits";
-import { ratehawkDb } from "@/lib/crm/ratehawk/store";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const metadata = { title: "Ratehawk" };
@@ -25,7 +24,7 @@ export default async function AdminRatehawkPage() {
       </div>
     );
   }
-  const { orders, mapped } = await loadRatehawkDesk(cert ? certDb() : supabase, cert);
+  const { orders, mapped } = await loadRatehawkDesk(supabase, cert);
 
   return (
     <div>
@@ -56,16 +55,7 @@ export default async function AdminRatehawkPage() {
   );
 }
 
-function certDb(): SupabaseClient | null {
-  try {
-    return ratehawkDb();
-  } catch {
-    return null;
-  }
-}
-
-async function loadRatehawkDesk(reader: SupabaseClient | null, sandboxOnly: boolean) {
-  if (!reader) return { orders: [] as RatehawkOrder[], mapped: [] as number[] };
+async function loadRatehawkDesk(reader: SupabaseClient, sandboxOnly: boolean) {
   let ordersQuery = reader
     .from("crm_ratehawk_bookings")
     .select(ORDER_COLUMNS)
