@@ -47,6 +47,7 @@ export function InvoiceBlock({
   notice,
   cards = [],
   view,
+  creditNoteAllowed = false,
   note,
   onBusy,
   onNote,
@@ -60,6 +61,8 @@ export function InvoiceBlock({
   notice?: string | null;
   cards?: InvoiceMb3mCard[];
   view: InvoiceBlockView;
+  /** Vrai seulement si MB3M_ALLOW_CREDIT_NOTE vaut true. Sinon l’avoir reste fermé. */
+  creditNoteAllowed?: boolean;
   note: string | null;
   onBusy: (active: boolean) => void;
   onNote: (note: string | null) => void;
@@ -175,14 +178,20 @@ export function InvoiceBlock({
             <span className="font-semibold">Marge à corriger.</span> La facture n° {view.number} est imprimée avec une autre
             marge.
           </p>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void reissue()}
-            className="admin-tap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
-          >
-            Avoir et nouvelle facture
-          </button>
+          {creditNoteAllowed ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void reissue()}
+              className="admin-tap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+            >
+              Avoir et nouvelle facture
+            </button>
+          ) : (
+            <p className="text-sm text-muted">
+              L’avoir n’est pas émis depuis le CRM. Les pièces restent des pro forma.
+            </p>
+          )}
         </div>
       ) : null}
 

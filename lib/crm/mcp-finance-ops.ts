@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { currentMcpAccess } from "@/lib/crm/mcp-auth";
 import { McpWriteError } from "@/lib/crm/mcp-write";
-import { Mb3mError } from "@/lib/crm/mb3m";
+import { Mb3mError, MB3M_CREDIT_NOTE_REFUSAL, mb3mCreditNoteAllowed } from "@/lib/crm/mb3m";
 import { mb3mActorLabel } from "@/lib/crm/mb3m-prep";
 import type { Mb3mInvoiceResult } from "@/lib/crm/mb3m-invoice";
 import { pushMb3mCompany, pushMb3mCustomer } from "@/lib/crm/mb3m-party";
@@ -85,6 +85,7 @@ function dossierTarget(input: Record<string, unknown>) {
 
 /** Avoir puis nouvelle facture, comme le bouton quand la marge imprimée a changé. */
 export async function reprendreFactureMb3m(input: Record<string, unknown>, deps: FinanceDeps = {}) {
+  if (!mb3mCreditNoteAllowed()) throw new McpWriteError(MB3M_CREDIT_NOTE_REFUSAL);
   confirmed(input);
   const target = dossierTarget(input);
   const booking = deps.findBooking ? await deps.findBooking(target) : await findBooking(db(deps.admin), target);

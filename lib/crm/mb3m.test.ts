@@ -3,16 +3,21 @@ import { afterEach, describe, it } from "node:test";
 import {
   Mb3mError,
   MB3M_ADDRESS_ELEMENTS,
+  MB3M_ALLOWED_CALLS,
+  MB3M_CREDIT_NOTE_REFUSAL,
   mb3mActivityId,
   mb3mAddCreditNote,
   mb3mAddInvoice,
   mb3mAgencyNames,
   mb3mBlockedOnProduction,
+  mb3mCancelInvoice,
   mb3mCivilityFromSex,
   mb3mConfigured,
+  mb3mCreditNoteAllowed,
   mb3mDefaultProviderId,
   mb3mEntityUid,
   mb3mFaultDetail,
+  mb3mIssueField,
   mb3mOperationMessage,
   mb3mCollectCompanies,
   mb3mCountryCode,
@@ -39,6 +44,7 @@ import {
   mb3mSavePayment,
   mb3mSavePerson,
   mb3mPrestationActivityId,
+  mb3mSoap,
   mb3mWriteMatching,
   mb3mSingleAgencyUid,
   mb3mXmlText,
@@ -56,6 +62,7 @@ const previous = {
   provider: process.env.MB3M_PROVIDER_ID,
   prodProvider: process.env.MB3M_PROD_PROVIDER_ID,
   vercel: process.env.VERCEL_ENV,
+  creditNote: process.env.MB3M_ALLOW_CREDIT_NOTE,
 };
 
 afterEach(() => {
@@ -68,6 +75,7 @@ afterEach(() => {
   restore("MB3M_PROVIDER_ID", previous.provider);
   restore("MB3M_PROD_PROVIDER_ID", previous.prodProvider);
   restore("VERCEL_ENV", previous.vercel);
+  restore("MB3M_ALLOW_CREDIT_NOTE", previous.creditNote);
 });
 
 function restore(name: string, value: string | undefined) {
@@ -534,6 +542,7 @@ describe("client MB3M Partners", () => {
     assert.ok(xml.includes("<NetPriceTotal>198</NetPriceTotal>"));
     assert.ok(xml.includes("<MarginUnit>1000.44</MarginUnit>"));
     arm();
+    process.env.MB3M_ALLOW_CREDIT_NOTE = "true";
     let invoiceBody = "";
     let creditBody = "";
     const ok = (number: string, kind: "Invoice" | "CreditNote") =>
@@ -595,6 +604,7 @@ describe("client MB3M Partners", () => {
 
   it("crée un avoir sur le dossier déjà ouvert", async () => {
     arm();
+    process.env.MB3M_ALLOW_CREDIT_NOTE = "true";
     let body = "";
     let action = "";
     const note = await mb3mAddCreditNote(
@@ -1391,5 +1401,140 @@ describe("règlements MB3M", () => {
     assert.equal(calls, 2);
     assert.equal(detail.refCommand, "Y2FYWL");
     assert.equal(detail.amount, 1197.44);
+  });
+
+  it("refuse d’imprimer, de valider ou de finaliser une pièce", async () => {
+    arm();
+    const sent: string[] = [];
+    const fetchImpl = async () => {
+      sent.push("appel");
+      return new Response("<ok/>");
+    };
+    for (const action of ["PrintInvoice", "Validate", "Finalize"]) {
+      await assert.rejects(
+        () => mb3mSoap("FolderService", "IFolderService", action, `<${action}/>`, fetchImpl),
+        (error: unknown) => error instanceof Mb3mError && /n’imprime pas/.test(error.message) && error.message.includes(action)
+      );
+    }
+    await assert.rejects(
+      () => mb3mSoap("PieceService", "IPieceService", "Print", "<Print/>", fetchImpl),
+      /n’imprime pas/
+    );
+    assert.equal(sent.length, 0);
+    assert.equal(mb3mCreditNoteAllowed(), false);
+    assert.equal(
+      MB3M_ALLOWED_CALLS.some((pair) => /print|validate|finali/i.test(pair[1])),
+      false
+    );
+  });
+
+  it("envoie AddPieces sans champ d’impression ni de validation", async () => {
+    arm();
+    let body = "";
+    await mb3mAddInvoice(
+      {
+        folderId: "22-0000025",
+        customerUid: "ac53a900-3ab4-4e41-bfce-0af005dfde72",
+        title: "Séjour",
+        lines: [{ label: "Hôtel", quantity: 1, netPriceUnit: 100, netPriceTotal: 100, marginUnit: 10 }],
+      },
+      async (_url, init) => {
+        body = String(init?.body);
+        return new Response(
+          `<FolderOperationResponse><ResultCode>1</ResultCode><Invoices><Invoice><Number>4542</Number></Invoice></Invoices></FolderOperationResponse>`
+        );
+      }
+    );
+    assert.equal(mb3mIssueField(body), null);
+    assert.equal(/<(?:DatePrint|PrintedDate|Validate|Finalize|Validation)\b/i.test(body), false);
+    const sent: string[] = [];
+    await assert.rejects(
+      () =>
+        mb3mSoap(
+          "FolderService",
+          "IFolderService",
+          "AddPieces",
+          `<FolderAddPiecesRequest><Invoice><DatePrint>2026-01-01</DatePrint><Validate>true</Validate></Invoice></FolderAddPiecesRequest>`,
+          async () => {
+            sent.push("appel");
+            return new Response("<ok/>");
+          }
+        ),
+      (error: unknown) => error instanceof Mb3mError && /DatePrint/.test(error.message)
+    );
+    assert.equal(sent.length, 0);
+  });
+
+  it("refuse d’annuler une pièce déjà imprimée", async () => {
+    arm();
+    const actions: string[] = [];
+    const fetchImpl = async (_url: URL | RequestInfo, init?: RequestInit) => {
+      const action = String(new Headers(init?.headers).get("SOAPAction"));
+      actions.push(action);
+      if (action.includes("CancelInvoice")) return new Response("<ne-doit-pas-partir/>");
+      return new Response(
+        `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>1</TotalCount><Invoice><Number>4531</Number><DatePrint>2026-10-12T11:59:25</DatePrint></Invoice></FindAllPiecesResponse>`
+      );
+    };
+    await assert.rejects(
+      () => mb3mCancelInvoice("01-0002000", "4531", fetchImpl),
+      (error: unknown) => error instanceof Mb3mError && /imprimée/.test(error.message)
+    );
+    assert.equal(actions.some((action) => action.includes("CancelInvoice")), false);
+    await assert.rejects(
+      () =>
+        mb3mAddInvoice(
+          {
+            folderId: "01-0002000",
+            customerUid: "ac53a900-3ab4-4e41-bfce-0af005dfde72",
+            title: "Séjour",
+            lines: [{ label: "Hôtel", quantity: 1, netPriceUnit: 10, netPriceTotal: 10 }],
+            replacesNumber: "4531",
+          },
+          fetchImpl
+        ),
+      /imprimée/
+    );
+    assert.equal(actions.some((action) => action.includes("AddPieces")), false);
+    actions.length = 0;
+    await mb3mCancelInvoice("01-0002000", "4531", async (_url, init) => {
+      const action = String(new Headers(init?.headers).get("SOAPAction"));
+      actions.push(action);
+      if (action.includes("FindAllPieces")) {
+        return new Response(
+          `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>1</TotalCount><Invoice><Number>4531</Number></Invoice></FindAllPiecesResponse>`
+        );
+      }
+      return new Response(`<FolderOperationResponse><ResultCode>1</ResultCode></FolderOperationResponse>`);
+    });
+    assert.equal(actions.some((action) => action.includes("CancelInvoice")), true);
+  });
+
+  it("refuse l’avoir sans MB3M_ALLOW_CREDIT_NOTE", async () => {
+    arm();
+    delete process.env.MB3M_ALLOW_CREDIT_NOTE;
+    assert.equal(mb3mCreditNoteAllowed(), false);
+    let sent = false;
+    await assert.rejects(
+      () =>
+        mb3mAddCreditNote(
+          {
+            folderId: "22-0000025",
+            customerUid: "ac53a900-3ab4-4e41-bfce-0af005dfde72",
+            folderTitle: "Séjour",
+            folderType: "Prestation",
+            dateStart: "2026-11-01",
+            dateEnd: "2026-11-08",
+            title: "Avoir",
+            lines: [{ label: "Hôtel", quantity: 1, netPriceUnit: 10, netPriceTotal: 10, activityId: 3 }],
+          },
+          async () => {
+            sent = true;
+            return new Response("<ok/>");
+          }
+        ),
+      (error: unknown) => error instanceof Mb3mError && error.message === MB3M_CREDIT_NOTE_REFUSAL
+    );
+    assert.equal(sent, false);
   });
 });

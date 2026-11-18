@@ -89,7 +89,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Remettre un crédit non rattaché | `remettre_non_rattache` — couvert |
 | Préparer / lire la facture MB3M | `preparer_facture_mb3m`, `statut_facture_mb3m` — couvert. `preparer_facture_mb3m` : sans `confirmer`, aperçu, aucune pièce |
 | Envoyer la facture et demander le paiement | `envoyer_facture` — ajouté. Sans `confirmer`, aperçu seulement |
-| Avoir et nouvelle facture (marge périmée) | `reprendre_facture_mb3m` — ajouté. Sans `confirmer`, aperçu, aucun avoir |
+| Avoir et nouvelle facture (marge périmée) | `reprendre_facture_mb3m` — seulement si `MB3M_ALLOW_CREDIT_NOTE` vaut `true` (non définie en production). Sinon refus. Avec le drapeau : sans `confirmer`, aperçu, aucun avoir |
 | Créditer un virement, Revolut ou Stripe | `crediter_virement`, `crediter_revolut`, `crediter_stripe` — sans `confirmer`, aperçu, rien n’est écrit |
 | Créer une carte Pliant | `creer_carte_pliant` — sans `confirmer`, aperçu, la carte n’est pas créée |
 | Créer la fiche client dans MB3M | `creer_fiche_mb3m` — ajouté. `societe_id` crée une seule société |
