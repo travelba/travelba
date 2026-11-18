@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { settleStartedPayDetail, stayMention, type PayCreditHint, type PayOutcome } from "./customer-activity";
+import {
+  isStripeSystemActivity,
+  settleStartedPayDetail,
+  stayMention,
+  type PayCreditHint,
+  type PayOutcome,
+} from "./customer-activity";
 import { hotelActivitySentence, isHotelClientActivity } from "./hotel-activity";
 import { loginMethodLabel } from "./customer-login";
 import { addIsoDays } from "./dates";
@@ -221,6 +227,7 @@ export function buildClientActivityFeed(input: {
 
   for (const event of input.activity) {
     if (!event.customer_id || !event.summary?.trim()) continue;
+    if (isStripeSystemActivity(event)) continue;
     if (isStaffAuth(event.auth_user_id, staff)) continue;
     if (!keptCustomer(event.customer_id)) continue;
     const day = parisCalendarDay(event.created_at);

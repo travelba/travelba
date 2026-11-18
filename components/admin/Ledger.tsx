@@ -16,12 +16,27 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { UnmatchCreditButton } from "@/components/admin/UnmatchCreditButton";
 import { ledgerEmptyMessage } from "@/lib/crm/launch-status";
 import { isReleasableCredit } from "@/lib/crm/releasable-credit";
+import { isPendingSepaRow, sepaHoldBadge } from "@/lib/crm/sepa-hold";
 
 const STATUS_LABELS: Record<CrmTransaction["status"], string> = {
   pending: "En attente",
   posted: "Comptabilisé",
   void: "Annulé",
 };
+
+function statusLabel(row: CrmTransaction) {
+  if (isPendingSepaRow(row)) return "Prélèvement SEPA en cours";
+  return STATUS_LABELS[row.status];
+}
+
+function sepaBadge(row: CrmTransaction) {
+  if (!isPendingSepaRow(row)) return null;
+  return sepaHoldBadge({
+    amount: Number(row.amount),
+    currency: row.currency,
+    launchedAt: row.created_at || `${row.occurred_on}T12:00:00.000Z`,
+  });
+}
 
 export function Ledger({
   transactions,
@@ -267,8 +282,9 @@ export function Ledger({
                   : ""}
               </p>
               <StatusChip tone={t.status === "posted" ? "gold" : t.status === "void" ? "red" : "amber"}>
-                {STATUS_LABELS[t.status]}
+                {statusLabel(t)}
               </StatusChip>
+              {sepaBadge(t) ? <p className="text-xs font-semibold text-[var(--admin-navy)]">{sepaBadge(t)}</p> : null}
               {isReleasableCredit(t) ? (
                 <UnmatchCreditButton
                   transactionId={t.id}
@@ -313,6 +329,7 @@ export function Ledger({
                   </td>
                   <td className="px-5 py-3">
                     <p className="font-medium text-[var(--admin-navy)]">{t.label}</p>
+                    {sepaBadge(t) ? <p className="text-xs font-semibold text-[var(--admin-navy)]">{sepaBadge(t)}</p> : null}
                     <p className="text-xs text-muted">
                       {TX_KIND_LABELS[t.kind]}
                       {companyLabelForTransaction(t, billingCompanies)
@@ -327,7 +344,7 @@ export function Ledger({
                     <StatusChip
                       tone={t.status === "posted" ? "gold" : t.status === "void" ? "red" : "amber"}
                     >
-                      {STATUS_LABELS[t.status]}
+                      {statusLabel(t)}
                     </StatusChip>
                   </td>
                   <td className="px-5 py-3">

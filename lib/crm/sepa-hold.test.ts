@@ -8,6 +8,7 @@ import { LedgerMovements } from "../../components/account/LedgerMovements";
 import { StayPayment } from "../../components/account/StayPayment";
 import { shapeClientLedger } from "./client-ledger";
 import {
+  checkoutSessionStartsSepa,
   coverOwed,
   displayedEncours,
   orphanSepaIdsToCancel,
@@ -18,7 +19,12 @@ import {
   sameIbanBlocked,
   sepaBankFailure,
   sepaBannerLine,
+  sepaConfirmedByStripe,
+  sepaFailureAlert,
   sepaFailureLabel,
+  sepaHoldBadge,
+  sepaMetadataFilled,
+  sepaSystemReceivedSummary,
   sepaHoldsFromRows,
   sepaIntentBlocksPart,
   type SepaIntentView,
@@ -272,4 +278,101 @@ test("le relevé affiche 0 €, la réserve et une ligne qui n’est pas payée"
   );
   assert.match(locked, /Prélèvement SEPA/);
   assert.equal(locked.includes("disabled"), false);
+});
+
+test("un lien Stripe SEPA en processing réserve l’encours, le succès ne crédite qu’une fois, l’échec retire l’en cours", () => {
+  const link = {
+    id: "pi_3UYj4N",
+    amount: 719800,
+    currency: "eur",
+    created: Date.parse("2026-11-06T08:04:00.000Z") / 1000,
+    metadata: {
+      crm_customer_id: CUSTOMER,
+      crm_booking_id: "11111111-1111-4111-8111-111111111111",
+      reference: "TB-2026-2108",
+    },
+    paymentMethodTypes: ["card", "sepa_debit"],
+    chargeStatus: "pending" as string | null,
+    chargeType: "sepa_debit",
+  };
+  const processing = readSepaIntent({ ...link, status: "processing" });
+  assert.equal(processing.kind, "flight");
+  if (processing.kind !== "flight") return;
+  assert.equal(processing.flight.payer, "company");
+  const pending = planSepaLedger(null, processing, false);
+  assert.equal(pending.action, "pending");
+  assert.equal(planSepaLedger({ status: "pending" }, processing, false).action, "keep");
+  const holds = sepaHoldsFromRows([
+    tx({
+      id: "hold-link",
+      direction: "credit",
+      kind: "transfer",
+      amount: 7198,
+      status: "pending",
+      source: "stripe",
+      external_id: link.id,
+      payer_kind: "company",
+      booking_id: link.metadata.crm_booking_id,
+      label: pending.action === "pending" ? pending.label : "Prélèvement SEPA · en cours",
+      created_at: "2026-11-06T08:04:00.000Z",
+    }),
+  ]);
+  assert.equal(holds.length, 1);
+  assert.equal(holds[0].bookingId, link.metadata.crm_booking_id);
+  assert.equal(displayedEncours(-7198, holds[0].amount), 0);
+  assert.equal(coverOwed({ total: 7198, company: 7198, personal: 0 }, holds).total, 0);
+  assert.match(sepaHoldBadge(holds[0]), /Prélèvement SEPA en cours · .+ · lancé le 06\/11 — ne pas repayer/);
+  const badge = renderToStaticMarkup(createElement(SepaInFlight, { holds, tone: "client" }));
+  assert.match(badge, /ne pas repayer/);
+  assert.match(badge, /06\/11/);
+
+  const succeeded = readSepaIntent({ ...link, status: "succeeded", chargeStatus: "succeeded" });
+  assert.equal(succeeded.kind, "succeeded");
+  assert.equal(planSepaLedger({ status: "pending" }, succeeded, false).action, "post");
+  assert.equal(planSepaLedger({ status: "posted" }, succeeded, false).action, "keep");
+  assert.equal(planSepaLedger(null, succeeded, false).action, "post");
+
+  const failed = readSepaIntent({ ...link, status: "payment_failed", chargeStatus: "failed", failureCode: "insufficient_funds" });
+  assert.equal(failed.kind, "failed");
+  assert.equal(planSepaLedger({ status: "pending" }, failed, false).action, "void");
+  assert.equal(planSepaLedger({ status: "void" }, failed, false).action, "keep");
+  assert.match(
+    sepaFailureAlert({
+      name: "Stéphane Elie BOUKRIS",
+      partLabel: "Société",
+      amountLabel: "7 198,00 €",
+      last4: null,
+      message: "La banque n’a pas pu débiter ce compte : les fonds sont insuffisants.",
+    }),
+    /^Prélèvement SEPA rejeté — Stéphane Elie BOUKRIS — 7 198,00 €/
+  );
+
+  const filled = sepaMetadataFilled(
+    { reference: "TB-2026-2108", crm_booking_id: link.metadata.crm_booking_id },
+    { customer_id: CUSTOMER, billing_customer_id: CUSTOMER, payer_kind: "company", billing_company_id: COMPANY },
+    null
+  );
+  assert.equal(filled.crm_customer_id, CUSTOMER);
+  assert.equal(filled.payer_kind, "company");
+  assert.equal(filled.billing_company_id, COMPANY);
+  assert.equal(checkoutSessionStartsSepa({ paymentStatus: "unpaid", event: "checkout.session.completed" }), true);
+  assert.equal(checkoutSessionStartsSepa({ paymentStatus: "paid", event: "checkout.session.completed" }), false);
+  assert.equal(checkoutSessionStartsSepa({ event: "checkout.session.async_payment_succeeded" }), true);
+  assert.equal(sepaConfirmedByStripe("sepa_debit", null), true);
+  assert.equal(sepaConfirmedByStripe("sepa_debit", ""), true);
+  assert.equal(sepaConfirmedByStripe("sepa_debit", "req_client"), false);
+  assert.equal(sepaConfirmedByStripe("card", null), false);
+  assert.equal(
+    sepaSystemReceivedSummary("Stéphane Elie BOUKRIS", "7 198,00 €"),
+    "Prélèvement SEPA reçu — Stéphane Elie BOUKRIS — 7 198,00 € (confirmé par Stripe)"
+  );
+  const card = readSepaIntent({
+    ...link,
+    id: "pi_card",
+    status: "processing",
+    chargeType: "card",
+    chargeStatus: "pending",
+    paymentMethodType: "card",
+  });
+  assert.equal(card.kind, "ignore");
 });

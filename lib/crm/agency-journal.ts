@@ -89,6 +89,15 @@ export function maskJournalTree(value: unknown): unknown {
   return next;
 }
 
+/** Webhook Stripe sans requête appelante : ce n’est pas un collègue ni le client. */
+export const STRIPE_SYSTEM_ACTOR = "Système / Stripe";
+
+export function journalActorName(staffId: string | null | undefined, staffName: string | null | undefined, summary: string) {
+  if (staffId && staffName) return staffName;
+  if (!staffId && /^Prélèvement SEPA (reçu|rejeté)/.test(summary)) return STRIPE_SYSTEM_ACTOR;
+  return staffName || "Agence";
+}
+
 export function journalCanonical(input: {
   action: string;
   entityType: string;

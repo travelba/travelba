@@ -338,6 +338,16 @@ export function payOutcomePhrase(outcome: PayOutcome) {
   return "Paiement non finalisé";
 }
 
+/**
+ * Confirmation SEPA écrite par le webhook. Ce n’est pas une visite de l’espace,
+ * même si l’ancienne ligne disait « A réglé … par prélèvement SEPA ».
+ */
+export function isStripeSystemActivity(row: { action?: string | null; summary?: string | null; detail?: string | null }) {
+  if (row.action === "stripe_sepa") return true;
+  if (row.action !== "pay_settled") return false;
+  return /prélèvement sepa|confirmé par stripe/i.test(`${row.summary || ""} ${row.detail || ""}`);
+}
+
 export function payIntentPath(intentId: string) {
   const id = intentId.trim();
   return id ? `pi:${id}` : null;

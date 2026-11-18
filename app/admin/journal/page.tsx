@@ -4,6 +4,7 @@ import { staffAllows, requirePermissionPage } from "@/lib/crm/agency-guard";
 import {
   JOURNAL_ACTIONS,
   JOURNAL_ENTITIES,
+  journalActorName,
   journalRowsMatch,
   type JournalAction,
   type JournalEntity,
@@ -69,7 +70,7 @@ export default async function JournalPage({
   const rows: JournalRow[] = stored.map((row) => ({
     seq: row.seq,
     occurred_at: row.occurred_at,
-    actor: names.get(row.staff_id || "") || "Agence",
+    actor: journalActorName(row.staff_id, names.get(row.staff_id || ""), row.summary),
     action: row.action,
     entity_type: row.entity_type,
     entity_id: row.entity_id,

@@ -1,6 +1,6 @@
 import "server-only";
 import type Stripe from "stripe";
-import { recordClientPayAlert } from "@/lib/crm/agency-log";
+import { recordAgencyJournal, recordClientPayAlert } from "@/lib/crm/agency-log";
 import { formatMoney } from "@/lib/crm/money";
 import {
   disputeSepaAlert,
@@ -12,8 +12,10 @@ import {
   orphanSepaIdsToCancel,
   planSepaLedger,
   readSepaIntent,
+  sepaBookingId,
   sepaFailureAlert,
   sepaLast4,
+  sepaMetadataFilled,
   sepaLockId,
   type SepaIntentView,
   type SepaReading,
@@ -32,6 +34,7 @@ export function viewFromStripeIntent(intent: Stripe.PaymentIntent): SepaIntentVi
   const details = charge?.payment_method_details;
   const sepa = details && details.type === "sepa_debit" ? details.sepa_debit : null;
   const method = intent.payment_method;
+  const methodObj = method && typeof method !== "string" ? method : null;
   return {
     id: intent.id,
     status: intent.status,
@@ -41,11 +44,41 @@ export function viewFromStripeIntent(intent: Stripe.PaymentIntent): SepaIntentVi
     metadata: intent.metadata || null,
     paymentMethodTypes: intent.payment_method_types || null,
     paymentMethodId: !method ? null : typeof method === "string" ? method : method.id,
+    paymentMethodType: methodObj?.type || null,
     chargeStatus: charge?.status || null,
     chargeType: details?.type || null,
     chargeLast4: sepa?.last4 || null,
     failureCode: intent.last_payment_error?.code || charge?.failure_code || null,
   };
+}
+
+async function enrichSepaView(admin: SepaAdmin, intent: Stripe.PaymentIntent, view: SepaIntentView) {
+  const bookingId = (view.metadata?.crm_booking_id || "").trim();
+  let booking: {
+    customer_id?: string | null;
+    billing_customer_id?: string | null;
+    payer_kind?: string | null;
+    billing_company_id?: string | null;
+  } | null = null;
+  if (bookingId) {
+    const { data } = await admin
+      .from("crm_bookings")
+      .select("customer_id, billing_customer_id, payer_kind, billing_company_id")
+      .eq("id", bookingId)
+      .maybeSingle();
+    booking = data;
+  }
+  let stripeMatch: string | null = null;
+  if (!(view.metadata?.crm_customer_id || "").trim()) {
+    const customer = intent.customer;
+    const stripeId = !customer ? "" : typeof customer === "string" ? customer : customer.id;
+    if (stripeId) {
+      const { data } = await admin.from("crm_customers").select("id").eq("stripe_customer_id", stripeId).limit(2);
+      const rows = (data || []) as { id?: string }[];
+      if (rows.length === 1 && rows[0]?.id) stripeMatch = rows[0].id;
+    }
+  }
+  return { ...view, metadata: sepaMetadataFilled(view.metadata, booking, stripeMatch) };
 }
 
 function customerOf(intent: Stripe.PaymentIntent, fallback?: string) {
@@ -64,11 +97,15 @@ async function existingCredit(admin: SepaAdmin, paymentIntentId: string) {
   return (data || null) as { id: string; status: string; external_id: string; customer_id: string } | null;
 }
 
-function rowFrom(intent: Stripe.PaymentIntent, reading: Exclude<SepaReading, { kind: "ignore" } | { kind: "orphan" }>, customerId: string) {
+function rowFrom(
+  reading: Exclude<SepaReading, { kind: "ignore" } | { kind: "orphan" }>,
+  customerId: string,
+  bookingId: string | null
+) {
   const flight = reading.flight;
   return {
     customer_id: customerId,
-    booking_id: null,
+    booking_id: bookingId,
     billing_company_id: flight.companyId || null,
     payer_kind: flight.payer,
     direction: "credit" as const,
@@ -88,7 +125,7 @@ async function writePlan(
 ) {
   const plan = planSepaLedger(existing, reading, false);
   if (plan.action === "keep") return { action: "keep" as const, changed: false };
-  const base = rowFrom(intent, reading, customerId);
+  const base = rowFrom(reading, customerId, sepaBookingId(intent.metadata?.crm_booking_id));
   const amount = plan.action === "void" ? eurosFromCents(reading.flight.amountCents) : plan.amount;
   const fields = {
     ...base,
@@ -105,6 +142,7 @@ async function writePlan(
       payer_kind: fields.payer_kind,
       billing_company_id: fields.billing_company_id,
     };
+    if (fields.booking_id) patch.booking_id = fields.booking_id;
     if (fields.occurred_on) patch.occurred_on = fields.occurred_on;
     const { error } = await admin.from("crm_transactions").update(patch).eq("id", existing.id);
     if (error) return { action: plan.action, changed: false, error: error.message as string };
@@ -132,11 +170,13 @@ export async function syncSepaIntent(
   intent: Stripe.PaymentIntent,
   opts?: { customerId?: string }
 ) {
-  const reading = readSepaIntent(viewFromStripeIntent(intent));
+  const view = await enrichSepaView(admin, intent, viewFromStripeIntent(intent));
+  const reading = readSepaIntent(view);
   if (reading.kind === "ignore" || reading.kind === "orphan") return { ok: true as const, action: "keep" as const };
-  const customerId = customerOf(intent, opts?.customerId);
+  const enriched = { ...intent, metadata: view.metadata || intent.metadata };
+  const customerId = customerOf(enriched, opts?.customerId);
   if (!customerId) return { ok: true as const, action: "keep" as const };
-  if (opts?.customerId && (intent.metadata?.crm_customer_id || "").trim() && intent.metadata.crm_customer_id !== opts.customerId) {
+  if (opts?.customerId && (enriched.metadata?.crm_customer_id || "").trim() && enriched.metadata.crm_customer_id !== opts.customerId) {
     return { ok: true as const, action: "keep" as const };
   }
   if (await paymentCreditReleased(admin, "stripe", reading.flight.paymentIntentId)) {
@@ -146,21 +186,34 @@ export async function syncSepaIntent(
   if (existing && existing.customer_id && existing.customer_id !== customerId) {
     return { ok: true as const, action: "keep" as const };
   }
-  const wrote = await writePlan(admin, intent, reading, customerId, existing);
+  const wrote = await writePlan(admin, enriched, reading, customerId, existing);
   if ("error" in wrote && wrote.error) {
     console.error("[sepa] écriture", reading.flight.paymentIntentId);
     return { ok: false as const, action: wrote.action, error: wrote.error };
   }
   if (wrote.action === "void" && wrote.changed && reading.kind === "failed") {
     const part = reading.flight.mention || (reading.flight.payer === "personal" ? "Particulier" : "Société");
-    await recordClientPayAlert({
-      customerId,
-      summary: sepaFailureAlert({
-        partLabel: part,
-        amountLabel: formatMoney(eurosFromCents(reading.flight.amountCents), reading.flight.currency),
-        last4: reading.flight.last4,
-        message: reading.message,
-      }),
+    const { data: person } = await admin
+      .from("crm_customers")
+      .select("first_name, last_name")
+      .eq("id", customerId)
+      .maybeSingle();
+    const name = [person?.first_name, person?.last_name].filter(Boolean).join(" ");
+    const summary = sepaFailureAlert({
+      name,
+      partLabel: part,
+      amountLabel: formatMoney(eurosFromCents(reading.flight.amountCents), reading.flight.currency),
+      last4: reading.flight.last4,
+      message: reading.message,
+    });
+    await recordClientPayAlert({ customerId, summary });
+    await recordAgencyJournal({
+      staffId: null,
+      action: "create",
+      entityType: "client",
+      entityId: customerId,
+      summary,
+      diff: { acteur: "Système / Stripe" },
     });
   }
   if (wrote.action === "void" && wrote.changed && reading.kind === "canceled") {
@@ -170,7 +223,7 @@ export async function syncSepaIntent(
       summary: `Prélèvement annulé · ${part} · ${formatMoney(eurosFromCents(reading.flight.amountCents), reading.flight.currency)}. Le client peut le relancer, ou payer par carte ou par virement.`.slice(0, 240),
     });
   }
-  return { ok: true as const, action: wrote.action };
+  return { ok: true as const, action: wrote.action, customerId };
 }
 
 export async function cancelOrphanSepaIntents(stripe: Stripe, intents: Stripe.PaymentIntent[]) {
@@ -281,7 +334,13 @@ async function releaseStaleSepaLocks(admin: SepaAdmin, customerId: string) {
 export async function syncSepaIntents(admin: SepaAdmin, intents: Stripe.PaymentIntent[]) {
   for (const intent of intents) {
     const types = intent.payment_method_types || [];
-    const sepa = intent.metadata?.pay_method === "sepa_debit" || types.includes("sepa_debit");
+    const charge = intent.latest_charge && typeof intent.latest_charge !== "string" ? intent.latest_charge : null;
+    const method = intent.payment_method && typeof intent.payment_method !== "string" ? intent.payment_method : null;
+    const sepa =
+      intent.metadata?.pay_method === "sepa_debit" ||
+      types.includes("sepa_debit") ||
+      charge?.payment_method_details?.type === "sepa_debit" ||
+      method?.type === "sepa_debit";
     if (!sepa) continue;
     const result = await syncSepaIntent(admin, intent);
     if (!result.ok) return result;

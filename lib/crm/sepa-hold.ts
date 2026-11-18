@@ -28,6 +28,8 @@ export type SepaIntentView = {
   metadata?: Record<string, string> | null;
   paymentMethodTypes?: string[] | null;
   paymentMethodId?: string | null;
+  /** Type du moyen réellement choisi (`sepa_debit`, `card`…). */
+  paymentMethodType?: string | null;
   chargeStatus?: string | null;
   chargeType?: string | null;
   chargeLast4?: string | null;
@@ -62,6 +64,8 @@ export type SepaHoldView = {
   partLabel: string;
   last4: string | null;
   launchedAt: string;
+  /** Dossier du lien, quand le PaymentIntent le porte. Vide : encours du client. */
+  bookingId: string | null;
 };
 
 export type SepaFailureView = {
@@ -85,6 +89,7 @@ type LedgerLike = {
   external_id?: string | null;
   payer_kind?: string | null;
   billing_company_id?: string | null;
+  booking_id?: string | null;
   created_at?: string | null;
   occurred_on?: string | null;
 };
@@ -114,6 +119,7 @@ function isSepaMethod(intent: SepaIntentView) {
   const pay = (meta(intent).pay_method || "").trim();
   if (pay === "sepa_debit") return true;
   if ((intent.chargeType || "") === "sepa_debit") return true;
+  if ((intent.paymentMethodType || "") === "sepa_debit") return true;
   const types = intent.paymentMethodTypes || [];
   return types.length > 0 && types.every((type) => type === "sepa_debit");
 }
@@ -122,6 +128,8 @@ function payerOf(intent: SepaIntentView): SepaPayer | null {
   const marked = (meta(intent).payer_kind || "").trim();
   if (marked === "company" || marked === "personal") return marked;
   if ((meta(intent).billing_company_id || "").trim()) return "company";
+  // Un lien Stripe n’a souvent pas de part. Le prélèvement SEPA reste un règlement société.
+  if (isSepaMethod(intent)) return "company";
   return null;
 }
 
@@ -279,6 +287,7 @@ export function sepaHoldsFromRows(
       partLabel: payer === "personal" ? "Particulier" : name ? `Société · ${name}` : "Société",
       last4,
       launchedAt: row.created_at || (row.occurred_on ? `${row.occurred_on}T12:00:00.000Z` : new Date(0).toISOString()),
+      bookingId: (row.booking_id || "").trim() || null,
     });
   }
   return holds;
@@ -417,10 +426,98 @@ export function sepaSurplusLock(amountLabel: string) {
   return `Un prélèvement de ${amountLabel} est déjà en cours sur cette part. Le bouton reste fermé jusqu’à la réponse de la banque. Le surplus, s’il y en a un, se règle par carte ou par virement.`;
 }
 
-export function sepaFailureAlert(input: { partLabel: string; amountLabel: string; last4: string | null; message: string }) {
+export function sepaFailureAlert(input: {
+  partLabel: string;
+  amountLabel: string;
+  last4: string | null;
+  message: string;
+  name?: string | null;
+}) {
   const last4 = sepaLast4(input.last4);
   const rib = last4 ? ` · compte ····${last4}` : "";
-  return `Prélèvement refusé · ${input.partLabel} · ${input.amountLabel}${rib}. ${input.message}`.replace(/\s+/g, " ").trim().slice(0, 240);
+  const who = (input.name || "").trim() || input.partLabel;
+  return `Prélèvement SEPA rejeté — ${who} — ${input.amountLabel}${rib}. ${input.message}`.replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+/** Jour de Paris, `06/11`. */
+export function sepaLaunchDay(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    day: "2-digit",
+    month: "2-digit",
+  }).formatToParts(date);
+  const day = parts.find((part) => part.type === "day")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  return day && month ? `${day}/${month}` : "";
+}
+
+/** Badge agence et client. Le montant déjà lancé ne se règle pas une seconde fois. */
+export function sepaHoldBadge(hold: { amount: number; currency: string; launchedAt: string }) {
+  const money = formatMoney(hold.amount, hold.currency || "EUR");
+  const when = sepaLaunchDay(hold.launchedAt);
+  return when
+    ? `Prélèvement SEPA en cours · ${money} · lancé le ${when} — ne pas repayer`
+    : `Prélèvement SEPA en cours · ${money} — ne pas repayer`;
+}
+
+/** Confirmation bancaire arrivée par webhook, pas un clic du client. */
+export function sepaSystemReceivedSummary(name: string, money: string) {
+  const who = name.replace(/\s+/g, " ").trim() || "Un client";
+  return `Prélèvement SEPA reçu — ${who} — ${money} (confirmé par Stripe)`;
+}
+
+/**
+ * Succès SEPA différé : Stripe n’a pas de requête appelante (request id vide).
+ * Un règlement carte confirmé dans la même requête reste un geste du client.
+ */
+export function sepaConfirmedByStripe(method: string, requestId?: string | null) {
+  return method === "sepa_debit" && !(requestId || "").trim();
+}
+
+/** Checkout d’un moyen différé : la session est unpaid, ou l’événement est async. */
+export function checkoutSessionStartsSepa(input: { paymentStatus?: string | null; event?: string | null }) {
+  const event = (input.event || "").trim();
+  if (event === "checkout.session.async_payment_succeeded" || event === "checkout.session.async_payment_failed") {
+    return true;
+  }
+  const status = (input.paymentStatus || "").trim().toLowerCase();
+  return status === "unpaid" || status === "async" || status.includes("async");
+}
+
+/** Complète un lien Stripe : la fiche et la part viennent du dossier, pas du clic. */
+export function sepaMetadataFilled(
+  metadata: Record<string, string> | null | undefined,
+  booking: {
+    customer_id?: string | null;
+    billing_customer_id?: string | null;
+    payer_kind?: string | null;
+    billing_company_id?: string | null;
+  } | null,
+  stripeCustomerId: string | null
+) {
+  const meta = { ...(metadata || {}) };
+  if (booking) {
+    if (!(meta.crm_customer_id || "").trim()) {
+      meta.crm_customer_id = (booking.billing_customer_id || booking.customer_id || "").trim();
+    }
+    if (!meta.payer_kind && (booking.payer_kind === "company" || booking.payer_kind === "personal")) {
+      meta.payer_kind = booking.payer_kind;
+    }
+    if (!(meta.billing_company_id || "").trim() && booking.billing_company_id) {
+      meta.billing_company_id = booking.billing_company_id;
+    }
+  }
+  if (!(meta.crm_customer_id || "").trim() && stripeCustomerId) meta.crm_customer_id = stripeCustomerId;
+  return meta;
+}
+
+const BOOKING_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function sepaBookingId(value: string | null | undefined) {
+  const id = (value || "").trim();
+  return BOOKING_UUID.test(id) ? id : null;
 }
 
 export function eurosFromCents(cents: number) {

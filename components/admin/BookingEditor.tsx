@@ -74,6 +74,7 @@ import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
 import { ChargeControl } from "@/components/admin/ChargeControl";
 import { ResponsableForm } from "@/components/admin/ResponsableForm";
 import { ReglementSummary } from "@/components/admin/ReglementSummary";
+import { SepaInFlight } from "@/components/account/SepaInFlight";
 import { TripCostsBlock } from "@/components/admin/TripCostsBlock";
 import { attachedCostStamp, useTripProposals } from "@/components/admin/use-trip-proposals";
 import { visibleTripState, type TripAccountingView } from "@/lib/crm/trip-costs";
@@ -2465,6 +2466,15 @@ export function BookingEditor({
 
       {tab === "argent" ? (
         <>
+          {(shownLedger?.sepaHolds || []).filter((hold) => !hold.bookingId || hold.bookingId === booking.id).length ? (
+            <div className="order-1">
+              <SepaInFlight
+                holds={(shownLedger?.sepaHolds || []).filter((hold) => !hold.bookingId || hold.bookingId === booking.id)}
+                failures={shownLedger?.sepaFailures || []}
+                tone="admin"
+              />
+            </div>
+          ) : null}
           <div className="order-1">
             <ReglementSummary
               amount={stayAmount}
