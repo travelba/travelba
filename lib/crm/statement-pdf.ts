@@ -377,6 +377,41 @@ function drawSection(draw: Draw, section: StatementSection) {
   draw.y -= 8;
 }
 
+function drawWire(draw: Draw, lines: string[]) {
+  if (!lines.length) return;
+  const inner = PAGE_W - MARGIN * 2 - 24;
+  const rows = lines.flatMap((line) => {
+    const strong = line.startsWith("IBAN") || line.startsWith("Référence") || line.startsWith("Montant");
+    const font = strong ? draw.bold : draw.regular;
+    const size = line.startsWith("IBAN") ? 11 : 9;
+    return wrap(font, line, size, inner).map((text) => ({ text, font, size }));
+  });
+  const height = 22 + rows.length * 14 + 12;
+  ensure(draw, height);
+  const top = draw.y;
+  draw.page.drawRectangle({
+    x: MARGIN,
+    y: top - height,
+    width: PAGE_W - MARGIN * 2,
+    height,
+    color: CREAM,
+  });
+  draw.page.drawRectangle({
+    x: MARGIN,
+    y: top - 2,
+    width: PAGE_W - MARGIN * 2,
+    height: 2,
+    color: GOLD,
+  });
+  drawLine(draw, "Virement", MARGIN + 12, top - 16, 8, draw.bold, GOLD);
+  let baseline = top - 32;
+  for (const row of rows) {
+    drawLine(draw, row.text, MARGIN + 12, baseline, row.size, row.font, INK);
+    baseline -= 14;
+  }
+  draw.y = top - height - 12;
+}
+
 function stampPages(draw: Draw) {
   const total = draw.pages.length;
   draw.pages.forEach((page, index) => {
@@ -412,7 +447,9 @@ export async function renderStatementPdf(model: StatementModel) {
   if (model.emptyNote) {
     ensure(draw, 24);
     drawLine(draw, model.emptyNote, MARGIN, draw.y - 12, 10, draw.regular, MUTED);
+    draw.y -= 28;
   }
+  drawWire(draw, model.wireLines || []);
   stampPages(draw);
   return doc.save();
 }

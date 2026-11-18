@@ -84,14 +84,14 @@ async function sendStatement(customerId: string) {
   const { createServiceClient } = await import("@/lib/supabase/admin");
   const { loadClientLedger } = await import("@/lib/crm/client-ledger-load");
   const { buildStatement, statementHolderLines } = await import("@/lib/crm/statement");
-  const { renderStatementPdf } = await import("@/lib/crm/statement-pdf");
+  const { renderAccountStatementPdf } = await import("@/lib/crm/statement-wire");
   const { deliverStatementWhatsapp } = await import("@/lib/crm/statement-send");
   const admin = createServiceClient();
   const { data } = await admin.from("crm_customers").select("*").eq("id", customerId).maybeSingle();
   const customer = data as CrmCustomer | null;
   if (!customer) return { ok: false, message: "Le relevé part depuis Transactions. Je vous ouvre l’espace." };
   const view = await loadClientLedger(admin, customer, "client");
-  const pdf = await renderStatementPdf(
+  const pdf = await renderAccountStatementPdf(
     buildStatement({
       view,
       holderName: customerFullName(customer),

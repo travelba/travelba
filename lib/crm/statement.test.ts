@@ -11,6 +11,7 @@ import {
   statementNumber,
   statementObjectPath,
   statementWhatsappBody,
+  statementWireAmount,
   statementWhatsappFailure,
   type StatementHolder,
 } from "./statement";
@@ -91,6 +92,8 @@ test("le relevé reprend l’encours signé et les mouvements visibles", () => {
   assert.equal(model.summaries[1]?.value, "500,00 EUR");
   assert.equal(model.summaries[2]?.value, "200,00 EUR");
   assert.equal(model.emptyNote, null);
+  assert.equal(model.includeWire, true);
+  assert.equal(model.wireAmount, "300,00 EUR");
   const rows = model.sections.flatMap((section) => section.rows);
   assert.equal(rows.some((row) => row.title === "Séjour" && row.debit.includes("500,00")), true);
   assert.equal(rows.some((row) => row.title === "Virement" && row.credit.includes("200,00")), true);
@@ -169,6 +172,8 @@ test("un collaborateur reçoit un relevé de frais, pas l’encours société", 
     issuedAt: ISSUED,
   });
   assert.equal(model.title, "Relevé de frais");
+  assert.equal(model.includeWire, false);
+  assert.equal(model.wireAmount, null);
   assert.equal(model.summaries.length, 1);
   assert.equal(model.summaries[0]?.label, "Total de vos dossiers");
   assert.equal(model.summaries[0]?.value, "80,00 EUR");
@@ -192,6 +197,8 @@ test("sans mouvement, le relevé le dit", () => {
     issuedAt: ISSUED,
   });
   assert.equal(model.emptyNote, "Aucun mouvement comptabilisé à cette date.");
+  assert.equal(model.includeWire, true);
+  assert.equal(model.wireAmount, null);
 });
 
 test("montants, chemin et message WhatsApp", () => {
@@ -237,6 +244,73 @@ test("le PDF porte l’agence, le titulaire et les mouvements", async () => {
   assert.match(text, /Virement/);
   assert.match(text, /991 614 694 00016/);
   assert.match(text, /pas une facture/);
+  assert.equal(text.includes("IBAN"), false);
+});
+
+test("le PDF imprime le RIB pour le virement", async () => {
+  const model = buildStatement({
+    view: ledger(),
+    holderName: "Camille Morel",
+    holderLines: statementHolderLines(holder),
+    issuedAt: ISSUED,
+  });
+  const bytes = await renderStatementPdf({
+    ...model,
+    wireLines: [
+      "Montant à virer 300,00 EUR",
+      "Titulaire Travel Business Agency",
+      "IBAN FR76 3000 6000 0112 3456 7890 189",
+      "BIC REVOFRP2",
+      "Référence Camille Morel",
+      "Indiquez cette référence sur l'ordre de virement. L'agence le rapproche dès réception sur son compte Revolut.",
+    ],
+  });
+  const { text, pages } = await pdfPlainText(bytes);
+  assert.equal(pages, 1);
+  assert.match(text, /Virement/);
+  assert.match(text, /Montant à virer 300,00 EUR/);
+  assert.match(text, /Titulaire Travel Business Agency/);
+  assert.match(text, /FR76 3000 6000 0112 3456 7890 189/);
+  assert.match(text, /REVOFRP2/);
+  assert.match(text, /Référence Camille Morel/);
+  assert.match(text, /compte Revolut/);
+  assert.equal(text.includes("Stripe"), false);
+});
+
+test("le montant à virer suit le seul encours en euros", () => {
+  const due = statementWireAmount({
+    member: false,
+    pockets: null,
+    wallets: [{ currency: "EUR", balanceValue: -300, debits: 500, remaining: 300, remainingPct: 40, creditCount: 1 }],
+  });
+  assert.equal(due, "300,00 EUR");
+  assert.equal(
+    statementWireAmount({
+      member: false,
+      pockets: [{ label: "Crédit", name: "Crédit", balance: -10, debits: 10, due: 10, funding: "advance", companyId: "a", creditCount: 0, remainingPct: null }],
+      wallets: [{ currency: "EUR", balanceValue: -10, debits: 10, remaining: 10, remainingPct: null, creditCount: 0 }],
+    }),
+    null
+  );
+  assert.equal(
+    statementWireAmount({
+      member: false,
+      pockets: null,
+      wallets: [
+        { currency: "EUR", balanceValue: -10, debits: 10, remaining: 10, remainingPct: null, creditCount: 0 },
+        { currency: "USD", balanceValue: -5, debits: 5, remaining: 5, remainingPct: null, creditCount: 0 },
+      ],
+    }),
+    "10,00 EUR"
+  );
+  assert.equal(
+    statementWireAmount({
+      member: true,
+      pockets: null,
+      wallets: [{ currency: "EUR", balanceValue: -10, debits: 10, remaining: 10, remainingPct: null, creditCount: 0 }],
+    }),
+    null
+  );
 });
 
 test("un long relevé tient sur plusieurs pages", async () => {

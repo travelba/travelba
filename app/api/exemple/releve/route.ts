@@ -3,7 +3,7 @@ import { jsonError } from "@/lib/crm/auth";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
 import { buildStatement, statementHolderLines } from "@/lib/crm/statement";
-import { renderStatementPdf } from "@/lib/crm/statement-pdf";
+import { renderAccountStatementPdf } from "@/lib/crm/statement-wire";
 import { statementPdfResponse } from "@/lib/crm/statement-send";
 import { customerFullName } from "@/lib/crm/types";
 
@@ -18,7 +18,7 @@ function previewPdf() {
 export async function GET() {
   const preview = previewPdf();
   if (preview instanceof NextResponse) return preview;
-  const pdf = await renderStatementPdf(
+  const pdf = await renderAccountStatementPdf(
     buildStatement({
       view: preview.ledger,
       holderName: customerFullName(preview.customer),
