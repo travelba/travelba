@@ -860,12 +860,32 @@ export function mb3mResetBankAccountCache() {
   bankAccountCache = null;
 }
 
+/** Personne ou société : les deux propriétés du client Partners. */
+export type Mb3mCustomerKind = "person" | "company";
+
+export const MB3M_CUSTOMER_KIND_MISSING =
+  "Le client du règlement n’est pas identifié comme une personne ou une société.";
+
+/**
+ * Client envoyé dans SavePayment.
+ * Même forme que l’enregistrement Partners : une société est l’élément Company,
+ * une personne l’élément Person (mb3mSaveCompany / mb3mSavePerson).
+ * L’Uid est dans cette propriété, puis sur Customer. L’ordre est celui du client :
+ * Company ou Person, puis Uid (comme Company puis Id, ou Id puis Person).
+ * Un Customer qui n’a que l’Uid est refusé : « Un client est forcément une personne ou une société ».
+ */
+export function mb3mPaymentCustomerXml(uid: string, kind: Mb3mCustomerKind) {
+  const id = escapeMb3mXml(uid.trim());
+  const property = kind === "company" ? "Company" : "Person";
+  return `<Customer><${property}><Uid>${id}</Uid></${property}><Uid>${id}</Uid></Customer>`;
+}
+
 /**
  * Encaissement client (FolderService.SavePayment). Le schéma est : FolderId au niveau de la requête,
  * puis Payment, dont les champs de Piece (CreationDate, Customer) viennent avant ceux du règlement
  * (Amount, CustomModeId, Mode, RefNumber, BankAccountId). Un champ hors de cet ordre est ignoré sans erreur :
  * c’est ce qui laissait MB3M sans client (-609 « Un règlement doit toujours être associé à un client »).
- * Le client part donc toujours ; sans lui, on n’appelle pas MB3M.
+ * Le client part donc toujours ; sans lui, ou sans dire s’il est une personne ou une société, on n’appelle pas MB3M.
  * FolderId est l’Id du dossier (01-0002007). Un Uid à cet endroit est refusé (-401
  * « Il n'existe pas de dossier avec l'identifiant donné »). Sans Id, le champ est omis.
  */
@@ -879,16 +899,21 @@ export async function mb3mSavePayment(
     mode: string;
     customModeId?: number | null;
     customerUid: string;
+    customerKind?: Mb3mCustomerKind | null;
     bankAccountUid?: string | null;
   },
   fetchImpl?: FetchImpl
 ) {
   const customerUid = (input.customerUid || "").trim();
   if (!customerUid) throw new Mb3mError("Le règlement n’a pas de client MB3M.", -1);
+  if (input.customerKind !== "person" && input.customerKind !== "company") {
+    throw new Mb3mError(MB3M_CUSTOMER_KIND_MISSING, -1);
+  }
   const folderId = input.folderId.trim();
   const bankUid = (input.bankAccountUid || "").trim() || (await mb3mBankAccountUid(input.bank, fetchImpl));
   const custom = input.mode === "Custom" && input.customModeId ? tag("CustomModeId", input.customModeId) : "";
-  const inner = `<FolderSavePaymentRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">${tag("FolderId", folderId)}<Payment>${tag("CreationDate", `${dayStamp(input.date)}T00:00:00`)}<Customer>${tag("Uid", customerUid)}</Customer>${tag("Amount", money(input.amount))}${custom}${tag("Mode", input.mode.trim())}${tag("RefNumber", input.reference.trim())}${tag("BankAccountId", bankUid)}</Payment></FolderSavePaymentRequest>`;
+  const customer = mb3mPaymentCustomerXml(customerUid, input.customerKind);
+  const inner = `<FolderSavePaymentRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">${tag("FolderId", folderId)}<Payment>${tag("CreationDate", `${dayStamp(input.date)}T00:00:00`)}${customer}${tag("Amount", money(input.amount))}${custom}${tag("Mode", input.mode.trim())}${tag("RefNumber", input.reference.trim())}${tag("BankAccountId", bankUid)}</Payment></FolderSavePaymentRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "SavePayment", inner, fetchImpl);
   assertOperation(xml);
   const number = mb3mXmlText(xml, "Number");

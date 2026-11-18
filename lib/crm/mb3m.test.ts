@@ -35,6 +35,7 @@ import {
   mb3mPaymentAccount,
   mb3mPaymentReference,
   mb3mResetBankAccountCache,
+  mb3mPaymentCustomerXml,
   mb3mSavePayment,
   mb3mSavePerson,
   mb3mPrestationActivityId,
@@ -1057,6 +1058,7 @@ describe("règlements MB3M", () => {
         bank: "REVOLUT",
         mode: "BankTransfer",
         customerUid: "fb3e41d2-6be4-4998-aef4-851839cc48f3",
+        customerKind: "company",
       },
       fetchImpl
     );
@@ -1071,7 +1073,7 @@ describe("règlements MB3M", () => {
       "<FolderId>01-0002007</FolderId>",
       "<Payment>",
       "<CreationDate>2026-10-30T00:00:00</CreationDate>",
-      "<Customer><Uid>fb3e41d2-6be4-4998-aef4-851839cc48f3</Uid></Customer>",
+      mb3mPaymentCustomerXml("fb3e41d2-6be4-4998-aef4-851839cc48f3", "company"),
       "<Amount>2639.96</Amount>",
       "<Mode>BankTransfer</Mode>",
       "<RefNumber>CRM 0173733f-95a6-4115-8e49-e81cb3e875c5</RefNumber>",
@@ -1100,16 +1102,22 @@ describe("règlements MB3M", () => {
       calls.push(String(init?.body));
       return new Response(`<FolderOperationResponse><ResultCode>1</ResultCode><Result><Payment><Number>77</Number></Payment></Result></FolderOperationResponse>`);
     };
-    const base = { amount: 10, date: "2026-11-17", reference: "CRM x", bank: "REVOLUT", mode: "BankTransfer" };
+    const base = { amount: 10, date: "2026-11-17", reference: "CRM x", bank: "REVOLUT", mode: "BankTransfer" as const, customerKind: "person" as const };
     await assert.rejects(
       () => mb3mSavePayment({ ...base, folderId: "01-1", customerUid: "" }, fetchImpl),
       (error: unknown) => error instanceof Mb3mError && /client/.test(error.message)
     );
+    await assert.rejects(
+      () => mb3mSavePayment({ ...base, folderId: "01-1", customerUid: "c-uid", customerKind: null }, fetchImpl),
+      (error: unknown) => error instanceof Mb3mError && /personne ou une société/.test(error.message)
+    );
     assert.deepEqual(calls, []);
     const folderUid = "1f0c002c-615e-422b-aff6-202611161249";
+    const person = mb3mPaymentCustomerXml("c-uid", "person");
     await mb3mSavePayment({ ...base, folderId: "", customerUid: "c-uid" }, fetchImpl);
     const emptyFolder = calls.join(" ");
-    assert.match(emptyFolder, /<Customer><Uid>c-uid<\/Uid><\/Customer>/);
+    assert.ok(emptyFolder.includes(person));
+    assert.match(person, /<Person><Uid>c-uid<\/Uid><\/Person>/);
     assert.doesNotMatch(emptyFolder, /<FolderId>/);
     assert.doesNotMatch(emptyFolder, new RegExp(folderUid));
     assert.doesNotMatch(emptyFolder, /BankAccountId/);
@@ -1118,7 +1126,46 @@ describe("règlements MB3M", () => {
     const withId = calls.join(" ");
     assert.match(withId, /<FolderId>01-0002007<\/FolderId>/);
     assert.doesNotMatch(withId, new RegExp(folderUid));
-    assert.match(withId, /<Customer><Uid>c-uid<\/Uid><\/Customer>/);
+    assert.ok(withId.includes(person));
+  });
+
+  it("SavePayment : société porte Company et l’Uid, personne porte Person, type inconnu n’appelle pas", async () => {
+    arm();
+    mb3mResetBankAccountCache();
+    const calls: string[] = [];
+    const fetchImpl = async (_url: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(String(init?.body || ""));
+      return new Response(
+        `<FolderOperationResponse><ResultCode>1</ResultCode><Result><Payment><Number>2204</Number></Payment></Result></FolderOperationResponse>`
+      );
+    };
+    const base = {
+      folderId: "01-0002007",
+      amount: 2767.61,
+      date: "2026-11-17",
+      reference: "CRM beelynq",
+      bank: "REVOLUT",
+      mode: "BankTransfer",
+      bankAccountUid: "bank-uid",
+    };
+    const companyUid = "fb3e41d2-6be4-4998-aef4-851839cc48f3";
+    await mb3mSavePayment({ ...base, customerUid: companyUid, customerKind: "company" }, fetchImpl);
+    const company = mb3mPaymentCustomerXml(companyUid, "company");
+    assert.equal(company, `<Customer><Company><Uid>${companyUid}</Uid></Company><Uid>${companyUid}</Uid></Customer>`);
+    assert.ok(calls[0]?.includes(company));
+    assert.equal(calls[0]?.includes("<Person>"), false);
+    calls.length = 0;
+    await mb3mSavePayment({ ...base, customerUid: "person-uid", customerKind: "person" }, fetchImpl);
+    const person = mb3mPaymentCustomerXml("person-uid", "person");
+    assert.equal(person, "<Customer><Person><Uid>person-uid</Uid></Person><Uid>person-uid</Uid></Customer>");
+    assert.ok(calls[0]?.includes(person));
+    assert.equal(calls[0]?.includes("<Company>"), false);
+    calls.length = 0;
+    await assert.rejects(
+      () => mb3mSavePayment({ ...base, customerUid: companyUid }, fetchImpl),
+      (error: unknown) => error instanceof Mb3mError && /personne ou une société/.test(error.message)
+    );
+    assert.deepEqual(calls, []);
   });
 
   it("lit les règlements déjà saisis pour ce client", async () => {

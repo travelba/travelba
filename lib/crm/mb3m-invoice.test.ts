@@ -663,6 +663,7 @@ describe("facture MB3M", () => {
     assert.equal(received[0]?.invoiceAmount, 2767.61);
     assert.equal(received[0]?.folderId, "01-0002010");
     assert.equal(received[0]?.customerUid, "customer-uid");
+    assert.equal(received[0]?.customerKind, "person");
     assert.deepEqual(calls, []);
     assert.deepEqual(saved, [{ attemptStatus: null, attemptError: null }]);
   });
@@ -763,7 +764,16 @@ describe("facture MB3M", () => {
         return [{ date: "2026-11-17", montant: 2767.61, numero_mb3m: "2300", statut: "envoye" }];
       },
     };
-    const result = await runMb3mInvoice(context({ lines: [], amount: 0, hadExpenses: true }), deps);
+    const result = await runMb3mInvoice(
+      context({
+        lines: [],
+        amount: 0,
+        hadExpenses: true,
+        payerKind: "company",
+        company: { id: "co-beelynq", name: "BEELYNQ", email: null, countryCode: "FR", address: null },
+      }),
+      deps
+    );
     assert.equal(result.number, "2203");
     assert.equal(result.printed, true);
     assert.equal(result.created, false);
@@ -772,6 +782,7 @@ describe("facture MB3M", () => {
     assert.equal(received[0]?.invoiceAmount, 2767.61);
     assert.equal(received[0]?.folderId, "01-0002010");
     assert.equal(received[0]?.customerUid, "customer-uid");
+    assert.equal(received[0]?.customerKind, "company");
     assert.deepEqual(calls, []);
     assert.deepEqual(saved, [{ id: "printed-piece", patch: { attemptStatus: null, attemptError: null } }]);
   });

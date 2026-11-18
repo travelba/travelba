@@ -5,6 +5,7 @@ import { mb3mReglementNote } from "./mb3m-prep";
 import {
   MB3M_PAYMENT_LOOKUP_HOLD,
   applyMb3mPaymentPlans,
+  mb3mBilledCustomerKind,
   mb3mIsPaymentGap,
   mb3mPaymentGapMessage,
   mb3mCreditCustomerIds,
@@ -774,6 +775,19 @@ describe("envoi des règlements", () => {
     assert.equal(rows[0]?.statut, "erreur");
     assert.match(rows[0]?.erreur || "", /n’ont pas pu être lus/);
     assert.equal(rows[1]?.statut, "envoye");
+  });
+});
+
+describe("type du client facturé", () => {
+  it("société si le dossier, le payer ou la fiche est une société ; personne sinon ; inconnu sans signal", () => {
+    assert.equal(mb3mBilledCustomerKind({ billingCompanyId: "co-1" }), "company");
+    assert.equal(mb3mBilledCustomerKind({ payerKind: "company" }), "company");
+    assert.equal(mb3mBilledCustomerKind({ company: true }), "company");
+    assert.equal(mb3mBilledCustomerKind({ payerKind: "personal" }), "person");
+    assert.equal(mb3mBilledCustomerKind({ company: false }), "person");
+    assert.equal(mb3mBilledCustomerKind({ payerKind: "personal", billingCompanyId: "co-1" }), "company");
+    assert.equal(mb3mBilledCustomerKind({}), null);
+    assert.equal(mb3mBilledCustomerKind({ payerKind: null, billingCompanyId: null, company: null }), null);
   });
 });
 

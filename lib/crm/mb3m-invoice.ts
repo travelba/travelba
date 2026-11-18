@@ -67,6 +67,7 @@ import {
 import { deliverServiceRequestMail } from "@/lib/crm/service-request-mail";
 import {
   Mb3mError,
+  type Mb3mCustomerKind,
   mb3mAddCreditNote,
   mb3mAddInvoice,
   mb3mCancelInvoice,
@@ -313,11 +314,19 @@ export type Mb3mInvoiceDeps = {
     bookingId: string;
     folderId: string;
     customerUid: string;
+    customerKind: Mb3mCustomerKind | null;
     invoiceNumber: string;
     invoiceAmount: number;
     gdsInvoices?: { number: string; amount: number }[];
   }) => Promise<Mb3mReglement[]>;
 };
+
+/** Société si le séjour est facturé à une société, personne sinon. */
+function invoiceCustomerKind(ctx: Mb3mInvoiceContext): Mb3mCustomerKind | null {
+  if (ctx.payerKind === "company" || ctx.company) return "company";
+  if (ctx.payerKind === "personal") return "person";
+  return null;
+}
 
 /** Même chiffre que l’onglet Argent, à partir des cartes déjà enregistrées. */
 export function dossierStayAmount(input: {
@@ -603,6 +612,7 @@ async function attachReglements(
       bookingId: ctx.bookingId,
       folderId: folder,
       customerUid: customerUid || ctx.gdsPlan?.customerUid || "",
+      customerKind: invoiceCustomerKind(ctx),
       invoiceNumber: result.number,
       invoiceAmount,
       gdsInvoices: ctx.gdsPlan?.invoices,
@@ -1166,6 +1176,7 @@ export async function emitMb3mInvoice(
           bookingId,
           folderId: folderId || "",
           customerUid: plan.customerUid || "",
+          customerKind: invoiceCustomerKind(ctx),
           invoiceNumber: plan.covered[0]?.invoiceNumber || "",
           invoiceAmount: 0,
           gdsInvoices: plan.invoices,
