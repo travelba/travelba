@@ -10,6 +10,7 @@ import {
   type JournalEntity,
 } from "@/lib/crm/agency-journal";
 import { isUuid } from "@/lib/crm/ids";
+import { loadTicketDuplicateAlerts } from "@/lib/crm/ticket-duplicate-alerts";
 import { createServiceClient } from "@/lib/supabase/admin";
 
 export const metadata = { title: "Journal" };
@@ -86,6 +87,20 @@ export default async function JournalPage({
       .order("created_at", { ascending: false })
       .limit(20);
     alerts = (alertRows || []) as JournalAlert[];
+    const tickets = await loadTicketDuplicateAlerts(admin);
+    alerts = [
+      ...alerts,
+      ...tickets.map((row) => ({
+        id: `ticket:${row.id}`,
+        created_at: row.at,
+        summary: row.reference
+          ? `${row.reference} : possible doublon de billets.`
+          : "Possible doublon de billets.",
+        kind: "billet",
+        entity_type: "booking",
+        entity_id: row.bookingId,
+      })),
+    ];
   }
 
   return (

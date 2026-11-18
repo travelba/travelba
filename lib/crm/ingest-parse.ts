@@ -254,7 +254,9 @@ function parseAmadeusSegment(
   const cabin = block.match(/([A-Za-z]+) \(([A-Z])\)\s*Classe/i);
   const bags = block.match(/Bagages autoris[eé]s\s+(\d+PC)/i);
   const terminal = (dep?.[2] || "").match(/Terminal\s*:\s*([A-Z0-9]+)/i);
-  const seat = block.match(/Si[eè]ge\s+(\d{1,2}[A-Z])\b/i);
+  const flightAt = block.search(new RegExp(`\\b${operated[2]}\\s+${operated[3]}\\b`));
+  const afterFlight = flightAt >= 0 ? block.slice(flightAt) : block;
+  const seat = afterFlight.match(/Si[eè]ge\s+(\d{1,2}[A-Z])\b/i);
   const depText = `${dep?.[1] || ""} ${dep?.[2] || ""}`;
   const arrText = `${arr?.[1] || ""} ${arr?.[2] || ""}`;
   const fromApt = inferAirportIata(depText);
@@ -322,8 +324,18 @@ export function parseAmadeusReceipt(text: string): ParsedAmadeusFlight | null {
 }
 
 function stripCourtesy(value: string) {
-  return value
+  const spaced = value
     .replace(/\b(MR|MRS|MS|MISS|MSTR|CHD|INF|MME|MLLE)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return spaced
+    .split(" ")
+    .map((token) => {
+      const glued = token.match(/^(.*?)(MISS|MSTR|MME|MLLE|MRS|CHD|INF|MR)$/i);
+      if (glued?.[1] && glued[1].length >= 2) return glued[1];
+      return token;
+    })
+    .join(" ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -331,7 +343,9 @@ function stripCourtesy(value: string) {
 export type TicketPassenger = {
   first_name: string;
   last_name: string;
-  /** Quatre derniers chiffres seulement. Le numéro complet n’est pas conservé. */
+  /** Treize chiffres du billet électronique. Pas un numéro de fidélité. */
+  ticket_number?: string;
+  /** Quatre derniers chiffres, en plus du numéro complet. */
   ticket_last4?: string;
 };
 
@@ -340,26 +354,38 @@ function rememberPassenger(
   seen: Set<string>,
   lastRaw: string,
   firstRaw: string,
-  last4?: string
+  ticket?: string
 ) {
   const last = titleCasePerson(stripCourtesy(lastRaw));
   const first = titleCasePerson(stripCourtesy(firstRaw));
   if (!first || !last) return;
+  if (/^(mr|mrs|ms|miss|mstr|mme|mlle|chd|inf)$/i.test(first) || /^(mr|mrs|ms|miss|mstr|mme|mlle|chd|inf)$/i.test(last)) {
+    return;
+  }
   const key = `${first.toLowerCase()}|${last.toLowerCase()}`;
   const previous = out.find((row) => `${row.first_name.toLowerCase()}|${row.last_name.toLowerCase()}` === key);
   if (previous) {
-    if (!previous.ticket_last4 && last4) previous.ticket_last4 = last4;
+    if (!previous.ticket_number && ticket) {
+      previous.ticket_number = ticket;
+      previous.ticket_last4 = ticket.slice(-4);
+    }
     return;
   }
   if (seen.has(key)) return;
   seen.add(key);
-  out.push(last4 ? { first_name: first, last_name: last, ticket_last4: last4 } : { first_name: first, last_name: last });
+  out.push(
+    ticket
+      ? { first_name: first, last_name: last, ticket_number: ticket, ticket_last4: ticket.slice(-4) }
+      : { first_name: first, last_name: last }
+  );
 }
 
-/** Derniers chiffres d’un numéro de billet à 13 chiffres. Rien d’autre n’est gardé. */
-function ticketLast4(line: string) {
-  const match = line.match(/\b\d{3}[-\s]?(\d{10})\b/);
-  return match ? match[1].slice(-4) : undefined;
+/** Numéro de billet électronique : 3 + 10 chiffres. Un code agence ou une carte fidélité ne comptent pas. */
+function ticketNumber(line: string) {
+  const match = line.match(/\b(\d{3})[-\s]?(\d{10})\b/);
+  if (!match) return undefined;
+  const full = `${match[1]}${match[2]}`;
+  return full.length === 13 ? full : undefined;
 }
 
 /** Tableau « Passager / Numéro De Billet » : nom, et seulement les 4 derniers chiffres. */
@@ -377,20 +403,42 @@ function parsePassengerTicketTable(text: string, out: TicketPassenger[], seen: S
       if (out.length) break;
       continue;
     }
-    rememberPassenger(out, seen, match[1] || "", match[2] || "", ticketLast4(line));
+    rememberPassenger(out, seen, match[1] || "", match[2] || "", ticketNumber(line));
   }
 }
 
-/** Passager d’un e-ticket : « BERDA/DAVID MR », le tableau du billet, ou « Passager : BERDA/DAVID ». */
+const TITLED_NAME =
+  /(?:^|[\s-])(MR|MRS|MS|MISS|MSTR|MME|MLLE)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{1,40})\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{1,40})\s+(\d{3})[-\s]?(\d{10})\b/gi;
+
+/** « Mr Lea Martin 057-2123456789 » ou « Numéro de billet : 057-… Mr Lea Martin ». */
+function parseTitledPassengers(text: string, out: TicketPassenger[], seen: Set<string>) {
+  for (const match of text.matchAll(TITLED_NAME)) {
+    rememberPassenger(out, seen, match[3] || "", match[2] || "", `${match[4]}${match[5]}`);
+  }
+  const afterTicket =
+    /num[eé]ro de billet\s*:\s*(\d{3})[-\s]?(\d{10})\s+(MR|MRS|MS|MISS|MSTR|MME|MLLE)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{1,40})\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{1,40})/gi;
+  for (const match of text.matchAll(afterTicket)) {
+    rememberPassenger(out, seen, match[5] || "", match[4] || "", `${match[1]}${match[2]}`);
+  }
+}
+
+/** « MARTIN/LEA MRS », « MARTIN/LEAMRS », ou « Passager : MARTIN/LEA ». */
+function parseSlashPassengers(text: string, out: TicketPassenger[], seen: Set<string>) {
+  const re =
+    /\b([A-Z]{2,40})\/([A-Z]{2,40})(?![A-Z0-9])(?:\s+(MISS|MSTR|MME|MLLE|MRS|CHD|INF|MR|MS))?(?:\s+(\d{3})[-\s]?(\d{10}))?/g;
+  for (const match of text.matchAll(re)) {
+    const ticket = match[4] && match[5] ? `${match[4]}${match[5]}` : ticketNumber(match[0]);
+    rememberPassenger(out, seen, match[1] || "", match[2] || "", ticket);
+  }
+}
+
+/** Passager d’un e-ticket : « MARTIN/LEA MRS », « Mr Lea Martin 057-… », ou le tableau du billet. */
 export function parseTicketPassengers(text: string): TicketPassenger[] {
   const out: TicketPassenger[] = [];
   const seen = new Set<string>();
   parsePassengerTicketTable(text, out, seen);
-  const re =
-    /(?:passager|passenger|voyageur|billet [eé]lectronique)\s*:?\s*([A-Z][A-Z' -]{1,40})\/([A-Z][A-Z' -]{1,40})/gi;
-  for (const match of text.matchAll(re)) {
-    rememberPassenger(out, seen, match[1] || "", match[2] || "");
-  }
+  parseTitledPassengers(text, out, seen);
+  parseSlashPassengers(text, out, seen);
   return out;
 }
 
@@ -2047,19 +2095,28 @@ export function parsedItemsFromText(text: string): {
     );
   }
   if (travelers.length) {
-    const passengers = travelers.map((row) => {
-      const last4 = (row as { ticket_last4?: unknown }).ticket_last4;
-      return {
-        first_name: row.first_name,
-        last_name: row.last_name,
-        ...(typeof last4 === "string" && last4 ? { ticket_last4: last4 } : {}),
-      };
-    });
     for (const item of items) {
       if (item.kind !== "flight") continue;
+      const seat = typeof item.details?.seat === "string" ? item.details.seat.trim() : "";
+      const passengers = travelers.map((row) => {
+        const ticket = (row as { ticket_number?: unknown }).ticket_number;
+        const last4 = (row as { ticket_last4?: unknown }).ticket_last4;
+        const number = typeof ticket === "string" && /^\d{13}$/.test(ticket) ? ticket : "";
+        return {
+          first_name: row.first_name,
+          last_name: row.last_name,
+          ...(number ? { ticket_number: number, ticket_last4: number.slice(-4) } : {}),
+          ...(!number && typeof last4 === "string" && last4 ? { ticket_last4: last4 } : {}),
+          ...(seat ? { seat } : {}),
+        };
+      });
+      const numbers = [
+        ...new Set(passengers.map((row) => row.ticket_number).filter((value): value is string => Boolean(value))),
+      ];
       item.details = {
         ...(item.details || {}),
         passengers,
+        ...(numbers.length ? { ticket_numbers: numbers } : {}),
         ...(removedPassengers.length ? { removed_passengers: removedPassengers } : {}),
         ...(refund != null ? { refund_amount: refund } : {}),
       };

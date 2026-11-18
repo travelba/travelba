@@ -336,14 +336,72 @@ Distance 3 610,00 km
     assert.equal(JSON.stringify(items).includes("3 610"), false);
   });
 
-  it("lit le tableau passager et ne garde que les 4 derniers chiffres", () => {
+  it("lit le tableau passager, le numéro à 13 chiffres et ignore la carte fidélité", () => {
     const people = parseTicketPassengers(EASYJET);
     assert.equal(people.length, 1);
     assert.equal(people[0]?.first_name, "Pax");
     assert.equal(people[0]?.last_name, "Test");
+    assert.equal(people[0]?.ticket_number, "0000000001234");
     assert.equal(people[0]?.ticket_last4, "1234");
-    assert.equal(JSON.stringify(people).includes("0000001234"), false);
-    assert.equal(JSON.stringify(people).includes("000-0000001234"), false);
+    assert.equal(JSON.stringify(people).includes("5019257094"), false);
+  });
+
+  it("lit NOM/PRENOM MR, MRS, MSTR et le titre collé", () => {
+    const slash = parseTicketPassengers("Passager MARTIN/LEA MRS 057-2123456789");
+    assert.equal(slash[0]?.first_name, "Lea");
+    assert.equal(slash[0]?.last_name, "Martin");
+    assert.equal(slash[0]?.ticket_number, "0572123456789");
+    const child = parseTicketPassengers("MARTIN/NOA MSTR");
+    assert.deepEqual(
+      child.map((row) => `${row.first_name} ${row.last_name}`),
+      ["Noa Martin"]
+    );
+    const glued = parseTicketPassengers("MARTIN/LEAMRS");
+    assert.equal(glued[0]?.first_name, "Lea");
+    assert.equal(glued[0]?.last_name, "Martin");
+    assert.equal(parseTicketPassengers("Référence du dossier compagnie AF/ABC123").length, 0);
+  });
+});
+
+const RECEIPT = `
+Reçu de Billet Electronique
+Référence du dossier ABC123
+Dimanche 04 avril 2027
+-Passager Numéro De Billet Compagnie émettrice
+-Mr Lea Martin 057-2123456789 Air France
+Compagnie émettrice : AIR FRANCE
+Air France AF 1001 (Opéré Par Air France, )
+04 April 08:20 Aéroport Charles-de-Gaulle PARIS Terminal : 6Départ
+04 April 10:00 Côte d'Azur NICE Terminal : 2Arrivée
+Siège 12A(Non smoking,AISLE) - Confirmé pour Mr Lea Martin
+Dimanche 11 avril 2027
+Air France AF 1002 (Opéré Par Air France, )
+11 April 09:40 Côte d'Azur NICE Terminal : 2Départ
+11 April 11:15 Aéroport Charles-de-Gaulle PARIS Terminal : 6Arrivée
+Siège 14C(Non smoking,WINDOW) - Confirmé pour Mr Lea Martin
+Référence du dossier compagnie AF/ABC123
+Numéro de billet : 057-2123456789 Mr Lea Martin date d'émission:
+Nº de carte fidélité AF5019257094 pour Mr Lea Martin
+`;
+
+describe("reçu Amadeus fictif", () => {
+  it("nomme le passager, le billet à 13 chiffres et la place de chaque segment", () => {
+    const parsed = parsedItemsFromText(RECEIPT);
+    assert.equal(parsed.items.length, 2);
+    assert.equal(parsed.travelers[0]?.first_name, "Lea");
+    assert.equal(parsed.travelers[0]?.last_name, "Martin");
+    const out = parsed.items[0];
+    const back = parsed.items[1];
+    assert.equal(out?.details?.flight_number, "AF 1001");
+    assert.equal(out?.details?.from, "CDG");
+    assert.equal(out?.details?.to, "NCE");
+    assert.equal(out?.confirmation_ref, "ABC123");
+    const people = out?.details?.passengers as { first_name: string; last_name: string; ticket_number?: string; seat?: string }[];
+    assert.equal(people?.[0]?.ticket_number, "0572123456789");
+    assert.equal(people?.[0]?.seat, "12A");
+    assert.equal((back?.details?.passengers as { seat?: string }[])?.[0]?.seat, "14C");
+    assert.equal(JSON.stringify(parsed).includes("5019257094"), false);
+    assert.equal(JSON.stringify(parsed).includes("\"Mr\""), false);
   });
 });
 

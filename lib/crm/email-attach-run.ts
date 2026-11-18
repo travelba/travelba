@@ -9,6 +9,7 @@ import {
   isDepositableAttachment,
   mailBodyFile,
   planEmailAttachmentCopies,
+  planEmailCardCopies,
   type DepositOutcome,
   type MailBodySource,
 } from "@/lib/crm/email-attach-files";
@@ -59,7 +60,8 @@ export async function depositEmailAttachments(
   emailId: string,
   attachments: EmailIngestAttachment[] | null | undefined,
   bookingItemId?: string | null,
-  body?: MailBodySource | null
+  body?: MailBodySource | null,
+  itemIds?: string[] | null
 ): Promise<DepositOutcome> {
   const files: LoadedFile[] = [];
   let skipped = 0;
@@ -109,24 +111,40 @@ export async function depositEmailAttachments(
 
   const { data, error } = await admin
     .from("crm_booking_documents")
-    .select("content_sha256")
+    .select("content_sha256, booking_item_id")
     .eq("booking_id", bookingId);
   if (error) throw new Error("Pièces du dossier illisibles.");
-  const existing = ((data || []) as { content_sha256: string | null }[]).map((row) => ({
-    sha256: row.content_sha256,
-  }));
-  const plan = planEmailAttachmentCopies(files, existing);
-  skipped += plan.skipped.length;
+  const stored = (data || []) as { content_sha256: string | null; booking_item_id: string | null }[];
+  const targets = [...new Set((itemIds || []).map((id) => id.trim()).filter(Boolean))];
+  const linked = targets.length
+    ? planEmailCardCopies(
+        files,
+        stored.map((row) => ({ sha256: row.content_sha256, itemId: row.booking_item_id })),
+        targets
+      )
+    : null;
+  const single = linked
+    ? null
+    : planEmailAttachmentCopies(
+        files,
+        stored.map((row) => ({ sha256: row.content_sha256 }))
+      );
+  skipped += (linked ? linked.skipped : single?.skipped || []).length;
 
   let added = 0;
   let boarding = false;
-  for (const index of plan.copy) {
+  const placements = linked
+    ? linked.copies
+    : (single?.copy || []).map((index) => ({ itemId: bookingItemId || "", index }));
+  for (const placement of placements) {
+    const index = placement.index;
     const file = files[index];
+    const itemId = placement.itemId || bookingItemId || null;
     const wallet = await placeWalletPass(
       admin,
       bookingId,
       { name: file.name, type: file.mime, bytes: file.bytes },
-      bookingItemId || null
+      itemId
     );
     const path = `bookings/${bookingId}/${file.sha256}-${safeFileName(file.name)}`;
     const mime = wallet?.mime || file.mime || "application/octet-stream";
@@ -137,7 +155,7 @@ export async function depositEmailAttachments(
     }
     const { error: insertError } = await insertBookingDocument(admin, {
       booking_id: bookingId,
-      booking_item_id: wallet ? wallet.itemId : bookingItemId || null,
+      booking_item_id: wallet ? wallet.itemId : itemId,
       kind: wallet?.kind || bookingDocumentKind(file.name, file.mime),
       file_name: file.name,
       mime_type: mime,

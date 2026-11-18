@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { agencyAlerts, type ConciergeChangeAlert, type PaymentAlert } from "@/lib/crm/agency-alerts";
+import { loadTicketDuplicateAlerts } from "@/lib/crm/ticket-duplicate-alerts";
 import { CONCIERGE_WRITE_SOURCE } from "@/lib/crm/concierge-client-write";
 import { shouldNotifyInboundMail } from "@/lib/crm/email-reply-gate";
 import { loadSentMailIndex } from "@/lib/crm/sent-mail";
@@ -116,6 +117,7 @@ export async function GET(request: Request) {
     chats: [],
     changes: await conciergeChanges(admin, since),
     payments: await paymentAlerts(admin, since),
+    tickets: await loadTicketDuplicateAlerts(admin),
   });
 
   return NextResponse.json({ notices: hotelReplyNotices(rows, since), alerts, replied });

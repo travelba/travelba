@@ -374,7 +374,13 @@ export function prepareEmailAction(input: Record<string, unknown>) {
   const id = uuid(input.id, "E-mail");
   const dossierId =
     action === "rattacher" || action === "mettre_a_jour" ? uuid(input.dossier_id, "Dossier") : "";
-  return { action, id, dossierId, cartes: input.cartes === true };
+  return {
+    action,
+    id,
+    dossierId,
+    cartes: action === "rattacher" ? (input.cartes === false ? false : input.cartes === true ? true : null) : false,
+    forcer: action === "rattacher" && input.forcer === true,
+  };
 }
 
 export function prepareClientCreate(input: Record<string, unknown>) {
@@ -1023,12 +1029,15 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
   if (error) failDb(error, "E-mail introuvable.");
   const row = data as CrmEmailIngest | null;
   if (!row) throw new McpWriteError("E-mail introuvable.");
-  const { treatedEmailGate } = await import("@/lib/crm/email-reattach");
+  const { emailDepositedFilesOnly, treatedEmailGate } = await import("@/lib/crm/email-reattach");
+  const audited = await db.from("crm_audit_events").select("action").eq("email_ingest_id", row.id).limit(40);
+  const actions = audited.error ? [] : ((audited.data || []) as { action?: string | null }[]).map((entry) => entry.action || "");
   const gate = treatedEmailGate(
     row.status,
     row.created_booking_id,
     action.dossierId,
-    action.action === "rattacher" && input.repartir === true
+    action.action === "rattacher" && input.repartir === true,
+    { forcer: action.forcer, piecesSeules: emailDepositedFilesOnly(actions) }
   );
   if ("error" in gate) throw new McpWriteError(gate.error);
   if (action.action === "refuser") {
@@ -1091,7 +1100,7 @@ export async function settleEmail(input: Record<string, unknown>, admin?: McpAdm
     };
   }
   if (action.action === "rattacher") {
-    if (action.cartes && extract && !isCancellationExtract(extract)) {
+    if (action.cartes !== false && extract && !isCancellationExtract(extract)) {
       const { hasUsableFlight } = await import("@/lib/crm/email-flight-deposit");
       const { depositFlightsOnBooking } = await import("@/lib/crm/email-flight-deposit-run");
       if (hasUsableFlight(extract)) {

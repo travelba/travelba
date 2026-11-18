@@ -63,6 +63,7 @@ import {
   keptHotelStayFields,
   mergeFlightPassengers,
 } from "@/lib/crm/item-match";
+import { planTicketOnExistingCard } from "@/lib/crm/flight-ticket";
 import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
@@ -422,6 +423,13 @@ async function upsertItemsAndTravelers(
       match = findBlankStep(pool, probe);
       sameBooking = Boolean(match);
     }
+    let confirmationRef = emptyToNull(item.confirmation_ref);
+    let flightDetails: Record<string, unknown> | null = null;
+    if (kind === "flight" && match) {
+      const planned = planTicketOnExistingCard(match, { ...probe, details });
+      confirmationRef = planned.confirmationRef;
+      flightDetails = planned.details;
+    }
     const incomingAmount = parseMoney(item.amount);
     const replacing =
       !match && opts?.replacements
@@ -465,11 +473,11 @@ async function upsertItemsAndTravelers(
       kind,
       title: kept?.title || title,
       supplier: kept ? kept.supplier : emptyToNull(item.supplier),
-      confirmation_ref: kept ? kept.confirmation_ref : emptyToNull(item.confirmation_ref),
+      confirmation_ref: kept ? kept.confirmation_ref : confirmationRef,
       start_at: kept ? kept.start_at : emptyToNull(item.start_at),
       end_at: kept ? kept.end_at : emptyToNull(item.end_at),
       amount,
-      details: kept?.details || mailDetails,
+      details: kept?.details || flightDetails || mailDetails,
       visible_to_client: fromMail ? false : cardStaysShown(match, Boolean(opts?.keepSellingPrice)),
       source_document_id: sourceDocId(details, docs),
       ...(replacing

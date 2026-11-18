@@ -8,6 +8,7 @@ import {
   isDepositableAttachment,
   mailBodyFile,
   planEmailAttachmentCopies,
+  planEmailCardCopies,
 } from "./email-attach-files";
 
 describe("dépôt des pièces", () => {
@@ -18,6 +19,13 @@ describe("dépôt des pièces", () => {
     );
     assert.deepEqual(plan.copy, [0]);
     assert.deepEqual(plan.skipped, [1, 2, 3]);
+    const cards = planEmailCardCopies(
+      [{ sha256: "aaa" }],
+      [{ sha256: "aaa", itemId: "aller" }],
+      ["aller", "retour"]
+    );
+    assert.deepEqual(cards.copies, [{ itemId: "retour", index: 0 }]);
+    assert.deepEqual(cards.skipped, []);
   });
 
   it("laisse les images de signature et garde un PDF", () => {

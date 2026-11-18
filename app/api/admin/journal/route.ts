@@ -13,6 +13,7 @@ import {
   type JournalEntity,
 } from "@/lib/crm/agency-journal";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
+import { loadTicketDuplicateAlerts } from "@/lib/crm/ticket-duplicate-alerts";
 import { isUuid } from "@/lib/crm/ids";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -146,6 +147,18 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false })
       .limit(20);
     alerts = (alertRows || []) as typeof alerts;
+    const tickets = await loadTicketDuplicateAlerts(admin);
+    alerts = [
+      ...alerts,
+      ...tickets.map((row) => ({
+        id: `ticket:${row.id}`,
+        created_at: row.at,
+        summary: row.reference ? `${row.reference} : possible doublon de billets.` : "Possible doublon de billets.",
+        kind: "billet",
+        entity_type: "booking",
+        entity_id: row.bookingId,
+      })),
+    ];
   }
   return NextResponse.json({ rows: shaped, alerts, chainIntact });
 }

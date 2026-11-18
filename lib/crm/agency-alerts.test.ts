@@ -18,6 +18,18 @@ test("un e-mail et un WhatsApp deviennent chacun une alerte, sans adresse", () =
   assert.equal(JSON.stringify(alerts).includes("@"), false);
 });
 
+test("un doublon de billets ouvre le dossier, sans nom de passager", () => {
+  const alerts = agencyAlerts({
+    emails: [],
+    chats: [],
+    tickets: [{ id: "item-1", at: "2026-11-17T09:30:00.000Z", bookingId: "stay-1", reference: "TB-2026-0206" }],
+  });
+  assert.equal(alerts[0]?.kicker, "Billet");
+  assert.equal(alerts[0]?.title, "Possible doublon de billets");
+  assert.equal(alerts[0]?.href, "/admin/reservations/stay-1");
+  assert.match(alerts[0]?.body || "", /TB-2026-0206/);
+});
+
 test("une modification du concierge ouvre le dossier", () => {
   const alerts = agencyAlerts({
     emails: [],

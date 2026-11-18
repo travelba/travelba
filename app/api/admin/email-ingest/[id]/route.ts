@@ -15,7 +15,7 @@ import {
   noteEmailRepartition,
   resolveEmailCardId,
 } from "@/lib/crm/email-attach-run";
-import { treatedEmailGate } from "@/lib/crm/email-reattach";
+import { emailDepositedFilesOnly, treatedEmailGate } from "@/lib/crm/email-reattach";
 import { applyBookingSteps, EmailStepError, previewBookingSteps } from "@/lib/crm/email-step-run";
 import { hasUsableFlight } from "@/lib/crm/email-flight-deposit";
 import { depositFlightsOnBooking } from "@/lib/crm/email-flight-deposit-run";
@@ -29,6 +29,12 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 type Ctx = { params: Promise<{ id: string }> };
+
+async function emailActions(admin: ReturnType<typeof createServiceClient>, id: string) {
+  const { data, error } = await admin.from("crm_audit_events").select("action").eq("email_ingest_id", id).limit(40);
+  if (error || !data) return [];
+  return (data as { action?: string | null }[]).map((row) => row.action || "");
+}
 
 /** Corps du mail, à l’ouverture d’une carte. La liste ne le charge pas. */
 export async function GET(_request: Request, ctx: Ctx) {
@@ -63,6 +69,7 @@ export async function POST(request: Request, ctx: Ctx) {
     confirmer?: boolean;
     cartes?: boolean;
     repartir?: boolean;
+    forcer?: boolean;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -206,7 +213,10 @@ export async function POST(request: Request, ctx: Ctx) {
     if (action === "attach_booking") {
       const bookingId = String(body.booking_id || "");
       if (!bookingId) return jsonError("Choisissez un voyage");
-      const gate = treatedEmailGate(row.status, row.created_booking_id, bookingId, body.repartir === true);
+      const gate = treatedEmailGate(row.status, row.created_booking_id, bookingId, body.repartir === true, {
+        forcer: body.forcer === true,
+        piecesSeules: emailDepositedFilesOnly(await emailActions(admin, id)),
+      });
       if ("error" in gate) return jsonError(gate.error);
       const { data: booking } = await admin
         .from("crm_bookings")
@@ -273,7 +283,10 @@ export async function POST(request: Request, ctx: Ctx) {
     if (action === "apply_cards" || action === "replace_booking") {
       const bookingId = String(body.booking_id || "");
       if (!bookingId) return jsonError("Choisissez un voyage");
-      const gate = treatedEmailGate(row.status, row.created_booking_id, bookingId, body.repartir === true);
+      const gate = treatedEmailGate(row.status, row.created_booking_id, bookingId, body.repartir === true, {
+        forcer: body.forcer === true,
+        piecesSeules: emailDepositedFilesOnly(await emailActions(admin, id)),
+      });
       if ("error" in gate) return jsonError(gate.error);
       const { data: booking } = await admin
         .from("crm_bookings")
@@ -368,7 +381,10 @@ export async function POST(request: Request, ctx: Ctx) {
       if (action === "preview_steps" || body.confirmer !== true) {
         return NextResponse.json({ ok: true, ecrit: false, apercu: preview });
       }
-      const gate = treatedEmailGate(row.status, row.created_booking_id, bookingId, body.repartir === true);
+      const gate = treatedEmailGate(row.status, row.created_booking_id, bookingId, body.repartir === true, {
+        forcer: body.forcer === true,
+        piecesSeules: emailDepositedFilesOnly(await emailActions(admin, id)),
+      });
       if ("error" in gate) return jsonError(gate.error);
       await applyBookingSteps({
         admin,
