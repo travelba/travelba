@@ -31,7 +31,13 @@ function httpOf(call: { httpStatus: number; status: string | null; error: string
   return { httpStatus: call.httpStatus, status: call.status, error: call.error, detail: call.detail ?? null };
 }
 
-export async function prebookRate(hash: string, hid: number, baselineShow: number, config = requireBookingConfig()) {
+export async function prebookRate(
+  hash: string,
+  hid: number,
+  baselineShow: number,
+  config = requireBookingConfig(),
+  baselineCharge: number | null = null
+) {
   if (!hash.startsWith("h-")) return { ok: false as const, error: "Le pré-réservation attend un book_hash d’hôtel (h-)." };
   const call = await etgPost(
     "/api/b2b/v3/hotel/prebook/",
@@ -43,8 +49,11 @@ export async function prebookRate(hash: string, hid: number, baselineShow: numbe
   const hotels = normalizeHotels(call.data, config, [], 50, true);
   const rate = hotels.flatMap((hotel) => hotel.rates).find((item) => item.book_hash.startsWith("p-")) || null;
   if (!rate) return { ok: false as const, error: call.error || "no_available_rates", call, rate: null as ShownRate | null };
-  const next = moneyNumber(rate.show_amount) ?? moneyNumber(rate.amount) ?? 0;
-  const delta = priceDelta(baselineShow, next);
+  const showNext = moneyNumber(rate.show_amount) ?? baselineShow;
+  const chargeNext = moneyNumber(rate.amount) ?? baselineCharge ?? 0;
+  const showDelta = priceDelta(baselineShow, showNext);
+  const chargeDelta = baselineCharge == null ? null : priceDelta(baselineCharge, chargeNext);
+  const increased = showDelta.increased || Boolean(chargeDelta?.increased);
   const quote: RateQuote = {
     book_hash: rate.book_hash,
     hid,
@@ -53,9 +62,23 @@ export async function prebookRate(hash: string, hid: number, baselineShow: numbe
     show_amount: rate.show_amount,
     show_currency_code: rate.show_currency_code,
     payment_type: rate.payment_type,
-    price_increased: delta.increased,
+    price_increased: increased,
   };
-  return { ok: true as const, call, rate, quote: signQuote(quote, config), price: { ...delta, before: baselineShow, after: next } };
+  return {
+    ok: true as const,
+    call,
+    rate,
+    quote: signQuote(quote, config),
+    price: {
+      ...showDelta,
+      increased,
+      before: baselineShow,
+      after: showNext,
+      charge_before: baselineCharge,
+      charge_after: chargeNext,
+      charge_currency: rate.currency_code,
+    },
+  };
 }
 
 type BookInput = {
@@ -84,10 +107,10 @@ type FormPayment = {
   orderId: number | null;
 };
 
-function paymentFromForm(data: unknown, preferred: string): FormPayment | null {
+function paymentFromForm(data: unknown): FormPayment | null {
   const row = data && typeof data === "object" ? (data as { payment_types?: Record<string, unknown>[]; order_id?: unknown }) : null;
   const types = row?.payment_types || [];
-  const chosen = types.find((type) => type.type === preferred) || types.find((type) => type.type === "deposit") || types[0];
+  const chosen = types.find((type) => type.type === "deposit");
   if (!chosen) return null;
   return {
     type: String(chosen.type || ""),
@@ -157,7 +180,7 @@ async function finishSaved(
   row: { id: string; partner_order_id: string },
   payment: FormPayment
 ) {
-  if (payment.needsCard || payment.type === "now") {
+  if (payment.needsCard || payment.type !== "deposit") {
     await supabase.from("crm_ratehawk_bookings").update({ status: "failed", status_reason: "credit_card_required" }).eq("id", row.id);
     return { ok: false as const, status: "failed" as const, error: "Ce tarif demande une carte. L’agence réserve en deposit, sans numéro de carte.", partner_order_id: row.partner_order_id };
   }
@@ -178,7 +201,15 @@ async function finishSaved(
     .from("crm_ratehawk_bookings")
     .update({ status: "in_progress", booking_started_at: new Date().toISOString(), deadline_at: deadline, status_reason: null })
     .eq("id", row.id);
-  return { ok: true as const, status: "in_progress" as const, partner_order_id: row.partner_order_id, frontend: "in_progress" as const, id: row.id };
+  return {
+    ok: true as const,
+    status: "in_progress" as const,
+    partner_order_id: row.partner_order_id,
+    frontend: "in_progress" as const,
+    id: row.id,
+    amount: payment.amount,
+    currency_code: payment.currency_code,
+  };
 }
 
 export async function startBooking(input: BookInput, supabase = ratehawkDb(), config = requireBookingConfig()) {
@@ -197,8 +228,8 @@ export async function startBooking(input: BookInput, supabase = ratehawkDb(), co
   if (quote.price_increased && !input.priceAccepted) {
     return { ok: false as const, status: "failed" as const, error: "Le prix a augmenté. Confirmez-le avant de réserver." };
   }
-  if (quote.payment_type === "now") {
-    return { ok: false as const, status: "failed" as const, error: "Le paiement carte ETG n’est pas ouvert. Le type deposit est celui de l’agence." };
+  if (quote.payment_type !== "deposit") {
+    return { ok: false as const, status: "failed" as const, error: "Le paiement à l’hôtel n’est pas ouvert sur ce contrat. Le type deposit est celui de l’agence." };
   }
 
   if (input.partnerOrderId && input.acceptFormPrice) {
@@ -229,8 +260,17 @@ export async function startBooking(input: BookInput, supabase = ratehawkDb(), co
     if (decision.action !== "proceed") {
       return { ok: false as const, status: "failed" as const, error: decision.reason, frontend: decision.frontend };
     }
-    const payment = paymentFromForm(call.data, config.paymentType);
-    if (!payment) return { ok: false as const, status: "failed" as const, error: "Aucun type de paiement dans le formulaire." };
+    const payment = paymentFromForm(call.data);
+    if (!payment) {
+      return {
+        ok: false as const,
+        status: "failed" as const,
+        error: "Ce tarif ne se paie pas sur le dépôt. Le paiement à l’hôtel n’est pas ouvert sur ce contrat.",
+      };
+    }
+    if (payment.type !== "deposit") {
+      return { ok: false as const, status: "failed" as const, error: "Le paiement à l’hôtel n’est pas ouvert sur ce contrat." };
+    }
     const quoted = moneyNumber(quote.amount) ?? 0;
     const formAmount = moneyNumber(payment.amount) ?? quoted;
     const { data, error } = await supabase

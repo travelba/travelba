@@ -1,12 +1,14 @@
 import { RatehawkConfigError, safeConfig } from "@/lib/crm/ratehawk/config";
+import { fillThinHotelFacts } from "@/lib/crm/ratehawk/content";
+import { readHotelFacts, type RoomGroupStatic } from "@/lib/crm/ratehawk/display";
 import { ratehawkJson, staffOrResponse } from "@/lib/crm/ratehawk/http";
 import { validateStay, type RoomGuests } from "@/lib/crm/ratehawk/limits";
 import { hotelPage } from "@/lib/crm/ratehawk/search";
 import { ratehawkDb } from "@/lib/crm/ratehawk/store";
-import { metapolicyLines, preferHotelImages, type RoomGroupStatic } from "@/lib/crm/ratehawk/display";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const maxDuration = 90;
 
 export async function POST(request: Request) {
   const auth = await staffOrResponse();
@@ -30,13 +32,16 @@ export async function POST(request: Request) {
   if (stayError) return ratehawkJson({ error: stayError }, 400);
   try {
     const supabase = ratehawkDb();
+    await fillThinHotelFacts([body.hid], config, supabase);
     const { data } = await supabase
       .from("crm_ratehawk_hotels")
-      .select("name, address, metapolicy_struct, metapolicy_extra_info, room_groups, check_in_time, check_out_time, images, images_ext:raw->images_ext")
+      .select(
+        "name, address, star_rating, metapolicy_struct, metapolicy_extra_info, room_groups, check_in_time, check_out_time, images, images_ext:raw->images_ext, description_struct:raw->description_struct, amenity_groups:raw->amenity_groups, policy_struct:raw->policy_struct"
+      )
       .eq("hid", body.hid)
       .maybeSingle();
     const groups = (Array.isArray(data?.room_groups) ? data.room_groups : []) as RoomGroupStatic[];
-    const images = preferHotelImages(data?.images, data?.images_ext, 12);
+    const facts = readHotelFacts(data, body.hid);
     const result = await hotelPage(
       {
         checkin: body.checkin,
@@ -50,18 +55,18 @@ export async function POST(request: Request) {
       config,
       groups
     );
+    const images = facts?.images || [];
     return ratehawkJson({
-      hotel: result.hotel ? { ...result.hotel, images: images.length ? images : result.hotel.images } : null,
-      static: data
+      hotel: result.hotel
         ? {
-            name: data.name,
-            address: data.address,
-            check_in_time: data.check_in_time,
-            check_out_time: data.check_out_time,
-            images,
-            policies: metapolicyLines(data.metapolicy_struct, data.metapolicy_extra_info),
+            ...result.hotel,
+            name: facts?.name || result.hotel.name,
+            address: facts?.address ?? null,
+            star_rating: facts?.star_rating ?? null,
+            images: images.length ? images : result.hotel.images,
           }
         : null,
+      static: facts,
       error: result.call.error,
     });
   } catch (caught) {

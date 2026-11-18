@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { etgValidationDetail, newPartnerOrderId } from "./ratehawk/client";
 import { loadRatehawkConfig, RatehawkConfigError } from "./ratehawk/config";
-import { collectImageUrls, formatUtcInParis, mealLabel, metapolicyLines, partitionTaxes, penaltyLines, preferHotelImages, rgExtEqual } from "./ratehawk/display";
-import { bookingUser, bookingUserIp, guestsPayload, validateBookingGuests, validateStay, validateUserPhone, validPersonName } from "./ratehawk/limits";
+import { collectImageUrls, formatApiDeadline, mealLabel, metapolicyLines, partitionTaxes, penaltyLines, preferHotelImages, publicHotelName, rgExtEqual, taxLabel } from "./ratehawk/display";
+import { assembleFinishGuests, bookingUser, bookingUserIp, guestsPayload, validateBookingGuests, validateStay, validateUserPhone, validPersonName } from "./ratehawk/limits";
 import {
   applyCutoff,
   decideBookingFinish,
@@ -158,18 +158,54 @@ test("le repas n’est jamais amélioré et les taxes exclues restent à part", 
   assert.equal(formPriceNeedsAcceptance(100, 110, true), false);
 });
 
-test("les pénalités UTC s’affichent à l’heure de Paris", () => {
+test("les pénalités restent à l’heure renvoyée, en UTC, et les conditions se lisent", () => {
   const lines = penaltyLines(
-    [{ start_at: null, end_at: "2025-10-21T08:59:00", amount_show: "0.00" }],
+    [{ start_at: null, end_at: "2025-10-21T08:59:00", amount_show: "0.00", amount_charge: "0.00" }],
     "2025-10-21T08:59:00",
-    "EUR"
+    "EUR",
+    "USD"
   );
-  assert.match(lines[0].text, /10:59/);
-  assert.match(lines[0].text, /heure de Paris/);
-  assert.match(formatUtcInParis("2025-10-21T08:59:00") || "", /10:59/);
+  assert.match(lines[0].text, /2025-10-21 08:59:00 UTC/);
+  assert.doesNotMatch(lines[0].text, /Paris|10:59/);
+  assert.equal(formatApiDeadline("2025-10-21T08:59:00"), "2025-10-21 08:59:00 UTC");
+  assert.equal(formatApiDeadline("2025-10-21T08:59:00Z"), "2025-10-21 08:59:00 UTC");
+  assert.equal(formatApiDeadline("2025-10-21T08:59:00+00:00"), "2025-10-21 08:59:00 +00:00");
   assert.equal(rgExtEqual({ class: 3, quality: 2, bedding: 3 }, { class: 3, quality: 2, bedding: 3 }), true);
   assert.equal(rgExtEqual({ class: 3, quality: 2 }, { class: 3, quality: 1 }), false);
-  assert.deepEqual(metapolicyLines({ pets: "no" }, "<b>Passeport</b> requis"), ["pets : no", "Passeport requis"]);
+  assert.deepEqual(
+    metapolicyLines(
+      {
+        parking: [{ inclusion: "not_included", price: "10", currency: "USD", price_unit: "per_car_per_night" }],
+        internet: [],
+        visa: { visa_support: "unspecified" },
+      },
+      "<ul><li><b>Passeport</b> requis</li></ul>"
+    ),
+    ["Parking : non inclus, 10 USD par voiture et par nuit.", "Passeport requis"]
+  );
+  assert.equal(taxLabel("city_tax"), "Taxe de séjour");
+  assert.equal(taxLabel("resort_fee"), "Frais de resort");
+  assert.equal(publicHotelName(null, "conrad_los_angeles", 10004834), "Hôtel");
+  assert.equal(publicHotelName("Conrad Los Angeles", "conrad_los_angeles", 10004834), "Conrad Los Angeles");
+});
+
+test("un enfant sans nom ne part pas, un nom incomplet est refusé tout de suite", () => {
+  const searched = [{ adults: 2, children: [3, 5] }];
+  const names: Record<string, string> = { "0-0-first": "Ada", "0-0-last": "Martin" };
+  const read = (room: number, person: number, field: "first" | "last") => names[`${room}-${person}-${field}`] || "";
+  const omitted = assembleFinishGuests(searched, read);
+  assert.equal(omitted.ok, true);
+  if (omitted.ok) assert.deepEqual(omitted.rooms, [{ guests: [{ first_name: "Ada", last_name: "Martin" }] }]);
+  names["0-1-first"] = "Lina";
+  const partial = assembleFinishGuests(searched, read);
+  assert.equal(partial.ok, false);
+  names["0-1-last"] = "Martin";
+  const named = assembleFinishGuests(searched, read);
+  assert.equal(named.ok, true);
+  if (named.ok) assert.equal(named.rooms[0].guests.length, 2);
+  names["0-0-first"] = "Test";
+  const fake = assembleFinishGuests(searched, read);
+  assert.equal(fake.ok, false);
 });
 
 test("le formulaire régénère l’identifiant puis abandonne au dixième essai", () => {
@@ -278,6 +314,17 @@ test("l’identifiant de scénario survit à une régénération, les environnem
     RatehawkConfigError
   );
   assert.equal(loadRatehawkConfig({ RATEHAWK_MARGIN_PERCENT: "5", RATEHAWK_PRICE_INCREASE_PERCENT: "10" }).marginPercent, 12);
+  const fixed = loadRatehawkConfig({
+    RATEHAWK_ENV: "sandbox",
+    RATEHAWK_KEY_ID: "key",
+    RATEHAWK_API_KEY: "secret",
+    RATEHAWK_PAYMENT_TYPE: "hotel",
+    RATEHAWK_SEARCH_TIMEOUT_SECONDS: "5",
+    RATEHAWK_BOOKING_CUTOFF_SECONDS: "60",
+  });
+  assert.equal(fixed.paymentType, "deposit");
+  assert.equal(fixed.searchTimeoutSeconds, 30);
+  assert.equal(fixed.bookingCutoffSeconds, 180);
 });
 
 test("les secrets sortent du journal, hotelpage et prebook ne sont pas un cache", () => {

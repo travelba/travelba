@@ -43,11 +43,9 @@ Full table: [workflow.md](./workflow.md).
 
 ## Payment types
 
-Developed and selected by default: **`deposit`** (B2B, partner deposit, net).
+Developed and used: **`deposit` only** (B2B, partner deposit, net). A `hotel` or `now` option is not shown and is refused if it is the only payment type on the form. Finish copies `type: deposit`, `amount`, and `currency_code` from that booking-form entry. `RATEHAWK_PAYMENT_TYPE=hotel` is ignored.
 
-`hotel` can be selected with `RATEHAWK_PAYMENT_TYPE=hotel` when that type is on the contract. Finish copies `type`, `amount`, and `currency_code` from the booking-form `payment_types` entry.
-
-`now` is not used for certification. If the form requires card data or the type is `now`, the booking fails closed. No PAN or CVC is collected. Sandbox does not support card payment.
+`now` is not used. If the form requires card data, the booking fails closed. No PAN or CVC is collected. Sandbox does not support card payment.
 
 ## RPM estimates
 
@@ -60,6 +58,13 @@ Luxury desk, a small number of staff, no public metasearch. Figures are requests
 | `/api/b2b/v3/search/serp/geo/` | 10 |
 | `/api/b2b/v3/search/hp/` | 60 |
 | `/api/b2b/v3/hotel/prebook/` | 30 |
+
+These two figures are the capacity we ask ETG to allow (`RATEHAWK_REQUESTED_RPM` in `lib/crm/ratehawk/limits.ts`). They are not a limiter in the application, and nothing fans the calls out.
+
+- `/search/hp`: one request each time an agent opens a hotel. No cache, no loop.
+- `/hotel/prebook`: one request each time an agent clicks Pré-réserver. No retry loop.
+
+A few people work the desk at once. 60 and 30 are headroom for that, not measured traffic and not a metasearch. Booking form, finish, and status stay one flow at a time (status about every 5 seconds, client poll 15 seconds, hard stop 180 seconds).
 | `/api/b2b/v3/search/serp/prebook/` or `/hotel` SERP prebook | **0 — not called** |
 
 Booking form, finish, finish/status, cancel, and order/info are low volume (one booking flow at a time per agent, status every 5 seconds for at most 180 seconds). Content calls are one cron a day, not search traffic.
@@ -105,12 +110,17 @@ Yes. Images and amenities are shown when the rate `rg_ext` equals the static roo
 
 **Multiroom.** Yes, same room type only. One hotelpage rate (one `book_hash`) covers every room of the search, up to 9. Different room types in one booking are not offered.
 
-**Dynamic search timeout.** Yes. We send integer `timeout`.
+**Dynamic search timeout.** No. Both values are 30 seconds, so the request `timeout` is fixed at **30** (`SEARCH_TIMEOUT_SECONDS`). It is not read from the environment and it does not move between calls. The HTTP client waits 35 seconds so it does not cut ETG’s 30 seconds short.
 
 - Expected search timeout: **30 seconds**.
 - Maximum search timeout: **30 seconds**.
 
-**Final price.** **`show_amount`** (requested currency, default EUR). The form’s `payment_types.amount` is what finish sends back as the charge. Excluded taxes are shown separately and are not added to the price.
+**Final price.** Both numbers from the same `payment_types` entry are shown, copied as returned:
+
+- `show_amount` + `show_currency_code` — display currency (request `currency`, default EUR).
+- `amount` + `currency_code` — the deposit debit in the contract currency (USD on this contract).
+
+We do not convert one into the other. ETG’s `show_amount` is not a market-rate conversion of `amount` (`commission_info.show` vs `commission_info.charge`), which is why a converted euro figure did not match the logged dollar amount. The confirmation shows the `amount` that finish sends and that the log records. The agency price is `show_amount` plus at least 12%, labeled apart, and is not the deposit. Excluded taxes stay separate and are not added. Tax codes are shown in French (`city_tax` → Taxe de séjour). Each rate also shows nights, rooms, and guests.
 
 **Commission.** On the **partner’s** side. At least 12% of the net `show_amount` on every accommodation. `RATEHAWK_MARGIN_PERCENT` below 12 is raised to 12.
 
@@ -127,8 +137,8 @@ Status OK in **Check booking process** (`/order/booking/finish/status/`) only. O
 
 **Booking cut-off.** ETG has no dynamic booking timeout. Please set the cut-off on the key to match:
 
-- Expected booking timeout: **60 seconds**.
-- Maximum booking timeout: **180 seconds** (`RATEHAWK_BOOKING_CUTOFF_SECONDS`, allowed range 30–300). After that we show Failed with reason `booking_cutoff` and we stop calling status.
+- Expected booking timeout: **120 seconds** (`BOOKING_EXPECTED_SECONDS`). We do not stop at 120.
+- Maximum booking timeout: **180 seconds** (`BOOKING_MAX_SECONDS`). After that we show Failed with reason `booking_cutoff` and we stop calling status. An environment value cannot shorten this.
 
 **Errors and statuses.** Tables for finish and finish/status, plus form and cancel: [errors.md](./errors.md).
 

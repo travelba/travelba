@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { RatehawkConfig } from "./ratehawk/config";
 import { parseRatehawkLookup, RatehawkLookupError, runRatehawkLookup } from "./ratehawk/lookup";
-import { normalizeHotels, pickCompletion, presentHotels, type HotelCard } from "./ratehawk/search";
+import { normalizeHotels, pickCompletion, presentHotels, withStoredFacts, type HotelCard } from "./ratehawk/search";
 
 const today = new Date("2026-11-11T12:00:00Z");
 
@@ -41,6 +41,8 @@ function hotel(hid: number, hash = "h-1", amount = "100.00"): HotelCard {
   return {
     hid,
     name: `live-${hid}`,
+    address: null,
+    star_rating: null,
     region_id: 1,
     images: ["https://cdn.worldota.net/t/640x400/live.jpeg"],
     rates: [
@@ -57,6 +59,7 @@ function hotel(hid: number, hash = "h-1", amount = "100.00"): HotelCard {
         sell_amount: hash ? "112.00" : null,
         needs_card: false,
         excluded_taxes: [],
+        taxes: [],
         penalties: [],
         free_cancellation_before: hash ? "2026-12-01T10:00:00" : null,
         rg_ext: null,
@@ -144,6 +147,8 @@ test("la fiche compacte sépare le net et la vente, et reprend images_ext", () =
     net: "100.00",
     vente: "112.00",
     devise: "EUR",
+    debit: "100.00",
+    devise_debit: "EUR",
     remboursable: true,
     annulation_gratuite_avant: "2026-12-01T12:00:00",
     paiement: "deposit",
@@ -282,4 +287,51 @@ test("une recherche incomplète ou une fiche sans hid ne part pas", async () => 
   });
   assert.equal(partial.hotels[0].tarifs[0].hash, "h-12");
   assert.equal(partial.hotels[0].tarifs[0].paiement, "deposit");
+});
+
+test("le slug et le hid ne deviennent pas le nom, le paiement hôtel est écarté", () => {
+  const cards = normalizeHotels(
+    {
+      hotels: [
+        {
+          hid: 10004834,
+          id: "conrad_los_angeles",
+          rates: [
+            {
+              room_name: "King",
+              meal: "breakfast",
+              payment_options: {
+                payment_types: [
+                  { type: "hotel", amount: "10.00", currency_code: "USD", show_amount: "9.00", show_currency_code: "EUR" },
+                  {
+                    type: "deposit",
+                    amount: "2492.00",
+                    currency_code: "USD",
+                    show_amount: "2200.00",
+                    show_currency_code: "EUR",
+                    tax_data: { taxes: [{ name: "city_tax", included_by_supplier: false, amount: "12.50", currency_code: "USD" }] },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    },
+    { paymentType: "hotel", marginPercent: 12 }
+  );
+  assert.equal(cards[0].name, "Hôtel");
+  assert.equal(cards[0].rates.length, 1);
+  assert.equal(cards[0].rates[0].payment_type, "deposit");
+  assert.equal(cards[0].rates[0].amount, "2492.00");
+  assert.equal(cards[0].rates[0].currency_code, "USD");
+  assert.equal(cards[0].rates[0].show_amount, "2200.00");
+  assert.equal(cards[0].rates[0].taxes[0].label, "Taxe de séjour");
+  const named = withStoredFacts(cards, [
+    { hid: 10004834, name: "Conrad Los Angeles", address: "100 South Grand Avenue", star_rating: 5, images: ["https://cdn.worldota.net/t/{size}/content/conrad.jpeg"] },
+  ]);
+  assert.equal(named[0].name, "Conrad Los Angeles");
+  assert.equal(named[0].address, "100 South Grand Avenue");
+  assert.equal(named[0].star_rating, 5);
+  assert.equal(named[0].images[0], "https://cdn.worldota.net/t/640x400/content/conrad.jpeg");
 });
