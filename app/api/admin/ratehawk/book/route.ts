@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       userIp: requestIp(request),
       phone: body.phone || "",
       partnerOrderId: body.partner_order_id || null,
-    });
+    }, auth.supabase);
     return ratehawkJson(result, result.ok ? 200 : result.status === "price_increase" ? 409 : 422);
   } catch (caught) {
     const message = caught instanceof RatehawkConfigError ? caught.message : "La réservation Ratehawk a échoué.";
