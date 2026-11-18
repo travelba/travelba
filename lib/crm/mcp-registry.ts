@@ -48,6 +48,7 @@ import {
   prepareCarnetMessage,
   updateHotel,
   updateVol,
+  validerLecture,
 } from "@/lib/crm/mcp-trip";
 import { inviteClientAccess, setCompanyRole, updateCompanionIdentity, updateHolderProfile } from "@/lib/crm/mcp-account";
 import { updateVoyageur } from "@/lib/crm/traveler-update";
@@ -141,7 +142,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 142;
+export const MCP_TOOL_CAP = 143;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1530,7 +1531,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_hotel",
     write: true,
     description:
-      "Corrige une carte hôtel déjà au dossier : hôtel, ville, dates, chambres, régime, confirmations, voyageurs, coût net, conditions d’annulation, avantages, notes. Le prix de vente ne change que si prix est indiqué, y compris égal au coût net, sans marge. Un coût net en devise (MAD) garde son équivalent en euros ; aucun taux n’est inventé. reference_le remplit la carte depuis la réservation Little Emperors, sans changer le prix de vente. Le séjour caché ne débite pas. Aucun message.",
+      "Corrige une carte hôtel déjà au dossier : hôtel, ville, dates, chambres, régime, confirmations, voyageurs, coût net, conditions d’annulation, avantages, notes. Le prix de vente ne change que si prix est indiqué, y compris égal au coût net, sans marge. Un coût net en devise (MAD) garde son équivalent en euros ; aucun taux n’est inventé. reference_le remplit la carte depuis la réservation Little Emperors, sans changer le prix de vente. effacer_avertissement retire la lecture douteuse (needs_review et review_reason) sans remplacer les autres détails. La visibilité ne change pas. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -1583,6 +1584,10 @@ export const MCP_TOOLS: ToolDef[] = [
         .max(80)
         .optional()
         .describe("Référence Little Emperors. Remplit la carte depuis cette réservation, sans changer le prix de vente"),
+      effacer_avertissement: z
+        .boolean()
+        .optional()
+        .describe("Retire la lecture douteuse de cette carte, sans remplacer les autres détails et sans changer la visibilité"),
     },
     run: (args) => updateHotel(args),
   },
@@ -2127,7 +2132,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_carte",
     write: true,
     description:
-      "Corrige une carte déjà au dossier (carte_id de fiche_dossier) : titre, fournisseur, confirmation, dates, prix, détails, categorie_mb3m. categorie_mb3m vaut automatique ou divers_terrestres. divers_terrestres facture cette ligne en activité 22, fournisseur DIVERS TERRESTRE, et la sort de la retenue billetterie. Le vol reste un vol : itinéraire, enregistrement, carte d’embarquement. fiche_dossier.cartes d’un vol porte categorie_mb3m. Ne change pas la visibilité et n’envoie rien. Le séjour caché ne débite pas. Vol et hôtel détaillés : modifier_vol et modifier_hotel.",
+      "Corrige une carte déjà au dossier (carte_id de fiche_dossier) : titre, fournisseur, confirmation, dates, prix, détails, categorie_mb3m. categorie_mb3m vaut automatique ou divers_terrestres. divers_terrestres facture cette ligne en activité 22, fournisseur DIVERS TERRESTRE, et la sort de la retenue billetterie. Le vol reste un vol : itinéraire, enregistrement, carte d’embarquement. fiche_dossier.cartes d’un vol porte categorie_mb3m. effacer_avertissement retire la lecture douteuse sans remplacer les autres détails : un champ details fourni en même temps est fusionné, pas une réécriture. Ne change pas la visibilité et n’envoie rien. Le séjour caché ne débite pas. Vol et hôtel détaillés : modifier_vol et modifier_hotel.",
     input: {
       dossier_id: z.string().trim().max(80).optional(),
       reference: z.string().trim().max(80).optional(),
@@ -2143,8 +2148,41 @@ export const MCP_TOOLS: ToolDef[] = [
         .optional()
         .describe("Facture MB3M : automatique, ou divers terrestres (activité 22)"),
       details: z.record(z.string(), z.unknown()).optional(),
+      effacer_avertissement: z
+        .boolean()
+        .optional()
+        .describe("Retire la lecture douteuse. Les autres détails restent. Un objet details est fusionné, pas une réécriture"),
     },
     run: (args) => modifierCarte(args),
+  },
+  {
+    name: "valider_lecture",
+    write: true,
+    selfJournal: true,
+    description:
+      "Lève la lecture douteuse, comme Vérifié et Tout valider. Sans carte_id, ou avec tout true : toutes les cartes marquées du dossier. carte_id seul : cette carte. needs_review et review_reason partent. Les autres détails restent. La visibilité ne change pas, la carte reste cachée jusqu’à Montrer. Aucun message. La réponse donne les cartes vérifiées et resume pour le journal.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
+      carte_id: z.string().trim().max(80).optional().describe("Une carte. Omis, ou tout true : toutes les cartes marquées"),
+      tout: z.boolean().optional().describe("true : toutes les cartes marquées du dossier, même si carte_id est indiqué"),
+    },
+    run: async (args) => {
+      const result = await validerLecture(args);
+      if (result.cartes.length) {
+        const access = currentMcpAccess();
+        await recordAgencyJournal({
+          staffId: access.staff?.id || null,
+          action: "update",
+          entityType: "dossier",
+          entityId: result.dossier_id,
+          summary: result.resume,
+          diff: { cartes: result.cartes.map((row) => ({ id: row.id, titre: row.titre })) },
+          path: "/api/mcp",
+        });
+      }
+      return result;
+    },
   },
   {
     name: "reordonner_cartes",

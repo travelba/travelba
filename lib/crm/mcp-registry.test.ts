@@ -105,6 +105,7 @@ const EXPECTED = [
   "cacher_carnet",
   "ajouter_carte",
   "modifier_carte",
+  "valider_lecture",
   "reordonner_cartes",
   "deposer_piece_dossier",
   "retirer_piece_dossier",
@@ -220,6 +221,7 @@ const WRITE_TOOLS = [
   "cacher_carnet",
   "ajouter_carte",
   "modifier_carte",
+  "valider_lecture",
   "reordonner_cartes",
   "deposer_piece_dossier",
   "retirer_piece_dossier",
@@ -316,6 +318,13 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /card_config/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "comptabilite_sortie")?.description || "", /sortie_id seul/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /effacer_avertissement/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /effacer_avertissement/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_carte")?.description || "", /effacer_avertissement/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_carte")?.description || "", /fusionné/);
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "valider_lecture")?.write, true);
+  assert.equal(MCP_TOOLS.find((tool) => tool.name === "valider_lecture")?.selfJournal, true);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "valider_lecture")?.description || "", /Tout valider/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "valider_lecture")?.description || "", /Aucun message/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_voyageur")?.description || "", /date de naissance/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_voyageur")?.description || "", /compagnon_id/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_voyageur")?.description || "", /voyageur_id/);

@@ -27,14 +27,14 @@ import {
 import { flightCountsInStay } from "@/lib/crm/bookings";
 import { groupAttachedEmails } from "@/lib/crm/email-duplicates";
 import { bookingStepAnchor } from "@/lib/crm/booking-tabs";
-import { DRAFT_STEP_PREFIX, stepCommitPlan, type StepSnapshot } from "@/lib/crm/step-draft";
+import { DRAFT_STEP_PREFIX, isDraftStepId, stepCommitPlan, type StepSnapshot } from "@/lib/crm/step-draft";
 import { formatMoney } from "@/lib/crm/money";
 import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
 import { localTodayIso } from "@/lib/crm/dates";
 import { hotelStayFromTrip } from "@/lib/crm/hotel-search";
 import { flightCheckinViews, type StoredFlightCheckin } from "@/lib/crm/online-checkin";
 import { OnlineCheckinBadge } from "@/components/admin/OnlineCheckinMark";
-import { reviewDoubts } from "@/lib/crm/review-doubt";
+import { hasReviewMark, withoutReviewMark, reviewDoubts } from "@/lib/crm/review-doubt";
 import { Icon } from "@/components/crm/icons";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
 import { documentMoney, leStayAmount, printedStayAmount } from "@/lib/crm/hotel-arrival";
@@ -274,6 +274,8 @@ export function BookingItemsPanel({
   reference = null,
   onLiveItems,
   onStepsPending,
+  onVerify,
+  clearedReviewIds = [],
   checkins = [],
   tripStart = null,
   tripEnd = null,
@@ -318,6 +320,10 @@ export function BookingItemsPanel({
   onLiveItems?: (items: CrmBookingItem[]) => void;
   /** Une étape retirée ou modifiée attend l’enregistrement du séjour. */
   onStepsPending?: (pending: boolean) => void;
+  /** Lève needs_review. L’appelant écrit le journal et renvoie les identifiants vérifiés. */
+  onVerify?: (ids: string[]) => Promise<boolean>;
+  /** Identifiants déjà vérifiés (bandeau), pour repeindre la carte sans attendre le rechargement. */
+  clearedReviewIds?: readonly string[];
   checkins?: StoredFlightCheckin[];
 }) {
   const router = useRouter();
@@ -370,11 +376,16 @@ export function BookingItemsPanel({
     document.getElementById(`hotel-desk-${openHotelItemId}`)?.scrollIntoView({ block: "center" });
   }, [deskFor, openHotelItemId]);
 
+  const [offerVerify, setOfferVerify] = useState(false);
+  const [markVerified, setMarkVerified] = useState(true);
+
   function startEdit(item: CrmBookingItem) {
     setEditingId(item.id);
     const next = toDraft(item);
     if (clientSettlesStay && !isExtraItemKind(item.kind)) next.include_in_ledger = false;
     setDraft(next);
+    setOfferVerify(hasReviewMark(item.details));
+    setMarkVerified(true);
     setError(null);
   }
 
@@ -386,6 +397,7 @@ export function BookingItemsPanel({
     hotelDatesRef.current = { start_at: stay.checkIn, end_at: stay.checkOut };
     setEditingId("new");
     setDraft({ ...emptyDraft(), ...hotelDatesRef.current });
+    setOfferVerify(false);
     setError(null);
   }
 
@@ -421,6 +433,7 @@ export function BookingItemsPanel({
       include_in_ledger: false,
       details: { vip_service: "arrival", passenger_count: 1, bag_count: 0, client_info: "" },
     });
+    setOfferVerify(false);
     setError(null);
   }
 
@@ -532,6 +545,11 @@ export function BookingItemsPanel({
     onLiveItemsRef.current?.(next);
   }, [rows, editingId, draft, applyDraftToRows]);
 
+  function draftReady(source: ItemDraft, verify: boolean): ItemDraft {
+    if (!verify) return source;
+    return { ...source, details: withoutReviewMark(source.details) };
+  }
+
   function keepDraft() {
     if (!editingId) return;
     const ready = prepareStepDraft(draft, rowsRef.current);
@@ -539,33 +557,49 @@ export function BookingItemsPanel({
       setError(ready.error);
       return;
     }
-    const next = applyDraftToRows(rowsRef.current, editingId, ready.draft);
+    const verify = offerVerify && markVerified && !isDraftStepId(editingId);
+    const next = applyDraftToRows(rowsRef.current, editingId, draftReady(ready.draft, verify));
     if (!next) {
       setError("Titre requis.");
       return;
     }
     setError(null);
     setEditingId(null);
+    if (verify) setOfferVerify(false);
     remember(next);
+    if (verify && onVerify) {
+      void onVerify([editingId]).then((ok) => {
+        if (!ok) setError("La vérification n’a pas été enregistrée. Enregistrer, en haut, l’écrit.");
+      });
+    }
   }
 
   async function flushSteps() {
     let current = rowsRef.current;
     const editing = editingRef.current;
+    let verifyId: string | null = null;
     if (editing) {
       const ready = prepareStepDraft(draftRef.current, current);
       if (!ready.ok) {
         setError(ready.error);
         return false;
       }
-      const next = applyDraftToRows(current, editing, ready.draft);
+      const verify = offerVerifyRef.current && markVerifiedRef.current && !isDraftStepId(editing);
+      if (verify) verifyId = editing;
+      const next = applyDraftToRows(current, editing, draftReady(ready.draft, verify));
       if (!next) {
         setError("Titre requis.");
         return false;
       }
       current = next;
       setEditingId(null);
+      if (verify) setOfferVerify(false);
       remember(next);
+    }
+    if (verifyId && onVerifyRef.current) {
+      const ok = await onVerifyRef.current([verifyId]);
+      if (!ok) setError("La vérification n’a pas été enregistrée. Enregistrer, en haut, l’écrit.");
+      current = rowsRef.current;
     }
     const plan = stepCommitPlan(baselineRef.current.map(toSnapshot), stayCards(current).map(toSnapshot));
     if (!plan.pending) return true;
@@ -606,14 +640,59 @@ export function BookingItemsPanel({
 
   const editingRef = useRef(editingId);
   const draftRef = useRef(draft);
+  const offerVerifyRef = useRef(offerVerify);
+  const markVerifiedRef = useRef(markVerified);
+  const onVerifyRef = useRef(onVerify);
   const saveDraftRef = useRef(flushSteps);
   const onBindRef = useRef(onBindDraftSave);
   useEffect(() => {
     editingRef.current = editingId;
     draftRef.current = draft;
+    offerVerifyRef.current = offerVerify;
+    markVerifiedRef.current = markVerified;
+    onVerifyRef.current = onVerify;
     saveDraftRef.current = flushSteps;
     onBindRef.current = onBindDraftSave;
   });
+
+  function paintVerified(ids: readonly string[]) {
+    if (!ids.length) return;
+    const set = new Set(ids);
+    const strip = (item: CrmBookingItem) =>
+      set.has(item.id) && hasReviewMark(item.details) ? { ...item, details: withoutReviewMark(item.details) } : item;
+    baselineRef.current = baselineRef.current.map(strip);
+    const next = rowsRef.current.map(strip);
+    if (editingRef.current && set.has(editingRef.current)) {
+      setDraft((current) => ({ ...current, details: withoutReviewMark(current.details) }));
+      setOfferVerify(false);
+    }
+    const plan = stepCommitPlan(baselineRef.current.map(toSnapshot), stayCards(next).map(toSnapshot));
+    pendingRef.current = plan.pending;
+    setPending(plan.pending);
+    setPendingIds(new Set([...plan.created, ...plan.updated].map((step) => step.id)));
+    rowsRef.current = next;
+    setRows(next);
+  }
+
+  const clearedKey = clearedReviewIds.join("\0");
+  const seenClear = useRef("");
+  useEffect(() => {
+    if (!clearedKey || clearedKey === seenClear.current) return;
+    seenClear.current = clearedKey;
+    paintVerified(clearedKey.split("\0"));
+  }, [clearedKey]);
+
+  async function verifyIds(ids: string[]) {
+    if (!ids.length || !onVerify || busy) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    setMenuFor(null);
+    const ok = await onVerify(ids);
+    setBusy(false);
+    if (!ok) setError("La vérification n’a pas été enregistrée.");
+    else setNotice(ids.length > 1 ? "Cartes vérifiées." : "Carte vérifiée.");
+  }
   useEffect(() => {
     onBindRef.current?.(() => saveDraftRef.current());
     return () => onBindRef.current?.(null);
@@ -778,6 +857,16 @@ export function BookingItemsPanel({
                   ticket={item.kind === "flight"}
                 />
                 )}
+                {offerVerify ? (
+                  <label className="flex items-center gap-2 text-sm font-semibold text-[var(--admin-navy)]">
+                    <input
+                      type="checkbox"
+                      checked={markVerified}
+                      onChange={(event) => setMarkVerified(event.target.checked)}
+                    />
+                    Marquer comme vérifiée
+                  </label>
+                ) : null}
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -910,6 +999,16 @@ export function BookingItemsPanel({
                 </div>
                 </div>
                 <div className="relative flex items-center gap-2 lg:shrink-0">
+                  {doubts.length ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void verifyIds([item.id])}
+                      className="admin-tap inline-flex h-11 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-full bg-[var(--admin-navy)] px-3 text-xs font-semibold text-white disabled:opacity-40 lg:h-8 lg:flex-none"
+                    >
+                      Vérifié
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="admin-tap inline-flex h-11 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-full border border-[var(--border)] bg-white px-3 text-xs font-semibold text-[var(--admin-navy)] lg:h-8 lg:flex-none"
@@ -927,6 +1026,11 @@ export function BookingItemsPanel({
                   </button>
                   {menuFor === item.id ? (
                     <div className="absolute right-0 top-full z-30 mt-1 flex w-60 max-w-[calc(100vw-2.5rem)] flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white p-2 shadow-lg">
+                      {doubts.length ? (
+                        <button type="button" className={flatBtn} disabled={busy} onClick={() => void verifyIds([item.id])}>
+                          Vérifié
+                        </button>
+                      ) : null}
                       {!retired ? (
                       <button
                         type="button"

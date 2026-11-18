@@ -576,6 +576,21 @@ export function BookingEditor({
     return moneyFieldsEqual(serverItems, merged) ? serverItems : merged;
   }, [held, serverItems]);
   const router = useRouter();
+  const [clearedReview, setClearedReview] = useState<string[]>([]);
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  async function verifyCards(ids: string[] | null) {
+    setVerifyBusy(true);
+    const result = await adminAction<{ cartes?: { id: string }[] }>(`/api/admin/bookings/${booking.id}/verifier`, {
+      method: "POST",
+      body: ids ? { carte_ids: ids } : { tout: true },
+    });
+    setVerifyBusy(false);
+    if (!result.ok) return false;
+    const cleared = (result.data?.cartes || []).map((row) => row.id);
+    if (cleared.length) setClearedReview((current) => [...new Set([...current, ...cleared])]);
+    router.refresh();
+    return true;
+  }
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
@@ -677,6 +692,7 @@ export function BookingEditor({
     [booking.currency, booking.id]
   );
   const reviewRows = items.flatMap((item) => {
+    if (clearedReview.includes(item.id)) return [];
     const reasons = reviewDoubts(item);
     return reasons.length ? [{ key: item.id, label: reviewStepLabel(item), reasons }] : [];
   });
@@ -1712,7 +1728,15 @@ export function BookingEditor({
             Dossier archivé. Le client ne le voit plus. Réactivez-le pour le remettre dans la liste et au grand livre.
           </p>
         ) : null}
-        <ReviewDoubtList rows={reviewRows} />
+        <ReviewDoubtList
+          rows={reviewRows}
+          busy={verifyBusy}
+          onValidateAll={() => {
+            void verifyCards(null).then((ok) => {
+              if (!ok) setFlash("La vérification n’a pas été enregistrée.");
+            });
+          }}
+        />
         {flash ? <p className="text-sm text-[var(--admin-navy)]">{flash}</p> : null}
         <IssuesList issues={issues} />
       </header>
@@ -2291,6 +2315,8 @@ export function BookingEditor({
           saveOpenCard.current = save;
         }}
         onStepsPending={setStepsPending}
+        clearedReviewIds={clearedReview}
+        onVerify={(ids) => verifyCards(ids)}
       />
       </div>
       <button

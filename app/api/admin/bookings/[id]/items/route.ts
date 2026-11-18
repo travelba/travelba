@@ -13,7 +13,9 @@ import {
   parseSortOrder,
   refreshBookingLedger,
 } from "@/lib/crm/bookings";
+import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { noteCarnetAdditions, type CarnetAdditionCard } from "@/lib/crm/carnet-addition";
+import { verifiedJournalSummary } from "@/lib/crm/review-doubt";
 import { detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
 import { parseItemDetails } from "@/lib/crm/ingest-types";
 import { readMb3mActivityOverride, withMb3mActivity } from "@/lib/crm/mb3m-activity";
@@ -197,7 +199,7 @@ async function updateBookingItem(
   if (!itemId) return { error: jsonError("id requis") };
   const { data: current, error: currentError } = await supabase
     .from("crm_booking_items")
-    .select("kind, amount, details, lifecycle, supplier, confirmation_ref, start_at, end_at, visible_to_client")
+    .select("kind, title, amount, details, lifecycle, supplier, confirmation_ref, start_at, end_at, visible_to_client")
     .eq("id", itemId)
     .eq("booking_id", bookingId)
     .maybeSingle();
@@ -309,7 +311,28 @@ async function updateBookingItem(
     "visible_to_client" in body && Boolean(body.visible_to_client) && wasHidden && countsAsCarnetCard(nextKind)
       ? { id: itemId, kind: nextKind }
       : null;
-  return { item: data, shown };
+  const before =
+    current.details && typeof current.details === "object" ? (current.details as Record<string, unknown>) : {};
+  const after =
+    patch.details && typeof patch.details === "object" ? (patch.details as Record<string, unknown>) : null;
+  const verified =
+    before.needs_review === true && after && after.needs_review !== true
+      ? String(("title" in patch ? patch.title : current.title) || "Étape")
+      : null;
+  return { item: data, shown, verified };
+}
+
+async function journalVerifiedCards(bookingId: string, staffId: string, titles: string[]) {
+  const names = titles.map((title) => title.trim()).filter(Boolean);
+  if (!names.length) return;
+  await recordAgencyJournal({
+    staffId,
+    action: "update",
+    entityType: "dossier",
+    entityId: bookingId,
+    summary: verifiedJournalSummary(names),
+    path: `/api/admin/bookings/${bookingId}/items`,
+  });
 }
 
 /** Modifications et suppressions d’étapes : une seule écriture, au moment d’enregistrer le séjour. */
@@ -317,9 +340,11 @@ async function commitStaySteps(
   supabase: SupabaseClient,
   bookingId: string,
   body: Record<string, unknown>,
-  signatory?: string
+  signatory?: string,
+  staffId?: string | null
 ) {
   const shown: CarnetAdditionCard[] = [];
+  const verified: string[] = [];
   const deleted = Array.isArray(body.deleted)
     ? body.deleted.map((value) => String(value || "")).filter(Boolean)
     : [];
@@ -335,6 +360,7 @@ async function commitStaySteps(
     const failed = await updateBookingItem(supabase, bookingId, item as Record<string, unknown>);
     if ("error" in failed) return failed.error;
     if (failed.shown) shown.push(failed.shown);
+    if (failed.verified) verified.push(failed.verified);
   }
   if (deleted.length) {
     const { error } = await supabase
@@ -368,6 +394,7 @@ async function commitStaySteps(
   }
   await refreshBookingDerived(bookingId, { signatory });
   await noteCarnetAdditions(supabase, bookingId, shown);
+  if (staffId) await journalVerifiedCards(bookingId, staffId, verified);
   return NextResponse.json({
     ok: true,
     ids: Object.fromEntries(idMap),
@@ -381,7 +408,7 @@ export async function POST(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const body = await request.json().catch(() => null);
   if (body?.commit === true) {
-    const saved = await commitStaySteps(auth.supabase, id, body, hotelSignatoryName(auth.staff.full_name));
+    const saved = await commitStaySteps(auth.supabase, id, body, hotelSignatoryName(auth.staff.full_name), auth.staff.id);
     schedulePendingFlightRematch();
     return saved;
   }
@@ -416,6 +443,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const updated = await updateBookingItem(auth.supabase, bookingId, body || {});
   if ("error" in updated) return updated.error;
   if (updated.shown) await noteCarnetAdditions(auth.supabase, bookingId, [updated.shown]);
+  if (updated.verified) await journalVerifiedCards(bookingId, auth.staff.id, [updated.verified]);
   const moved =
     body?.start_at !== undefined || body?.kind !== undefined;
   if (moved) {

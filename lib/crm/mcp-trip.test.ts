@@ -14,6 +14,7 @@ import {
   planSupplierNet,
   updateHotel,
   updateVol,
+  validerLecture,
   buildFlightCard,
   buildHotelCard,
   createDossier,
@@ -1555,6 +1556,83 @@ test("modifier_hotel garde le prix de vente, et l’aligne seulement si prix est
     /n’est pas un hôtel/
   );
   await assert.rejects(() => updateHotel({ dossier_id: dossier.id, carte_id: hotel.id }, client), /Rien à modifier/);
+
+  const marked = db.tables.crm_booking_items.find((item) => item.id === hotel.id);
+  assert.ok(marked);
+  marked.visible_to_client = false;
+  marked.details = {
+    ...(marked.details as Record<string, unknown>),
+    needs_review: true,
+    review_reason: "À vérifier avant de montrer au client.",
+    hotel_name: "La Mamounia",
+  };
+  const clearedHotel = await updateHotel(
+    { dossier_id: dossier.id, carte_id: hotel.id, effacer_avertissement: true },
+    client
+  );
+  assert.equal(clearedHotel.notifie, false);
+  const afterHotel = db.tables.crm_booking_items.find((item) => item.id === hotel.id);
+  assert.equal(afterHotel?.visible_to_client, false);
+  assert.equal((afterHotel?.details as Record<string, unknown>).needs_review, undefined);
+  assert.equal((afterHotel?.details as Record<string, unknown>).review_reason, undefined);
+  assert.equal((afterHotel?.details as Record<string, unknown>).hotel_name, "La Mamounia");
+  assert.equal((afterHotel?.details as Record<string, unknown>).address, "Avenue Bab Jdid");
+});
+
+test("valider_lecture lève toutes les cartes marquées, sans message ni changement de visibilité", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Bordeaux" }, client);
+  const hotel = await addHotel(
+    {
+      dossier_id: dossier.id,
+      nom: "Mondrian",
+      ville: "Bordeaux",
+      arrivee: "2026-11-02",
+      depart: "2026-11-04",
+    },
+    client
+  );
+  const flight = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "Air France",
+      depart_iata: "CDG",
+      arrivee_iata: "BOD",
+      depart: "2026-11-02T09:00",
+      arrivee: "2026-11-02T10:15",
+    },
+    client
+  );
+  for (const id of [hotel.id, flight.id]) {
+    const row = db.tables.crm_booking_items.find((item) => item.id === id);
+    assert.ok(row);
+    row.visible_to_client = id === hotel.id;
+    row.details = {
+      ...(row.details as Record<string, unknown>),
+      needs_review: true,
+      review_reason: "À vérifier avant de montrer au client.",
+      kept: id,
+    };
+  }
+  const done = await validerLecture({ dossier_id: dossier.id, tout: true }, client);
+  assert.equal(done.notifie, false);
+  assert.equal(done.visible_inchangee, true);
+  assert.equal(done.cartes.length, 2);
+  assert.match(done.resume, /^Cartes vérifiées : /);
+  for (const id of [hotel.id, flight.id]) {
+    const row = db.tables.crm_booking_items.find((item) => item.id === id);
+    assert.equal((row?.details as Record<string, unknown>).needs_review, undefined);
+    assert.equal((row?.details as Record<string, unknown>).review_reason, undefined);
+    assert.equal((row?.details as Record<string, unknown>).kept, id);
+  }
+  assert.equal(db.tables.crm_booking_items.find((item) => item.id === hotel.id)?.visible_to_client, true);
+  assert.equal(db.tables.crm_booking_items.find((item) => item.id === flight.id)?.visible_to_client, false);
+  const again = await validerLecture({ dossier_id: dossier.id }, client);
+  assert.equal(again.cartes.length, 0);
+  assert.equal(again.resume, "");
 });
 
 test("492,99 € pour 5 billets reste le total, et le nombre de billets n’est pas obligatoire", async () => {
