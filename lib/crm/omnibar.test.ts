@@ -14,6 +14,7 @@ import {
   foldSearch,
   loadOmnibar,
   withOmnibarCharge,
+  omnibarIsRanked,
   omnibarNeedle,
   omnibarOnKey,
   readOmnibarPayload,
@@ -140,6 +141,7 @@ test("le endpoint ne part pas sous deux signes et passe le texte en paramètre",
         assert.deepEqual(args, { q: "Bensaïd" });
         return {
           data: {
+            v: 2,
             clients: [{ id: clientId, first_name: "Sarah", last_name: "Bensaïd", company_name: "", siret: "" }],
             dossiers: [],
             voyageurs: [],
@@ -151,6 +153,8 @@ test("le endpoint ne part pas sous deux signes et passe le texte en paramètre",
     "Bensaïd"
   );
   assert.equal(hit.clients[0].title, "Sarah Bensaïd");
+  assert.equal(omnibarIsRanked({ v: 2 }), true);
+  assert.equal(omnibarIsRanked({ clients: [] }), false);
 
   await assert.rejects(
     () =>
@@ -223,12 +227,65 @@ test("un lien hors admin est écarté à la lecture", () => {
   assert.equal(hit.clients[0].href, `/admin/clients/${clientId}`);
 });
 
+test("sans la fonction v2, la barre classe les fiches lues", async () => {
+  const hit = await loadOmnibar(
+    {
+      rpc: async () => ({
+        data: { clients: [], dossiers: [], voyageurs: [] },
+        error: null,
+      }),
+      from(table: string) {
+        const rows =
+          table === "crm_customers"
+            ? [
+                { id: clientId, first_name: "Benjamin", last_name: "Albert", company_name: "", email: "", phone: "" },
+                { id: "55555555-5555-4555-8555-555555555555", first_name: "Amin", last_name: "Khiari", company_name: "Bel Air Invest", email: "", phone: "" },
+              ]
+            : table === "crm_bookings"
+              ? [
+                  {
+                    id: bookingId,
+                    reference: "TB-2026-0900",
+                    title: "Seychelles",
+                    destination: "Seychelles",
+                    customer_id: "55555555-5555-4555-8555-555555555555",
+                    start_date: "2026-08-01",
+                    end_date: "2026-08-08",
+                    archived_at: null,
+                  },
+                ]
+              : [];
+        const api = {
+          select() {
+            return api;
+          },
+          limit() {
+            return api;
+          },
+          then(resolve: (value: { data: unknown; error: null }) => void) {
+            resolve({ data: rows, error: null });
+          },
+        };
+        return api;
+      },
+    } as never,
+    "amin"
+  );
+  assert.equal(hit.clients[0]?.title, "Amin Khiari");
+  assert.match(hit.clients[0]?.subtitle || "", /Bel Air Invest/);
+  assert.match(hit.dossiers[0]?.title || "", /TB-2026-0900/);
+});
+
 test("la route staff appelle la fonction, le menu reprend les états des autres champs", () => {
   const route = readFileSync(join(root, "app/api/admin/recherche/route.ts"), "utf8");
   assert.match(route, /requireStaff\(/);
   assert.match(route, /loadOmnibar\(/);
   assert.match(route, /withOmnibarCharge\(/);
   assert.doesNotMatch(route, /\$\{q\}/);
+  const ranked = readFileSync(join(root, "supabase/migrations/20261119143000_omnibar_rank.sql"), "utf8");
+  assert.match(ranked, /crm_private\.is_staff\(\)/);
+  assert.match(ranked, /security invoker/);
+  assert.match(ranked, /'v', 2/);
   const sql = readFileSync(join(root, "supabase/migrations/20261018074306_omnibar_search.sql"), "utf8");
   assert.match(sql, /crm_private\.is_staff\(\)/);
   assert.match(sql, /extensions\.gin_trgm_ops/);
