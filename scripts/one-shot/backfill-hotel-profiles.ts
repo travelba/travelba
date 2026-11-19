@@ -1,7 +1,8 @@
 /**
  * Rattrapage : fiche hôtel pour les cartes actives qui ne sont pas chez Little Emperors,
  * puis champs vides de ces cartes. Une fiche par nom et par ville, ou par nom et
- * site ou adresse quand la ville diffère.
+ * site ou adresse quand la ville diffère. Une carte sans ville est cherchée par le nom
+ * et signalée dans la sortie.
  *
  * Sec par défaut. Rien n’est écrit, Perplexity n’est pas appelé.
  *   npx tsx scripts/one-shot/backfill-hotel-profiles.ts
@@ -11,7 +12,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { fillCardFromProfile, planHotelBackfill, runHotelEnrichment, type HotelBackfillCard } from "../../lib/crm/hotel-enrich";
+import {
+  fillCardFromProfile,
+  hotelBackfillLine,
+  planHotelBackfill,
+  runHotelEnrichment,
+  type HotelBackfillCard,
+} from "../../lib/crm/hotel-enrich";
 
 function loadEnv() {
   if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) return;
@@ -67,7 +74,7 @@ async function main() {
   const plan = planHotelBackfill(hotels, leRows);
   console.log(`${write ? "Écriture" : "Simulation"} : ${plan.length} hôtel${plan.length > 1 ? "s" : ""}.`);
   for (const group of plan) {
-    console.log(`- ${group.name} · ${group.city} · ${group.ids.length} carte${group.ids.length > 1 ? "s" : ""} · ${group.gaps.join(", ") || "complet"}`);
+    console.log(`- ${hotelBackfillLine(group)}`);
   }
   if (!write) {
     console.log("Rien n’a été écrit. Relancer avec --ecrire pour remplir les fiches et les champs vides.");
@@ -76,7 +83,7 @@ async function main() {
   for (const group of plan) {
     const primary = group.ids[0];
     if (group.gaps.length) {
-      const enriched = await runHotelEnrichment(admin, primary);
+      const enriched = await runHotelEnrichment(admin, primary, group.ville_absente ? { nomSeul: true } : undefined);
       console.log(`  ${group.name} : ${enriched.message}`);
     }
     for (const id of group.ids.slice(1)) {

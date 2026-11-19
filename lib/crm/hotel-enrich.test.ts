@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { planHotelBackfill, runHotelEnrichment, validerFicheHotel } from "./hotel-enrich";
+import { hotelBackfillLine, planHotelBackfill, runHotelEnrichment, validerFicheHotel } from "./hotel-enrich";
 import { mergeHotelProfile, sniffHotelImage, verifyHotelProfile, type HotelProfile } from "./hotel-profile";
 import { emptyHotelWebFacts } from "./hotel-web";
 
@@ -570,4 +570,78 @@ test("le plan reconnaît Little Emperors, écarte les faux hôtels et dédoublon
   assert.deepEqual(plan.find((group) => group.name === "Verdelago Resort")?.ids, ["verde-a", "verde-b"]);
   assert.deepEqual(plan.find((group) => group.name === "Casa Sol")?.ids, ["sol-a", "sol-b"]);
   assert.equal(plan.some((group) => group.ids.includes("phuket") || group.ids.includes("airbnb")), false);
+});
+
+test("W South Beach reste à chercher, et Kyriad sans ville est signalé", () => {
+  const plan = planHotelBackfill(
+    [
+      {
+        id: "w",
+        kind: "hotel",
+        title: "W South Beach",
+        lifecycle: "active",
+        details: { hotel_name: "W South Beach", city: "Miami Beach" },
+      },
+      {
+        id: "kyriad",
+        kind: "hotel",
+        title: "Kyriad Blois Nord",
+        lifecycle: "active",
+        details: { hotel_name: "Kyriad Blois Nord" },
+      },
+      {
+        id: "edition",
+        kind: "hotel",
+        title: "EDITION Miami",
+        lifecycle: "active",
+        details: { hotel_name: "EDITION Miami", city: "Miami" },
+      },
+    ],
+    [
+      { hotel_name: "1 Hotel South Beach", city: "Miami", country: "United States" },
+      { hotel_name: "W Miami (Brickell)", city: "Miami", country: "United States" },
+      { hotel_name: "The Miami Beach EDITION", city: "Miami", country: "United States" },
+    ]
+  );
+  assert.equal(plan.some((group) => group.ids.includes("edition")), false);
+  const south = plan.find((group) => group.ids.includes("w"));
+  assert.ok(south);
+  assert.equal(south?.ville_absente, false);
+  const kyriad = plan.find((group) => group.ids.includes("kyriad"));
+  assert.ok(kyriad);
+  assert.equal(kyriad?.ville_absente, true);
+  assert.equal(kyriad?.city, "");
+  assert.match(hotelBackfillLine(kyriad!), /Kyriad Blois Nord/);
+  assert.match(hotelBackfillLine(kyriad!), /ville absente, recherche par le nom/);
+});
+
+test("une carte sans ville est cherchée par le nom seul", async () => {
+  const admin = memoryAdmin({
+    crm_booking_items: [card({ hotel_name: "Kyriad Blois Nord" }, { title: "Kyriad Blois Nord" })],
+    crm_le_hotels: [],
+    crm_hotel_profiles: [],
+    crm_hotel_web_profiles: [],
+  });
+  const skipped = await runHotelEnrichment(admin as unknown as SupabaseClient, "carte-1", {
+    fetchImpl: async () => {
+      throw new Error("réseau");
+    },
+  });
+  assert.equal(skipped.statut, "ville_absente");
+
+  let prompt = "";
+  const searched = await runHotelEnrichment(admin as unknown as SupabaseClient, "carte-1", {
+    nomSeul: true,
+    env: { PERPLEXITY_API_KEY: "test" },
+    fetchImpl: async (input, init) => {
+      if (!String(input).includes("perplexity")) return new Response("{}", { status: 404 });
+      const body = JSON.parse(String(init?.body || "{}")) as { messages?: { role?: string; content?: string }[] };
+      prompt = body.messages?.find((message) => message.role === "user")?.content || "";
+      return new Response("{}", { status: 500 });
+    },
+  });
+  assert.equal(searched.statut, "reponse_invalide");
+  assert.match(prompt, /Kyriad Blois Nord/);
+  assert.match(prompt, /inconnue/);
+  assert.match(prompt, /nom seul/);
 });

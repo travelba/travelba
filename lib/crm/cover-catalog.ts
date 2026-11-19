@@ -956,6 +956,13 @@ export function isCatalogCity(key: string) {
   return Boolean(key) && cities.has(key);
 }
 
+/** Ville, quartier, région ou pays du catalogue. « South Beach » est un quartier, pas un hôtel. */
+export function isCatalogPlace(key: string) {
+  if (!key) return false;
+  if (cities.has(key) || nearbyCity.has(key)) return true;
+  return isCountryName(key);
+}
+
 export function countryCoverPhoto(code: string) {
   return countryPhoto.get(code) ?? null;
 }
