@@ -1,19 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireStaffPage } from "@/lib/crm/auth";
-import { rankAdminSearch, type AdminSearchBooking, type AdminSearchCustomer } from "@/lib/crm/admin-search";
-import { listStayTitle } from "@/lib/crm/carnet";
-import { loadStayMaps } from "@/lib/crm/carnet-query";
+import { pickSearchHref } from "@/lib/crm/admin-search";
 import { AdminSearchField } from "@/components/admin/AdminSearchField";
-import { OwnerBadge } from "@/components/admin/OwnerBadge";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
-import { ownerLabelsFor } from "@/lib/crm/dossier-responsables";
-import { customerFullName } from "@/lib/crm/types";
-import { createServiceClient } from "@/lib/supabase/admin";
-
-function pattern(value: string) {
-  return `%${value.replace(/[%_]/g, "").trim()}%`;
-}
+import { loadOmnibar, OMNIBAR_GROUPS, withOmnibarCharge } from "@/lib/crm/omnibar";
 
 export const metadata = { title: "Recherche" };
 
@@ -29,70 +20,16 @@ export default async function AdminSearchPage({
     return (
       <div>
         <PageEyebrow>Espace agence</PageEyebrow>
-        <PageTitle title="Recherche" subtitle="Un nom ouvre une fiche. Une référence, un hôtel ou une confirmation ouvre le dossier." />
+        <PageTitle title="Recherche" subtitle="Un nom, une société, un téléphone ou une référence." />
         <AdminSearchField />
       </div>
     );
   }
 
-  const needle = pattern(query);
-  const referenceQuery = /^tb-/i.test(query);
-  const [references, confirmations, hotelTitles, hotelDetails, firstNames, lastNames] = await Promise.all([
-    referenceQuery
-      ? supabase.from("crm_bookings").select("id, reference, title, destination, archived_at, owner_staff_id").ilike("reference", needle).limit(8)
-      : Promise.resolve({ data: [] as AdminSearchBooking[] }),
-    supabase.from("crm_booking_items").select("booking_id").ilike("confirmation_ref", needle).limit(12),
-    supabase.from("crm_booking_items").select("booking_id").eq("kind", "hotel").ilike("title", needle).limit(12),
-    supabase
-      .from("crm_booking_items")
-      .select("booking_id")
-      .eq("kind", "hotel")
-      .filter("details->>hotel_name", "ilike", needle)
-      .limit(12),
-    referenceQuery
-      ? Promise.resolve({ data: [] as AdminSearchCustomer[] })
-      : supabase.from("crm_customers").select("id, first_name, last_name").ilike("first_name", needle).limit(8),
-    referenceQuery
-      ? Promise.resolve({ data: [] as AdminSearchCustomer[] })
-      : supabase.from("crm_customers").select("id, first_name, last_name").ilike("last_name", needle).limit(8),
-  ]);
-
-  const bookingIds = [
-    ...((confirmations.data || []) as { booking_id: string }[]),
-    ...((hotelTitles.data || []) as { booking_id: string }[]),
-    ...((hotelDetails.data || []) as { booking_id: string }[]),
-  ].map((row) => row.booking_id);
-  const uniqueIds = [...new Set(bookingIds)];
-  const { data: linked } = uniqueIds.length
-    ? await supabase.from("crm_bookings").select("id, reference, title, destination, archived_at, owner_staff_id").in("id", uniqueIds)
-    : { data: [] as AdminSearchBooking[] };
-  const byId = new Map(((linked || []) as AdminSearchBooking[]).map((row) => [row.id, row]));
-  const bookingsFor = (rows: { booking_id: string }[] | null) =>
-    (rows || []).map((row) => byId.get(row.booking_id)).filter((row): row is AdminSearchBooking => Boolean(row));
-
-  const customers = new Map<string, AdminSearchCustomer>();
-  for (const row of [...((firstNames.data || []) as AdminSearchCustomer[]), ...((lastNames.data || []) as AdminSearchCustomer[])]) {
-    customers.set(row.id, row);
-  }
-
-  const hit = rankAdminSearch({
-    query,
-    byReference: (references.data || []) as AdminSearchBooking[],
-    byConfirmation: bookingsFor((confirmations.data || []) as { booking_id: string }[]),
-    byHotel: bookingsFor([
-      ...((hotelTitles.data || []) as { booking_id: string }[]),
-      ...((hotelDetails.data || []) as { booking_id: string }[]),
-    ]),
-    customers: [...customers.values()],
-  });
-  if (hit.href) redirect(hit.href);
-  const [routes, owners] = await Promise.all([
-    loadStayMaps(
-      supabase,
-      hit.bookings.map((booking) => booking.id)
-    ),
-    ownerLabelsFor(createServiceClient(), hit.bookings),
-  ]);
+  const ranked = await withOmnibarCharge(supabase, await loadOmnibar(supabase, query, 20));
+  const href = pickSearchHref(query, { bookings: ranked.dossiers, customers: ranked.clients });
+  if (href) redirect(href);
+  const groups = OMNIBAR_GROUPS.map((group) => ({ ...group, rows: ranked[group.id] })).filter((group) => group.rows.length);
 
   return (
     <div>
@@ -100,41 +37,22 @@ export default async function AdminSearchPage({
       <PageTitle title="Recherche" subtitle={`« ${query} »`} />
       <AdminSearchField initial={query} />
       <div className="mt-6 space-y-6">
-        {hit.bookings.length ? (
-          <section className="admin-af-card overflow-hidden rounded-2xl">
-            <h2 className="border-b border-border px-5 py-4 font-display text-lg font-bold">Dossiers</h2>
+        {groups.map((group) => (
+          <section key={group.id} className="admin-af-card overflow-hidden rounded-2xl">
+            <h2 className="border-b border-border px-5 py-4 font-display text-lg font-bold">{group.label}</h2>
             <ul className="divide-y divide-border text-sm">
-              {hit.bookings.map((booking) => (
-                <li key={booking.id}>
-                  <Link href={`/admin/reservations/${booking.id}`} className="flex items-center justify-between gap-3 px-5 py-3 font-semibold text-[var(--admin-navy)]">
-                    <span className="min-w-0">
-                      {booking.reference} · {listStayTitle(booking.title, booking.destination, routes.arrival[booking.id], routes.route[booking.id], routes.layovers[booking.id])}
-                      {booking.archived_at ? " · Archivée" : ""}
-                    </span>
-                    <OwnerBadge name={owners[booking.id]} className="shrink-0" />
+              {group.rows.map((row) => (
+                <li key={`${group.id}-${row.id}`}>
+                  <Link href={row.href} className="block px-5 py-3 text-[var(--admin-navy)]">
+                    <span className="block font-semibold">{row.title}</span>
+                    {row.subtitle ? <span className="mt-0.5 block text-xs text-muted">{row.subtitle}</span> : null}
                   </Link>
                 </li>
               ))}
             </ul>
           </section>
-        ) : null}
-        {hit.customers.length ? (
-          <section className="admin-af-card overflow-hidden rounded-2xl">
-            <h2 className="border-b border-border px-5 py-4 font-display text-lg font-bold">Clients</h2>
-            <ul className="divide-y divide-border text-sm">
-              {hit.customers.map((customer) => (
-                <li key={customer.id}>
-                  <Link href={`/admin/clients/${customer.id}`} className="block px-5 py-3 font-semibold text-[var(--admin-navy)]">
-                    {customerFullName(customer)}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        {!hit.bookings.length && !hit.customers.length ? (
-          <p className="text-sm text-muted">Aucun client ni dossier pour cette recherche.</p>
-        ) : null}
+        ))}
+        {!groups.length ? <p className="text-sm text-muted">Aucun client, dossier ni voyageur pour cette recherche.</p> : null}
       </div>
     </div>
   );

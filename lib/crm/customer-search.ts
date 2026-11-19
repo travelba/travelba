@@ -1,4 +1,5 @@
-import { attachSearchFold, attachSearchMatches } from "./attach-search";
+import { attachSearchFold } from "./attach-search";
+import { customerSearchBlob, directoryRank, sortByDirectoryRank } from "./directory-search";
 import { formatDateFr } from "./dates";
 import { greetingGivenName } from "./identity";
 import { customerFullName, type CrmCustomer } from "./types";
@@ -30,17 +31,6 @@ export const CUSTOMER_NAME_SELECT = "id, first_name, last_name";
 
 /** Plafond typeahead ; pagination liste complète = suivi. */
 export const CUSTOMER_PICK_LIMIT = 300;
-
-function digits(value: string) {
-  return value.replace(/\D/g, "");
-}
-
-function nationalPhoneDigits(value: string) {
-  let d = digits(value);
-  if (d.startsWith("33") && d.length >= 11) d = d.slice(2);
-  else if (d.startsWith("0")) d = d.slice(1);
-  return d;
-}
 
 /** Annuaire : nom de famille d’abord, pour que la liste se lise de A à Z. */
 export function customerDirectoryName(c: Pick<CrmCustomer, "first_name" | "last_name">) {
@@ -120,29 +110,7 @@ export function customerBillingPickLabel(c: PickableCustomer) {
 export function customerMatchesQuery(c: PickableCustomer, query: string) {
   const trimmed = query.trim();
   if (!trimmed) return true;
-  const hay = [
-    c.first_name,
-    c.last_name,
-    c.usage_name,
-    c.company_name,
-    ...(c.companies || []),
-    c.email,
-    c.phone,
-  ]
-    .filter(Boolean)
-    .join(" ");
-  if (attachSearchMatches(hay, trimmed)) return true;
-  const phoneNeedle = digits(trimmed);
-  if (phoneNeedle.length >= 4 && !/\p{L}/u.test(trimmed)) {
-    const stored = digits(c.phone || "");
-    const national = nationalPhoneDigits(c.phone || "");
-    return (
-      stored.includes(phoneNeedle) ||
-      national.includes(nationalPhoneDigits(trimmed)) ||
-      national.includes(phoneNeedle.replace(/^0/, ""))
-    );
-  }
-  return false;
+  return directoryRank(query, customerSearchBlob(c)) != null;
 }
 
 /** Propositions d’abord, puis le reste filtré par nom / société / e-mail / téléphone. */
@@ -162,5 +130,12 @@ export function filterCustomersForPick(
       seen.add(hit.id);
     }
   }
-  return { suggested, rest: filtered.filter((c) => !seen.has(c.id)) };
+  return {
+    suggested,
+    rest: sortByDirectoryRank(
+      filtered.filter((c) => !seen.has(c.id)),
+      query,
+      customerSearchBlob
+    ),
+  };
 }

@@ -148,6 +148,7 @@ const EXPECTED = [
   "reprendre_formalite",
   "ratehawk",
   "carte_arrivee",
+  "facture_groupee",
 ];
 
 const WRITE_TOOLS = [
@@ -260,6 +261,7 @@ const WRITE_TOOLS = [
   "reprendre_formalite",
   "ratehawk",
   "carte_arrivee",
+  "facture_groupee",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {

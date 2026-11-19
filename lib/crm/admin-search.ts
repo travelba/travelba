@@ -1,3 +1,5 @@
+import { attachSearchFold } from "./attach-search";
+
 export type AdminSearchBooking = {
   id: string;
   reference: string;
@@ -45,16 +47,26 @@ export function rankAdminSearch(input: {
       ? input.byReference
       : [...input.byConfirmation, ...input.byHotel, ...input.byReference]
   );
-  const customers = referenceQuery || bookings.length ? [] : input.customers;
-  // Un nom qui est aussi un hôtel ou une confirmation ouvre le dossier.
-  // Sans dossier, le nom ouvre les fiches.
-  const bookingFirst = bookings.length > 0;
-  const shownCustomers = bookingFirst ? [] : customers;
+  const customers = referenceQuery ? [] : input.customers;
   let href: string | null = null;
-  if (bookings.length === 1 && shownCustomers.length === 0) {
+  if (referenceQuery && bookings.length === 1) {
     href = `/admin/reservations/${bookings[0].id}`;
-  } else if (!bookings.length && shownCustomers.length === 1) {
-    href = `/admin/clients/${shownCustomers[0].id}`;
+  } else if (bookings.length === 1 && customers.length === 0) {
+    href = `/admin/reservations/${bookings[0].id}`;
+  } else if (!bookings.length && customers.length === 1) {
+    href = `/admin/clients/${customers[0].id}`;
   }
-  return { bookings, customers: shownCustomers, href };
+  return { bookings, customers, href };
+}
+
+/**
+ * Une référence seule ouvre le dossier. Un seul client, sans dossier, ouvre la fiche.
+ * Un prénom qui retrouve la fiche et ses dossiers reste sur la page de résultats.
+ */
+export function pickSearchHref(query: string, hit: { bookings: { id: string }[]; customers: { id: string }[] }) {
+  const referenceQuery = /^tb-/i.test(query.trim()) || /^tb\d/i.test(attachSearchFold(query).replace(/ /g, ""));
+  if (referenceQuery && hit.bookings.length === 1) return `/admin/reservations/${hit.bookings[0].id}`;
+  if (hit.bookings.length === 1 && hit.customers.length === 0) return `/admin/reservations/${hit.bookings[0].id}`;
+  if (hit.customers.length === 1 && hit.bookings.length === 0) return `/admin/clients/${hit.customers[0].id}`;
+  return null;
 }

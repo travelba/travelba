@@ -137,7 +137,7 @@ export function BookingsFilters({
         type="search"
         name="q"
         value={value}
-        placeholder="Référence, destination, titre, client…"
+        placeholder="Référence, prénom, voyageur, destination…"
         aria-label="Rechercher un dossier"
         autoComplete="off"
         className="admin-af-input w-full text-sm sm:flex-1"
