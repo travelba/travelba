@@ -111,6 +111,10 @@ Une sortie Pliant (achat, retrait ; remboursement et chargeback en négatif) ou 
 
 Inchangé : crédits Revolut / Stripe, encours, commission d’agence (taux choisi), frais de billeterie. MB3M : un bouton Créer dans MB3M par société. Une société sans code postal n’est pas envoyée, et l’erreur nomme la société. Une carte peut forcer sa catégorie MB3M (`details.mb3m_activity=land`, select Catégorie MB3M du bloc Facture, ou `modifier_carte` `categorie_mb3m=divers_terrestres`) : la ligne part en activité 22, fournisseur DIVERS TERRESTRE, et n’est pas retenue par la billetterie. Sans ce choix, le vol reste en 2, 1001 ou 27. Le vol reste un vol au carnet. Le Kosovo (XK) reste XK dans le CRM et part en RS sur toute adresse MB3M (société ou personne) : la table des pays MB3M n’a pas XK. Avant de créer une société, la préparation de facture reprend `crm_mb3m_parties`, sinon cherche dans MB3M (CustomerFind sociétés, nom exact ; e-mail, SIRET ou pays pour départager) et enregistre le lien. Elle ne crée que s’il n’y en a pas. Plusieurs homonymes sans départage : rien n’est créé.
 
+## Facture groupée
+
+Bouton **Facture groupée** sur la fiche client. Un seul PDF pro forma pour plusieurs dossiers du même payeur (particulier, ou une société). Une section par dossier : référence, destination, dates, voyageurs, lignes de vente du livre, remise commerciale en négatif, sous-total, acomptes et paiements déjà reçus sur ce dossier. Puis le total général, le total payé et le reste à payer. Un dossier en commission garde la ligne « Commission d’agence » déjà au livre, sans le pourcentage et sans autre calcul. Le PDF est déposé sur chaque dossier, masqué au client. `crm_grouped_invoices` relie la facture à ses dossiers : on la met à jour, on la retire (le fichier reste) et on la restaure. Aucun e-mail, aucun WhatsApp. Le document ne porte ni IATA ni APST. Il n’appelle pas MB3M : pas d’impression, pas de validation, pas de finalisation. Outil `facture_groupee` : sans `confirmer`, aperçu.
+
 ## Soldes des comptes
 
 Le tableau de bord (`/admin`, bloc **Comptes**) et la page de chaque compte montrent le solde, comme Pliant (« Solde du compte »).

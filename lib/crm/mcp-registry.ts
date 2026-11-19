@@ -85,6 +85,7 @@ import { envoyerMessageLibre } from "@/lib/crm/mcp-free-message";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 import { releaseMatchedCredit } from "@/lib/crm/unmatch-credit";
 import { preparerFactureMb3m, statutFactureMb3m } from "@/lib/crm/mcp-mb3m-invoice";
+import { factureGroupee } from "@/lib/crm/grouped-invoice-run";
 import { envoyerFacture } from "@/lib/crm/mcp-invoice";
 import {
   comptabiliteSortie,
@@ -144,7 +145,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 145;
+export const MCP_TOOL_CAP = 146;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -2908,6 +2909,28 @@ export const MCP_TOOLS: ToolDef[] = [
       confirmer: confirmOpt,
     },
     run: (args: ToolArgs) => carteArrivee(args),
+  },
+  {
+    name: "facture_groupee",
+    write: true,
+    selfJournal: true,
+    description:
+      "Prépare une facture pro forma groupée pour plusieurs dossiers d’un même payeur. client_id, dossiers (identifiants ou références TB-…). Une section par dossier : référence, destination, dates, voyageurs, lignes de vente, remise commerciale négative, sous-total, paiements déjà reçus. Total général, total payé, reste à payer. Un dossier en commission garde sa ligne déjà au livre. Le PDF est déposé sur chaque dossier, masqué au client. facture_id met à jour cette facture. action retirer retire les justificatifs sans effacer le fichier ; restaurer les remet, toujours masqués. Sans confirmer, aperçu seulement. N’imprime pas, ne valide pas et n’émet pas de facture MB3M. Aucun e-mail, aucun WhatsApp.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant de la fiche"),
+      dossiers: z.array(z.string().trim().max(80)).max(30).optional().describe("Identifiants ou références TB-…, au moins deux"),
+      facture_id: z.string().trim().max(80).optional().describe("Facture groupée à mettre à jour, retirer ou restaurer"),
+      action: z.enum(["generer", "retirer", "restaurer"]).optional().describe("generer par défaut"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) =>
+      factureGroupee({
+        client_id: typeof args.client_id === "string" ? args.client_id : undefined,
+        dossiers: Array.isArray(args.dossiers) ? args.dossiers.filter((value): value is string => typeof value === "string") : undefined,
+        facture_id: typeof args.facture_id === "string" ? args.facture_id : undefined,
+        action: typeof args.action === "string" ? args.action : undefined,
+        confirmer: args.confirmer === true,
+      }),
   },
 ];
 
