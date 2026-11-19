@@ -1,7 +1,7 @@
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 import { z } from "zod";
 import { CITY_ALIASES } from "./city-names";
-import { foldHotelLabel } from "./hotel-catalog";
+import { foldHotelLabel, matchHotelLabel } from "./hotel-catalog";
 import { catalogNameAgrees, clockStorage } from "./hotel-gallery";
 
 /**
@@ -825,6 +825,7 @@ export type CatalogueHotelRow = {
   check_out_time?: string | null;
   images?: unknown;
   website?: string | null;
+  country?: string | null;
 };
 
 export type CatalogueContactRow = {
@@ -836,8 +837,26 @@ export type CatalogueContactRow = {
   phone?: string | null;
 };
 
-/** Une seule fiche catalogue pour ce nom et cette ville. Deux hôtels possibles : aucune. */
-export function pickCatalogueHotel<T extends CatalogueHotelRow>(rows: T[], name: string, city: string) {
+/**
+ * Une seule fiche catalogue pour ce nom et cette ville. Deux hôtels possibles : aucune.
+ * `loose` reprend la correspondance Little Emperors (nom court dans le nom long, ville compatible).
+ * Sans `loose`, le nom et la ville doivent être les mêmes : le catalogue Ratehawk reste strict.
+ */
+export function pickCatalogueHotel<T extends CatalogueHotelRow>(
+  rows: T[],
+  name: string,
+  city: string,
+  opts?: { loose?: boolean; country?: string }
+) {
+  if (opts?.loose) {
+    const labeled = rows.map((row) => ({
+      row,
+      name: String(row.name || ""),
+      city: String(row.city || row.region_name || ""),
+      country: typeof row.country === "string" ? row.country : "",
+    }));
+    return matchHotelLabel({ name, city, country: opts.country || "" }, labeled)?.row ?? null;
+  }
   const wantName = hotelNameKey(name);
   const wantCity = hotelCityKey(city);
   if (!wantName || !wantCity) return null;

@@ -33,6 +33,11 @@ const directory: HotelDirectoryEntry[] = [
   { hotel_id: 803, hotel_name: "The Miami Beach EDITION", city: "Miami", country: "United States" },
   { hotel_id: 8360, hotel_name: "The New York EDITION", city: "New York", country: "United States" },
   { hotel_id: 328, hotel_name: "Six Senses Douro Valley", city: "Lamego", country: "Portugal" },
+  { hotel_id: 10544, hotel_name: "Six Senses Con Dao", city: "Vung Tau", country: "Vietnam" },
+  { hotel_id: 9220, hotel_name: "Hotel Nantipa - A Tico Beach Experience", city: "Santa Teresa", country: "Costa Rica" },
+  { hotel_id: 449, hotel_name: "The Savoy London", city: "London", country: "United Kingdom" },
+  { hotel_id: 7100, hotel_name: "Lotte New York Palace", city: "New York", country: "United States" },
+  { hotel_id: 8801, hotel_name: "AMARA Limassol", city: "Limassol", country: "Cyprus" },
   { hotel_id: 10664, hotel_name: "Casa Cipriani New York", city: "New York", country: "United States" },
   { hotel_id: 11691, hotel_name: "Casa Cipriani Milano", city: "Milan", country: "Italy" },
 ];
@@ -41,6 +46,47 @@ describe("matchHotelDirectory", () => {
   it("relie NoMad London à The NoMad Hotel, même si la ville est écrite Londres", () => {
     const hit = matchHotelDirectory(hotel({ hotel_name: "NoMad London", city: "Londres" }), directory);
     assert.equal(hit?.hotel_id, 9882);
+  });
+
+  it("relie The NoMad Hotel à la fiche de Londres", () => {
+    const hit = matchHotelDirectory(hotel({ hotel_name: "The NoMad Hotel", city: "London" }), directory);
+    assert.equal(hit?.hotel_id, 9882);
+  });
+
+  it("relie Six Senses Con Dao malgré la ville Little Emperors Vung Tau", () => {
+    const hit = matchHotelDirectory(hotel({ hotel_name: "Six Senses Con Dao", city: "Con Dao" }), directory);
+    assert.equal(hit?.hotel_id, 10544);
+  });
+
+  it("relie EDITION Miami à The Miami Beach EDITION", () => {
+    const hit = matchHotelDirectory(hotel({ hotel_name: "EDITION Miami", city: "Miami" }), directory);
+    assert.equal(hit?.hotel_id, 803);
+  });
+
+  it("relie Nantipa à Hotel Nantipa", () => {
+    const hit = matchHotelDirectory(hotel({ hotel_name: "Nantipa", city: "Santa Teresa" }), directory);
+    assert.equal(hit?.hotel_id, 9220);
+  });
+
+  it("ne prend pas The Savoy London pour l’hôtel de Méribel", () => {
+    const hit = matchHotelDirectory(
+      hotel({ hotel_name: "Hôtel Le Savoy", city: "Méribel", country: "France" }),
+      directory
+    );
+    assert.equal(hit, null);
+  });
+
+  it("ne prend pas Lotte New York Palace pour New Yorker by Lotte", () => {
+    const hit = matchHotelDirectory(hotel({ hotel_name: "New Yorker by Lotte", city: "New York" }), directory);
+    assert.equal(hit, null);
+  });
+
+  it("ne prend pas AMARA Limassol pour AMARA à Avoriaz", () => {
+    const hit = matchHotelDirectory(
+      hotel({ hotel_name: "AMARA", city: "Avoriaz", country: "France" }),
+      directory
+    );
+    assert.equal(hit, null);
   });
 
   it("ne confond pas The Ned NoMad avec The NoMad Hotel", () => {
