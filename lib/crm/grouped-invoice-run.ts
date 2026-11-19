@@ -69,7 +69,6 @@ type TravelerRow = {
   booking_id: string;
   first_name: string | null;
   last_name: string | null;
-  usage_name: string | null;
 };
 
 type CompanyRow = {
@@ -112,9 +111,11 @@ function missingGroupedTable(error: DbError) {
   return message.includes("crm_grouped_invoices") && (message.includes("does not exist") || message.includes("schema cache"));
 }
 
-function asError(error: DbError, fallback: string) {
+export function asError(error: DbError, fallback: string) {
   if (missingGroupedTable(error)) return GROUPED_INVOICE_SETUP;
-  return fallback;
+  const detail = (error?.message || "").replace(/\s+/g, " ").trim();
+  if (!detail || detail === fallback) return fallback;
+  return `${fallback} ${detail}`;
 }
 
 function addressLines(parts: (string | null | undefined)[]) {
@@ -122,7 +123,7 @@ function addressLines(parts: (string | null | undefined)[]) {
 }
 
 function travelerName(row: TravelerRow) {
-  return [row.first_name, row.usage_name || row.last_name].map((part) => (part || "").trim()).filter(Boolean).join(" ");
+  return [row.first_name, row.last_name].map((part) => (part || "").trim()).filter(Boolean).join(" ");
 }
 
 function datesOf(booking: BookingRow) {
@@ -293,7 +294,7 @@ async function loadBundle(admin: SupabaseClient, customerId: string, bookingIds:
       .from("crm_booking_items")
       .select("id, booking_id, kind, title, amount, start_at, end_at, details, lifecycle, include_in_ledger")
       .in("booking_id", unique),
-    admin.from("crm_booking_travelers").select("booking_id, first_name, last_name, usage_name").in("booking_id", unique),
+    admin.from("crm_booking_travelers").select("booking_id, first_name, last_name").in("booking_id", unique),
     admin
       .from("crm_transactions")
       .select("id, booking_id, direction, kind, status, currency, amount, label, external_id")
@@ -314,9 +315,8 @@ async function loadBundle(admin: SupabaseClient, customerId: string, bookingIds:
       .maybeSingle(),
     loadCompanies(admin, customerId),
   ]);
-  if (itemsRes.error || travelersRes.error || debitsRes.error || creditsRes.error) {
-    return fail(400, "Les lignes de vente ne sont pas lisibles.");
-  }
+  const saleError = itemsRes.error || travelersRes.error || debitsRes.error || creditsRes.error;
+  if (saleError) return fail(400, asError(saleError, "Les lignes de vente ne sont pas lisibles."));
   if (!personRes.data) return fail(404, "Client introuvable.");
   return {
     ok: true as const,

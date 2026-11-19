@@ -16,7 +16,7 @@ import {
   type GroupedBookingRow,
 } from "./grouped-invoice";
 import { renderGroupedInvoicePdf } from "./grouped-invoice-pdf";
-import { GROUPED_INVOICE_MB3M_CALLS } from "./grouped-invoice-run";
+import { asError, GROUPED_INVOICE_MB3M_CALLS, GROUPED_INVOICE_SETUP } from "./grouped-invoice-run";
 import { Mb3mError, mb3mSoap } from "./mb3m";
 import type { SaleLedgerRow } from "./trip-costs";
 
@@ -254,6 +254,44 @@ test("le PDF groupé est une pro forma sans IATA, sans APST et sans logiciel de 
   assert.match(text, /Commission d'agence/);
   assert.match(text, /Reste à payer|Reste a payer/);
   assert.equal(/IATA|APST|MB3M/.test(text), false);
+});
+
+test("la facture groupée ne lit pas usage_name sur crm_booking_travelers", () => {
+  const files = [
+    new URL("./grouped-invoice-run.ts", import.meta.url),
+    new URL("./grouped-invoice.ts", import.meta.url),
+    new URL("./grouped-invoice-pdf.ts", import.meta.url),
+    new URL("../../app/api/admin/clients/[id]/facture-groupee/route.ts", import.meta.url),
+    new URL("./mcp-registry.ts", import.meta.url),
+  ];
+  let seen = 0;
+  for (const file of files) {
+    const source = readFileSync(file, "utf8");
+    const selects = [...source.matchAll(/from\("crm_booking_travelers"\)\s*\.select\(\s*"([^"]*)"/g)];
+    seen += selects.length;
+    for (const match of selects) {
+      const columns = match[1].split(",").map((column) => column.trim());
+      assert.equal(columns.includes("usage_name"), false, `${file.pathname} : ${match[1]}`);
+    }
+  }
+  assert.equal(seen, 1);
+});
+
+test("une lecture des lignes de vente remonte le message de la base", () => {
+  const missing = asError(
+    { code: "42703", message: "column crm_booking_travelers.usage_name does not exist" },
+    "Les lignes de vente ne sont pas lisibles."
+  );
+  assert.match(missing, /Les lignes de vente ne sont pas lisibles/);
+  assert.match(missing, /usage_name does not exist/);
+  assert.equal(
+    asError({ code: "42P01", message: "relation crm_grouped_invoices does not exist" }, "Les dossiers ne sont pas lisibles."),
+    GROUPED_INVOICE_SETUP
+  );
+  assert.equal(asError(null, "Les lignes de vente ne sont pas lisibles."), "Les lignes de vente ne sont pas lisibles.");
+  const run = readFileSync(new URL("./grouped-invoice-run.ts", import.meta.url), "utf8");
+  assert.match(run, /asError\(saleError, "Les lignes de vente ne sont pas lisibles\."\)/);
+  assert.equal(run.includes('return fail(400, "Les lignes de vente ne sont pas lisibles.")'), false);
 });
 
 test("le CRM refuse d’imprimer, de valider ou de finaliser une pièce MB3M", async () => {
