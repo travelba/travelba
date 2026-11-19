@@ -91,7 +91,7 @@ export function ClientsFilters({
         type="search"
         name="q"
         value={value}
-        placeholder="Rechercher un client (nom, société, e-mail, téléphone)…"
+        placeholder="Prénom, nom, société, e-mail, téléphone…"
         aria-label="Rechercher un client"
         autoComplete="off"
         className="admin-af-input w-full text-sm sm:flex-1"
