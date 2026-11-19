@@ -1,6 +1,6 @@
 import { hotelCityLine, hotelDisplayName } from "./carnet";
 import { CITY_ALIASES } from "./city-names";
-import { countryCodeForPlace, isCatalogCity, isCountryName } from "./cover-catalog";
+import { countryCodeForPlace, isCatalogCity, isCatalogPlace, isCountryName } from "./cover-catalog";
 import type { CrmBookingItem } from "./types";
 
 const NAME_STOP = new Set([
@@ -60,11 +60,65 @@ function cityDropTokens(cities: string[]) {
   return drop;
 }
 
-function contentTokens(name: string, cities: string[]) {
+function nameTokens(name: string) {
+  return foldHotelLabel(name).split(" ").filter(Boolean);
+}
+
+/** Premier mot : une marque courte (W, St) ou un chiffre (1 Hotel) ne se retire pas. */
+function leadingBrand(tokens: string[]) {
+  const first = tokens[0] || "";
+  if (!first || NAME_STOP.has(first)) return "";
+  if (/^\d+$/.test(first) || first.length <= 2) return first;
+  return "";
+}
+
+function isKnownPlace(phrase: string) {
+  if (!phrase) return false;
+  return isCatalogPlace(phrase) || Boolean(CITY_ALIASES[phrase]);
+}
+
+/** Mots d’un nom de ville, de quartier ou de région présents dans le nom. */
+function placeTokens(name: string, cities: string[]) {
   const drop = cityDropTokens(cities);
-  return foldHotelLabel(name)
-    .split(" ")
-    .filter((token) => token && !NAME_STOP.has(token) && !drop.has(token) && !/^\d+$/.test(token));
+  const tokens = nameTokens(name);
+  for (let i = 0; i < tokens.length; i++) {
+    const max = Math.min(4, tokens.length - i);
+    let size = 0;
+    for (let len = max; len >= 1; len--) {
+      if (isKnownPlace(tokens.slice(i, i + len).join(" "))) {
+        size = len;
+        break;
+      }
+    }
+    if (!size) continue;
+    for (let k = 0; k < size; k++) drop.add(tokens[i + k]);
+    i += size - 1;
+  }
+  return drop;
+}
+
+function contentTokens(name: string, cities: string[]) {
+  const tokens = nameTokens(name);
+  const brand = leadingBrand(tokens);
+  const drop = cityDropTokens(cities);
+  return tokens.filter((token, index) => {
+    if (index === 0 && token === brand) return true;
+    if (!token || NAME_STOP.has(token) || drop.has(token) || /^\d+$/.test(token)) return false;
+    return true;
+  });
+}
+
+/** Marque ou mot d’hôtel. Un nom de lieu ne suffit pas à rattacher. */
+function significantTokens(name: string, cities: string[]) {
+  const tokens = nameTokens(name);
+  const brand = leadingBrand(tokens);
+  const places = placeTokens(name, cities);
+  return contentTokens(name, cities).filter((token) => token === brand || !places.has(token));
+}
+
+function brandOnly(tokens: string[], significant: Set<string>) {
+  const marks = tokens.filter((token) => significant.has(token));
+  return marks.length > 0 && marks.every((token) => token.length <= 2 || /^\d+$/.test(token));
 }
 
 function sameTokens(left: string[], right: string[]) {
@@ -129,8 +183,13 @@ function labelsMatch(card: HotelLabel, row: HotelLabel) {
   const cities = [card.city, row.city];
   const cardTokens = contentTokens(card.name, cities);
   const rowTokens = contentTokens(row.name, cities);
-  if (!cardTokens.length || !rowTokens.length) return false;
+  const cardMarks = new Set(significantTokens(card.name, cities));
+  const rowMarks = new Set(significantTokens(row.name, cities));
+  if (!cardMarks.size || !rowMarks.size) return false;
   if (!tokensCover(cardTokens, rowTokens)) return false;
+  const small = cardTokens.length <= rowTokens.length ? { tokens: cardTokens, marks: cardMarks } : { tokens: rowTokens, marks: rowMarks };
+  if (!small.tokens.some((token) => small.marks.has(token))) return false;
+  if (brandOnly(small.tokens, small.marks) && !sameTokens(cardTokens, rowTokens)) return false;
   if (citiesBridge(card, row)) return true;
   return (
     foldHotelLabel(card.name) === foldHotelLabel(row.name) &&
@@ -156,12 +215,12 @@ export function hotelMatchToken(name: string, city: string) {
   return pool[0] || "";
 }
 
-/** Le nom n’est qu’une ville ou un pays, pas un établissement. */
+/** Le nom n’est qu’une ville, un quartier, une région ou un pays, pas un établissement. */
 export function hotelNameIsOnlyPlace(name: string, city: string) {
   const folded = foldHotelLabel(name);
   if (!folded || folded === "hotel") return true;
-  if (isCountryName(folded) || isCatalogCity(folded)) return true;
-  return contentTokens(name, [city]).length === 0;
+  if (isCountryName(folded) || isCatalogCity(folded) || isCatalogPlace(folded)) return true;
+  return significantTokens(name, [city]).length === 0;
 }
 
 /** Airbnb ou location de villa : pas une fiche d’hôtel à rattraper. */
@@ -196,8 +255,9 @@ export function knownLeHotelId(item: Pick<CrmBookingItem, "details">) {
 
 /**
  * Relie une carte hôtel à une seule fiche du catalogue.
- * Les mots du nom court sont dans le nom long, sans les mots vides ni la ville.
- * La ville est la même, citée dans l’autre nom, ou le pays est le même si le nom est exact.
+ * Le premier mot, s’il est une marque courte ou un chiffre, reste.
+ * Il faut un mot qui n’est ni une ville, ni un quartier, ni une région.
+ * S’il ne reste qu’un lieu, on ne rattache rien.
  * Deux hôtels possibles : on ne choisit pas.
  */
 export function matchHotelDirectory(item: CrmBookingItem, directory: HotelDirectoryEntry[]) {

@@ -264,9 +264,9 @@ async function rememberProfile(
   admin: SupabaseClient,
   current: HotelProfile | null,
   facts: HotelWebFacts,
-  input: { name: string; city: string; country: string; searched: boolean; fetchImpl?: FetchLike; supabaseUrl?: string }
+  input: { name: string; city: string; country: string; searched: boolean; key?: string; fetchImpl?: FetchLike; supabaseUrl?: string }
 ) {
-  const parts = splitHotelKey(hotelCacheKey(input.name, input.city));
+  const parts = splitHotelKey(input.key || hotelCacheKey(input.name, input.city));
   if (!parts) return current;
   let storedPhotos = current?.photos || [];
   if (!storedPhotos.length && facts.photos.length) {
@@ -282,6 +282,7 @@ async function rememberProfile(
     city: input.city,
     country: input.country,
     searched: input.searched,
+    key: input.key,
   });
   if (storedPhotos.length && !next.photos.length) next.photos = storedPhotos;
   await saveHotelProfile(admin, next);
@@ -416,7 +417,7 @@ async function applyLittleHotel(
 export async function runHotelEnrichment(
   admin: SupabaseClient,
   itemId: string,
-  opts?: { force?: boolean; env?: Record<string, string | undefined>; fetchImpl?: FetchLike }
+  opts?: { force?: boolean; nomSeul?: boolean; env?: Record<string, string | undefined>; fetchImpl?: FetchLike }
 ): Promise<HotelWebRunResult> {
   const item = await loadItem(admin, itemId);
   if (!item) return result("introuvable");
@@ -427,13 +428,15 @@ export async function runHotelEnrichment(
   const cityHint = await searchCity(admin, item, name, identity.city);
   const little = await resolveLittleHotel(admin, item, name, cityHint || identity.city);
   if (little) return applyLittleHotel(admin, item, little, opts?.fetchImpl);
-  if (!opts?.force && !shouldAutoEnrichHotel(item)) {
+  const nameOnly = Boolean(opts?.nomSeul) && !cityHint;
+  if (!opts?.force && !nameOnly && !shouldAutoEnrichHotel(item)) {
     if (!hotelWebGaps(item.details).length) return result("deja_complet");
     return result("ville_absente");
   }
   const city = cityHint;
-  const key = identity.key || hotelCacheKey(name, city);
-  if (!name || !city || !key) return result("ville_absente");
+  const named = hotelNameKey(name);
+  const key = identity.key || hotelCacheKey(name, city) || (nameOnly && named ? `${named}|sans-ville` : "");
+  if (!name || !key || (!city && !nameOnly)) return result("ville_absente");
   if (!hotelWebGaps(item.details).length) return result("deja_complet");
 
   const parts = splitHotelKey(key);
@@ -474,6 +477,7 @@ export async function runHotelEnrichment(
       city,
       country: countryOf(item.details),
       searched: !fromCache,
+      key,
       fetchImpl: opts?.fetchImpl,
       supabaseUrl: opts?.env?.NEXT_PUBLIC_SUPABASE_URL,
     });
@@ -571,6 +575,7 @@ type BackfillGroup = {
   nameKey: string;
   sites: Set<string>;
   addresses: Set<string>;
+  ville_absente: boolean;
 };
 
 function hostOf(value: unknown) {
@@ -625,13 +630,33 @@ function mergeBackfillGroups(groups: BackfillGroup[]) {
     for (const gap of group.gaps) if (!current.gaps.includes(gap)) current.gaps.push(gap);
     for (const site of group.sites) if (site) current.sites.add(site);
     for (const address of group.addresses) if (address) current.addresses.add(address);
+    if (group.city && !current.city) {
+      current.city = group.city;
+      current.key = group.key;
+    }
+    if (!group.ville_absente) current.ville_absente = false;
   }
-  return [...merged.values()].map(({ key, name, city, ids, gaps }) => ({ key, name, city, ids, gaps }));
+  return [...merged.values()].map(({ key, name, city, ids, gaps, ville_absente }) => ({
+    key,
+    name,
+    city,
+    ids,
+    gaps,
+    ville_absente,
+  }));
+}
+
+/** Ligne du script de rattrapage. Une carte sans ville est dite, pas passée sous silence. */
+export function hotelBackfillLine(group: { name: string; city: string; ids: string[]; gaps: string[]; ville_absente?: boolean }) {
+  const where = group.ville_absente ? "ville absente, recherche par le nom" : group.city;
+  const cards = `${group.ids.length} carte${group.ids.length > 1 ? "s" : ""}`;
+  return `${group.name} · ${where} · ${cards} · ${group.gaps.join(", ") || "complet"}`;
 }
 
 /**
  * Cartes actives à rechercher : hors Little Emperors, hors ville ou pays seuls,
- * hors Airbnb et location de villa. Même hôtel, autre ville : une ligne si le site ou l’adresse est le même.
+ * hors Airbnb et location de villa. Une carte sans ville reste, signalée, pour une recherche au nom.
+ * Même hôtel, autre ville : une ligne si le site ou l’adresse est le même.
  */
 export function planHotelBackfill(
   cards: HotelBackfillCard[],
@@ -649,26 +674,29 @@ export function planHotelBackfill(
     if (realLeHotelId(card.details)) continue;
     if (supplierIsPrivateRental(card.supplier)) continue;
     const identity = hotelSearchIdentity(card);
-    if (!identity.key) continue;
+    const named = hotelNameKey(identity.name);
+    if (!named) continue;
+    const key = identity.key || `${named}|sans-ville`;
     if (hotelNameIsOnlyPlace(identity.name, identity.city)) continue;
     const country = countryOf(card.details);
     if (pickCatalogueHotel(catalogue, identity.name, identity.city, { loose: true, country })) continue;
     const gaps = hotelWebGaps(card.details);
     const site = hostOf(card.details?.website);
     const address = addressAnchor(card.details?.address);
-    const current = byKey.get(identity.key);
+    const current = byKey.get(key);
     if (!current) {
       const created: BackfillGroup = {
-        key: identity.key,
+        key,
         name: identity.name,
         city: identity.city,
         ids: [card.id],
         gaps,
-        nameKey: hotelNameKey(identity.name),
+        nameKey: named,
         sites: new Set(site ? [site] : []),
         addresses: new Set(address ? [address] : []),
+        ville_absente: !identity.key,
       };
-      byKey.set(identity.key, created);
+      byKey.set(key, created);
       groups.push(created);
       continue;
     }
@@ -676,6 +704,11 @@ export function planHotelBackfill(
     for (const gap of gaps) if (!current.gaps.includes(gap)) current.gaps.push(gap);
     if (site) current.sites.add(site);
     if (address) current.addresses.add(address);
+    if (identity.city && !current.city) {
+      current.city = identity.city;
+      current.key = key;
+    }
+    if (identity.key) current.ville_absente = false;
   }
   return mergeBackfillGroups(groups);
 }

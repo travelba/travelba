@@ -548,9 +548,12 @@ export function mergeHotelWebFacts(
 }
 
 export function hotelWebUserPrompt(name: string, city: string) {
+  const place = city.trim()
+    ? `Ville : ${city}`
+    : "Ville : inconnue. Cherche avec le nom seul, sans inventer la ville.";
   return [
     `Hôtel : ${name}`,
-    `Ville : ${city}`,
+    place,
     "Réponds par un objet JSON avec les clés address, website, description, check_in, check_out, reception, reservations, concierge, photos, sources.",
     "reception, reservations et concierge valent { phone, email }.",
     "photos vaut [{ url, caption }]. check_in et check_out valent HH:mm.",

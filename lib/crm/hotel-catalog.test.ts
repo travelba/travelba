@@ -40,6 +40,14 @@ const directory: HotelDirectoryEntry[] = [
   { hotel_id: 8801, hotel_name: "AMARA Limassol", city: "Limassol", country: "Cyprus" },
   { hotel_id: 10664, hotel_name: "Casa Cipriani New York", city: "New York", country: "United States" },
   { hotel_id: 11691, hotel_name: "Casa Cipriani Milano", city: "Milan", country: "Italy" },
+  { hotel_id: 6109, hotel_name: "1 Hotel South Beach", city: "Miami", country: "United States" },
+  { hotel_id: 6145, hotel_name: "W Miami (Brickell)", city: "Miami", country: "United States" },
+  { hotel_id: 7322, hotel_name: "Hôtel Martinez - The Unbound Collection by Hyatt", city: "Cannes", country: "France" },
+  { hotel_id: 1365, hotel_name: "Park Hyatt Saigon", city: "Ho Chi Minh", country: "Vietnam" },
+  { hotel_id: 12810, hotel_name: "Park Hyatt Phu Quoc", city: "Phu Quoc", country: "Vietnam" },
+  { hotel_id: 9675, hotel_name: "Le Negresco", city: "Nice", country: "France" },
+  { hotel_id: 10363, hotel_name: "The St. Regis Dubai, The Palm", city: "Dubai", country: "United Arab Emirates" },
+  { hotel_id: 10916, hotel_name: "The St. Regis Downtown Dubai", city: "Dubai", country: "United Arab Emirates" },
 ];
 
 describe("matchHotelDirectory", () => {
@@ -66,6 +74,42 @@ describe("matchHotelDirectory", () => {
   it("relie Nantipa à Hotel Nantipa", () => {
     const hit = matchHotelDirectory(hotel({ hotel_name: "Nantipa", city: "Santa Teresa" }), directory);
     assert.equal(hit?.hotel_id, 9220);
+  });
+
+  it("relie Martinez Cannes, Park Hyatt, Le Negresco et St Regis The Palm", () => {
+    assert.equal(
+      matchHotelDirectory(hotel({ hotel_name: "Martinez Cannes", city: "Cannes" }), directory)?.hotel_id,
+      7322
+    );
+    assert.equal(
+      matchHotelDirectory(hotel({ hotel_name: "Park Hyatt Saigon", city: "Saigon" }), directory)?.hotel_id,
+      1365
+    );
+    assert.equal(
+      matchHotelDirectory(hotel({ hotel_name: "Park Hyatt Phu Quoc", city: "Phu Quoc" }), directory)?.hotel_id,
+      12810
+    );
+    assert.equal(
+      matchHotelDirectory(hotel({ hotel_name: "Le Negresco", city: "Nice" }), directory)?.hotel_id,
+      9675
+    );
+    assert.equal(
+      matchHotelDirectory(hotel({ hotel_name: "St Regis Dubai The Palm", city: "Dubai" }), directory)?.hotel_id,
+      10363
+    );
+  });
+
+  it("ne prend pas 1 Hotel South Beach pour W South Beach", () => {
+    const hit = matchHotelDirectory(
+      hotel({ hotel_name: "W South Beach", city: "Miami Beach", country: "United States" }),
+      directory
+    );
+    assert.equal(hit, null);
+  });
+
+  it("ne rattache pas un nom qui n’est que le quartier South Beach", () => {
+    const hit = matchHotelDirectory(hotel({ hotel_name: "South Beach", city: "Miami Beach" }), directory);
+    assert.equal(hit, null);
   });
 
   it("ne prend pas The Savoy London pour l’hôtel de Méribel", () => {

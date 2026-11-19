@@ -284,9 +284,9 @@ function keepContact(previous: HotelProfileContact, incoming: HotelDeskSlot): Ho
 export function mergeHotelProfile(
   current: HotelProfile | null,
   facts: HotelWebFacts,
-  input: { name: string; city: string; country?: string; searched?: boolean; now?: string }
+  input: { name: string; city: string; country?: string; searched?: boolean; now?: string; key?: string }
 ): HotelProfile {
-  const key = splitHotelKey(hotelCacheKey(input.name, input.city));
+  const key = splitHotelKey(input.key || hotelCacheKey(input.name, input.city));
   const now = input.now || new Date().toISOString();
   const base = current;
   const contacts = emptyProfileContacts();
