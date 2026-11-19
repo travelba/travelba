@@ -57,9 +57,12 @@ export function statementTemplateName(firstName: string | null | undefined) {
   return name || " ";
 }
 
-export function statementMediaVariable(token: string) {
+export function statementMediaVariable(token: string, filename?: string | null) {
   if (!token || token.includes("/") || token.includes("..")) return null;
-  return `${token}/${encodeURIComponent(STATEMENT_FILENAME)}`;
+  const name = (filename || "").trim() || STATEMENT_FILENAME;
+  if (!name.toLowerCase().endsWith(".pdf")) return null;
+  if (name.includes("/") || name.includes("..") || /[\r\n"\\]/.test(name)) return null;
+  return `${token}/${encodeURIComponent(name)}`;
 }
 
 export function statementMediaUrl(mediaPath: string) {
