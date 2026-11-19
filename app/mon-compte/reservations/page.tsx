@@ -20,13 +20,13 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/crm/ui";
 import { resolveListCovers } from "@/lib/crm/cover-resolve";
 import { loadClientStayFaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
-import { clientTripOwnerIds } from "@/lib/crm/company-peers";
+import { clientTripOwnerIds, clientTwinIds } from "@/lib/crm/company-peers";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { BoardingReadyNote } from "@/components/account/BoardingPassStack";
 import { boardingPassBookingIds } from "@/lib/crm/client-boarding-pass-load";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
-import { clientHidesPrices, stayHidesPrices, stripClientMoneyItem } from "@/lib/crm/client-price-privacy";
+import { clientHidesPrices, foreignPriceOwnerIds, stayHidesPrices, stripClientMoneyItem } from "@/lib/crm/client-price-privacy";
 import { hiddenPriceCustomerIds } from "@/lib/crm/client-price-privacy-load";
 
 export const metadata = { title: `Réservations — ${siteConfig.shortName}` };
@@ -47,9 +47,10 @@ export default async function ReservationsPage({
   const faces = await loadClientStayFaces(supabase, loaded, customer.city);
   const all = loaded.map((booking) => applyClientStayFace(booking, faces[booking.id]));
   const viewerHides = clientHidesPrices(customer);
+  const twinIds = await clientTwinIds(customer.id);
   const hiddenOwners = viewerHides
     ? new Set<string>()
-    : await hiddenPriceCustomerIds(all.map((row) => row.customer_id).filter((id) => id !== customer.id));
+    : await hiddenPriceCustomerIds(foreignPriceOwnerIds(customer.id, all.map((row) => row.customer_id), twinIds));
   const hidesStay = (ownerId: string) => stayHidesPrices(customer, ownerId, hiddenOwners);
   const priced = viewerHides ? [] : all.filter((row) => !hidesStay(row.customer_id));
   const walletIds = [...new Set(all.map((row) => row.billing_customer_id || row.customer_id))];

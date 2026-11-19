@@ -4,6 +4,8 @@ import { Suspense } from "react";
 import { BookingEditor } from "@/components/admin/BookingEditor";
 import { DossierPliantBalance } from "@/components/admin/DossierPliantBalance";
 import { loadAdminBookingGate } from "@/lib/crm/admin-booking-gate";
+import { listCustomerTwins } from "@/lib/crm/customer-twins";
+import { createServiceClient } from "@/lib/supabase/admin";
 import { enrichedBookingHotels, loadAdminBookingCritical, reconciledBookingLedger } from "@/lib/crm/admin-booking-load";
 import { shellAdminBooking } from "@/lib/crm/admin-booking-shell";
 import { repairCustomerDownloads } from "@/lib/crm/download-journal";
@@ -59,9 +61,17 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
       }
     : null;
 
+  let twinNames: string[] = [];
+  try {
+    twinNames = (await listCustomerTwins(createServiceClient(), booking.customer_id)).map((twin) => twin.nom);
+  } catch {
+    twinNames = [];
+  }
+
   return (
     <BookingEditor
       {...shell.value}
+      twinNames={twinNames}
       panels={panels}
       deferredLedger={shell.reconcile.then((value) =>
         value ? { ...value, revision: shell.argentStamp, layer: 1 } : null

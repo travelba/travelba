@@ -26,7 +26,8 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { toPublicBooking } from "@/lib/crm/public-booking";
-import { clientHidesPrices, stayHidesPrices, stripClientMoneyItem } from "@/lib/crm/client-price-privacy";
+import { clientTripOwnerIds, clientTwinIds } from "@/lib/crm/company-peers";
+import { clientHidesPrices, foreignPriceOwnerIds, stayHidesPrices, stripClientMoneyItem } from "@/lib/crm/client-price-privacy";
 import { hiddenPriceCustomerIds } from "@/lib/crm/client-price-privacy-load";
 
 type Props = { params: Promise<{ reference: string }>; searchParams: Promise<{ confirme?: string }> };
@@ -57,16 +58,18 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /** Le dossier est bien à ce client mais la RLS le cache (dépublié, archivé) : on l’explique, pas un 404. */
-async function stayExistsForCustomer(customerId: string, reference: string) {
+async function stayExistsForCustomer(ownerIds: string[], reference: string) {
+  const ids = [...new Set(ownerIds.filter(Boolean))];
+  if (!ids.length) return false;
   try {
     const admin = createServiceClient();
     const { data } = await admin
       .from("crm_bookings")
       .select("id")
-      .eq("customer_id", customerId)
+      .in("customer_id", ids)
       .eq("reference", reference)
-      .maybeSingle();
-    return Boolean(data);
+      .limit(1);
+    return Boolean(data?.length);
   } catch {
     return false;
   }
@@ -79,7 +82,8 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
   if (!user) redirect("/connexion");
   if (!customer) redirect("/connexion");
   if (!booking) {
-    if (await stayExistsForCustomer(customer.id, reference)) return <HiddenStayNotice reference={reference} />;
+    const owners = await clientTripOwnerIds(customer);
+    if (await stayExistsForCustomer(owners, reference)) return <HiddenStayNotice reference={reference} />;
     notFound();
   }
   if (booking.archived_at) return <HiddenStayNotice reference={booking.reference} />;
@@ -114,10 +118,9 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
   const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null; moment?: string | null }[])
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
-  const hiddenOwners =
-    clientHidesPrices(customer) || b.customer_id === customer.id
-      ? new Set<string>()
-      : await hiddenPriceCustomerIds([b.customer_id]);
+  const hiddenOwners = clientHidesPrices(customer)
+    ? new Set<string>()
+    : await hiddenPriceCustomerIds(foreignPriceOwnerIds(customer.id, [b.customer_id], await clientTwinIds(customer.id)));
   const hideMoney = stayHidesPrices(customer, b.customer_id, hiddenOwners);
   const heroItems = hideMoney ? withoutHotelRosterItems(face.items).map((item) => stripClientMoneyItem(item)) : withoutHotelRosterItems(face.items);
 

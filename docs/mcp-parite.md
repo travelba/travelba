@@ -30,6 +30,8 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Lien d’accès magique 24 h (mot de passe déjà posé) | hors API — le bouton « Envoyer un lien d’accès » reste à l’écran |
 | Compte en veille, IBAN, téléphone secondaire, fidélité | partiel : pas de champ dédié sur `mettre_a_jour_client` |
 | Retirer un accompagnateur de la fiche | `supprimer_compagnon` (`confirmer` = nom complet) — ajouté. Réservé aux administrateurs. Pièces d’identité et fichiers compris. S’il est voyageur, refus en listant les dossiers, sauf `retirer_des_dossiers` true (lignes voyageur seulement). Réservations, paiements, factures et grand livre inchangés |
+| Compte jumeau | `compte_jumeau` — ajouté. Sans `confirmer`, aperçu. `confirmer` true lie ou délie. Aucun message. `fiche_client` et `chercher_clients` exposent `jumeaux` |
+| Zéro frais | `mettre_a_jour_client` `zero_frais` — ajouté. Retire les frais automatiques des dossiers non facturés de la fiche propriétaire |
 
 ## Dossiers et cartes
 

@@ -11,6 +11,7 @@ import { rasterPdfPages } from "@/lib/crm/pdf-raster";
 import { isTripShareCode } from "@/lib/crm/trip-share";
 import { sharePathAllowed } from "@/lib/crm/trip-share-load";
 import { clientHidesPrices, isClientInvoiceDocument, isClientMoneyFile } from "@/lib/crm/client-price-privacy";
+import { clientTripOwnerIds } from "@/lib/crm/company-peers";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -128,11 +129,12 @@ export async function GET(request: Request) {
 
   if (scope.kind === "booking") {
     const bookingId = scope.bookingId;
+    const owners = await clientTripOwnerIds(client.customer);
     const { data: booking } = await client.supabase
       .from("crm_bookings")
       .select("id, cover_image_path, reference, title, destination")
       .eq("id", bookingId)
-      .eq("customer_id", client.customer.id)
+      .in("customer_id", owners)
       .maybeSingle();
     if (!booking) return jsonError("Accès refusé", 403);
     if (booking.cover_image_path === path) {

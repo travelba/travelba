@@ -129,6 +129,7 @@ import {
   retirerPieceDossier,
 } from "@/lib/crm/mcp-dossier-pieces";
 import { supprimerCompagnon, supprimerPieceClient } from "@/lib/crm/remove-companion";
+import { setCustomerTwin, TwinLinkError } from "@/lib/crm/customer-twins";
 import { currentMcpAccess } from "@/lib/crm/mcp-auth";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
@@ -145,7 +146,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 146;
+export const MCP_TOOL_CAP = 147;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -340,7 +341,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "chercher_clients",
     description:
-      "Cherche un client par nom, société, e-mail ou téléphone. echeance vrai : pièces qui expirent dans 90 jours, sans numéro.",
+      "Cherche un client par nom, société, e-mail ou téléphone. echeance vrai : pièces qui expirent dans 90 jours, sans numéro. jumeaux : fiches liées, chacune garde son accès. zero_frais : aucun frais automatique sur les dossiers de cette fiche.",
     input: {
       q,
       echeance: z.boolean().optional().describe("Pièces à échéance, sans numéro de pièce"),
@@ -353,7 +354,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_client",
     description:
-      "Fiche d’un client : coordonnées, toutes les sociétés de facturation (societes : identifiant, raison sociale, SIRET, identifiant d’entreprise, TVA ou numéro fiscal, e-mail, adresse, code postal, ville, pays en code ISO, principale ; pas de téléphone sur la société), encours (signe brut), pièces à échéance (type et date, jamais le numéro), masquer_prix (vrai si l’espace client ne reçoit plus les montants). id ou q.",
+      "Fiche d’un client : coordonnées, toutes les sociétés de facturation (societes : identifiant, raison sociale, SIRET, identifiant d’entreprise, TVA ou numéro fiscal, e-mail, adresse, code postal, ville, pays en code ISO, principale ; pas de téléphone sur la société), encours (signe brut), pièces à échéance (type et date, jamais le numéro), masquer_prix (vrai si l’espace client ne reçoit plus les montants), zero_frais (vrai si cette fiche ne reçoit plus de frais automatiques), jumeaux (id et nom, accès séparés, mêmes dossiers). id ou q.",
     input: { id, q },
     run: (args: ToolArgs) => readFicheClient({ id: str(args, "id"), q: str(args, "q") }),
   },
@@ -1003,7 +1004,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_client",
     write: true,
     description:
-      "Met à jour le prénom, le nom, l’e-mail, le téléphone, la société ou la commission d’agence d’un client déjà identifié. commission_agence : 10, 7,5, 5, ou defaut pour 10 %. Les dossiers sans dérogation suivent. masquer_prix vrai : l’espace client, le carnet, l’aperçu et les partages de ce client ne reçoivent plus aucun prix, montant, solde, transaction, relevé ni lien de paiement, sur tous ses dossiers. Faux les montre de nouveau. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). supprimer_societe_id retire une société vide, sans raison sociale ni SIRET, qui n’est pas utilisée. Ne crée pas de fiche. Aucun message.",
+      "Met à jour le prénom, le nom, l’e-mail, le téléphone, la société ou la commission d’agence d’un client déjà identifié. commission_agence : 10, 7,5, 5, ou defaut pour 10 %. Les dossiers sans dérogation suivent. masquer_prix vrai : l’espace client, le carnet, l’aperçu et les partages de ce client ne reçoivent plus aucun prix, montant, solde, transaction, relevé ni lien de paiement, sur tous ses dossiers. Faux les montre de nouveau. zero_frais vrai : aucun frais de billeterie ni commission d’agence automatique sur les dossiers de cette fiche (comme sans_frais). Les frais déjà là sont retirés des dossiers non facturés. Un dossier partagé avec un compte jumeau suit la fiche propriétaire. Faux n’ajoute rien. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). supprimer_societe_id retire une société vide, sans raison sociale ni SIRET, qui n’est pas utilisée. Ne crée pas de fiche. Aucun message.",
     input: {
       id: z.string().trim().describe("Identifiant du client"),
       prenom: z.string().max(80).optional().describe("Prénom"),
@@ -1027,6 +1028,10 @@ export const MCP_TOOLS: ToolDef[] = [
         .boolean()
         .optional()
         .describe("Vrai : l’espace client de cette fiche ne reçoit plus aucun prix ni transaction. Faux : les montre."),
+      zero_frais: z
+        .boolean()
+        .optional()
+        .describe("Vrai : aucun frais automatique sur les dossiers de cette fiche, et retrait sur les dossiers non facturés. Faux : n’ajoute rien."),
       ...COMPANY_FIELDS,
     },
     run: (args) => updateClient(args),
@@ -2933,6 +2938,35 @@ export const MCP_TOOLS: ToolDef[] = [
         action: typeof args.action === "string" ? args.action : undefined,
         confirmer: args.confirmer === true,
       }),
+  },
+  {
+    name: "compte_jumeau",
+    write: true,
+    selfJournal: true,
+    description:
+      "Lie ou délie deux fiches. Chacune garde son accès. Les dossiers de l’une apparaissent dans l’espace de l’autre, sans copie, sans second débit, sans second relevé. client_id et jumeau_id. action lier ou delier. Sans confirmer, aperçu. confirmer true écrit. Aucun e-mail, aucun WhatsApp.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant de la première fiche"),
+      jumeau_id: z.string().trim().max(80).describe("Identifiant de l’autre fiche"),
+      action: z.enum(["lier", "delier"]).describe("lier ou delier"),
+      confirmer: confirmOpt,
+    },
+    run: async (args: ToolArgs) => {
+      try {
+        const { createServiceClient } = await import("@/lib/supabase/admin");
+        const staff = currentMcpAccess().staff;
+        return await setCustomerTwin(createServiceClient(), {
+          clientId: typeof args.client_id === "string" ? args.client_id : "",
+          twinId: typeof args.jumeau_id === "string" ? args.jumeau_id : "",
+          action: args.action === "delier" ? "delier" : "lier",
+          confirmer: args.confirmer === true,
+          staff: staff ? { id: staff.id, name: staff.name, path: "/api/mcp" } : null,
+        });
+      } catch (error) {
+        if (error instanceof TwinLinkError) throw new McpWriteError(error.message);
+        throw error;
+      }
+    },
   },
 ];
 

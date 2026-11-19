@@ -26,6 +26,7 @@ import {
   ticketingExpenseTouched,
   ticketingFeeAmount,
   ticketingFeeDismissed,
+  TICKETING_FEE_OFF,
   ticketingFeeExternalId,
   ticketingFeeLabel,
   ticketingTicketCount,
@@ -36,6 +37,7 @@ import { ledgerDebitPayer } from "@/lib/crm/payer";
 import { emptyToNull } from "@/lib/crm/identity";
 import { stayCurrency } from "@/lib/crm/stay-currency";
 import { agencyFeeForBooking, agencyFeeRateColumn, agencyFeeRateField } from "@/lib/crm/agency-fee-rate";
+import { bookingFeesAreLocked, ownerHasZeroFees } from "@/lib/crm/zero-fees";
 import {
   COMMERCIAL_DISCOUNT_LABEL,
   commercialDiscountExternalId,
@@ -619,6 +621,13 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
   const hasFlight = active.some((row) => row.kind === "flight");
   const travelerCount = (travelers || []).length;
   const lines = ticketingLinesToKeep(items);
+  const zeroFees = await ownerHasZeroFees(supabase, booking.customer_id);
+  const feesLocked = zeroFees ? await bookingFeesAreLocked(supabase, booking.id) : false;
+  let feeMode = booking.fee_mode;
+  if (zeroFees && !feesLocked && !ticketingFeeDismissed(feeMode)) {
+    feeMode = TICKETING_FEE_OFF;
+    await supabase.from("crm_bookings").update({ fee_mode: TICKETING_FEE_OFF }).eq("id", booking.id);
+  }
   // La synchro des cartes, juste après, annule le débit de chaque copie retirée.
   for (const id of lines.dropIds) {
     must(await supabase.from("crm_booking_items").delete().eq("id", id), "Frais de billeterie");
@@ -628,7 +637,7 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
   const title = ticketingFeeLabel(ticketingTicketCount({ hasFlight, travelerCount }));
   const action = ticketingExpenseAction({
     hasFlight,
-    dismissed: ticketingFeeDismissed(booking.fee_mode),
+    dismissed: ticketingFeeDismissed(feeMode) || (zeroFees && !feesLocked),
     exists: Boolean(auto),
     touched: ticketingExpenseTouched(auto?.details),
     amount,
@@ -639,6 +648,8 @@ export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBoo
 
   if (action === "remove" && auto) {
     must(await supabase.from("crm_booking_items").delete().eq("id", auto.id), "Frais de billeterie");
+  } else if (action === "create" && zeroFees) {
+    // Zéro frais : pas de nouvelle ligne, même si la facture déjà émise empêche le retrait.
   } else if (action === "create") {
     const sortOrder =
       items.reduce((max, row) => Math.max(max, Number(row.sort_order || 0)), -1) + 1;
@@ -696,8 +707,15 @@ export async function syncAgencyCommission(supabase: SupabaseClient, booking: Cr
     "Assiette des frais d’agence"
   );
   const fee = await agencyFeeForBooking(supabase, booking);
+  const zeroFees = await ownerHasZeroFees(supabase, booking.customer_id);
+  const feesLocked = zeroFees ? await bookingFeesAreLocked(supabase, booking.id) : false;
+  let enabled = booking.agency_commission === true;
+  if (zeroFees && !feesLocked && enabled) {
+    enabled = false;
+    await supabase.from("crm_bookings").update({ agency_commission: false }).eq("id", booking.id);
+  }
   const amount = agencyCommissionAmount({
-    enabled: booking.agency_commission === true,
+    enabled,
     status: booking.status,
     base: agencyFeeBaseFromItems(itemRows || []),
     visibleToClient: booking.visible_to_client,

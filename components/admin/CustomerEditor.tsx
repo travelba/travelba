@@ -103,6 +103,7 @@ function ficheSnapshot(values: {
   spendingAllowance: string;
   onHold: boolean;
   hidePrices: boolean;
+  zeroFees: boolean;
   companyDrafts: unknown;
   feeChoice: string;
 }) {
@@ -159,6 +160,7 @@ export function CustomerEditor({
   const savingLock = useRef(false);
   const [onHold, setOnHold] = useState(Boolean(customer.on_hold));
   const [hidePrices, setHidePrices] = useState(Boolean(customer.hide_client_prices));
+  const [zeroFees, setZeroFees] = useState(Boolean(customer.zero_fees));
   const storedFeeKey = agencyFeeRateKey(parseStoredAgencyFeeRate(customer.agency_fee_rate) ?? 0.1);
   const [feeChoice, setFeeChoice] = useState(storedFeeKey);
   const hasPassport = vaultDocumentsForPerson(documents, null).length > 0;
@@ -199,6 +201,7 @@ export function CustomerEditor({
     spendingAllowance,
     onHold,
     hidePrices,
+    zeroFees,
     companyDrafts,
     feeChoice,
   });
@@ -263,6 +266,7 @@ export function CustomerEditor({
           spending_allowance: companyRole ? spendingAllowance : null,
           on_hold: onHold,
           hide_client_prices: hidePrices,
+          zero_fees: zeroFees,
           billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),
           ...(feeChoice === storedFeeKey ? {} : { agency_fee_rate: Number(feeChoice) }),
         }),
@@ -298,6 +302,7 @@ export function CustomerEditor({
           spendingAllowance,
           onHold,
           hidePrices,
+          zeroFees,
           companyDrafts: nextDrafts,
           feeChoice,
         })
@@ -315,6 +320,7 @@ export function CustomerEditor({
     pieceSummary(documents, null),
     onHold ? "En veille" : "",
     hidePrices ? "Prix masqués au client" : "",
+    zeroFees ? "Zéro frais" : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -371,6 +377,22 @@ export function CustomerEditor({
             <span className="mt-0.5 block text-xs text-muted">
               L’espace client, le carnet, l’aperçu et les partages de ce client ne reçoivent plus aucun montant. L’itinéraire
               et les documents de voyage restent. L’agence continue de tout voir.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)]">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={zeroFees}
+            onChange={(e) => setZeroFees(e.target.checked)}
+          />
+          <span>
+            <span className="font-semibold">Zéro frais</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Aucun frais de billeterie ni commission d’agence automatique sur les dossiers de cette fiche. En cochant,
+              les frais déjà présents sont retirés des dossiers qui ne sont pas facturés. Un dossier partagé avec un
+              compte jumeau suit la fiche qui le possède. Les frais retirés ne reviennent pas.
             </span>
           </span>
         </label>
