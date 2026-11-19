@@ -9,6 +9,7 @@ import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { HotelAccessCard } from "@/components/admin/HotelAccessCard";
 import { HotelDirectDesk, type DirectDeskStay } from "@/components/admin/HotelDirectDesk";
 import { CLIENT_PHASE_LABEL, type ClientPhase } from "@/lib/crm/hotel-direct";
+import { GroupedInvoicePanel } from "@/components/admin/GroupedInvoicePanel";
 import { Mb3mFicheAction } from "@/components/admin/Mb3mFicheAction";
 import {
   ArchiveBookingButton,
@@ -262,6 +263,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                 <StatementRequest endpoint={`/api/admin/clients/${c.id}/releve`} audience="staff" />
               </Suspense>
             </div>
+            <GroupedInvoicePanel customerId={c.id} />
             <Link
               href={clientLedgerAdminHref(c.id)}
               className="admin-af-btn-accent inline-flex rounded-full px-5 py-2.5 text-sm"

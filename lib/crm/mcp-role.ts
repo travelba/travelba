@@ -160,6 +160,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   reprendre_formalite: "edit_dossiers",
   ratehawk: "edit_dossiers",
   carte_arrivee: "edit_dossiers",
+  facture_groupee: "edit_finances",
 };
 
 export type McpStaffGate = {
