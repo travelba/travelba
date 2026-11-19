@@ -26,6 +26,8 @@ type Facture = {
   removed: boolean;
   fichier: string;
   dossiers: { id: string; reference: string }[];
+  numeroMb3m: string | null;
+  erreurMb3m: string | null;
 };
 
 type Preview = {
@@ -115,7 +117,7 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
     setFactureId("");
   }
 
-  async function run(action: "apercu" | "generer" | "retirer" | "restaurer", extra?: { facture_id?: string; dossier_ids?: string[] }) {
+  async function run(action: "apercu" | "generer" | "retirer" | "restaurer" | "mb3m", extra?: { facture_id?: string; dossier_ids?: string[] }) {
     setBusy(action);
     setError("");
     setNote("");
@@ -129,7 +131,16 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
           facture_id: extra?.facture_id || factureId || undefined,
         }),
       });
-      const json = (await res.json().catch(() => null)) as (Preview & { error?: string; numero?: string; fichier?: string }) | null;
+      const json = (await res.json().catch(() => null)) as
+        | (Preview & {
+            error?: string;
+            numero?: string;
+            fichier?: string;
+            numero_mb3m?: string | null;
+            erreur_mb3m?: string | null;
+            avertissement_mb3m?: string | null;
+          })
+        | null;
       if (!res.ok) {
         setError(json?.error || "La facture groupée n’a pas abouti.");
         return;
@@ -139,12 +150,17 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
         return;
       }
       setPreview(null);
+      const mb3m = json?.numero_mb3m ? ` Pièce MB3M n° ${json.numero_mb3m}.` : "";
+      const hint = json?.avertissement_mb3m ? ` ${json.avertissement_mb3m}` : "";
+      if (json?.erreur_mb3m) setError(json.erreur_mb3m);
       setNote(
         action === "retirer"
           ? `Pro forma ${json?.numero || ""} retirée. Le fichier reste, on peut la restaurer.`
           : action === "restaurer"
             ? `Pro forma ${json?.numero || ""} restaurée. Elle reste masquée au client.`
-            : `Pro forma ${json?.numero || ""} enregistrée sur les dossiers, masquée. Rien n’a été envoyé.`
+            : action === "mb3m"
+              ? `Pro forma ${json?.numero || ""} : pièce MB3M${json?.numero_mb3m ? ` n° ${json.numero_mb3m}` : ""}. Le PDF n’a pas été refait.${hint}`
+              : `Pro forma ${json?.numero || ""} enregistrée sur les dossiers, masquée.${mb3m}${hint} Rien n’a été envoyé.`
       );
       await load();
     } catch {
@@ -190,9 +206,13 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
               </button>
             </div>
             <p className="mt-2 text-sm text-muted">
-              Une section par dossier, pour un même payeur. Le PDF est déposé sur chaque dossier, masqué. Rien n’est envoyé.
+              Une section par dossier, pour un même payeur. Le PDF est déposé sur chaque dossier, masqué. Une pièce pro forma MB3M
+              est créée au nom du payeur. Rien n’est envoyé, rien n’est imprimé.
             </p>
-            <BusyBar active={loading || Boolean(busy)} label={busy === "generer" ? "Préparation…" : "Lecture…"} />
+            <BusyBar
+              active={loading || Boolean(busy)}
+              label={busy === "mb3m" ? "MB3M…" : busy === "generer" ? "Préparation…" : "Lecture…"}
+            />
             {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
             {note ? <p className="mt-3 text-sm text-[var(--admin-navy)]">{note}</p> : null}
             {payers.length > 1 ? (
@@ -307,10 +327,22 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
                       <p className="text-xs text-muted">
                         {row.dossiers.map((dossier) => dossier.reference).join(", ")} · {row.totalLabel} · reste {row.balanceLabel}
                       </p>
+                      {row.numeroMb3m ? <p className="text-xs font-semibold">Pièce MB3M n° {row.numeroMb3m}</p> : null}
+                      {row.erreurMb3m ? <p className="text-xs text-red-700">{row.erreurMb3m}</p> : null}
                       <div className="mt-1 flex flex-wrap gap-2">
                         <a href={row.fichier} className="text-xs font-semibold underline" target="_blank" rel="noreferrer">
                           Voir le PDF
                         </a>
+                        {row.removed ? null : (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold underline"
+                            disabled={Boolean(busy)}
+                            onClick={() => void run("mb3m", { facture_id: row.id })}
+                          >
+                            {row.numeroMb3m ? "Mettre à jour dans MB3M" : "Créer dans MB3M"}
+                          </button>
+                        )}
                         {row.removed ? (
                           <button type="button" className="text-xs font-semibold underline" onClick={() => void run("restaurer", { facture_id: row.id })}>
                             Restaurer

@@ -6,6 +6,7 @@ import {
   groupedPublicPreview,
   loadGroupedDesk,
   previewGroupedInvoice,
+  pushGroupedInvoiceToMb3m,
   removeGroupedInvoice,
   restoreGroupedInvoice,
 } from "@/lib/crm/grouped-invoice-run";
@@ -50,6 +51,21 @@ export async function POST(request: Request, ctx: Ctx) {
   } | null;
   const action = (body?.action || "").trim();
   const actor = { staffId: auth.staff.id, name: auth.staff.full_name || "Agence" };
+  if (action === "mb3m") {
+    const factureId = (body?.facture_id || "").trim();
+    const pushed = await pushGroupedInvoiceToMb3m(auth.supabase, id, factureId, actor);
+    if (!pushed.ok) return jsonError(pushed.error, pushed.status);
+    return NextResponse.json({
+      ok: true,
+      envoye: false,
+      pro_forma: true,
+      imprime: false,
+      numero: pushed.data.number,
+      numero_mb3m: pushed.data.numero,
+      erreur_mb3m: pushed.data.erreur,
+      avertissement_mb3m: pushed.data.avertissement,
+    });
+  }
   if (action === "retirer" || action === "restaurer") {
     const factureId = (body?.facture_id || "").trim();
     const result =
@@ -74,6 +90,9 @@ export async function POST(request: Request, ctx: Ctx) {
       pro_forma: true,
       id: created.data.id,
       numero: created.data.number,
+      numero_mb3m: created.data.numeroMb3m,
+      erreur_mb3m: created.data.erreurMb3m,
+      avertissement_mb3m: created.data.avertissementMb3m,
       fichier: created.data.fichier,
       total: created.data.document.totalLabel,
       paye: created.data.document.paidLabel,

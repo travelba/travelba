@@ -295,7 +295,10 @@ test("une lecture des lignes de vente remonte le message de la base", () => {
 });
 
 test("le CRM refuse d’imprimer, de valider ou de finaliser une pièce MB3M", async () => {
-  assert.deepEqual([...GROUPED_INVOICE_MB3M_CALLS], []);
+  for (const call of GROUPED_INVOICE_MB3M_CALLS) {
+    assert.equal(/print|validate|finali|impress/i.test(call), false);
+  }
+  assert.equal(GROUPED_INVOICE_MB3M_CALLS.includes("FolderService/AddPieces"), true);
   const sent: string[] = [];
   const fetchImpl = async () => {
     sent.push("appel");
@@ -320,11 +323,17 @@ test("le CRM refuse d’imprimer, de valider ou de finaliser une pièce MB3M", a
   );
   assert.equal(sent.length, 0);
   const source = readFileSync(new URL("./grouped-invoice-run.ts", import.meta.url), "utf8");
-  assert.equal(source.includes("mb3mSoap"), false);
-  assert.equal(source.includes("AddPieces"), false);
+  const piece = readFileSync(new URL("./grouped-invoice-mb3m.ts", import.meta.url), "utf8");
   assert.equal(source.includes("DatePrint"), false);
+  assert.equal(source.includes("PrintedDate"), false);
+  assert.equal(piece.includes("DatePrint"), false);
+  assert.equal(piece.includes("CreditNote"), false);
   assert.equal(source.includes("visible_to_client: false"), true);
   assert.equal(source.includes("sendEmail"), false);
   assert.equal(source.includes("sendWhatsapp"), false);
   assert.equal(source.includes("from \"resend\""), false);
+  const branch = source.indexOf('if (action === "mb3m")');
+  const previewAt = source.indexOf("if (args.confirmer !== true)", branch);
+  const pushAt = source.indexOf("await pushGroupedInvoiceToMb3m(", previewAt);
+  assert.equal(branch > 0 && previewAt > branch && pushAt > previewAt, true);
 });

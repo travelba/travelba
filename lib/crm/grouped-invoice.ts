@@ -22,8 +22,8 @@ import { siteConfig } from "@/lib/site";
 
 /**
  * Facture pro forma du CRM pour plusieurs dossiers du même payeur.
- * Ce n’est pas une pièce MB3M : rien n’est imprimé, validé ni finalisé.
- * Le client ne lit ni IATA ni APST.
+ * Le PDF n’est pas une pièce MB3M. La pièce MB3M, quand elle est créée, reste une pro forma :
+ * rien n’est imprimé, validé ni finalisé. Le client ne lit ni IATA ni APST.
  */
 
 export const GROUPED_INVOICE_KIND = "facture";

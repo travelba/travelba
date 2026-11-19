@@ -2915,12 +2915,13 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     selfJournal: true,
     description:
-      "Prépare une facture pro forma groupée pour plusieurs dossiers d’un même payeur. client_id, dossiers (identifiants ou références TB-…). Une section par dossier : référence, destination, dates, voyageurs, lignes de vente, remise commerciale négative, sous-total, paiements déjà reçus. Total général, total payé, reste à payer. Un dossier en commission garde sa ligne déjà au livre. Le PDF est déposé sur chaque dossier, masqué au client. facture_id met à jour cette facture. action retirer retire les justificatifs sans effacer le fichier ; restaurer les remet, toujours masqués. Sans confirmer, aperçu seulement. N’imprime pas, ne valide pas et n’émet pas de facture MB3M. Aucun e-mail, aucun WhatsApp.",
+      "Prépare une facture pro forma groupée pour plusieurs dossiers d’un même payeur, et une seule pièce pro forma MB3M à son nom. client_id, dossiers (identifiants ou références TB-…). Une section par dossier : référence, destination, dates, voyageurs, lignes de vente, remise commerciale négative, sous-total, paiements déjà reçus. Total général, total payé, reste à payer. Un dossier en commission garde sa ligne déjà au livre, sans pourcentage. Le PDF est déposé sur chaque dossier, masqué au client. confirmer true crée aussi la pièce MB3M (AddPieces), sans l’imprimer. facture_id met à jour cette facture et remplace la pro forma MB3M si elle n’est pas imprimée ; une pièce imprimée est refusée. action mb3m, avec facture_id ou numero FG-AAAA-NNNN, pousse une facture déjà générée vers MB3M sans refaire le PDF. action retirer retire les justificatifs sans effacer le fichier ; restaurer les remet, toujours masqués. Sans confirmer, aperçu seulement : MB3M n’est pas appelé en écriture. Aucun e-mail, aucun WhatsApp, aucun avoir.",
     input: {
       client_id: z.string().trim().max(80).describe("Identifiant de la fiche"),
       dossiers: z.array(z.string().trim().max(80)).max(30).optional().describe("Identifiants ou références TB-…, au moins deux"),
-      facture_id: z.string().trim().max(80).optional().describe("Facture groupée à mettre à jour, retirer ou restaurer"),
-      action: z.enum(["generer", "retirer", "restaurer"]).optional().describe("generer par défaut"),
+      facture_id: z.string().trim().max(80).optional().describe("Facture groupée à mettre à jour, pousser vers MB3M, retirer ou restaurer"),
+      numero: z.string().trim().max(40).optional().describe("Numéro FG-AAAA-NNNN, pour créer la pièce MB3M sans refaire le PDF"),
+      action: z.enum(["generer", "retirer", "restaurer", "mb3m"]).optional().describe("generer par défaut. mb3m ne refait pas le PDF"),
       confirmer: confirmOpt,
     },
     run: (args: ToolArgs) =>
@@ -2928,6 +2929,7 @@ export const MCP_TOOLS: ToolDef[] = [
         client_id: typeof args.client_id === "string" ? args.client_id : undefined,
         dossiers: Array.isArray(args.dossiers) ? args.dossiers.filter((value): value is string => typeof value === "string") : undefined,
         facture_id: typeof args.facture_id === "string" ? args.facture_id : undefined,
+        numero: typeof args.numero === "string" ? args.numero : undefined,
         action: typeof args.action === "string" ? args.action : undefined,
         confirmer: args.confirmer === true,
       }),
