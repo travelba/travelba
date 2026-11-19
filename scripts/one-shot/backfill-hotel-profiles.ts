@@ -1,6 +1,7 @@
 /**
  * Rattrapage : fiche hôtel pour les cartes actives qui ne sont pas chez Little Emperors,
- * puis champs vides de ces cartes. Une fiche par nom et par ville.
+ * puis champs vides de ces cartes. Une fiche par nom et par ville, ou par nom et
+ * site ou adresse quand la ville diffère.
  *
  * Sec par défaut. Rien n’est écrit, Perplexity n’est pas appelé.
  *   npx tsx scripts/one-shot/backfill-hotel-profiles.ts
@@ -27,10 +28,14 @@ function loadEnv() {
   }
 }
 
-async function loadPages<T>(admin: SupabaseClient, table: string, columns: string) {
+async function loadPages<T>(admin: SupabaseClient, table: string, columns: string, orderBy: string) {
   const rows: T[] = [];
   for (let from = 0; from < 20000; from += 500) {
-    const { data, error } = await admin.from(table).select(columns).range(from, from + 499);
+    const { data, error } = await admin
+      .from(table)
+      .select(columns)
+      .order(orderBy, { ascending: true })
+      .range(from, from + 499);
     if (error) throw new Error(error.message);
     const batch = (data || []) as T[];
     rows.push(...batch);
@@ -49,10 +54,16 @@ async function main() {
   const cards = await loadPages<HotelBackfillCard>(
     admin,
     "crm_booking_items",
-    "id, kind, title, supplier, lifecycle, details"
+    "id, kind, title, supplier, lifecycle, details",
+    "id"
   );
   const hotels = cards.filter((card) => card.kind === "hotel");
-  const leRows = await loadPages<{ hotel_name: string; city: string }>(admin, "crm_le_hotels", "hotel_name, city");
+  const leRows = await loadPages<{ hotel_name: string; city: string; country: string }>(
+    admin,
+    "crm_le_hotels",
+    "hotel_name, city, country",
+    "le_hotel_id"
+  );
   const plan = planHotelBackfill(hotels, leRows);
   console.log(`${write ? "Écriture" : "Simulation"} : ${plan.length} hôtel${plan.length > 1 ? "s" : ""}.`);
   for (const group of plan) {
@@ -69,7 +80,7 @@ async function main() {
       console.log(`  ${group.name} : ${enriched.message}`);
     }
     for (const id of group.ids.slice(1)) {
-      const filled = await fillCardFromProfile(admin, id);
+      const filled = await fillCardFromProfile(admin, id, group.key);
       if (filled.rempli.length) console.log(`  carte ${id.slice(0, 8)} : ${filled.message}`);
     }
   }

@@ -53,6 +53,12 @@ function memoryAdmin(tables: Record<string, Record<string, unknown>[]>) {
         limitN = n;
         return api;
       },
+      order() {
+        return api;
+      },
+      range() {
+        return api;
+      },
       maybeSingle: async () => ({ data: matched()[0] || null, error: null }),
       upsert: async (row: Record<string, unknown>) => {
         const list = rows();
@@ -96,6 +102,10 @@ function memoryAdmin(tables: Record<string, Record<string, unknown>[]>) {
     updates,
     tables,
   };
+}
+
+function savedDetails(admin: { tables: Record<string, Record<string, unknown>[]> }) {
+  return admin.tables.crm_booking_items[0].details as Record<string, unknown>;
 }
 
 function card(details: Record<string, unknown>, extra?: Record<string, unknown>) {
@@ -254,13 +264,15 @@ test("le fournisseur Little Emperors ne suffit pas, le catalogue oui", async () 
   let catalogCalled = false;
   const ignored = await runHotelEnrichment(catalog as unknown as SupabaseClient, "carte-1", {
     env: { PERPLEXITY_API_KEY: "test" },
-    fetchImpl: async () => {
-      catalogCalled = true;
+    fetchImpl: async (input) => {
+      if (String(input).includes("perplexity")) catalogCalled = true;
       return new Response("{}", { status: 200 });
     },
   });
   assert.equal(ignored.statut, "ignore");
   assert.equal(catalogCalled, false);
+  assert.match(ignored.message, /Little Emperors/);
+  assert.equal(savedDetails(catalog).le_hotel_id, undefined);
 
   const linked = memoryAdmin({
     crm_booking_items: [card({ hotel_name: "Park Hyatt", city: "Phu Quoc", le_hotel_id: 44 })],
@@ -358,4 +370,204 @@ test("une fiche vérifiée ne remplace pas un e-mail, un e-mail nouveau reste à
   assert.equal(verified.contacts.reservations.email_status, "verifie");
   assert.equal(sniffHotelImage(jpeg())?.type, "image/jpeg");
   assert.equal(sniffHotelImage(new Uint8Array([0x3c, 0x73, 0x76, 0x67])), null);
+});
+
+const LE_DESCRIPTION =
+  "Hôtel en bord de mer, avec un hall clair, une piscine et un jardin planté face à la plage.";
+
+function lePayload(id: number, name: string) {
+  return {
+    id,
+    name,
+    description: LE_DESCRIPTION,
+    website: "https://www.editionhotels.com/miami-beach/",
+    address: "2901 Collins Avenue, Miami Beach",
+    short_info: { check_in_time: "16:00", check_out_time: "11:00" },
+    images_gallery: [{ image_url: "https://d13bre0qp8legl.cloudfront.net/lobby.jpg", description: "Lobby" }],
+    reservations_email: "reservations@edition.test",
+  };
+}
+
+test("une carte Little Emperors reprend la fiche Little sans recherche", async () => {
+  const admin = memoryAdmin({
+    crm_booking_items: [
+      card(
+        { hotel_name: "The NoMad Hotel", city: "London", le_hotel_id: 9882 },
+        { supplier: "Little Emperors" }
+      ),
+    ],
+    crm_le_hotels: [{ le_hotel_id: 9882, hotel_name: "The NoMad Hotel, London", city: "London", country: "United Kingdom" }],
+    crm_hotel_contacts: [
+      { le_hotel_id: 9882, contact_type: "Reception", email: "reception@nomad.test", phone: "+33142603830" },
+    ],
+  });
+  let perplexity = false;
+  const result = await runHotelEnrichment(admin as unknown as SupabaseClient, "carte-1", {
+    env: { PERPLEXITY_API_KEY: "test" },
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("perplexity")) perplexity = true;
+      if (url.includes("/hotels/9882")) return new Response(JSON.stringify(lePayload(9882, "The NoMad Hotel, London")), { status: 200 });
+      return new Response("{}", { status: 404 });
+    },
+  });
+  assert.equal(perplexity, false);
+  assert.equal(result.statut, "complete");
+  assert.match(result.message, /Aucune recherche/);
+  const details = savedDetails(admin);
+  assert.equal(details.le_hotel_id, 9882);
+  assert.equal(details.description, LE_DESCRIPTION);
+  const contacts = details.hotel_contacts as { email: string }[];
+  assert.equal(contacts.some((person) => person.email === "reception@nomad.test"), true);
+  const photos = details.photos as { url: string }[];
+  assert.match(photos[0].url, /lobby\.jpg/);
+  assert.equal(admin.tables.crm_hotel_profiles, undefined);
+});
+
+test("une carte Expedia d’un hôtel Little Emperors reprend cette fiche sans identifiant ni Perplexity", async () => {
+  const admin = memoryAdmin({
+    crm_booking_items: [
+      card({ hotel_name: "EDITION Miami", city: "Miami" }, { supplier: "Expedia", title: "EDITION Miami" }),
+    ],
+    crm_le_hotels: [
+      { le_hotel_id: 803, hotel_name: "The Miami Beach EDITION", city: "Miami", country: "United States" },
+      { le_hotel_id: 8360, hotel_name: "The New York EDITION", city: "New York", country: "United States" },
+    ],
+    crm_hotel_contacts: [
+      { le_hotel_id: 803, contact_type: "Concierge", email: "concierge@edition.test", phone: "" },
+    ],
+  });
+  let perplexity = false;
+  const result = await runHotelEnrichment(admin as unknown as SupabaseClient, "carte-1", {
+    env: { PERPLEXITY_API_KEY: "test" },
+    fetchImpl: async (input) => {
+      const url = String(input);
+      if (url.includes("perplexity")) perplexity = true;
+      if (url.includes("/hotels/803")) return new Response(JSON.stringify(lePayload(803, "The Miami Beach EDITION")), { status: 200 });
+      return new Response("{}", { status: 404 });
+    },
+  });
+  assert.equal(perplexity, false);
+  assert.equal(result.statut, "complete");
+  const details = savedDetails(admin);
+  assert.equal(details.le_hotel_id, undefined);
+  assert.equal(details.source_family, undefined);
+  assert.equal(details.description, LE_DESCRIPTION);
+  const contacts = details.hotel_contacts as { type: string; email: string }[];
+  assert.equal(contacts.some((person) => person.email === "concierge@edition.test"), true);
+  assert.equal(contacts.some((person) => person.email === "reservations@edition.test"), true);
+  const photos = details.photos as { url: string }[];
+  assert.match(photos[0].url, /lobby\.jpg/);
+  assert.equal(admin.tables.crm_hotel_profiles, undefined);
+});
+
+test("un hôtel absent de Little Emperors lance Perplexity et enregistre la fiche", async () => {
+  const admin = memoryAdmin({
+    crm_booking_items: [card({ hotel_name: "Maison Calme", city: "Lyon" })],
+    crm_le_hotels: [{ le_hotel_id: 803, hotel_name: "The Miami Beach EDITION", city: "Miami" }],
+    crm_hotel_profiles: [],
+    crm_hotel_web_profiles: [],
+  });
+  let perplexity = false;
+  const result = await runHotelEnrichment(admin as unknown as SupabaseClient, "carte-1", {
+    env: { PERPLEXITY_API_KEY: "test" },
+    fetchImpl: async (input) => {
+      if (!String(input).includes("perplexity")) return new Response("{}", { status: 404 });
+      perplexity = true;
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  address: "12 Rue de la République, 69002 Lyon",
+                  website: "https://www.maison-calme.test/",
+                  description: LE_DESCRIPTION,
+                  check_in: "15:00",
+                  check_out: "11:00",
+                  reception: { phone: "+33142603830", email: "reception@maison-calme.test" },
+                  reservations: { phone: null, email: "reservations@maison-calme.test" },
+                  concierge: { phone: null, email: null },
+                  photos: [],
+                  sources: ["https://www.maison-calme.test/"],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200 }
+      );
+    },
+  });
+  assert.equal(perplexity, true);
+  assert.equal(result.statut, "complete");
+  const details = savedDetails(admin);
+  assert.equal(details.le_hotel_id, undefined);
+  const contacts = details.hotel_contacts as { email: string }[];
+  assert.equal(contacts.some((person) => person.email === "reception@maison-calme.test"), true);
+  assert.equal(admin.tables.crm_hotel_profiles.length, 1);
+  const profile = admin.tables.crm_hotel_profiles[0];
+  const profileContacts = profile.contacts as { reception: { email: string } };
+  assert.equal(profileContacts.reception.email, "reception@maison-calme.test");
+});
+
+test("le plan reconnaît Little Emperors, écarte les faux hôtels et dédoublonne", () => {
+  const catalogue = [
+    { hotel_name: "The NoMad Hotel, London", city: "London", country: "United Kingdom" },
+    { hotel_name: "Six Senses Con Dao", city: "Vung Tau", country: "Vietnam" },
+    { hotel_name: "The Miami Beach EDITION", city: "Miami", country: "United States" },
+    { hotel_name: "Hotel Nantipa - A Tico Beach Experience", city: "Santa Teresa", country: "Costa Rica" },
+    { hotel_name: "The Savoy London", city: "London", country: "United Kingdom" },
+    { hotel_name: "Lotte New York Palace", city: "New York", country: "United States" },
+    { hotel_name: "AMARA Limassol", city: "Limassol", country: "Cyprus" },
+  ];
+  const plan = planHotelBackfill(
+    [
+      { id: "nomad", kind: "hotel", title: "The NoMad Hotel", lifecycle: "active", details: { hotel_name: "The NoMad Hotel", city: "London" } },
+      { id: "condao", kind: "hotel", title: "Six Senses Con Dao", lifecycle: "active", details: { hotel_name: "Six Senses Con Dao", city: "Con Dao" } },
+      { id: "edition", kind: "hotel", title: "EDITION Miami", lifecycle: "active", details: { hotel_name: "EDITION Miami", city: "Miami" } },
+      { id: "nantipa", kind: "hotel", title: "Nantipa", lifecycle: "active", details: { hotel_name: "Nantipa", city: "Santa Teresa" } },
+      { id: "savoy", kind: "hotel", title: "Hôtel Le Savoy", lifecycle: "active", details: { hotel_name: "Hôtel Le Savoy", city: "Méribel", country: "France" } },
+      { id: "lotte", kind: "hotel", title: "New Yorker by Lotte", lifecycle: "active", details: { hotel_name: "New Yorker by Lotte", city: "New York" } },
+      { id: "amara", kind: "hotel", title: "AMARA", lifecycle: "active", details: { hotel_name: "AMARA", city: "Avoriaz", country: "France", website: "https://amara-avoriaz.test/" } },
+      { id: "phuket", kind: "hotel", title: "Phuket", lifecycle: "active", details: { hotel_name: "Phuket", city: "Phuket" } },
+      { id: "france", kind: "hotel", title: "France", lifecycle: "active", details: { hotel_name: "France", city: "Paris" } },
+      { id: "airbnb", kind: "hotel", supplier: "Airbnb", title: "Loft du port", lifecycle: "active", details: { hotel_name: "Loft du port", city: "Lisbonne" } },
+      { id: "villa", kind: "hotel", supplier: "Location de villa", title: "Casa do Mar", lifecycle: "active", details: { hotel_name: "Casa do Mar", city: "Comporta" } },
+      {
+        id: "verde-a",
+        kind: "hotel",
+        title: "Verdelago Resort",
+        lifecycle: "active",
+        details: { hotel_name: "Verdelago Resort", city: "Altura", website: "https://www.verdelago.com/" },
+      },
+      {
+        id: "verde-b",
+        kind: "hotel",
+        title: "Verdelago Resort",
+        lifecycle: "active",
+        details: { hotel_name: "Verdelago Resort", city: "Castro Marim", website: "https://verdelago.com/fr", address: "Praia Verde, 8950-412 Castro Marim" },
+      },
+      {
+        id: "sol-a",
+        kind: "hotel",
+        title: "Casa Sol",
+        lifecycle: "active",
+        details: { hotel_name: "Casa Sol", city: "Altura", address: "Rua das Dunas 4, 8950 Altura" },
+      },
+      {
+        id: "sol-b",
+        kind: "hotel",
+        title: "Casa Sol",
+        lifecycle: "active",
+        details: { hotel_name: "Casa Sol", city: "Castro Marim", address: "Rua das Dunas 4, 8950 Altura" },
+      },
+    ],
+    catalogue
+  );
+  const names = plan.map((group) => group.name).sort();
+  assert.deepEqual(names, ["AMARA", "Casa Sol", "Hôtel Le Savoy", "New Yorker by Lotte", "Verdelago Resort"]);
+  assert.deepEqual(plan.find((group) => group.name === "Verdelago Resort")?.ids, ["verde-a", "verde-b"]);
+  assert.deepEqual(plan.find((group) => group.name === "Casa Sol")?.ids, ["sol-a", "sol-b"]);
+  assert.equal(plan.some((group) => group.ids.includes("phuket") || group.ids.includes("airbnb")), false);
 });

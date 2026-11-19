@@ -951,6 +951,11 @@ export function isCountryName(key: string) {
   return countryAlias.has(key);
 }
 
+/** Ville du catalogue, pas un pays ni un hameau proche. */
+export function isCatalogCity(key: string) {
+  return Boolean(key) && cities.has(key);
+}
+
 export function countryCoverPhoto(code: string) {
   return countryPhoto.get(code) ?? null;
 }

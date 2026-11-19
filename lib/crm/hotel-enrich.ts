@@ -1,14 +1,26 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchLePublicHotelJson, hotelCatalogFromLePayload } from "@/lib/crm/hotel-contact";
+import { presentationFromLeHotel } from "@/lib/crm/hotel-gallery";
 import {
+  foldHotelLabel,
+  hotelMatchToken,
+  hotelNameIsOnlyPlace,
+  matchHotelLabel,
+  supplierIsPrivateRental,
+} from "@/lib/crm/hotel-catalog";
+import {
+  acceptHotelWebsite,
+  emptyHotelWebFacts,
   factsFromCatalogueContacts,
   factsFromCatalogueHotel,
   hotelCacheKey,
+  hotelNameKey,
   hotelSearchIdentity,
   hotelWebGaps,
-  isLittleEmperorsHotel,
   loadPerplexityHotel,
   mergeHotelWebFacts,
   HOTEL_WEB_REVIEW_REASON,
+  officialSiteHost,
   parseHotelWebPayload,
   PERPLEXITY_HOTEL_MODEL,
   pickCatalogueHotel,
@@ -118,20 +130,57 @@ function likeToken(name: string) {
   return token ? token.replace(/[%_\\]/g, "") : "";
 }
 
-export async function littleEmperorsCatalogMatch(admin: SupabaseClient, name: string, city: string) {
-  const token = likeToken(name);
-  if (!token || !city) return false;
-  const listed = await admin.from("crm_le_hotels").select("hotel_name, city").ilike("hotel_name", `%${token}%`).limit(15);
-  if (listed.error || !listed.data) return false;
-  const match = pickCatalogueHotel(
-    (listed.data as { hotel_name?: string; city?: string }[]).map((row) => ({
-      name: row.hotel_name,
-      city: row.city,
-    })),
-    name,
-    city
+const LITTLE_MESSAGE = "Informations Little Emperors. Aucune recherche web.";
+
+type LeHotelHit = {
+  le_hotel_id: number;
+  hotel_name: string;
+  city: string;
+  country: string;
+};
+
+function leHotelHit(row: { le_hotel_id?: unknown; hotel_name?: unknown; city?: unknown; country?: unknown }): LeHotelHit | null {
+  const id = typeof row.le_hotel_id === "number" ? row.le_hotel_id : Number(row.le_hotel_id);
+  const name = typeof row.hotel_name === "string" ? row.hotel_name.trim() : "";
+  if (!Number.isInteger(id) || id <= 0 || !name) return null;
+  return {
+    le_hotel_id: id,
+    hotel_name: name,
+    city: typeof row.city === "string" ? row.city : "",
+    country: typeof row.country === "string" ? row.country : "",
+  };
+}
+
+async function listLittleHotels(admin: SupabaseClient, token: string) {
+  const rows: LeHotelHit[] = [];
+  for (let from = 0; from < 1000; from += 100) {
+    const listed = await admin
+      .from("crm_le_hotels")
+      .select("le_hotel_id, hotel_name, city, country")
+      .ilike("hotel_name", `%${token}%`)
+      .order("le_hotel_id", { ascending: true })
+      .range(from, from + 99);
+    if (listed.error || !listed.data) break;
+    const batch = listed.data as { le_hotel_id?: unknown; hotel_name?: unknown; city?: unknown; country?: unknown }[];
+    for (const row of batch) {
+      const hit = leHotelHit(row);
+      if (hit) rows.push(hit);
+    }
+    if (batch.length < 100) break;
+  }
+  return rows;
+}
+
+/** Correspondance souple avec une seule fiche Little Emperors. N’écrit rien. */
+export async function littleEmperorsCatalogMatch(admin: SupabaseClient, name: string, city: string, country = "") {
+  const token = hotelMatchToken(name, city).replace(/[%_\\]/g, "");
+  if (!token || !city) return null;
+  const rows = await listLittleHotels(admin, token);
+  const match = matchHotelLabel(
+    { name, city, country },
+    rows.map((row) => ({ ...row, name: row.hotel_name }))
   );
-  return Boolean(match);
+  return match;
 }
 
 async function readWebCache(admin: SupabaseClient, key: string, itemId: string): Promise<HotelWebFacts | null> {
@@ -190,38 +239,9 @@ async function catalogueFacts(admin: SupabaseClient, item: ItemRow, name: string
       .limit(15);
     hotel = pickCatalogueHotel((listed.data || []) as CatalogueHotelRow[], name, city);
   }
-  let contacts: CatalogueContactRow[] = [];
-  if (token) {
-    const hotels = await admin
-      .from("crm_le_hotels")
-      .select("le_hotel_id, hotel_name, city")
-      .ilike("hotel_name", `%${token}%`)
-      .limit(15);
-    const match = pickCatalogueHotel(
-      ((hotels.data || []) as { le_hotel_id?: number; hotel_name?: string; city?: string }[]).map((row) => ({
-        ...row,
-        name: row.hotel_name,
-      })),
-      name,
-      city
-    ) as { le_hotel_id?: number; hotel_name?: string; city?: string } | null;
-    if (match?.le_hotel_id) {
-      const people = await admin
-        .from("crm_hotel_contacts")
-        .select("contact_type, email, phone, hotel_name, city")
-        .eq("le_hotel_id", match.le_hotel_id);
-      contacts = (people.data || []) as CatalogueContactRow[];
-      return {
-        hotel: factsFromCatalogueHotel(hotel),
-        contacts: factsFromCatalogueContacts(contacts, match.hotel_name || name, match.city || city),
-        catalog: true,
-      };
-    }
-  }
   return {
     hotel: factsFromCatalogueHotel(hotel),
-    contacts: factsFromCatalogueContacts(contacts, name, city),
-    catalog: false,
+    contacts: null as HotelWebFacts | null,
   };
 }
 
@@ -269,9 +289,129 @@ async function rememberProfile(
   return saved || next;
 }
 
+function unwrapLeHotel(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const row = payload as Record<string, unknown>;
+  const data = row.data;
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const nested = data as Record<string, unknown>;
+    if ("name" in nested || "images_gallery" in nested || "description" in nested) return nested;
+  }
+  return row;
+}
+
+function usableDescription(value: unknown) {
+  const description = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  if (description.length < 40 || description.length > 700) return null;
+  if (/https?:|<|>/.test(description)) return null;
+  if (!description.includes(" ")) return null;
+  return description;
+}
+
+function roomNamesOf(details: Record<string, unknown>) {
+  const names: string[] = [];
+  if (typeof details.room === "string" && details.room.trim()) names.push(details.room.trim());
+  const rooms = Array.isArray(details.rooms) ? details.rooms : [];
+  for (const room of rooms) {
+    if (!room || typeof room !== "object") continue;
+    const row = room as { type?: unknown; room?: unknown };
+    const type = typeof row.type === "string" ? row.type.trim() : "";
+    const label = typeof row.room === "string" ? row.room.trim() : "";
+    if (type) names.push(type);
+    else if (label) names.push(label);
+  }
+  return names;
+}
+
+function cardHasPhotos(details: Record<string, unknown>) {
+  const raw = details.photos;
+  return Array.isArray(raw) && raw.length > 0;
+}
+
+async function resolveLittleHotel(admin: SupabaseClient, item: ItemRow, name: string, city: string) {
+  const known = realLeHotelId(item.details);
+  if (known) {
+    const byId = await admin
+      .from("crm_le_hotels")
+      .select("le_hotel_id, hotel_name, city, country")
+      .eq("le_hotel_id", Number(known))
+      .maybeSingle();
+    const hit = byId.data ? leHotelHit(byId.data as { le_hotel_id?: unknown; hotel_name?: unknown }) : null;
+    if (hit) return hit;
+    return {
+      le_hotel_id: Number(known),
+      hotel_name: name,
+      city,
+      country: countryOf(item.details),
+    } satisfies LeHotelHit;
+  }
+  if (!name || !city) return null;
+  return littleEmperorsCatalogMatch(admin, name, city, countryOf(item.details));
+}
+
+/**
+ * Reprend contacts, photos et description Little Emperors.
+ * N’appelle pas Perplexity et n’écrit pas `le_hotel_id` s’il n’était pas déjà sur la carte.
+ */
+async function applyLittleHotel(
+  admin: SupabaseClient,
+  item: ItemRow,
+  hotel: LeHotelHit,
+  fetchImpl?: FetchLike
+): Promise<HotelWebRunResult> {
+  const people = await admin
+    .from("crm_hotel_contacts")
+    .select("contact_type, email, phone")
+    .eq("le_hotel_id", hotel.le_hotel_id);
+  const stored = ((people.data || []) as CatalogueContactRow[]).map((row) => ({
+    contact_type: row.contact_type,
+    email: row.email,
+    phone: row.phone,
+  }));
+  let payload: unknown = null;
+  try {
+    payload = await fetchLePublicHotelJson(hotel.le_hotel_id, fetchImpl);
+  } catch {
+    payload = null;
+  }
+  const body = unwrapLeHotel(payload);
+  const catalog = body ? hotelCatalogFromLePayload(body) : null;
+  const fromPayload = (catalog?.contacts || []).map((person) => ({
+    contact_type: person.type,
+    email: person.email,
+    phone: person.phone,
+  }));
+  const contactFacts = factsFromCatalogueContacts([...stored, ...fromPayload], hotel.hotel_name, hotel.city);
+  const presentation = body ? presentationFromLeHotel(body, roomNamesOf(item.details || {})) : null;
+  const facts = emptyHotelWebFacts();
+  if (contactFacts) {
+    facts.reception = contactFacts.reception;
+    facts.reservations = contactFacts.reservations;
+    facts.concierge = contactFacts.concierge;
+  }
+  facts.description = usableDescription(body?.description);
+  facts.address = presentation?.address || null;
+  facts.check_in_time = presentation?.check_in_time || null;
+  facts.check_out_time = presentation?.check_out_time || null;
+  facts.website = acceptHotelWebsite(body?.website) || null;
+  let details = { ...(item.details || {}) };
+  const merged = mergeHotelWebFacts(details, facts, { markReview: false });
+  details = merged.details;
+  const filled = [...merged.filled];
+  let changed = merged.changed;
+  if (!cardHasPhotos(details) && presentation?.photos.length) {
+    details.photos = presentation.photos;
+    if (!filled.includes("photos")) filled.push("photos");
+    changed = true;
+  }
+  if (changed) await admin.from("crm_booking_items").update({ details }).eq("id", item.id);
+  return result(filled.length ? "complete" : "ignore", filled, { message: LITTLE_MESSAGE });
+}
+
 /**
  * Complète une carte hôtel. N’écrit que `details` : la visibilité reste celle de la carte.
- * La fiche est lue avant le cache et Perplexity. Aucun e-mail n’est envoyé.
+ * Little Emperors d’abord (identifiant ou correspondance). Sinon la fiche, puis Perplexity.
+ * Aucun e-mail n’est envoyé.
  */
 export async function runHotelEnrichment(
   admin: SupabaseClient,
@@ -285,10 +425,8 @@ export async function runHotelEnrichment(
   const identity = hotelSearchIdentity(item);
   const name = identity.name;
   const cityHint = await searchCity(admin, item, name, identity.city);
-  const catalogMatch = name && cityHint ? await littleEmperorsCatalogMatch(admin, name, cityHint) : false;
-  if (isLittleEmperorsHotel(item, catalogMatch) || realLeHotelId(item.details)) {
-    return result("ignore");
-  }
+  const little = await resolveLittleHotel(admin, item, name, cityHint || identity.city);
+  if (little) return applyLittleHotel(admin, item, little, opts?.fetchImpl);
   if (!opts?.force && !shouldAutoEnrichHotel(item)) {
     if (!hotelWebGaps(item.details).length) return result("deja_complet");
     return result("ville_absente");
@@ -300,7 +438,6 @@ export async function runHotelEnrichment(
 
   const parts = splitHotelKey(key);
   const catalogue = await catalogueFacts(admin, item, name, city);
-  if (catalogue.catalog || isLittleEmperorsHotel(item, catalogue.catalog)) return result("ignore");
 
   let profile = parts ? await readHotelProfile(admin, parts.name_key, parts.city_key) : null;
   let profileFacts = factsFromHotelProfile(profile);
@@ -386,22 +523,27 @@ export async function runHotelEnrichment(
 }
 
 /** Recopie la fiche sur les champs vides. Ne lance pas de recherche et n’envoie rien. */
-export async function fillCardFromProfile(admin: SupabaseClient, itemId: string): Promise<HotelWebRunResult> {
+export async function fillCardFromProfile(
+  admin: SupabaseClient,
+  itemId: string,
+  sourceKey?: string
+): Promise<HotelWebRunResult> {
   const item = await loadItem(admin, itemId);
   if (!item) return result("introuvable");
   if (item.kind !== "hotel") return result("pas_hotel");
   const identity = hotelSearchIdentity(item);
-  const parts = splitHotelKey(identity.key);
+  const key = sourceKey || identity.key;
+  const parts = splitHotelKey(key);
   if (!parts) return result("ville_absente");
   const profile = await readHotelProfile(admin, parts.name_key, parts.city_key);
   const facts = factsFromHotelProfile(profile);
   if (!profile || !facts) return result("deja_complet", [], { message: "Pas de fiche pour cet hôtel." });
   const merged = mergeHotelWebFacts(item.details, facts, {
     markReview: profile.status !== "verified",
-    cacheKey: identity.key,
+    cacheKey: key,
   });
   const details = merged.details;
-  details.hotel_profile_key = identity.key;
+  details.hotel_profile_key = key;
   details.hotel_profile_status = profile.status;
   const changed = merged.changed || item.details?.hotel_profile_status !== profile.status;
   if (changed) await admin.from("crm_booking_items").update({ details }).eq("id", itemId);
@@ -420,29 +562,122 @@ export type HotelBackfillCard = {
   details?: Record<string, unknown> | null;
 };
 
-/** Cartes actives hors Little Emperors, une ligne par hôtel et par ville. */
+type BackfillGroup = {
+  key: string;
+  name: string;
+  city: string;
+  ids: string[];
+  gaps: string[];
+  nameKey: string;
+  sites: Set<string>;
+  addresses: Set<string>;
+};
+
+function hostOf(value: unknown) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return "";
+  const official = officialSiteHost(raw);
+  if (official) return official;
+  try {
+    const url = new URL(raw.includes("://") ? raw : `https://${raw}`);
+    return url.hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function addressAnchor(value: unknown) {
+  const folded = foldHotelLabel(typeof value === "string" ? value : "");
+  return folded.length >= 8 ? folded : "";
+}
+
+function sharesAnchor(left: BackfillGroup, right: BackfillGroup) {
+  if (!left.nameKey || left.nameKey !== right.nameKey) return false;
+  for (const site of left.sites) if (site && right.sites.has(site)) return true;
+  for (const address of left.addresses) if (address && right.addresses.has(address)) return true;
+  return false;
+}
+
+function mergeBackfillGroups(groups: BackfillGroup[]) {
+  const parent = groups.map((_, index) => index);
+  const find = (index: number): number => (parent[index] === index ? index : (parent[index] = find(parent[index])));
+  for (let i = 0; i < groups.length; i++) {
+    for (let j = i + 1; j < groups.length; j++) {
+      if (sharesAnchor(groups[i], groups[j])) parent[find(j)] = find(i);
+    }
+  }
+  const merged = new Map<number, BackfillGroup>();
+  for (let i = 0; i < groups.length; i++) {
+    const root = find(i);
+    const group = groups[i];
+    const current = merged.get(root);
+    if (!current) {
+      merged.set(root, {
+        ...group,
+        ids: [...group.ids],
+        gaps: [...group.gaps],
+        sites: new Set(group.sites),
+        addresses: new Set(group.addresses),
+      });
+      continue;
+    }
+    for (const id of group.ids) if (!current.ids.includes(id)) current.ids.push(id);
+    for (const gap of group.gaps) if (!current.gaps.includes(gap)) current.gaps.push(gap);
+    for (const site of group.sites) if (site) current.sites.add(site);
+    for (const address of group.addresses) if (address) current.addresses.add(address);
+  }
+  return [...merged.values()].map(({ key, name, city, ids, gaps }) => ({ key, name, city, ids, gaps }));
+}
+
+/**
+ * Cartes actives à rechercher : hors Little Emperors, hors ville ou pays seuls,
+ * hors Airbnb et location de villa. Même hôtel, autre ville : une ligne si le site ou l’adresse est le même.
+ */
 export function planHotelBackfill(
   cards: HotelBackfillCard[],
-  leRows: { hotel_name?: string | null; city?: string | null }[]
+  leRows: { hotel_name?: string | null; city?: string | null; country?: string | null }[]
 ) {
-  const catalogue = leRows.map((row) => ({ name: row.hotel_name, city: row.city }));
-  const groups = new Map<string, { key: string; name: string; city: string; ids: string[]; gaps: string[] }>();
+  const catalogue = leRows.map((row) => ({
+    name: row.hotel_name,
+    city: row.city,
+    country: row.country,
+  }));
+  const groups: BackfillGroup[] = [];
+  const byKey = new Map<string, BackfillGroup>();
   for (const card of cards) {
     if (card.lifecycle === "cancelled" || card.lifecycle === "superseded") continue;
     if (realLeHotelId(card.details)) continue;
+    if (supplierIsPrivateRental(card.supplier)) continue;
     const identity = hotelSearchIdentity(card);
     if (!identity.key) continue;
-    if (pickCatalogueHotel(catalogue, identity.name, identity.city)) continue;
+    if (hotelNameIsOnlyPlace(identity.name, identity.city)) continue;
+    const country = countryOf(card.details);
+    if (pickCatalogueHotel(catalogue, identity.name, identity.city, { loose: true, country })) continue;
     const gaps = hotelWebGaps(card.details);
-    const current = groups.get(identity.key);
+    const site = hostOf(card.details?.website);
+    const address = addressAnchor(card.details?.address);
+    const current = byKey.get(identity.key);
     if (!current) {
-      groups.set(identity.key, { key: identity.key, name: identity.name, city: identity.city, ids: [card.id], gaps });
+      const created: BackfillGroup = {
+        key: identity.key,
+        name: identity.name,
+        city: identity.city,
+        ids: [card.id],
+        gaps,
+        nameKey: hotelNameKey(identity.name),
+        sites: new Set(site ? [site] : []),
+        addresses: new Set(address ? [address] : []),
+      };
+      byKey.set(identity.key, created);
+      groups.push(created);
       continue;
     }
     current.ids.push(card.id);
     for (const gap of gaps) if (!current.gaps.includes(gap)) current.gaps.push(gap);
+    if (site) current.sites.add(site);
+    if (address) current.addresses.add(address);
   }
-  return [...groups.values()];
+  return mergeBackfillGroups(groups);
 }
 
 export async function lireFicheHotel(admin: SupabaseClient, input: Record<string, unknown>) {
