@@ -4,18 +4,18 @@ import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/crm/auth";
 import { downloadCrmFile } from "@/lib/crm/files";
 import { verifyStatementToken } from "@/lib/crm/statement-link";
+import { isStatementDownloadName, statementContentDisposition } from "@/lib/crm/statement-filename";
 import { statementObjectPath, STATEMENT_FILENAME } from "@/lib/crm/statement";
 import { STATEMENT_SAMPLE_FILE, STATEMENT_SAMPLE_NAME } from "@/lib/crm/statement-whatsapp";
 
 export const runtime = "nodejs";
 
 function pdfResponse(bytes: Uint8Array, filename: string) {
-  const safe = filename.replace(/["\\\r\n]/g, "").slice(0, 180);
   return new NextResponse(Buffer.from(bytes), {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(safe)}`,
+      "Content-Disposition": statementContentDisposition(filename),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },
@@ -27,11 +27,12 @@ export async function GET(_request: Request, ctx: { params: Promise<{ token: str
   const { token, file } = await ctx.params;
   let filename = file;
   try {
-    filename = decodeURIComponent(file);
+    filename = decodeURIComponent(file).normalize("NFC");
   } catch {
     return jsonError("Document introuvable", 404);
   }
-  if (filename !== STATEMENT_FILENAME && filename !== STATEMENT_SAMPLE_FILE) {
+  const named = isStatementDownloadName(filename);
+  if (filename !== STATEMENT_FILENAME && filename !== STATEMENT_SAMPLE_FILE && !named) {
     return jsonError("Document introuvable", 404);
   }
 
@@ -44,7 +45,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ token: str
     }
   }
 
-  if (filename !== STATEMENT_FILENAME) return jsonError("Document introuvable", 404);
+  if (filename !== STATEMENT_FILENAME && !named) return jsonError("Document introuvable", 404);
   const verified = verifyStatementToken(token);
   if (!verified) return jsonError("Document introuvable", 404);
   const storage = statementObjectPath(verified.customerId);
@@ -55,7 +56,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ token: str
     const head = Buffer.from(downloaded.bytes.subarray(0, 5)).toString("utf8");
     const type = downloaded.contentType.toLowerCase();
     if (!type.includes("pdf") && head !== "%PDF-") return jsonError("Document introuvable", 404);
-    return pdfResponse(downloaded.bytes, STATEMENT_FILENAME);
+    return pdfResponse(downloaded.bytes, named ? filename : STATEMENT_FILENAME);
   } catch {
     return jsonError("Document introuvable", 404);
   }

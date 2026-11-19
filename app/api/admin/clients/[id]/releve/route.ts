@@ -13,7 +13,7 @@ export async function GET(_request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const loaded = await customerStatementPdf(auth.supabase, id, "staff");
   if (!loaded.ok) return jsonError(loaded.message, loaded.httpStatus);
-  return statementPdfResponse(loaded.pdf);
+  return statementPdfResponse(loaded.pdf, loaded.filename);
 }
 
 export async function POST(_request: Request, ctx: Ctx) {

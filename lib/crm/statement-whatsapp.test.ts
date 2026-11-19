@@ -230,6 +230,28 @@ test("le brouillon du relevé est un document PDF en français", () => {
   assert.equal(/\{\{\d+\}\}(?:\s|[,:;.])*\{\{\d+\}\}/.test(media.body), false);
 });
 
+test("le lien WhatsApp porte le nom du relevé", () => {
+  const previous = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const preview = process.env.VERCEL_ENV;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  delete process.env.VERCEL_ENV;
+  try {
+    const now = Date.parse("2026-11-19T08:00:00.000Z");
+    const name = "Relevé de compte TBA - Khiari - Novembre 2026.pdf";
+    const path = statementSignedPath(CUSTOMER, now, name);
+    assert.ok(path);
+    const slash = path.indexOf("/");
+    assert.equal(decodeURIComponent(path.slice(slash + 1)), name);
+    assert.equal(path.slice(slash + 1).includes("/"), false);
+    assert.equal(verifyStatementToken(path.slice(0, slash), now)?.customerId, CUSTOMER);
+  } finally {
+    if (previous === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previous;
+    if (preview === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = preview;
+  }
+});
+
 test("le jeton du relevé expire et ne vaut que pour ce compte", () => {
   const previous = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const preview = process.env.VERCEL_ENV;
