@@ -15,6 +15,15 @@ import { isActiveItem } from "@/lib/crm/types";
 import type { SaleLedgerRow } from "@/lib/crm/trip-costs";
 import { renderGroupedInvoicePdf } from "@/lib/crm/grouped-invoice-pdf";
 import {
+  emitGroupedMb3mPiece,
+  groupedMb3mDeps,
+  groupedMb3mPrintedMessage,
+  groupedMb3mUnstoredMessage,
+  readGroupedMb3m,
+  readGroupedMb3mForCustomer,
+  writeGroupedMb3m,
+} from "@/lib/crm/grouped-invoice-mb3m";
+import {
   assertGroupedSelection,
   composeGroupedSections,
   GROUPED_INVOICE_KIND,
@@ -26,14 +35,15 @@ import {
   type GroupedInvoiceDocument,
   type GroupedSectionInput,
 } from "@/lib/crm/grouped-invoice";
+import { loadMb3mInvoiceContext } from "@/lib/crm/mb3m-invoice";
+import { mb3mConfigured, mb3mFindPiece, Mb3mError } from "@/lib/crm/mb3m";
 
 export const GROUPED_INVOICE_MIGRATION = "supabase/migrations/20261119180000_crm_grouped_invoices.sql";
 
 export const GROUPED_INVOICE_SETUP =
   `La facture groupée n’est pas encore en place. La migration ${GROUPED_INVOICE_MIGRATION} est à jouer à la main.`;
 
-/** Le CRM ne demande aucune impression, validation ou finalisation MB3M pour ce document. */
-export const GROUPED_INVOICE_MB3M_CALLS: readonly string[] = [];
+export { GROUPED_INVOICE_MB3M_CALLS } from "@/lib/crm/grouped-invoice-mb3m";
 
 export type GroupedActor = { staffId: string | null; name: string };
 
@@ -178,6 +188,8 @@ export async function loadGroupedDesk(admin: SupabaseClient, customerId: string)
     createdAt: string;
     fichier: string;
     dossiers: { id: string; reference: string }[];
+    numeroMb3m: string | null;
+    erreurMb3m: string | null;
   }[];
   avertissement: string | null;
 }>> {
@@ -236,9 +248,12 @@ export async function loadGroupedDesk(admin: SupabaseClient, customerId: string)
     return fail(400, "Les factures groupées ne sont pas lisibles.");
   }
   const ids = ((invoices.data || []) as { id: string }[]).map((row) => row.id);
-  const links = ids.length
-    ? await admin.from("crm_grouped_invoice_bookings").select("grouped_invoice_id, booking_id").in("grouped_invoice_id", ids)
-    : { data: [], error: null };
+  const [links, mb3m] = await Promise.all([
+    ids.length
+      ? admin.from("crm_grouped_invoice_bookings").select("grouped_invoice_id, booking_id").in("grouped_invoice_id", ids)
+      : Promise.resolve({ data: [], error: null }),
+    readGroupedMb3mForCustomer(admin, customerId),
+  ]);
   if (links.error) return fail(400, asError(links.error, "Les dossiers de la facture ne sont pas lisibles."));
   const linkRows = (links.data || []) as { grouped_invoice_id: string; booking_id: string }[];
   const factures = ((invoices.data || []) as {
@@ -265,8 +280,10 @@ export async function loadGroupedDesk(admin: SupabaseClient, customerId: string)
         id: link.booking_id,
         reference: byId.get(link.booking_id)?.reference || "Dossier",
       })),
+    numeroMb3m: mb3m.rows.get(row.id)?.pieceNumber || null,
+    erreurMb3m: mb3m.rows.get(row.id)?.error || null,
   }));
-  return { ok: true, data: { payers, factures, avertissement: null } };
+  return { ok: true, data: { payers, factures, avertissement: mb3m.error } };
 }
 
 async function loadCompanies(admin: SupabaseClient, customerId: string) {
@@ -520,13 +537,24 @@ export async function generateGroupedInvoice(
   bookingIds: string[],
   actor: GroupedActor,
   invoiceId?: string | null
-): Promise<GroupedResult<{ id: string; number: string; fichier: string; document: GroupedInvoiceDocument }>> {
+): Promise<
+  GroupedResult<{
+    id: string;
+    number: string;
+    fichier: string;
+    document: GroupedInvoiceDocument;
+    numeroMb3m: string | null;
+    erreurMb3m: string | null;
+    avertissementMb3m: string | null;
+  }>
+> {
   const preview = await previewGroupedInvoice(admin, customerId, bookingIds);
   if (!preview.ok) return preview;
   const now = new Date();
   let id = (invoiceId || "").trim();
   let number = "";
   let storagePath = "";
+  let previous = { pieceNumber: null as string | null, folderId: null as string | null, customerUid: null as string | null };
   if (id) {
     if (!isUuid(id)) return fail(400, "Facture introuvable.");
     const existing = await admin
@@ -539,6 +567,9 @@ export async function generateGroupedInvoice(
     if (!row || row.customer_id !== customerId) return fail(404, "Facture introuvable.");
     number = row.number;
     storagePath = row.storage_path;
+    const guarded = await guardGroupedMb3m(admin, id);
+    if (!guarded.ok) return guarded;
+    previous = guarded.data;
   } else {
     id = randomUUID();
     try {
@@ -599,6 +630,13 @@ export async function generateGroupedInvoice(
       return fail(400, attached.error);
     }
   }
+  const mb3m = await syncGroupedMb3m({
+    customerId,
+    invoiceId: id,
+    number,
+    bookingIds,
+    previous,
+  });
   await recordAgencyJournal({
     staffId: actor.staffId,
     action: invoiceId ? "update" : "create",
@@ -606,7 +644,13 @@ export async function generateGroupedInvoice(
     entityId: customerId,
     summary: `Facture pro forma groupée ${number} ${invoiceId ? "mise à jour" : "préparée"} par ${actor.name}.`.slice(0, 500),
     path: `/admin/clients/${customerId}`,
-    diff: { numero: number, dossiers: document.sections.map((section) => section.reference), envoye: false },
+    diff: {
+      numero: number,
+      numero_mb3m: mb3m.numero,
+      dossiers: document.sections.map((section) => section.reference),
+      envoye: false,
+      imprime: false,
+    },
   });
   return {
     ok: true,
@@ -615,6 +659,9 @@ export async function generateGroupedInvoice(
       number,
       fichier: `/api/files?path=${encodeURIComponent(storagePath)}`,
       document,
+      numeroMb3m: mb3m.numero,
+      erreurMb3m: mb3m.erreur,
+      avertissementMb3m: mb3m.avertissement,
     },
   };
 }
@@ -770,10 +817,181 @@ export async function restoreGroupedInvoice(
   return { ok: true, data: { id: row.id, number: row.number } };
 }
 
+type Mb3mSync = {
+  numero: string | null;
+  erreur: string | null;
+  avertissement: string | null;
+  enregistre: boolean;
+  remplacee: boolean;
+  lignes: { dossier: string; libelle: string; activite: number | null; net: number; marge: number | null }[];
+};
+
+async function guardGroupedMb3m(admin: SupabaseClient, invoiceId: string): Promise<GroupedResult<{
+  pieceNumber: string | null;
+  folderId: string | null;
+  customerUid: string | null;
+}>> {
+  let stored;
+  try {
+    stored = await readGroupedMb3m(admin, invoiceId);
+  } catch (error) {
+    return fail(400, error instanceof Error ? error.message : "La référence MB3M n’est pas lisible.");
+  }
+  const number = (stored.pieceNumber || "").trim();
+  if (!number) return { ok: true, data: { pieceNumber: null, folderId: stored.folderId, customerUid: stored.customerUid } };
+  if (!mb3mConfigured()) return fail(400, "L’accès MB3M n’est pas configuré. La pièce déjà créée n’a pas été relue.");
+  try {
+    const state = await mb3mFindPiece(number);
+    if (state === "printed") return fail(400, groupedMb3mPrintedMessage(number));
+  } catch (error) {
+    if (error instanceof Mb3mError) return fail(400, error.message);
+    return fail(400, error instanceof Error ? error.message : "La pièce MB3M n’a pas pu être relue.");
+  }
+  return { ok: true, data: { pieceNumber: number, folderId: stored.folderId, customerUid: stored.customerUid } };
+}
+
+async function syncGroupedMb3m(input: {
+  customerId: string;
+  invoiceId: string;
+  number: string;
+  bookingIds: string[];
+  previous: { pieceNumber: string | null; folderId: string | null; customerUid: string | null };
+}): Promise<Mb3mSync> {
+  const { createServiceClient } = await import("@/lib/supabase/admin");
+  const service = createServiceClient();
+  const empty = {
+    numero: input.previous.pieceNumber,
+    erreur: null as string | null,
+    avertissement: null as string | null,
+    enregistre: false,
+    remplacee: false,
+    lignes: [] as Mb3mSync["lignes"],
+  };
+  try {
+    const contexts = [];
+    for (const bookingId of input.bookingIds) contexts.push(await loadMb3mInvoiceContext(service, bookingId));
+    const pushed = await emitGroupedMb3mPiece(
+      {
+        customerId: input.customerId,
+        invoiceId: input.invoiceId,
+        number: input.number,
+        contexts,
+        previous: input.previous,
+      },
+      groupedMb3mDeps(service)
+    );
+    let stored = false;
+    try {
+      stored = await writeGroupedMb3m(service, input.invoiceId, {
+        pieceNumber: pushed.number,
+        pieceUid: pushed.uid || null,
+        folderId: pushed.folderId,
+        customerUid: pushed.customerUid,
+        error: null,
+      });
+    } catch (error) {
+      return {
+        numero: pushed.number,
+        erreur: error instanceof Error ? error.message : "La référence MB3M n’a pas été enregistrée.",
+        avertissement: pushed.avertissement,
+        enregistre: false,
+        remplacee: pushed.replaced,
+        lignes: pushed.lignes,
+      };
+    }
+    return {
+      numero: pushed.number,
+      erreur: null,
+      avertissement: stored ? pushed.avertissement : [pushed.avertissement, groupedMb3mUnstoredMessage()].filter(Boolean).join(" "),
+      enregistre: stored,
+      remplacee: pushed.replaced,
+      lignes: pushed.lignes,
+    };
+  } catch (error) {
+    const message = (error instanceof Error ? error.message : "La pièce MB3M n’a pas abouti.").replace(/\s+/g, " ").trim().slice(0, 1000);
+    try {
+      await writeGroupedMb3m(service, input.invoiceId, { error: message });
+    } catch {
+      // La colonne peut manquer : le numéro n’est pas gardé, l’erreur reste dans la réponse.
+    }
+    return { ...empty, erreur: message };
+  }
+}
+
+async function orderedBookingIds(admin: SupabaseClient, invoiceId: string) {
+  const links = await admin.from("crm_grouped_invoice_bookings").select("booking_id").eq("grouped_invoice_id", invoiceId);
+  if (links.error) return fail(400, asError(links.error, "Les dossiers de la facture ne sont pas lisibles."));
+  const ids = ((links.data || []) as { booking_id: string }[]).map((row) => row.booking_id);
+  if (ids.length < 2) return fail(400, "Cette facture ne réunit pas deux dossiers.");
+  const bookings = await admin.from("crm_bookings").select("id, reference, start_date").in("id", ids);
+  if (bookings.error) return fail(400, "Les dossiers de la facture ne sont pas lisibles.");
+  const rows = (bookings.data || []) as { id: string; reference: string | null; start_date: string | null }[];
+  rows.sort((left, right) => (left.start_date || "").localeCompare(right.start_date || "") || (left.reference || "").localeCompare(right.reference || ""));
+  return { ok: true as const, data: rows.map((row) => row.id) };
+}
+
+export async function pushGroupedInvoiceToMb3m(
+  admin: SupabaseClient,
+  customerId: string,
+  invoiceId: string,
+  actor: GroupedActor
+): Promise<GroupedResult<{ id: string; number: string } & Mb3mSync>> {
+  if (!isUuid(invoiceId)) return fail(400, "Facture introuvable.");
+  const existing = await admin
+    .from("crm_grouped_invoices")
+    .select("id, number, customer_id, removed_at")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (existing.error) return fail(400, asError(existing.error, "La facture groupée n’est pas lisible."));
+  const row = existing.data as { id: string; number: string; customer_id: string; removed_at: string | null } | null;
+  if (!row || row.customer_id !== customerId) return fail(404, "Facture introuvable.");
+  if (row.removed_at) return fail(400, "Cette pro forma est retirée.");
+  const bookings = await orderedBookingIds(admin, invoiceId);
+  if (!bookings.ok) return bookings;
+  const guarded = await guardGroupedMb3m(admin, invoiceId);
+  if (!guarded.ok) return guarded;
+  const synced = await syncGroupedMb3m({
+    customerId,
+    invoiceId,
+    number: row.number,
+    bookingIds: bookings.data,
+    previous: guarded.data,
+  });
+  const created = Boolean(synced.numero) && synced.numero !== guarded.data.pieceNumber;
+  if (synced.erreur && !created) return fail(400, synced.erreur);
+  await recordAgencyJournal({
+    staffId: actor.staffId,
+    action: "update",
+    entityType: "client",
+    entityId: customerId,
+    summary: `Pro forma MB3M ${synced.numero || "refusée"} pour ${row.number}, par ${actor.name}. Le PDF n’est pas refait.`.slice(0, 500),
+    path: `/admin/clients/${customerId}`,
+    diff: { numero: row.number, numero_mb3m: synced.numero, envoye: false, imprime: false },
+  });
+  return { ok: true, data: { id: row.id, number: row.number, ...synced } };
+}
+
+async function groupedInvoiceTarget(admin: SupabaseClient, customerId: string, factureId?: string, numero?: string) {
+  const { McpWriteError } = await import("@/lib/crm/mcp-write");
+  const id = (factureId || "").trim();
+  if (id) {
+    if (!isUuid(id)) throw new McpWriteError("facture_id est l’identifiant de la facture groupée.");
+    return id;
+  }
+  const number = (numero || "").trim().toUpperCase();
+  if (!/^FG-\d{4}-\d{4}$/.test(number)) throw new McpWriteError("Indiquez facture_id ou un numéro FG-AAAA-NNNN.");
+  const found = await admin.from("crm_grouped_invoices").select("id, customer_id").eq("number", number).maybeSingle();
+  if (found.error || !found.data) throw new McpWriteError("Facture groupée introuvable.");
+  const row = found.data as { id: string; customer_id: string };
+  if (row.customer_id !== customerId) throw new McpWriteError("Cette facture n’est pas sur cette fiche.");
+  return row.id;
+}
+
 export async function factureGroupee(args: {
   client_id?: string;
   dossiers?: string[];
   facture_id?: string;
+  numero?: string;
   action?: string;
   confirmer?: boolean;
 }) {
@@ -782,10 +1000,40 @@ export async function factureGroupee(args: {
   const { McpWriteError } = await import("@/lib/crm/mcp-write");
   const clientId = (args.client_id || "").trim();
   if (!isUuid(clientId)) throw new McpWriteError("client_id est l’identifiant de la fiche.");
-  const action = args.action === "retirer" || args.action === "restaurer" ? args.action : "generer";
+  const action =
+    args.action === "retirer" || args.action === "restaurer" || args.action === "mb3m" ? args.action : "generer";
   const access = currentMcpAccess();
   const actor = { staffId: access.staff?.id || null, name: access.staff?.name || "Jeton MCP" };
   const admin = createServiceClient();
+  if (action === "mb3m") {
+    const factureId = await groupedInvoiceTarget(admin, clientId, args.facture_id, args.numero);
+    if (args.confirmer !== true) {
+      const bookings = await orderedBookingIds(admin, factureId);
+      if (!bookings.ok) throw new McpWriteError(bookings.error);
+      const preview = await previewGroupedInvoice(admin, clientId, bookings.data);
+      if (!preview.ok) throw new McpWriteError(preview.error);
+      return {
+        ...groupedPublicPreview(preview.data.document),
+        mb3m: false,
+        message: "Aperçu. MB3M n’est pas appelé. confirmer true crée la pro forma sans refaire le PDF.",
+      };
+    }
+    const pushed = await pushGroupedInvoiceToMb3m(admin, clientId, factureId, actor);
+    if (!pushed.ok) throw new McpWriteError(pushed.error);
+    return {
+      ok: true,
+      ecrit: true,
+      envoye: false,
+      pro_forma: true,
+      imprime: false,
+      numero: pushed.data.number,
+      numero_mb3m: pushed.data.numero,
+      erreur_mb3m: pushed.data.erreur,
+      avertissement: pushed.data.avertissement,
+      remplacee: pushed.data.remplacee,
+      lignes: pushed.data.lignes,
+    };
+  }
   if (action !== "generer") {
     const factureId = (args.facture_id || "").trim();
     if (!isUuid(factureId)) throw new McpWriteError("facture_id est l’identifiant de la facture groupée.");
@@ -832,11 +1080,15 @@ export async function factureGroupee(args: {
     envoye: false,
     pro_forma: true,
     numero: created.data.number,
+    numero_mb3m: created.data.numeroMb3m,
+    erreur_mb3m: created.data.erreurMb3m,
+    avertissement: created.data.avertissementMb3m,
     fichier: created.data.fichier,
     total: created.data.document.total,
     paye: created.data.document.paid,
     reste: created.data.document.balance,
     dossiers: created.data.document.sections.map((section) => section.reference),
+    imprime: false,
   };
 }
 
@@ -862,6 +1114,7 @@ export function groupedPublicPreview(document: GroupedInvoiceDocument) {
     total: document.total,
     paye: document.paid,
     reste: document.balance,
-    message: "Pro forma. Le PDF reste masqué sur chaque dossier. Aucun e-mail, aucun WhatsApp.",
+    message:
+      "Pro forma. Le PDF reste masqué sur chaque dossier. À la confirmation, une seule pièce pro forma MB3M est créée au nom du payeur. Aucun e-mail, aucun WhatsApp. Rien n’est imprimé.",
   };
 }

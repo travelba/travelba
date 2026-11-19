@@ -72,6 +72,7 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20261118223000_customer_hide_client_prices.sql` | `crm_customers.hide_client_prices` (défaut faux). Pas de grant client. À jouer à la main |
 | `20261119100000_crm_hotel_profiles.sql` | fiche hôtel hors Little Emperors (`crm_hotel_profiles`, bucket public `hotel-photos`). Reprend la table vide déjà en prod. Lecture staff, écriture service role. À jouer à la main |
 | `20261119143000_omnibar_rank.sql` | barre agence v2 : mots en ET, sans accent, pertinence (mot entier, préfixe, fragment), e-mail, téléphone, voyageurs. À jouer à la main. L’application classe déjà sans elle |
+| `20261119201000_crm_grouped_invoice_mb3m.sql` | référence de la pro forma MB3M sur `crm_grouped_invoices`. À jouer à la main. Le CRM répond sans elle |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 
