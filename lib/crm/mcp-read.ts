@@ -36,6 +36,7 @@ import {
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
 import { clientLedgerAdminHref, loadClientLedger } from "@/lib/crm/client-ledger";
+import { twinsForCustomers, type TwinPerson } from "@/lib/crm/customer-twins";
 import { ledgerTravelerLabel } from "@/lib/crm/ledger-travelers";
 import {
   countDossiersByCustomer,
@@ -154,8 +155,34 @@ function customerLine(row: CustomerListRow | CustomerNameRow) {
   };
 }
 
+async function zeroFeesFor(admin: SupabaseClient, ids: string[]) {
+  const map = new Map<string, boolean>();
+  if (!ids.length) return map;
+  const read = await admin.from("crm_customers").select("id, zero_fees").in("id", ids);
+  if (read.error) return map;
+  for (const row of (read.data || []) as { id: string; zero_fees?: boolean | null }[]) {
+    map.set(row.id, row.zero_fees === true);
+  }
+  return map;
+}
+
+async function attachTwins<T extends { id: string }>(admin: SupabaseClient, rows: T[]) {
+  const fees = await zeroFeesFor(
+    admin,
+    rows.map((row) => row.id)
+  );
+  const empty = rows.map((row) => ({ ...row, jumeaux: [] as TwinPerson[], zero_frais: fees.get(row.id) === true }));
+  if (!rows.length) return empty;
+  try {
+    const map = await twinsForCustomers(admin, rows.map((row) => row.id));
+    return rows.map((row) => ({ ...row, jumeaux: map.get(row.id) || [], zero_frais: fees.get(row.id) === true }));
+  } catch {
+    return empty;
+  }
+}
+
 async function withDossierCounts(admin: SupabaseClient, rows: CustomerListRow[]) {
-  if (!rows.length) return rows.map((row) => ({ ...customerLine(row), dossiers: 0 }));
+  if (!rows.length) return rows.map((row) => ({ ...customerLine(row), dossiers: 0, jumeaux: [] as TwinPerson[], zero_frais: false }));
   const { data, error } = await admin
     .from("crm_bookings")
     .select("customer_id")
@@ -165,7 +192,10 @@ async function withDossierCounts(admin: SupabaseClient, rows: CustomerListRow[])
     );
   if (error) logRead("dossiers", error);
   const counts = countDossiersByCustomer((data || []) as { customer_id: string | null }[]);
-  return rows.map((row) => ({ ...customerLine(row), dossiers: counts.get(row.id) || 0 }));
+  return attachTwins(
+    admin,
+    rows.map((row) => ({ ...customerLine(row), dossiers: counts.get(row.id) || 0 }))
+  );
 }
 
 /** Société facturée, à côté du contact. Particulier si le séjour n’est pas à la société. */
@@ -634,20 +664,26 @@ export async function readFicheClient(input: { id?: string; q?: string }, admin 
   const pieces = reviewIdentityPieces((docs || []) as CrmTravelDocument[]);
   const priceFlag = await admin
     .from("crm_customers")
-    .select("hide_client_prices")
+    .select("hide_client_prices, zero_fees")
     .eq("id", customer.id)
     .maybeSingle();
-  const masquer_prix = priceFlag.error
-    ? false
-    : (priceFlag.data as { hide_client_prices?: boolean | null } | null)?.hide_client_prices === true;
+  const priceFallback =
+    priceFlag.error && /zero_fees/i.test(priceFlag.error.message || "")
+      ? await admin.from("crm_customers").select("hide_client_prices").eq("id", customer.id).maybeSingle()
+      : priceFlag;
+  const priceRow = priceFallback.data as { hide_client_prices?: boolean | null; zero_fees?: boolean | null } | null;
+  const masquer_prix = priceFallback.error ? false : priceRow?.hide_client_prices === true;
+  const zero_frais = priceFlag.error ? false : priceRow?.zero_fees === true;
   return {
     ...customerLine(customer),
     masquer_prix,
+    zero_frais,
     societes: billingCompaniesPublic(companies.companies),
     en_veille: customer.on_hold === true,
     encours: wallets,
     pieces_a_echeance: pieces.map((doc) => pieceLine(doc)),
     compagnons: await companionsOfClient(admin, customer.id),
+    jumeaux: (await twinsForCustomers(admin, [customer.id]).catch(() => new Map())).get(customer.id) || [],
   };
 }
 

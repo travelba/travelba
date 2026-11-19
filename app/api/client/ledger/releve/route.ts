@@ -4,6 +4,8 @@ import { loadClientLedger } from "@/lib/crm/client-ledger-load";
 import { RATE_LIMITED_MESSAGE, rateLimit, rateLimitKey } from "@/lib/crm/rate-limit";
 import { statementExportName } from "@/lib/crm/statement-filename";
 import { buildStatement, statementHolderLines } from "@/lib/crm/statement";
+import { appendSharedStays, loadSharedStatementStays } from "@/lib/crm/twin-statement";
+import { createServiceClient } from "@/lib/supabase/admin";
 import { attachStatementTransfer } from "@/lib/crm/statement-wire";
 import { renderStatementPdf } from "@/lib/crm/statement-pdf";
 import { deliverStatementWhatsapp, statementPdfResponse, statementSendResponse } from "@/lib/crm/statement-send";
@@ -15,14 +17,23 @@ export const runtime = "nodejs";
 async function statementPdf(auth: Exclude<Awaited<ReturnType<typeof requireCustomer>>, NextResponse>) {
   const issuedAt = new Date();
   const view = await loadClientLedger(auth.supabase, auth.customer, "client");
+  let shared: Awaited<ReturnType<typeof loadSharedStatementStays>> = [];
+  try {
+    shared = await loadSharedStatementStays(createServiceClient(), auth.customer.id);
+  } catch {
+    shared = [];
+  }
   const pdf = await renderStatementPdf(
-    await attachStatementTransfer(
-      buildStatement({
-        view,
-        holderName: customerFullName(auth.customer),
-        holderLines: statementHolderLines(auth.customer),
-        issuedAt,
-      })
+    appendSharedStays(
+      await attachStatementTransfer(
+        buildStatement({
+          view,
+          holderName: customerFullName(auth.customer),
+          holderLines: statementHolderLines(auth.customer),
+          issuedAt,
+        })
+      ),
+      shared
     )
   );
   return { view, pdf, filename: statementExportName(auth.customer, { issuedAt }) };

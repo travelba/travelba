@@ -146,6 +146,7 @@ export const patchCustomerSchema = z.object({
   hide_client_prices: z
     .boolean({ error: "« Masquer prix et transactions » : vrai ou faux attendu." })
     .optional(),
+  zero_fees: z.boolean({ error: "« Zéro frais » : vrai ou faux attendu." }).optional(),
   billing_companies: z
     .array(billingCompanyInputSchema, { error: "Liste de sociétés invalide." })
     .max(20, { error: "20 sociétés maximum." })

@@ -395,6 +395,7 @@ export function BookingEditor({
   showMargins = true,
   checkins = [],
   ownership = null,
+  twinNames = [],
 }: {
   booking: CrmBooking;
   /** Taux appliqué et taux hérité du compte. Le sélecteur reste à l’agence. */
@@ -512,6 +513,8 @@ export function BookingEditor({
     canTake?: boolean;
     meName?: string;
   } | null;
+  /** Fiches jumelées qui voient aussi ce dossier. */
+  twinNames?: string[];
   /** E-mails, activité, WhatsApp, formalités, Pliant et compta, après le premier affichage. */
   panels?: DossierPanels | null;
 }) {
@@ -1718,6 +1721,11 @@ export function BookingEditor({
           {customer?.hide_client_prices ? (
             <span className="inline-flex items-center rounded-full bg-[#f8f3eb] px-3 py-1 text-sm font-semibold text-[var(--admin-navy)] ring-1 ring-[var(--admin-gold)]">
               Prix masqués au client
+            </span>
+          ) : null}
+          {twinNames.length ? (
+            <span className="inline-flex items-center rounded-full bg-[#f8f3eb] px-3 py-1 text-sm font-semibold text-[var(--admin-navy)] ring-1 ring-[var(--admin-gold)]">
+              Aussi visible par {twinNames.join(", ")}
             </span>
           ) : null}
           <HiddenCardsCounter count={hiddenCards.length} onJump={jumpToHiddenCard} />
