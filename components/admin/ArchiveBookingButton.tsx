@@ -48,6 +48,7 @@ function ActionTrigger({
   tone = "default",
   iconOnly = false,
   compact = false,
+  plain = false,
   disabled = false,
   onClick,
 }: {
@@ -56,9 +57,24 @@ function ActionTrigger({
   tone?: "danger" | "default";
   iconOnly?: boolean;
   compact?: boolean;
+  plain?: boolean;
   disabled?: boolean;
   onClick: () => void;
 }) {
+  if (plain) {
+    const toneClass = tone === "danger" ? "text-[var(--admin-red)]" : "text-[var(--admin-navy)]";
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        aria-haspopup="dialog"
+        onClick={onClick}
+        className={`admin-tap block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold disabled:opacity-50 ${toneClass}`}
+      >
+        {label}
+      </button>
+    );
+  }
   if (iconOnly) {
     const toneClass =
       tone === "danger"
@@ -104,12 +120,14 @@ export function ArchiveBookingButton({
   label,
   compact = false,
   iconOnly = false,
+  plain = false,
   redirectTo = "/admin/reservations",
 }: {
   bookingId: string;
   label: string;
   compact?: boolean;
   iconOnly?: boolean;
+  plain?: boolean;
   redirectTo?: string | null;
 }) {
   const router = useRouter();
@@ -141,6 +159,7 @@ export function ArchiveBookingButton({
         tone="danger"
         iconOnly={iconOnly}
         compact={compact}
+        plain={plain}
         disabled={busy}
         onClick={() => {
           setError(null);
@@ -170,11 +189,13 @@ export function DuplicateBookingButton({
   label = "Ce dossier",
   compact = false,
   iconOnly = false,
+  plain = false,
 }: {
   bookingId: string;
   label?: string;
   compact?: boolean;
   iconOnly?: boolean;
+  plain?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -206,6 +227,7 @@ export function DuplicateBookingButton({
         icon="content_copy"
         iconOnly={iconOnly}
         compact={compact}
+        plain={plain}
         disabled={busy}
         onClick={() => {
           setError(null);

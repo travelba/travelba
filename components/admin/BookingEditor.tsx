@@ -118,7 +118,6 @@ import { groupAttachedEmails } from "@/lib/crm/email-duplicates";
 import {
   clientStayAction,
   PRIMARY_STAY_LABEL,
-  primaryStayButton,
   staffBlockingChips,
   staffLedgerCaption,
   staffStayFacts,
@@ -200,11 +199,6 @@ const UkEtaOnBooking = dynamic(() => import("@/components/admin/UkEtaOnBooking")
 const BookingRestaurants = dynamic(() => import("@/components/admin/BookingRestaurants").then((m) => m.BookingRestaurants), {
   loading: () => panelLoading("Chargement des restaurants…"),
 });
-const ClientInterfacePreview = dynamic(
-  () => import("@/components/account/ClientInterfacePreview").then((m) => m.ClientInterfacePreview),
-  { loading: () => panelLoading("Chargement de l’aperçu…") }
-);
-
 /** Assez pour recalculer le montant : prix, billets, aéroports, aller-retour. */
 function ledgerMoneyKey(view: ClientLedgerView | null) {
   if (!view) return "";
@@ -371,7 +365,6 @@ export function BookingEditor({
   leStays = [],
   expenseBilling = [],
   revolutExpenses: revolutIn = [],
-  ledger: ledgerIn = null,
   accountLedger: accountLedgerIn = null,
   deferredLedger = null,
   deferredItems = null,
@@ -528,7 +521,7 @@ export function BookingEditor({
     pliantRecap: typeof pliantRecapIn;
   } | null>(null);
   const [moneyRows, setMoneyRows] = useState<{
-    ledger: typeof ledgerIn;
+    ledger: ClientLedgerView | null;
     accountLedger: typeof accountLedgerIn;
     accounting: typeof accountingIn;
     revolutExpenses: typeof revolutIn;
@@ -550,7 +543,6 @@ export function BookingEditor({
   const hotelThreadMessages = hotelRows?.hotelThreadMessages ?? hotelThreadMessagesIn;
   const bookingCards = hotelRows?.bookingCards ?? bookingCardsIn;
   const pliantRecap = hotelRows?.pliantRecap ?? pliantRecapIn;
-  const ledger = moneyRows?.ledger ?? ledgerIn;
   const accountLedger = moneyRows?.accountLedger ?? accountLedgerIn;
   // Le premier rendu porte déjà les coûts en base. La vague différée et l’enregistrement
   // les remplacent quand ils arrivent ; la file des propositions, elle, reste à part.
@@ -611,14 +603,10 @@ export function BookingEditor({
   const ledgerKey = ledgerMoneyKey(accountLedger);
   const [seenLedgerKey, setSeenLedgerKey] = useState(ledgerKey);
   const [liveLedger, setLiveLedger] = useState(accountLedger);
-  const [previewLedger, setPreviewLedger] = useState(ledger);
   const [stripeLedgerReady, setStripeLedgerReady] = useState(false);
   if (ledgerKey !== seenLedgerKey) {
     setSeenLedgerKey(ledgerKey);
-    if (!held && !stripeLedgerReady) {
-      setLiveLedger(accountLedger);
-      setPreviewLedger(ledger);
-    }
+    if (!held && !stripeLedgerReady) setLiveLedger(accountLedger);
   }
   const applyArgent = useCallback(
     (incoming: ArgentIncoming) => {
@@ -691,7 +679,6 @@ export function BookingEditor({
         currency: booking.currency,
       };
       setLiveLedger((current) => applyExpenseLedgerChange(current, patch));
-      setPreviewLedger((current) => applyExpenseLedgerChange(current, patch));
       setHeld((current) => {
         if (!current) return current;
         const next = {
@@ -718,11 +705,27 @@ export function BookingEditor({
   const titleEdit = stayNameField(routeTitle, titleDraft);
   const [coverOpen, setCoverOpen] = useState(false);
   const tab = bookingTabFromParam(searchParams.get("tab"));
-  const [previewOpen, setPreviewOpen] = useState(false);
   useEffect(() => {
     void adminAction(`/api/admin/bookings/${booking.id}/vu`, { method: "POST" });
   }, [booking.id]);
   const [more, setMore] = useState(false);
+  useEffect(() => {
+    if (!more) return;
+    function close(event: MouseEvent) {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-dossier-menu]")) return;
+      setMore(false);
+    }
+    function onKey(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") setMore(false);
+    }
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [more]);
   const [coverNotice, setCoverNotice] = useState<string | null>(null);
   const arrival = coverQuery(booking.destination, booking.title);
   const coverPlace = arrival === "voyage" ? "" : arrival;
@@ -1296,7 +1299,6 @@ export function BookingEditor({
   });
   const accounting = held?.accounting ?? serverAccounting;
   const shownLedger = held ? held.accountLedger : liveLedger;
-  const shownPreview = held ? held.ledger : previewLedger;
   const agencyCommission = commissionOverride ?? held?.agencyCommission ?? booking.agency_commission === true;
   const proposals = useTripProposals(booking.id, attachedCostStamp(accounting));
   const costsToPoint =
@@ -1393,97 +1395,56 @@ export function BookingEditor({
     tabRefs.current[next]?.focus();
   }
 
-  // Le geste suit la visibilité réelle : Montrer au client, ou Cacher au client.
-  // Mettre à jour le carnet s’ajoute seulement si une étape est encore cachée sur un séjour déjà montré.
+  // Enregistrer n’apparaît que s’il y a quelque chose à écrire. Montrer seulement si le séjour est caché.
   const stayAction = clientStayAction(booking);
-  const hideButtonClass =
-    "admin-tap whitespace-nowrap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50";
   const showButtonClass = "admin-af-btn admin-tap whitespace-nowrap rounded-full px-4 py-2 text-sm disabled:opacity-50";
-  const stayButton = primaryStayButton({ visible: stayAction === "cacher", unsaved });
+  const saveButton =
+    unsaved && stayAction !== "cacher" ? (
+      <button
+        type="submit"
+        form="booking-meta"
+        disabled={busy !== "idle"}
+        aria-keyshortcuts="Control+S Meta+S"
+        title="⌘S / Ctrl+S"
+        className="admin-tap whitespace-nowrap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+      >
+        {busy === "save" ? "Enregistrement…" : "Enregistrer"}
+      </button>
+    ) : null;
+  const showButton =
+    stayAction === "montrer" ? (
+      <button type="button" disabled={busy !== "idle"} onClick={() => setConfirm("publish")} className={showButtonClass}>
+        Montrer au client
+      </button>
+    ) : null;
   const primaryAction =
     stayAction === "restaurer" ? (
-      <RestoreBookingButton bookingId={booking.id} />
-    ) : stayAction === "rouvrir" ? (
-      <button
-        type="button"
-        disabled={busy !== "idle"}
-        onClick={() => void setFace("draft")}
-        className={showButtonClass}
-      >
-        Rouvrir
-      </button>
-    ) : unsaved && (stayAction === "montrer" || stayAction === "cacher") ? (
       <>
+        {saveButton}
+        <RestoreBookingButton bookingId={booking.id} />
+      </>
+    ) : stayAction === "rouvrir" ? (
+      <>
+        {saveButton}
         <button
           type="button"
           disabled={busy !== "idle"}
-          onClick={() => void saveAndShow()}
-          className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm disabled:opacity-50"
+          onClick={() => void setFace("draft")}
+          className={showButtonClass}
         >
-          {PRIMARY_STAY_LABEL[stayButton]}
+          Rouvrir
         </button>
-        {stayAction === "cacher" ? (
-          <button type="button" disabled={busy !== "idle"} onClick={() => setConfirm("unpublish")} className={hideButtonClass}>
-            Cacher au client
-          </button>
-        ) : null}
       </>
-    ) : (
+    ) : unsaved && stayAction === "cacher" ? (
+      <button type="button" disabled={busy !== "idle"} onClick={() => void saveAndShow()} className={showButtonClass}>
+        {PRIMARY_STAY_LABEL["enregistrer-mettre-a-jour"]}
+      </button>
+    ) : stayAction === "montrer" ? (
       <>
-        {stayAction === "montrer" ? (
-          <button type="button" disabled={busy !== "idle"} onClick={() => setConfirm("publish")} className={showButtonClass}>
-            Montrer au client
-          </button>
-        ) : (
-          <button type="button" disabled={busy !== "idle"} onClick={() => setConfirm("unpublish")} className={hideButtonClass}>
-            Cacher au client
-          </button>
-        )}
-        {stayAction === "cacher" && updatesPending ? (
-          <button type="button" disabled={busy !== "idle"} onClick={() => setConfirm("publish")} className={showButtonClass}>
-            Mettre à jour le carnet
-          </button>
-        ) : null}
+        {saveButton}
+        {showButton}
       </>
-    );
-  const passesButton = (compactBar: boolean) => (
-    <button
-      type="button"
-      onClick={() => {
-        setMore(false);
-        setPassesOpen((open) => !open);
-      }}
-      className={`admin-tap whitespace-nowrap rounded-full border border-[var(--admin-navy)] bg-white font-semibold text-[var(--admin-navy)] ${compactBar ? "px-3 py-2 text-xs" : "px-4 py-2 text-sm"}`}
-    >
-      Cartes d’embarquement
-    </button>
-  );
-  const saveLabel = busy === "save" ? "Enregistrement…" : "Enregistrer";
-  const saveButton = (
-    <button
-      type="submit"
-      form="booking-meta"
-      disabled={busy !== "idle" || !unsaved}
-      aria-keyshortcuts="Control+S Meta+S"
-      title="⌘S / Ctrl+S"
-      className="admin-tap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:border-[var(--border)] disabled:opacity-50"
-    >
-      {saveLabel}
-    </button>
-  );
-  const saveIconButton = (
-    <button
-      type="submit"
-      form="booking-meta"
-      disabled={busy !== "idle" || !unsaved}
-      aria-keyshortcuts="Control+S Meta+S"
-      title="⌘S / Ctrl+S"
-      aria-label={saveLabel}
-      className="admin-tap inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--admin-navy)] bg-white text-[var(--admin-navy)] disabled:border-[var(--border)] disabled:opacity-50 lg:hidden"
-    >
-      <Icon name="save" className="h-4 w-4" />
-    </button>
-  );
+    ) : null;
   const moreButton = (
     <button
       type="button"
@@ -1501,70 +1462,90 @@ export function BookingEditor({
       {staffStayLabel(booking)}
     </p>
   );
-  const menuItem = "admin-tap text-sm font-semibold text-[var(--admin-navy)]";
+  const menuItem = "admin-tap block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50";
+  const dossierLabel = `${booking.reference} — ${titleEdit.value.trim() || booking.title}`;
   const moreMenu = (
-    <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl bg-[var(--admin-sky)] px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <DuplicateBookingButton bookingId={booking.id} label={`${booking.reference} — ${titleEdit.value.trim() || booking.title}`} />
+    <div className="w-64 rounded-2xl border border-[var(--border)] bg-white p-1.5">
+      {hasFlight ? (
         <button
           type="button"
           className={menuItem}
-          disabled={busy !== "idle"}
-          onClick={() => {
-            setCoverNotice(null);
-            setCoverOpen(true);
-          }}
-        >
-          Couverture
-        </button>
-        {booking.cover_image_path || catalogCoverId ? (
-          <button type="button" className={menuItem} disabled={busy !== "idle"} onClick={() => void regenerateCover()}>
-            Autre version
-          </button>
-        ) : null}
-        {booking.cover_image_path ? (
-          <button type="button" className={menuItem} disabled={busy !== "idle"} onClick={clearCover}>
-            Photo du lieu
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className={menuItem}
-          aria-pressed={previewOpen}
           onClick={() => {
             setMore(false);
-            setPreviewOpen((open) => !open);
+            setPassesOpen(true);
           }}
         >
-          {previewOpen ? "Fermer l’aperçu client" : "Aperçu de l’espace client"}
+          Cartes d’embarquement
         </button>
-        {shareUrl ? (
-          <a href={shareUrl} target="_blank" rel="noreferrer" className={`${menuItem} underline`}>
-            Voir comme le client
-          </a>
-        ) : null}
-        {booking.archived_at || booking.status === "cancelled" ? null : (
-          <button
-            type="button"
-            className={menuItem}
-            disabled={busy !== "idle"}
-            onClick={() => {
-              setMore(false);
-              setConfirm("cancel");
-            }}
-          >
-            Annuler le dossier
-          </button>
-        )}
-      </div>
+      ) : null}
+      {shareUrl ? (
+        <a href={shareUrl} target="_blank" rel="noreferrer" className={menuItem}>
+          Voir comme le client
+        </a>
+      ) : null}
+      <button
+        type="button"
+        className={menuItem}
+        disabled={busy !== "idle"}
+        onClick={() => {
+          setMore(false);
+          setCoverNotice(null);
+          setCoverOpen(true);
+        }}
+      >
+        Couverture
+      </button>
+      <DuplicateBookingButton bookingId={booking.id} label={dossierLabel} plain />
       {booking.archived_at ? null : (
-        <ArchiveBookingButton
-          bookingId={booking.id}
-          label={`${booking.reference} — ${titleEdit.value.trim() || booking.title}`}
-          compact
-          redirectTo={null}
-        />
+        <div className="mt-1 border-t border-[var(--border)] pt-1">
+          {stayAction === "cacher" && !unsaved && updatesPending ? (
+            <button
+              type="button"
+              className={menuItem}
+              disabled={busy !== "idle"}
+              onClick={() => {
+                setMore(false);
+                setConfirm("publish");
+              }}
+            >
+              Mettre à jour le carnet
+            </button>
+          ) : null}
+          {stayAction === "cacher" ? (
+            <button
+              type="button"
+              className={menuItem}
+              disabled={busy !== "idle"}
+              onClick={() => {
+                setMore(false);
+                setConfirm("unpublish");
+              }}
+            >
+              Cacher au client
+            </button>
+          ) : null}
+          {booking.status === "cancelled" ? null : (
+            <button
+              type="button"
+              className={menuItem}
+              disabled={busy !== "idle"}
+              onClick={() => {
+                setMore(false);
+                setConfirm("cancel");
+              }}
+            >
+              Annuler le dossier
+            </button>
+          )}
+          <ArchiveBookingButton bookingId={booking.id} label={dossierLabel} plain redirectTo={null} />
+        </div>
       )}
+    </div>
+  );
+  const dossierMenu = (open: boolean) => (
+    <div className="relative" data-dossier-menu>
+      {moreButton}
+      {open ? <div className="absolute right-0 z-30 mt-2">{moreMenu}</div> : null}
     </div>
   );
 
@@ -1647,19 +1628,15 @@ export function BookingEditor({
                   Ajouter le titulaire
                 </button>
               ) : null}
-              {saveIconButton}
-              <span className="hidden lg:contents">{saveButton}</span>
-              {hasFlight ? passesButton(true) : null}
               {primaryAction}
-              {moreButton}
+              {dossierMenu(more)}
             </div>
           </div>
-          {more ? <div className="mt-2">{moreMenu}</div> : null}
         </div>
       ) : null}
       <header className="relative space-y-4">
         <div ref={sentinelRef} aria-hidden className="absolute left-0 top-0 h-px w-px" />
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="relative z-20 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:items-start lg:gap-3">
             <Link href="/admin/reservations" className="admin-tap inline-flex shrink-0 items-center text-sm font-semibold text-[var(--admin-navy)] lg:pt-5">
               ← Dossiers
@@ -1704,10 +1681,8 @@ export function BookingEditor({
                 Ajouter le titulaire
               </button>
             ) : null}
-            {saveButton}
-            {hasFlight ? passesButton(false) : null}
             {primaryAction}
-            {moreButton}
+            {dossierMenu(more && !compact)}
           </div>
         </div>
         <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted">
@@ -1816,7 +1791,6 @@ export function BookingEditor({
             ) : null}
           </p>
         ) : null}
-        {more && !compact ? moreMenu : null}
         {booking.archived_at ? (
           <p className="rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-sm text-[var(--admin-navy)]">
             Dossier archivé. Le client ne le voit plus. Réactivez-le pour le remettre dans la liste et au grand livre.
@@ -1858,6 +1832,7 @@ export function BookingEditor({
         onPick={pickCover}
         onFile={uploadCoverFile}
         onRegenerate={() => void regenerateCover()}
+        onUsePlacePhoto={booking.cover_image_path ? clearCover : undefined}
       />
 
       {confirm ? (
@@ -1921,42 +1896,6 @@ export function BookingEditor({
               Annuler
             </button>
           </div>
-        </section>
-      ) : null}
-
-      {previewOpen ? (
-        <section className="admin-af-card space-y-4 rounded-3xl border border-[var(--admin-gold)]/50 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <CoverMark>Aperçu de l’espace client</CoverMark>
-            <button
-              type="button"
-              onClick={() => setPreviewOpen(false)}
-              className="admin-tap rounded-full border border-[var(--border)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--admin-navy)]"
-            >
-              Fermer l’aperçu
-            </button>
-          </div>
-        <ClientInterfacePreview
-          booking={booking}
-          agencyFeeRate={previewFeeRate}
-          items={items}
-          documents={documents}
-          travelers={travelers}
-          identityDocs={identityDocs}
-          companions={companions}
-          customer={customer}
-          visaRequests={visaRequests}
-          refusals={refusals}
-          pliantReady={pliantReady}
-          shareUrl={shareUrl}
-          shareCompanions={shareCompanions}
-          ledger={customer?.hide_client_prices ? null : shownPreview}
-          settled={settledAuthorizationCountries({
-            travelerIds: travelers.map((traveler) => traveler.id),
-            estaTones: estaLines,
-            ukEtaTones: ukEtaLines,
-          })}
-        />
         </section>
       ) : null}
 

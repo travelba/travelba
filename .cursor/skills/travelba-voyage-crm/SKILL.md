@@ -21,7 +21,7 @@ Ne pas ré-ouvrir le QCM produit : les règles sont déjà ancrées dans les ski
 
 Liste `/admin/reservations` : du plus proche au plus loin (séjour en cours, puis prochains départs, puis passés du plus récent). « Départ, du plus lointain » reste un tri du menu. Chaque ligne (Accueil, liste, recherche) montre qui est en charge, prénom et initiales, ou « À prendre ». Le filtre En charge : Moi, Personne, ou un collègue. En tête de dossier, « Me mettre en charge » pose le collègue connecté.
 
-Trois statuts : **Non visible**, **Visible** (c’est le confirmé), **Annulé**. Montrer au client, ou Enregistrer et montrer quand des changements attendent, pose Visible. Cacher au client revient à Non visible. Annuler pose Annulé, Rouvrir revient à Non visible. L’archive reste à part (**Archivée**). Archiver dit **Archiver**, jamais Supprimer.
+Trois statuts : **Non visible**, **Visible** (c’est le confirmé), **Annulé**. Montrer au client pose Visible. S’il reste des changements, ils partent avec. Sur un séjour déjà Visible, le bouton est Enregistrer et mettre à jour le carnet. Cacher au client, dans le menu, revient à Non visible. Annuler pose Annulé, Rouvrir revient à Non visible. L’archive reste à part (**Archivée**). Archiver dit **Archiver**, jamais Supprimer.
 
 L’en-tête (le titre compris) et le bloc Lieu et dates sont en haut et suivent **toutes** les étapes (plusieurs villes, plusieurs dates, sans répéter la même ville, le même séjour ni le même trajet). Le nom du séjour se modifie dans cet en-tête : le texte saisi reste à l’écran, il ne revient pas au titre stocké, et Enregistrer s’allume. On n’affiche pas un seul lieu ni un seul aller-retour figé du dossier, et on ne réécrit pas la destination ni les dates en base pour les aligner.
 
