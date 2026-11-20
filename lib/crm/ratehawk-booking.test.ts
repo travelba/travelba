@@ -153,7 +153,8 @@ test("le repas n’est jamais amélioré et les taxes exclues restent à part", 
   assert.equal(taxes.excluded.length, 1);
   assert.equal(taxes.included.length, 1);
   assert.equal(sellFromNet(100, 12), 112);
-  assert.equal(marginPercent(5), 12);
+  assert.equal(marginPercent(5), 5);
+  assert.equal(sellFromNet(100), 100);
   assert.equal(formPriceNeedsAcceptance(100, 110, false), true);
   assert.equal(formPriceNeedsAcceptance(100, 110, true), false);
 });
@@ -313,7 +314,7 @@ test("l’identifiant de scénario survit à une régénération, les environnem
     () => loadRatehawkConfig({ RATEHAWK_ENV: "production", VERCEL_ENV: "preview", RATEHAWK_BASE_URL: "https://api.ratehawk.com" }),
     RatehawkConfigError
   );
-  assert.equal(loadRatehawkConfig({ RATEHAWK_MARGIN_PERCENT: "5", RATEHAWK_PRICE_INCREASE_PERCENT: "10" }).marginPercent, 12);
+  assert.equal(loadRatehawkConfig({ RATEHAWK_MARGIN_PERCENT: "5", RATEHAWK_PRICE_INCREASE_PERCENT: "10" }).marginPercent, 5);
   const fixed = loadRatehawkConfig({
     RATEHAWK_ENV: "sandbox",
     RATEHAWK_KEY_ID: "key",

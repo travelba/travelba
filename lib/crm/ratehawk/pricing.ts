@@ -1,10 +1,9 @@
-/** Marge agence sur le net ETG. Plancher 12 %. */
-export const MIN_MARGIN_PERCENT = 12;
+/** Marge agence sur le net ETG, en pourcentage. Vide ou illisible : zéro. Pas de plancher. */
 
 export function marginPercent(raw: unknown): number {
   const value = typeof raw === "number" ? raw : Number(raw);
-  if (!Number.isFinite(value)) return MIN_MARGIN_PERCENT;
-  return Math.max(MIN_MARGIN_PERCENT, value);
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, value));
 }
 
 export function roundMoney(value: number): number {
@@ -20,8 +19,8 @@ export function moneyNumber(value: unknown): number | null {
   return null;
 }
 
-/** Prix vendu = net × (1 + marge). Les taxes non incluses ne s’ajoutent pas. */
-export function sellFromNet(net: number, margin = MIN_MARGIN_PERCENT): number {
+/** Prix vendu = net × (1 + marge). Les taxes non incluses ne s’ajoutent pas. Marge omise : le net. */
+export function sellFromNet(net: number, margin = 0): number {
   return roundMoney(net * (1 + marginPercent(margin) / 100));
 }
 

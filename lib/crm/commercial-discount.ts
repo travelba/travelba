@@ -1,4 +1,3 @@
-import { MIN_MARGIN_OF_NET } from "@/lib/crm/concierge-pricing";
 import { parseExpenseQuantity } from "@/lib/crm/expense-pricing";
 import { parseMoney } from "@/lib/crm/money";
 
@@ -72,20 +71,10 @@ export function applyCommercialDiscount(gross: number, discount?: CommercialDisc
   return { gross: safe, discount: discountEuros, total: roundMoney(safe - discountEuros) };
 }
 
-/**
- * La remise se déduit de la marge. Sous 12 % du net fournisseur : avertissement, pas un blocage.
- * Net nul ou inconnu : pas d’alerte.
- */
+/** La remise se déduit de la marge. Aucun plancher : la remise n’est pas refusée selon un pourcentage du net. */
 export function marginAfterCommercialDiscount(input: { margin: number; net: number; discountEuros: number }) {
-  const net = Number(input.net);
   const margin = roundMoney(Number(input.margin) - Math.max(0, Number(input.discountEuros) || 0));
-  const knownNet = Number.isFinite(net) && net > 0;
-  const floorCents = knownNet ? Math.round(net * MIN_MARGIN_OF_NET * 100) : null;
-  return {
-    margin,
-    floor: floorCents == null ? null : floorCents / 100,
-    belowFloor: floorCents != null && Math.round(margin * 100) < floorCents,
-  };
+  return { margin, floor: null as number | null, belowFloor: false };
 }
 
 export type CommercialDiscountColumns = {
