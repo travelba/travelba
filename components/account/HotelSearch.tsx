@@ -8,6 +8,7 @@ import { HotelMap } from "@/components/account/HotelMap";
 import { HotelWait } from "@/components/account/HotelWait";
 import { AgencyLogo } from "@/components/AgencyLogo";
 import { HotelBenefits } from "@/components/crm/HotelBenefits";
+import { ProviderRates } from "@/components/hotel/ProviderRates";
 import { Icon } from "@/components/crm/icons";
 import { localTodayIso, parisTodayIso } from "@/lib/crm/dates";
 import { greetingGivenName } from "@/lib/crm/identity";
@@ -66,6 +67,7 @@ type SearchEvent =
   | { type: "start" }
   | { type: "hotel"; hotel: ClientHotel; replaced?: boolean }
   | { type: "link"; hotelKey: string; offerId: string }
+  | { type: "note"; message: string }
   | { type: "done"; tFirstMs: number | null; tDoneMs: number; cached: boolean; count: number }
   | { type: "error"; message: string };
 
@@ -122,7 +124,14 @@ function upsertHotel(list: ClientHotel[], hotel: ClientHotel) {
   const index = list.findIndex((row) => row.hotelKey === hotel.hotelKey);
   const next = list.slice();
   if (index < 0) next.push(hotel);
-  else next[index] = { ...next[index], ...hotel, offerId: hotel.offerId || next[index].offerId };
+  else {
+    next[index] = {
+      ...next[index],
+      ...hotel,
+      offerId: hotel.offerId || next[index].offerId,
+      compares: hotel.compares ?? next[index].compares,
+    };
+  }
   next.sort((a, b) => a.sellCents - b.sellCents || a.name.localeCompare(b.name, "fr"));
   return next;
 }
@@ -589,6 +598,7 @@ export function HotelSearch({
       rooms: stayRooms || nextRooms,
       target: nextTarget,
       filters: needs,
+      screen: typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches ? "mobile" : "desktop",
     };
     if (nextDestination.length < 2) {
       setNote("Indiquez une destination ou un hôtel.");
@@ -712,6 +722,8 @@ export function HotelSearch({
             latest = latest.map((hotel) =>
               hotel.hotelKey === event.hotelKey ? { ...hotel, offerId: event.offerId } : hotel
             );
+          } else if (event.type === "note") {
+            setNote(event.message);
           } else if (event.type === "done") {
             setServerFirst(event.tFirstMs);
             rememberHotels(key, latest);
@@ -1561,15 +1573,25 @@ function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolea
         </div>
       </div>
       <button type="button" onClick={onOpen} className="block w-full text-left">
-        <div className="flex items-end justify-between gap-3 px-4 py-3" data-hotel-price="1">
-          <p className="min-w-0 text-lg font-medium leading-tight h-ink">
-            {euros(hotel.sellCents, hotel.currency)} TTC
-            <span className="mt-0.5 block text-sm font-normal h-muted">{euros(hotel.perNightCents, hotel.currency)} / nuit</span>
-          </p>
-          <span className="mb-0.5 shrink-0 rounded-full border border-[#C5A880] px-3 py-1.5 text-sm font-semibold text-[#8c7352]">
+        {hotel.compares && hotel.compares.length > 1 ? (
+          <ProviderRates rates={hotel.compares} />
+        ) : (
+          <div className="flex items-end justify-between gap-3 px-4 py-3" data-hotel-price="1">
+            <p className="min-w-0 text-lg font-medium leading-tight h-ink">
+              {euros(hotel.sellCents, hotel.currency)} TTC
+              <span className="mt-0.5 block text-sm font-normal h-muted">{euros(hotel.perNightCents, hotel.currency)} / nuit</span>
+            </p>
+            <span className="mb-0.5 shrink-0 rounded-full border border-[#C5A880] px-3 py-1.5 text-sm font-semibold text-[#8c7352]">
+              Voir l’hôtel
+            </span>
+          </div>
+        )}
+        {hotel.compares && hotel.compares.length > 1 ? (
+          <span className="mx-4 mb-3 inline-flex rounded-full border border-[#C5A880] px-3 py-1.5 text-sm font-semibold text-[#8c7352]">
             Voir l’hôtel
           </span>
-        </div>
+        ) : null}
+        {hotel.compares?.length === 1 && hotel.compares[0]?.kind === "autre" ? <ProviderRates rates={hotel.compares} /> : null}
         {hotel.perks.freeCancellation || hotel.perks.breakfast ? (
           <div className="flex flex-wrap gap-2 px-4 pb-2">
             {hotel.perks.freeCancellation ? <span className="rounded-full bg-[#f4efe6] px-2.5 py-1 text-[12px] font-semibold text-[#8c7352]">Annulation gratuite</span> : null}

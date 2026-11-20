@@ -46,6 +46,10 @@ const LEGACY_DUPLICATE_VERSIONS = new Set([
 const PRODUCTION_EXTERNAL_TABLES = {
   crm_agency_settings:
     "registre clé/valeur (key text primary key, label, value jsonb, secret_configured, updated_by, updated_at), créé hors migrations",
+  giata_supplier_properties:
+    "correspondances GIATA du site public (giata_id, supplier, supplier_property_key jsonb). Hors migrations CRM",
+  hotel_supplier_connections:
+    "liaisons hôtel du site public (hotel_id, supplier, supplier_property_key jsonb). Hors migrations CRM",
 };
 
 const files = readdirSync(DIR).filter((name) => !name.startsWith("."));

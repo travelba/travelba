@@ -5,6 +5,7 @@ import { hotelBookingEnabled } from "@/lib/crm/hotel-access";
 import { hotelActivityMode, hotelFilterLabels } from "@/lib/crm/hotel-activity";
 import { recordHotelClientActivity } from "@/lib/crm/hotel-activity-run";
 import {
+  deadline,
   hotelSearchCacheKey,
   parseHotelSearchQuery,
   readHotelSearchCache,
@@ -13,6 +14,12 @@ import {
   writeHotelSearchCache,
   type PricedStay,
 } from "@/lib/crm/hotel-search";
+import { clientCompares, foldProviderRates } from "@/lib/crm/hotel-providers/aggregate";
+import { rememberHotelMatches } from "@/lib/crm/hotel-providers/remember";
+import { expediaSearchEnabled, resolveExpediaSalesChannel, safeExpediaConfig } from "@/lib/crm/expedia/config";
+import { coordsForPlace } from "@/lib/crm/expedia/places";
+import { searchExpediaRates } from "@/lib/crm/expedia/search";
+import type { NormalizedRate } from "@/lib/crm/hotel-providers/types";
 import { foldHotelLabel } from "@/lib/crm/hotel-catalog";
 import { attachHotelCover, loadKnownHotelOffers, loadLittleEmperorsOffers } from "@/lib/crm/little-emperors-search";
 import { saveHotelOffer } from "@/lib/crm/hotel-search-store";
@@ -25,6 +32,20 @@ function catalogCity(destination: string, city: string) {
   const head = (city || destination).split(",")[0]?.trim() || "";
   if (foldHotelLabel(head) === "londres") return "London";
   return head;
+}
+
+function mobileScreen(request: Request, body: unknown) {
+  const screen = body && typeof body === "object" ? (body as { screen?: unknown }).screen : null;
+  if (screen === "mobile") return true;
+  if (screen === "desktop") return false;
+  return /Mobile|Android|iPhone|iPad/i.test(request.headers.get("user-agent") || "");
+}
+
+function customerIp(request: Request) {
+  const forwarded = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "";
+  const first = forwarded.split(",")[0]?.trim() || "";
+  if (!first || first.length > 64) return null;
+  return first;
 }
 
 async function knownHotelIds(destination: string, city: string) {
@@ -60,7 +81,15 @@ export async function POST(request: Request) {
     return jsonError(parsed.message, 400);
   }
   const key = hotelSearchCacheKey(parsed.query);
-  const cached = readHotelSearchCache(key);
+  const expediaOn = expediaSearchEnabled();
+  const cached = expediaOn ? null : readHotelSearchCache(key);
+  const catalogCoords = coordsForPlace(parsed.query.destination, parsed.query.city);
+  const salesChannel = resolveExpediaSalesChannel({
+    mode: safeExpediaConfig()?.salesChannelMode || "auto",
+    audience: "client",
+    mobile: mobileScreen(request, body),
+  });
+  const ip = customerIp(request);
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -69,6 +98,24 @@ export async function POST(request: Request) {
       };
       const stays: PricedStay[] = [];
       const links: Promise<void>[] = [];
+      const expediaTask =
+        expediaOn && catalogCoords
+          ? deadline(
+              searchExpediaRates({
+                destination: parsed.query.destination,
+                city: parsed.query.city,
+                checkIn: parsed.query.checkIn,
+                checkOut: parsed.query.checkOut,
+                rooms: parsed.query.rooms,
+                salesChannel,
+                customerIp: ip,
+                coords: catalogCoords,
+              }),
+              12_000
+            )
+              .then((rates) => ({ rates, failed: false as const }))
+              .catch(() => ({ rates: [] as NormalizedRate[], failed: true as const }))
+          : null;
       const covers: Promise<void>[] = [];
       let supplierFailed = false;
       let noted = false;
@@ -133,6 +180,62 @@ export async function POST(request: Request) {
             );
             continue;
           }
+          if (expediaOn) {
+            let extra = expediaTask ? await expediaTask : { rates: [] as NormalizedRate[], failed: false };
+            if (!catalogCoords) {
+              const coords = stays.find((stay) => stay.coords)?.coords ?? null;
+              if (coords) {
+                try {
+                  extra = {
+                    rates: await deadline(
+                      searchExpediaRates({
+                        destination: parsed.query.destination,
+                        city: parsed.query.city,
+                        checkIn: parsed.query.checkIn,
+                        checkOut: parsed.query.checkOut,
+                        rooms: parsed.query.rooms,
+                        salesChannel,
+                        customerIp: ip,
+                        coords,
+                      }),
+                      12_000
+                    ),
+                    failed: false,
+                  };
+                } catch {
+                  extra = { rates: [], failed: true };
+                }
+              }
+            }
+            const folded = foldProviderRates({
+              stays,
+              expedia: extra.rates,
+              nights: parsed.nights,
+              audience: "client",
+            });
+            for (const update of folded.updates) {
+              const stay = stays.find((row) => row.hotelKey === update.hotelKey);
+              if (!stay) continue;
+              send({
+                type: "hotel",
+                replaced: true,
+                hotel: { ...toClientHotel(stay, parsed.nights, null), compares: clientCompares(update.compares) },
+              });
+            }
+            for (const created of folded.created) {
+              stays.push(created.stay);
+              send({
+                type: "hotel",
+                replaced: false,
+                hotel: { ...toClientHotel(created.stay, parsed.nights, null), compares: clientCompares(created.compares) },
+              });
+            }
+            void rememberHotelMatches(folded.links);
+            if (extra.failed && stays.length > 0) {
+              send({ type: "note", message: "Une source n’a pas répondu. Les autres tarifs sont affichés." });
+            }
+            if (extra.failed && stays.length === 0) supplierFailed = true;
+          }
           await Promise.all(links);
           if (supplierFailed && stays.length === 0) {
             send({ type: "error", message: "La recherche n’a pas abouti. Réessayez." });
@@ -150,7 +253,7 @@ export async function POST(request: Request) {
             noted = true;
             continue;
           }
-          if (!event.cached) writeHotelSearchCache(key, stays);
+          if (!event.cached && !expediaOn) writeHotelSearchCache(key, stays);
           await recordHotelClientActivity({
             customerId: auth.customer.id,
             authUserId: auth.user.id,
@@ -171,7 +274,7 @@ export async function POST(request: Request) {
             tFirstMs: event.tFirstMs,
             tDoneMs: event.tDoneMs,
             cached: event.cached,
-            count: event.count,
+            count: expediaOn ? stays.length : event.count,
           });
           await Promise.all(covers);
         }
