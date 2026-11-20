@@ -6,43 +6,54 @@ Rien dans ce document n’autorise à merger `main`, à écrire dans la base `fs
 
 ## État au 20 novembre 2026
 
-Le staging n’est pas encore en ligne. La base isolée n’a pas été créée : elle a un coût, et Raphael doit l’accepter avant.
+Raphael a accepté la branche Supabase (environ 0,01344 USD de l’heure). Le projet séparé à 10 USD par mois n’a pas été créé.
 
-Ce qui est déjà vrai :
+Branche Supabase `staging` :
 
-- Les déploiements Preview du projet Vercel `travelba` (`prj_NAEfKYyndp7T68G2wKOguSCgtPUr`) sont couverts par l’authentification Vercel (`ssoProtection`, cible Preview). Le mot de passe de déploiement est éteint. Le domaine de production `travelba.fr` n’est pas derrière cette protection.
-- Il n’existe aucune branche Supabase sur `fsmfozxgujskluxakeoq`. Le dépôt et le lancement production ne connaissent qu’une base CRM : `fsmfozxgujskluxakeoq`. Les Preview qui partagent ces variables lisent et écrivent donc cette base de production. Aucune migration de la PR hôtels n’y a été jouée.
-- Little Emperors, hors production, n’appelle que `https://api-staging.littleemperors.com`. Un Preview qui aurait l’adresse de production est refusé par le code. En plus, `VERCEL_ENV=preview` coupe la réservation (e-mail direct et API) via `hotelLeBookingFrozen`. La recherche reste possible.
-- Les clés `EXPEDIA_RAPID_*` présentes sur Vercel pointent `https://test.ean.com/v3` et `EXPEDIA_RAPID_ENV=test`, y compris sur la cible Production. `EXPEDIA_RAPID_ENABLED` n’est pas posé : Expedia ne part pas tant qu’il ne vaut pas `1`.
-- Les checks de la PR #799 (`typecheck · lint · tests · migrations`) sont verts sur `22ba24cf`.
+- Projet parent : `fsmfozxgujskluxakeoq` (production, non modifié).
+- Identifiant : `28865ece-9db8-49d1-8857-92c421bae6ec`.
+- Référence : `lnygnjbvuzgarseqfjlm`.
+- URL : `https://lnygnjbvuzgarseqfjlm.supabase.co`.
+- `with_data` : faux. Les fiches de production n’ont pas été copiées.
+- `persistent` : faux dans l’API (aucun outil ne permet de le passer à vrai). La branche n’est pas liée à une branche Git et ne s’efface pas avec elle. Dans le tableau de bord Supabase, la marquer persistante pour qu’elle ne soit pas traitée comme éphémère.
+- Le rejeu automatique de l’historique de production a échoué (migrations hors dépôt : `booking_requests_email`, schéma `concierge`). Les fichiers SQL du dépôt, y compris `20261121100000`, `20261121110000` et `20261121120000`, ont été appliqués à la main sur cette branche seulement, avec deux compléments de schéma absents du dépôt (`crm_private.next_booking_reference`, colonne `crm_bookings.fee_mode`).
+- Comptes fictifs seulement : `revue.agence@travelba.fr` (admin) et `revue-hotels@travelba.fr` (accès Hôtels, réservation Little Emperors fermée). Aucune donnée client réelle.
 
-## Ce que Raphael doit accepter avant la suite
+Les autres Preview Vercel lisent encore la base de production. Seule la branche Git `staging` reçoit l’URL et la clé anon de `lnygnjbvuzgarseqfjlm`.
 
-Deux façons d’isoler la base. Les deux ont un prix. Aucune n’a été lancée.
+La clé `service_role` de cette branche n’est pas exposée par l’API. Tant qu’elle n’est pas collée dans la variable Preview `SUPABASE_SERVICE_ROLE_KEY` limitée à la branche Git `staging`, le code refuse la clé de production (même sur ce Preview) et les écritures service ne partent pas. La lecture de la fiche déjà liée passe par la session.
 
-| Option | Prix relevé | Données |
-|---|---|---|
-| Branche Supabase persistante sur `fsmfozxgujskluxakeoq`, nom `staging` | 0,01344 USD de l’heure, tant que la branche tourne | Le schéma des migrations seulement. Les données de production ne sont pas copiées. |
-| Nouveau projet Supabase, par exemple `travelba-staging`, région `eu-west-1` | 10 USD par mois | Base vide. |
+Little Emperors, hors production, n’appelle que `https://api-staging.littleemperors.com`. `VERCEL_ENV=preview` et `HOTEL_LE_BOOKING=0` coupent la réservation. La recherche reste possible.
 
-La branche est le bon choix pour une démo Expedia : pas de fiches clients, et les migrations du dépôt s’y appliquent. Il faudra ensuite un jeu de démonstration (un compte staff, un client fictif `revue-hotels@travelba.fr`, l’accès Hôtels), sans copie de la production.
+`EXPEDIA_RAPID_ENABLED=1` n’est posé que sur le Preview de la branche Git `staging`. Les clés de test et `https://test.ean.com/v3` sont déjà sur les Preview ; elles ne sont pas recopiées ici.
 
-Après l’accord écrit sur le prix :
+## DNS à ajouter (non créé)
 
-1. Créer la branche ou le projet.
-2. Jouer les migrations du dépôt, y compris `20261121100000`, `20261121110000` et `20261121120000`.
-3. Ne pas lancer `npm run seed:demo` s’il vise la production. Le seed de démo ne va que sur la base de staging.
+`staging.travelba.fr` n’est pas attaché au projet. Enregistrement à poser chez le DNS de `travelba.fr`, sans y toucher autrement :
+
+```
+staging.travelba.fr.  CNAME  cname.vercel-dns.com.
+```
+
+Ensuite, dans Vercel, attacher ce domaine au projet `travelba` avec la branche Git `staging` (cible Preview). Ne pas l’envoyer vers Production.
+
+## Accès
+
+Les Preview sont derrière l’authentification Vercel (compte de l’équipe). Le mot de passe de déploiement est éteint et n’a pas été créé : le poser sur « tous les déploiements » couvrirait `travelba.fr`. Pour Expedia, le poser uniquement sur la cible Preview (`passwordProtection.deploymentType = preview`) dans le tableau de bord Vercel, puis transmettre le mot de passe. Ce n’est pas fait ici.
+
+Comptes de démonstration, base de staging seulement :
+
+- Agence : `revue.agence@travelba.fr` / `RevueAgence2026!`
+- Client hôtels : `revue-hotels@travelba.fr` / `RevueHotels2026!`
 
 ## Branche Git et adresse
 
 Branche longue durée : `staging`, prise sur la tête de la PR hôtels, pas sur un merge dans `main`.
 
-Elle n’est pas poussée tant que la base isolée n’existe pas. Un push ouvrirait un Preview Vercel qui, aujourd’hui, utiliserait la base de production.
+Elle est poussée seulement après les variables Preview limitées à `gitBranch=staging`. Les autres branches Preview gardent la base de production.
 
-Adresse prévue, une fois la base branchée :
-
-- Domaine stable : `staging.travelba.fr`. Il faut un enregistrement DNS (CNAME vers `cname.vercel-dns.com`, ou le CNAME indiqué par Vercel) sur le domaine déjà chez l’équipe. Personne ne l’a créé.
-- En attendant le DNS : l’alias de branche `https://travelba-git-staging-travelba.vercel.app`.
+- Adresse en service : `https://travelba-git-staging-travelba.vercel.app`
+- Domaine stable, pas encore branché : `staging.travelba.fr` (CNAME ci-dessus, non créé).
 
 Accès pour Expedia : l’authentification Vercel actuelle exige un compte de l’équipe. Pour un relecteur externe, poser un mot de passe de déploiement **uniquement** sur la cible Preview (`passwordProtection.deploymentType = preview`), et transmettre le mot de passe à Expedia. Ne pas l’étendre à `travelba.fr`.
 
@@ -52,9 +63,9 @@ Accès pour Expedia : l’authentification Vercel actuelle exige un compte de l�
 
 | Variable | Valeur de staging |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | URL de la branche ou du projet de staging |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | clé anon de cette base |
-| `SUPABASE_SERVICE_ROLE_KEY` | service role de cette base |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://lnygnjbvuzgarseqfjlm.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | clé anon de `lnygnjbvuzgarseqfjlm` |
+| `SUPABASE_SERVICE_ROLE_KEY` | service role de `lnygnjbvuzgarseqfjlm` seulement (JWT `role=service_role`, `ref=lnygnjbvuzgarseqfjlm`). Ne pas y mettre la clé de production. |
 | `NEXT_PUBLIC_SITE_URL` | `https://staging.travelba.fr` (ou l’alias de branche tant que le DNS n’est pas là) |
 | `EXPEDIA_RAPID_ENABLED` | `1` |
 | `EXPEDIA_RAPID_ENV` | `test` |
