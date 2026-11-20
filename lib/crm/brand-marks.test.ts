@@ -26,4 +26,15 @@ test("logos vol et SIXT", () => {
   const car = brandMarkForItem({ kind: "car", supplier: "SIXT" });
   assert.equal(car?.code, "sixt");
   assert.equal(inferCarBrand("Hertz Genève")?.slug, "hertz");
+  const alamo = brandMarkForItem({ kind: "car", supplier: "Expedia TAAP / Alamo" });
+  assert.equal(alamo?.code, "alamo");
+  assert.equal(alamo?.src, "/brands/cars/alamo.svg");
+  const budget = brandMarkForItem({
+    kind: "car",
+    supplier: "Expedia TAAP",
+    title: "Le Mesnil-Amelot : location Budget (Standard)",
+  });
+  assert.equal(budget?.code, "budget");
+  assert.equal(budget?.src, "/brands/cars/budget.svg");
+  assert.equal(brandMarkForItem({ kind: "car", supplier: "Expedia TAAP", title: "Peugeot 3008" }), null);
 });
