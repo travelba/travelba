@@ -24,7 +24,7 @@ import {
   syncBookingTotalFromItems,
   syncInheritedAgencyFees,
 } from "@/lib/crm/bookings";
-import { commercialDiscountPatch, commercialDiscountPublic } from "@/lib/crm/commercial-discount";
+import { discountLineMirror, discountLinePublic } from "@/lib/crm/commercial-discount";
 import { missingDbColumn } from "@/lib/crm/optional-column";
 import { deleteEmptyBillingCompany, upsertBillingCompany, type BillingCompanyInput } from "@/lib/crm/billing-companies";
 import { customerEmailError, normalizeCustomerEmail, otherCustomerEmailBlock, CUSTOMER_EMAIL_COPY } from "@/lib/crm/customer-email";
@@ -204,21 +204,6 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
     const parsed = agencyFeeRateField(input.commission_agence);
     if ("error" in parsed) throw new McpWriteError(parsed.error);
     body.agency_fee_rate = parsed.rate;
-  }
-  if ("remise" in input) {
-    const remise = input.remise;
-    if (remise == null) {
-      body.remise_type = null;
-      body.remise_value = null;
-    } else if (typeof remise === "object" && !Array.isArray(remise)) {
-      const row = remise as { type?: unknown; valeur?: unknown };
-      const parsed = commercialDiscountPatch(row.type, row.valeur);
-      if ("error" in parsed) throw new McpWriteError(parsed.error);
-      body.remise_type = parsed.remise_type;
-      body.remise_value = parsed.remise_value;
-    } else {
-      throw new McpWriteError("Remise invalide.");
-    }
   }
   if ("titre" in input) {
     const title = text(input.titre, "Titre", 200);
@@ -793,6 +778,69 @@ function coverPhotoId(booking: CrmBooking, items: { kind?: string | null; title?
   return catalogPhotoFromPlan(plan);
 }
 
+function remiseDraft(row: Record<string, unknown>, current?: { label: string; kind: "amount" | "percent"; quantity: number; unitPrice: number | null; percent: number | null }) {
+  const legacy =
+    "valeur" in row &&
+    !("libelle" in row) &&
+    !("prix_unitaire" in row) &&
+    !("pourcentage" in row) &&
+    !("montant" in row) &&
+    !("id" in row);
+  if (legacy) {
+    const percent = row.type === "pourcentage" || row.type === "percent";
+    return {
+      label: "Remise commerciale",
+      kind: row.type,
+      quantity: 1,
+      unit_price: percent ? undefined : row.valeur,
+      percent: percent ? row.valeur : undefined,
+    };
+  }
+  const kind = row.type ?? (current ? (current.kind === "percent" ? "pourcentage" : "montant") : undefined);
+  const percentKind = kind === "pourcentage" || kind === "percent";
+  return {
+    label: row.libelle ?? current?.label,
+    kind,
+    quantity: row.quantite ?? current?.quantity,
+    unit_price: "prix_unitaire" in row ? row.prix_unitaire : !percentKind ? current?.unitPrice ?? undefined : undefined,
+    percent: "pourcentage" in row ? row.pourcentage : percentKind ? current?.percent ?? undefined : undefined,
+    amount: "montant" in row ? row.montant : undefined,
+  };
+}
+
+/** Ajoute, modifie ou retire des lignes. null retire toutes les remises. L’ancienne forme { type, valeur } ajoute une ligne. */
+async function applyBookingRemise(db: SupabaseClient, bookingId: string, remise: unknown) {
+  const { deleteBookingDiscounts, deleteDiscountLine, insertDiscountLine, loadDiscountLines, updateDiscountLine, DISCOUNT_MIGRATION_MESSAGE } =
+    await import("@/lib/crm/booking-discounts-db");
+  try {
+    if (remise == null) {
+      await deleteBookingDiscounts(bookingId, db);
+      return;
+    }
+    if (typeof remise !== "object" || Array.isArray(remise)) throw new McpWriteError("Remise invalide.");
+    const row = remise as Record<string, unknown>;
+    if (row.retirer === true) {
+      const lineId = String(row.id || "").trim();
+      if (!lineId) throw new McpWriteError("Indiquez la remise à retirer.");
+      await deleteDiscountLine(bookingId, lineId, db);
+      return;
+    }
+    const lineId = typeof row.id === "string" ? row.id.trim() : "";
+    if (lineId) {
+      const loaded = await loadDiscountLines([bookingId], db);
+      if (!loaded) throw new Error(DISCOUNT_MIGRATION_MESSAGE);
+      const current = (loaded.get(bookingId) || []).find((line) => line.id === lineId);
+      if (!current) throw new McpWriteError("Cette remise n’est pas sur le dossier.");
+      await updateDiscountLine(bookingId, lineId, remiseDraft(row, current), db);
+      return;
+    }
+    await insertDiscountLine(bookingId, remiseDraft(row), db);
+  } catch (err) {
+    if (err instanceof McpWriteError) throw err;
+    throw new McpWriteError(err instanceof Error && err.message ? err.message : "Remise non enregistrée.");
+  }
+}
+
 export async function updateBooking(input: Record<string, unknown>, admin?: McpAdmin) {
   const { id, reference, patch, billing, cover } = prepareBookingUpdate(input);
   const db = client(admin);
@@ -913,6 +961,7 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     if (error || !data) failDb(error, "Dossier non enregistré.");
     booking = data as CrmBooking;
   }
+  if ("remise" in input) await applyBookingRemise(db, booking.id, input.remise);
   try {
     await syncBookingTotalFromItems(db, booking.id);
     const { data: priced } = await db.from("crm_bookings").select(MCP_BOOKING_COLUMNS).eq("id", booking.id).maybeSingle();
@@ -989,6 +1038,14 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     if (auditError) console.error("[mcp] journal titre", auditError.code ?? "?");
   }
   const shownPhoto = coverPhotoId(row as CrmBooking, coverItems);
+  let remises: ReturnType<typeof discountLinePublic>[] | undefined;
+  if ("remise" in input) {
+    const { loadStayPricedDiscounts } = await import("@/lib/crm/displayed-stay");
+    const loaded = await loadStayPricedDiscounts(db, booking.id);
+    remises = loaded.source === "lines" ? loaded.lines.map(discountLinePublic) : [];
+  }
+  const seule = remises?.length === 1 ? remises[0] : null;
+  const remise = discountLineMirror(seule);
   return {
     id: row.id,
     reference: row.reference,
@@ -1005,12 +1062,10 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     notes_internes: row.notes_internal,
     commission_agence,
     commission_source,
-    ...("remise_type" in nextPatch
+    ...(remises
       ? {
-          remise: commercialDiscountPublic({
-            remise_type: nextPatch.remise_type,
-            remise_value: nextPatch.remise_value,
-          }),
+          remises,
+          remise,
         }
       : {}),
     paye_par: factureSociete ? ("société" as const) : ("particulier" as const),

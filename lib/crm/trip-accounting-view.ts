@@ -2,8 +2,8 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { mb3mRealm } from "./mb3m";
-import { mb3mDossierLines, mb3mPieceStale, withCommercialDiscountLine, type Mb3mLedgerRow } from "./mb3m-account";
-import { loadStayDiscountEuros } from "./displayed-stay";
+import { mb3mDossierLines, mb3mPieceStale, withCommercialDiscountLines, type Mb3mLedgerRow } from "./mb3m-account";
+import { loadStayPricedDiscounts } from "./displayed-stay";
 import { isStayAmountKind } from "./bookings";
 import {
   accountLines,
@@ -11,7 +11,7 @@ import {
   saleLines,
   tripAccountingState,
   tripTotals,
-  withCommercialDiscountSale,
+  withCommercialDiscountSales,
   type SaleLedgerRow,
   type TripAccountingView,
   type TripCost,
@@ -92,14 +92,18 @@ export async function buildTripAccountingView(
     inputs.costs.map((cost) => cost.sourceId)
   ).catch(() => []);
   const inEuros = !booking.currency || booking.currency.toUpperCase() === "EUR";
-  const remise = inEuros ? await loadStayDiscountEuros(admin, booking.id).catch(() => 0) : 0;
-  // Ligne synthétique, sommée une fois par tripTotals. Les charges MB3M restent les débits :
-  // withCommercialDiscountLine ajoute la remise de la pro forma, sans seconde ligne.
-  const sales = withCommercialDiscountSale(saleLines(inputs.charges, booking.id), remise);
+  const cuts = inEuros
+    ? await loadStayPricedDiscounts(admin, booking.id)
+        .then((loaded) => loaded.lines.filter((line) => line.euros > 0).map((line) => ({ id: line.id, label: line.label, euros: line.euros })))
+        .catch(() => [])
+    : [];
+  // Lignes synthétiques, sommées une fois par tripTotals. Les charges MB3M restent les débits :
+  // withCommercialDiscountLines ajoute les remises de la pro forma, sans seconde ligne.
+  const sales = withCommercialDiscountSales(saleLines(inputs.charges, booking.id), cuts);
   const { lines, unsold } = accountLines(sales, [...inputs.costs, ...pending]);
-  const mbLines = withCommercialDiscountLine(
+  const mbLines = withCommercialDiscountLines(
     mb3mDossierLines(inputs.charges, items, marginByTransaction(lines)),
-    remise
+    cuts
   );
   const valid = inputs.pieces.filter((row) => row.printed_at && !row.credited_at);
   const stale = valid.filter((row) =>

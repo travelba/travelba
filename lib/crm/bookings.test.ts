@@ -263,15 +263,8 @@ test("la commission est 10 % de l’assiette seulement quand le voyage l’activ
     agencyCommissionAmount({ enabled: true, status: "cancelled", base: 1000 }),
     0
   );
-  assert.deepEqual(
-    {
-      remise_type: bookingMetaPatch({ remise_type: "percent", remise_value: "10" }).remise_type,
-      remise_value: bookingMetaPatch({ remise_type: "percent", remise_value: "10" }).remise_value,
-    },
-    { remise_type: "percent", remise_value: 10 }
-  );
-  assert.equal(bookingMetaPatch({ remise_type: null, remise_value: null }).remise_type, null);
-  assert.equal(bookingMetaError({ remise_type: "pourcentage", remise_value: 140 }), "Le pourcentage est compris entre 0 et 100.");
+  assert.equal("remise_type" in bookingMetaPatch({ remise_type: "percent", remise_value: "10" }), false);
+  assert.equal(bookingMetaError({ remise_type: "pourcentage", remise_value: 140 }), null);
   assert.equal(bookingMetaPatch({ agency_commission: "on" }).agency_commission, true);
   assert.equal(bookingMetaPatch({ agency_commission: false }).agency_commission, false);
   assert.equal("agency_commission" in bookingMetaPatch({ title: "Ski" }), false);

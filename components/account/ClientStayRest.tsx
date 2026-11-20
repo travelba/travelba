@@ -35,6 +35,7 @@ import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
 import { readCommercialDiscount } from "@/lib/crm/commercial-discount";
+import { loadDiscountLines } from "@/lib/crm/booking-discounts-db";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { loadClientLedger } from "@/lib/crm/client-ledger-load";
@@ -171,7 +172,10 @@ export async function ClientStayRest({
   });
   const agencyFee = await agencyFeeForBooking(supabase, b);
   const stayTotal = bookingTotalFromItems(allItems);
+  const storedDiscounts = await loadDiscountLines([b.id]).catch(() => null);
+  const discountLines = storedDiscounts ? storedDiscounts.get(b.id) || [] : null;
   const discount = readCommercialDiscount(b);
+  const discountInput = discountLines ? { discounts: discountLines } : { discount };
   const expenseLines = hidePrices
     ? []
     : clientStayExpenseLines({
@@ -184,7 +188,7 @@ export async function ClientStayRest({
     extras: feeExtras,
     ticketingFee,
     ticketCount,
-    discount,
+    ...discountInput,
   });
   const payerLabel = hidePrices ? null : bookingPayerLabel(b, payerCompanies);
   const encoursPay =
@@ -325,7 +329,7 @@ export async function ClientStayRest({
               expenses: expenseChoices,
               extras: feeExtras,
               ticketingFee,
-              discount,
+              ...discountInput,
             })}
           </p>
           {insurances.map((item) => {

@@ -1,11 +1,12 @@
 import { AGENCY_FEE_LABEL } from "@/lib/crm/agency-fee-rate";
-import { COMMERCIAL_DISCOUNT_LABEL } from "@/lib/crm/commercial-discount";
+import { COMMERCIAL_DISCOUNT_LABEL, type DiscountCut } from "@/lib/crm/commercial-discount";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { groupIban } from "@/lib/crm/revolut-wire";
 import { visibleLedgerRows } from "@/lib/crm/ledger-display";
 import {
   saleLines,
   withCommercialDiscountSale,
+  withCommercialDiscountSales,
   type SaleLedgerRow,
   type SaleLine,
 } from "@/lib/crm/trip-costs";
@@ -109,8 +110,13 @@ export function samePayer(rows: { payer_kind?: string | null; billing_company_id
   return rows.every((row) => payerKey(payerRefOf(row)) === key);
 }
 
-/** Lignes de vente déjà au livre, plus la remise commerciale négative. La commission n’est pas recalculée. */
-export function groupedSaleLines(bookingId: string, debits: SaleLedgerRow[], discountEuros: number): SaleLine[] {
+/** Lignes de vente déjà au livre, plus chaque remise en négatif. La commission n’est pas recalculée. */
+export function groupedSaleLines(
+  bookingId: string,
+  debits: SaleLedgerRow[],
+  discountEuros: number,
+  cuts?: DiscountCut[]
+): SaleLine[] {
   const rows = debits
     .filter((row) => row.booking_id === bookingId)
     .map((row) => ({
@@ -120,7 +126,9 @@ export function groupedSaleLines(bookingId: string, debits: SaleLedgerRow[], dis
       kind: row.kind || "booking",
       external_id: row.external_id ?? null,
     }));
-  return withCommercialDiscountSale(saleLines(visibleLedgerRows(rows), bookingId), discountEuros);
+  const sales = saleLines(visibleLedgerRows(rows), bookingId);
+  if (cuts) return withCommercialDiscountSales(sales, cuts);
+  return withCommercialDiscountSale(sales, discountEuros);
 }
 
 function money(amount: number) {
@@ -407,13 +415,15 @@ export type GroupedStayInput = {
   debits: SaleLedgerRow[];
   credits: CreditRow[];
   discountEuros: number;
+  /** Présent : une ligne par remise. Absent : le montant unique. */
+  discountCuts?: DiscountCut[];
 };
 
 /** Une section par dossier. Sans ligne de vente, le dossier est nommé et la facture ne part pas. */
 export function composeGroupedSections(stays: GroupedStayInput[]): { sections: GroupedSectionInput[] } | { error: string } {
   const sections: GroupedSectionInput[] = [];
   for (const stay of stays) {
-    const sales = groupedSaleLines(stay.bookingId, stay.debits, stay.discountEuros);
+    const sales = groupedSaleLines(stay.bookingId, stay.debits, stay.discountEuros, stay.discountCuts);
     if (!sales.length) return { error: `Aucune ligne de vente pour ${stay.reference}.` };
     const received = paymentsForBooking(stay.bookingId, stay.credits);
     sections.push({

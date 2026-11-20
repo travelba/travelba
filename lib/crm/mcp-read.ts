@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { formatAgencyFeePercent, loadResolvedAgencyFees, type ResolvedAgencyFee } from "@/lib/crm/agency-fee-rate";
-import { commercialDiscountPublic } from "@/lib/crm/commercial-discount";
+import { commercialDiscountPublic, discountLineMirror, discountLinePublic } from "@/lib/crm/commercial-discount";
 import { loadAgencyAccounts } from "@/lib/crm/agency-accounts";
 import { attachSearchMatches, attachSearchTokens } from "@/lib/crm/attach-search";
 import { adminBadges } from "@/lib/crm/admin-badges";
@@ -941,16 +941,29 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
     logRead("responsables", err as { code?: string; message?: string });
   }
   let remise: ReturnType<typeof commercialDiscountPublic> = null;
-  const storedRemise = await admin.from("crm_bookings").select("remise_type, remise_value").eq("id", booking.id);
-  if (storedRemise.error) {
-    if (storedRemise.error.code !== "42703" && storedRemise.error.code !== "PGRST204") logRead("remise", storedRemise.error);
-  } else {
-    const row = Array.isArray(storedRemise.data) ? storedRemise.data[0] : storedRemise.data;
-    remise = commercialDiscountPublic(row as { remise_type?: unknown; remise_value?: unknown } | null);
+  let remises: ReturnType<typeof discountLinePublic>[] = [];
+  try {
+    const { loadStayPricedDiscounts } = await import("@/lib/crm/displayed-stay");
+    const loaded = await loadStayPricedDiscounts(admin, booking.id);
+    remises = loaded.lines.map(discountLinePublic);
+    if (loaded.source === "columns") {
+      const storedRemise = await admin.from("crm_bookings").select("remise_type, remise_value").eq("id", booking.id);
+      if (storedRemise.error) {
+        if (storedRemise.error.code !== "42703" && storedRemise.error.code !== "PGRST204") logRead("remise", storedRemise.error);
+      } else {
+        const row = Array.isArray(storedRemise.data) ? storedRemise.data[0] : storedRemise.data;
+        remise = commercialDiscountPublic(row as { remise_type?: unknown; remise_value?: unknown } | null);
+      }
+    } else if (remises.length === 1) {
+      remise = discountLineMirror(remises[0]);
+    }
+  } catch (err) {
+    logRead("remise", err as { code?: string; message?: string });
   }
   return {
     ...bookingLine(booking, names, amounts, companies),
     remise,
+    remises,
     en_charge: people.owner?.name ?? null,
     cree_par: people.createdBy?.name ?? null,
     intervenants: people.intervenants.map((person) => person.name),
