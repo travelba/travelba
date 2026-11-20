@@ -16,7 +16,7 @@ Branche Supabase `staging` :
 - URL : `https://lnygnjbvuzgarseqfjlm.supabase.co`.
 - `with_data` : faux. Les fiches de production n’ont pas été copiées.
 - `persistent` : faux dans l’API (aucun outil ne permet de le passer à vrai). La branche n’est pas liée à une branche Git et ne s’efface pas avec elle. Dans le tableau de bord Supabase, la marquer persistante pour qu’elle ne soit pas traitée comme éphémère.
-- Le rejeu automatique de l’historique de production a échoué (migrations hors dépôt : `booking_requests_email`, schéma `concierge`). Les fichiers SQL du dépôt, y compris `20261121100000`, `20261121110000` et `20261121120000`, ont été appliqués à la main sur cette branche seulement, avec deux compléments de schéma absents du dépôt (`crm_private.next_booking_reference`, colonne `crm_bookings.fee_mode`).
+- Le rejeu automatique de l’historique de production a échoué (migrations hors dépôt : `booking_requests_email`, schéma `concierge`). Les fichiers SQL du dépôt, y compris `20261121100000`, `20261121110000` et `20261121120000`, ont été appliqués à la main sur cette branche seulement, avec deux compléments de schéma absents du dépôt (`crm_private.next_booking_reference`, colonne `crm_bookings.fee_mode`). PostgREST de la branche attend aussi le schéma `concierge` (réglage copié de la production) : un schéma vide a été créé sur la branche pour que l’API réponde. Rien de tout cela n’a été joué sur `fsmfozxgujskluxakeoq`.
 - Comptes fictifs seulement : `revue.agence@travelba.fr` (admin) et `revue-hotels@travelba.fr` (accès Hôtels, réservation Little Emperors fermée). Aucune donnée client réelle.
 
 Les autres Preview Vercel lisent encore la base de production. Seule la branche Git `staging` reçoit l’URL et la clé anon de `lnygnjbvuzgarseqfjlm`.
