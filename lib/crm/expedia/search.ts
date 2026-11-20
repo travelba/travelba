@@ -83,7 +83,10 @@ async function cityRegionId(input: {
     timeoutMs: input.timeoutMs,
   });
   const detailed = parseExpediaRegions(full).find((region) => region.id === picked.id) || parseExpediaRegions(full)[0];
-  const hit = { id: picked.id, propertyIds: detailed?.propertyIds || picked.propertyIds };
+  const hit = { id: picked.id, propertyIds: detailed?.propertyIds.length ? detailed.propertyIds : picked.propertyIds };
+  if (!hit.propertyIds.length && full && typeof full === "object") {
+    console.error("[expedia] region", hit.id, "sans property_id", Object.keys(full).slice(0, 12).join(","));
+  }
   regionCache.set(cacheKey, hit);
   return hit;
 }

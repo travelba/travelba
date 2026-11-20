@@ -60,10 +60,12 @@ test("le journal d’échec Expedia ne porte ni clé ni URL", () => {
 });
 
 test("une région Expedia expose ses property_id", () => {
-  const regions = parseExpediaRegions([
-    { id: "1", name: "Paris", type: "city", property_ids: ["10", 11] },
-  ]);
+  const regions = parseExpediaRegions({
+    regions: [{ id: "1", name: "Paris", type: "city", property_ids: ["10", 11] }],
+  });
   assert.deepEqual(regions[0].propertyIds, ["10", "11"]);
+  const mapped = parseExpediaRegions({ "1": { id: "1", name: "Paris", property_id: { "12": true } } });
+  assert.deepEqual(mapped[0].propertyIds, ["12"]);
 });
 
 test("un montant à plus de deux décimales n’est pas arrondi", () => {

@@ -79,18 +79,31 @@ export function parseExpediaContent(payload: unknown): ExpediaPropertyContent[] 
 export type ExpediaRegion = { id: string; name: string; type: string; propertyIds: string[] };
 
 function propertyIdsOf(row: Record<string, unknown>) {
-  const raw = row.property_ids ?? row.property_ids_expanded;
-  if (!Array.isArray(raw)) return [];
+  const raw = row.property_ids ?? row.property_ids_expanded ?? row.property_id;
   const ids: string[] = [];
-  for (const item of raw) {
-    if (typeof item === "string" && item.trim()) ids.push(item.trim());
+  const push = (item: unknown) => {
+    if (typeof item === "string" && /^\d+$/.test(item.trim())) ids.push(item.trim());
     else if (typeof item === "number" && Number.isInteger(item)) ids.push(String(item));
-  }
+  };
+  if (Array.isArray(raw)) for (const item of raw) push(item);
+  else if (raw && typeof raw === "object") for (const key of Object.keys(raw)) push(key);
   return ids;
 }
 
+function regionRows(payload: unknown) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  const body = payload as Record<string, unknown>;
+  if (Array.isArray(body.regions)) return body.regions;
+  const values = Object.values(body);
+  if (values.length && values.every((value) => value && typeof value === "object" && !Array.isArray(value) && "id" in (value as object))) {
+    return values;
+  }
+  return [payload];
+}
+
 export function parseExpediaRegions(payload: unknown): ExpediaRegion[] {
-  const rows = Array.isArray(payload) ? payload : payload && typeof payload === "object" ? [payload] : [];
+  const rows = regionRows(payload);
   const regions: ExpediaRegion[] = [];
   for (const item of rows) {
     const row = record(item);
