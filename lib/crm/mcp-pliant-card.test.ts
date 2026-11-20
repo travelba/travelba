@@ -614,7 +614,7 @@ test("un refus Pliant ne laisse pas sortir le numéro", async () => {
   assert.equal(state.cards.length, 0);
 });
 
-test("le libellé Pliant porte le client, l’hôtel et la référence, pas le titulaire", async () => {
+test("le libellé Pliant porte le client, le nom saisi et la référence, pas le titulaire", async () => {
   const state = baseState();
   state.bookings[0] = { ...state.bookings[0], reference: "TB-2026-0088" };
   state.customers[0] = { id: CLIENT, first_name: "Andréa", last_name: "Bensaïd" };
@@ -638,8 +638,9 @@ test("le libellé Pliant porte le client, l’hôtel et la référence, pas le t
   assert.equal(body.customLastName, "Dupont");
   assert.equal(body.customFirstName.includes("Bensaid"), false);
   assert.equal(body.customLastName.includes("Phulay"), false);
-  assert.equal(body.label, "Bensaid – Phulay Bay – TB-2026-0088");
-  assert.equal(body.purpose, "Bensaid – Phulay Bay · Visa – TB-2026-0088");
+  assert.equal(body.label, "Bensaid – Visa – TB-2026-0088");
+  assert.equal(body.purpose, "Bensaid – Visa · Phulay Bay – TB-2026-0088");
+  assert.equal(body.label.includes("Phulay"), false);
   assert.equal(body.label.includes("Andr-a"), false);
   assert.equal(body.label.includes("Andrea"), false);
   if (!("cree" in created) || !created.cree) assert.fail("carte non créée");
