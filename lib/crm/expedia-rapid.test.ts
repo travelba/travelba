@@ -66,6 +66,8 @@ test("une région Expedia expose ses property_id", () => {
   assert.deepEqual(regions[0].propertyIds, ["10", "11"]);
   const mapped = parseExpediaRegions({ "1": { id: "1", name: "Paris", property_id: { "12": true } } });
   assert.deepEqual(mapped[0].propertyIds, ["12"]);
+  const objects = parseExpediaRegions({ id: "2", name: "Lyon", property_ids: [{ property_id: "20" }, { id: "21" }] });
+  assert.deepEqual(objects[0].propertyIds, ["20", "21"]);
 });
 
 test("un montant à plus de deux décimales n’est pas arrondi", () => {

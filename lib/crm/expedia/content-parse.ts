@@ -85,8 +85,17 @@ function propertyIdsOf(row: Record<string, unknown>) {
     if (typeof item === "string" && /^\d+$/.test(item.trim())) ids.push(item.trim());
     else if (typeof item === "number" && Number.isInteger(item)) ids.push(String(item));
   };
-  if (Array.isArray(raw)) for (const item of raw) push(item);
-  else if (raw && typeof raw === "object") for (const key of Object.keys(raw)) push(key);
+  if (typeof raw === "string") for (const item of raw.split(/[^\d]+/)) push(item);
+  else if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (item && typeof item === "object") {
+        const row = item as { id?: unknown; property_id?: unknown };
+        push(row.property_id ?? row.id);
+      } else push(item);
+    }
+  } else if (raw && typeof raw === "object") {
+    for (const key of Object.keys(raw)) push(key);
+  }
   return ids;
 }
 
