@@ -16,9 +16,10 @@ import {
 } from "@/lib/crm/hotel-search";
 import { clientCompares, foldProviderRates } from "@/lib/crm/hotel-providers/aggregate";
 import { rememberHotelMatches } from "@/lib/crm/hotel-providers/remember";
+import { expediaFailureCode, expediaFailureText } from "@/lib/crm/expedia/client";
 import { expediaSearchEnabled, resolveExpediaSalesChannel, safeExpediaConfig } from "@/lib/crm/expedia/config";
 import { coordsForPlace } from "@/lib/crm/expedia/places";
-import { searchExpediaRates } from "@/lib/crm/expedia/search";
+import { EXPEDIA_SEARCH_BUDGET_MS, searchExpediaRates } from "@/lib/crm/expedia/search";
 import type { NormalizedRate } from "@/lib/crm/hotel-providers/types";
 import { foldHotelLabel } from "@/lib/crm/hotel-catalog";
 import { attachHotelCover, loadKnownHotelOffers, loadLittleEmperorsOffers } from "@/lib/crm/little-emperors-search";
@@ -111,10 +112,14 @@ export async function POST(request: Request) {
                 customerIp: ip,
                 coords: catalogCoords,
               }),
-              12_000
+              EXPEDIA_SEARCH_BUDGET_MS + 2_000
             )
-              .then((rates) => ({ rates, failed: false as const }))
-              .catch(() => ({ rates: [] as NormalizedRate[], failed: true as const }))
+              .then((rates) => ({ rates, failed: false as const, code: "" }))
+              .catch((err: unknown) => {
+                const code = expediaFailureCode(err);
+                console.error("[expedia] recherche", code);
+                return { rates: [] as NormalizedRate[], failed: true as const, code };
+              })
           : null;
       const covers: Promise<void>[] = [];
       let supplierFailed = false;
@@ -181,7 +186,9 @@ export async function POST(request: Request) {
             continue;
           }
           if (expediaOn) {
-            let extra = expediaTask ? await expediaTask : { rates: [] as NormalizedRate[], failed: false };
+            let extra = expediaTask
+              ? await expediaTask
+              : { rates: [] as NormalizedRate[], failed: false, code: "" };
             if (!catalogCoords) {
               const coords = stays.find((stay) => stay.coords)?.coords ?? null;
               if (coords) {
@@ -198,12 +205,15 @@ export async function POST(request: Request) {
                         customerIp: ip,
                         coords,
                       }),
-                      12_000
+                      EXPEDIA_SEARCH_BUDGET_MS + 2_000
                     ),
                     failed: false,
+                    code: "",
                   };
-                } catch {
-                  extra = { rates: [], failed: true };
+                } catch (err) {
+                  const code = expediaFailureCode(err);
+                  console.error("[expedia] recherche", code);
+                  extra = { rates: [], failed: true, code };
                 }
               }
             }
@@ -232,7 +242,10 @@ export async function POST(request: Request) {
             }
             void rememberHotelMatches(folded.links);
             if (extra.failed && stays.length > 0) {
-              send({ type: "note", message: "Une source n’a pas répondu. Les autres tarifs sont affichés." });
+              send({
+                type: "note",
+                message: `${expediaFailureText(extra.code)} Les autres tarifs sont affichés.`,
+              });
             }
             if (extra.failed && stays.length === 0) supplierFailed = true;
           }

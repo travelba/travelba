@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { setDefaultResultOrder } from "node:dns";
 import { gunzipSync } from "node:zlib";
 import { loadExpediaConfig, type ExpediaConfig } from "./config";
 import { eanAuthorization } from "./signature";
+
+// Vercel tente d’abord l’IPv6. test.ean.com y reste muet, puis le délai tombe.
+setDefaultResultOrder("ipv4first");
 
 export class ExpediaError extends Error {
   constructor(
@@ -17,12 +21,36 @@ function clip(value: string, max = 180) {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+function decodeBody(buffer: Buffer, encoding: string) {
+  const gzip = encoding.includes("gzip") || (buffer.length > 2 && buffer[0] === 0x1f && buffer[1] === 0x8b);
+  if (!gzip) return buffer.toString("utf8");
+  try {
+    return gunzipSync(buffer).toString("utf8");
+  } catch {
+    return buffer.toString("utf8");
+  }
+}
+
 async function readBody(response: Response) {
   const buffer = Buffer.from(await response.arrayBuffer());
-  const encoding = response.headers.get("content-encoding") || "";
-  const gzip = encoding.includes("gzip") || (buffer.length > 2 && buffer[0] === 0x1f && buffer[1] === 0x8b);
-  const text = (gzip ? gunzipSync(buffer) : buffer).toString("utf8");
-  return text;
+  return decodeBody(buffer, response.headers.get("content-encoding") || "");
+}
+
+function expediaType(parsed: unknown) {
+  if (!parsed || typeof parsed !== "object") return "";
+  const type = (parsed as { type?: unknown }).type;
+  if (typeof type !== "string") return "";
+  return type.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 40);
+}
+
+function transportCode(caught: unknown) {
+  if (!(caught instanceof Error)) return "network";
+  if (caught.name === "TimeoutError" || caught.name === "AbortError") return "timeout";
+  const cause = (caught as { cause?: { code?: unknown } }).cause;
+  const code = typeof cause?.code === "string" ? cause.code : "";
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") return "dns";
+  if (code === "ETIMEDOUT" || code === "UND_ERR_CONNECT_TIMEOUT" || code === "UND_ERR_HEADERS_TIMEOUT") return "timeout";
+  return "network";
 }
 
 async function writeLog(config: ExpediaConfig, row: { endpoint: string; httpStatus: number; durationMs: number; error: string | null }) {
@@ -87,19 +115,36 @@ export async function eanGet(
         }
       }
       if (response.status < 200 || response.status >= 300) {
-        error = error || `http_${response.status}`;
+        const kind = expediaType(parsed);
+        error = error || (kind ? `http_${response.status}_${kind}` : `http_${response.status}`);
       }
     }
   } catch (caught) {
-    error = caught instanceof ExpediaError ? caught.code : "timeout";
+    error = caught instanceof ExpediaError ? caught.code : transportCode(caught);
     httpStatus = 0;
   }
-  await writeLog(config, { endpoint, httpStatus, durationMs: Date.now() - started, error });
+  const durationMs = Date.now() - started;
+  if (error) console.error("[expedia]", endpoint, httpStatus, durationMs, error);
+  await writeLog(config, { endpoint, httpStatus, durationMs, error });
   if (error) throw new ExpediaError(error, httpStatus);
   return { data: parsed, transactionId: randomUUID() };
 }
 
 export function expediaFailureCode(err: unknown) {
   if (err instanceof ExpediaError) return clip(err.code);
+  if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError" || err.message === "timeout")) {
+    return "timeout";
+  }
   return "error";
+}
+
+/** Texte montré à l’agence. Le code reste court, sans URL ni clé. */
+export function expediaFailureText(code: string) {
+  if (code === "timeout") return "Expedia n’a pas répondu à temps.";
+  if (code === "dns" || code === "network") return "Expedia est injoignable depuis le serveur.";
+  if (code.startsWith("http_401") || code.startsWith("http_403")) return "Expedia a refusé l’accès de test.";
+  if (code.startsWith("http_429")) return "Expedia a limité les appels.";
+  if (code === "not_configured") return "Expedia n’est pas configuré.";
+  if (code.startsWith("http_")) return "Expedia a refusé la recherche.";
+  return "Expedia n’a pas répondu.";
 }

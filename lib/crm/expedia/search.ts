@@ -6,6 +6,28 @@ import { loadExpediaConfig, type ExpediaSalesChannel } from "./config";
 import { normalizeExpediaProperty } from "./normalize";
 import type { NormalizedRate } from "@/lib/crm/hotel-providers/types";
 
+/** Région, disponibilités, puis contenu. 12 s coupait l’appel avant la réponse de test.ean.com. */
+export const EXPEDIA_SEARCH_BUDGET_MS = 32_000;
+
+/** Plafond Rapid : au-delà, l’appel est refusé. */
+export const EXPEDIA_PROPERTY_BATCH = 250;
+
+const regionCache = new Map<string, string>();
+
+export function chunkPropertyIds(ids: string[], size = EXPEDIA_PROPERTY_BATCH) {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    unique.push(id);
+  }
+  const chunks: string[][] = [];
+  const step = Math.max(1, size);
+  for (let index = 0; index < unique.length; index += step) chunks.push(unique.slice(index, index + step));
+  return chunks;
+}
+
 function occupancyToken(room: HotelRoomOccupancy) {
   const ages = room.children.map((child) => child.age).filter((age) => Number.isInteger(age) && age >= 0);
   ages.sort((a, b) => a - b);
@@ -22,7 +44,11 @@ async function cityRegionId(input: {
   customerIp: string | null;
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;
+  timeoutMs: number;
 }) {
+  const cacheKey = `${input.coords.lat.toFixed(2)}|${input.coords.lng.toFixed(2)}|${foldHotelLabel(input.place)}`;
+  const cached = regionCache.get(cacheKey);
+  if (cached) return cached;
   const query = new URLSearchParams();
   repeated(query, "include", ["details"]);
   query.set("language", "fr-FR");
@@ -34,7 +60,7 @@ async function cityRegionId(input: {
     customerIp: input.customerIp,
     signal: input.signal,
     fetchImpl: input.fetchImpl,
-    timeoutMs: 8_000,
+    timeoutMs: input.timeoutMs,
   });
   const regions = parseExpediaRegions(data).filter((region) => region.type === "city" || !region.type);
   if (!regions.length) return null;
@@ -43,23 +69,34 @@ async function cityRegionId(input: {
     const name = foldHotelLabel(region.name);
     return needle && (name === needle || name.includes(needle) || needle.includes(name));
   });
-  return (named || regions[0]).id;
+  const id = (named || regions[0]).id;
+  regionCache.set(cacheKey, id);
+  return id;
 }
 
-async function propertyContent(ids: string[], customerIp: string | null, signal?: AbortSignal, fetchImpl?: typeof fetch) {
-  const limited = ids.slice(0, 40);
-  if (!limited.length) return new Map<string, ExpediaPropertyContent>();
-  const query = new URLSearchParams();
-  query.set("language", "fr-FR");
-  query.set("supply_source", "expedia");
-  repeated(query, "property_id", limited);
-  const { data } = await eanGet("/properties/content", query, {
-    customerIp,
-    signal,
-    fetchImpl,
-    timeoutMs: 10_000,
-  });
-  return new Map(parseExpediaContent(data).map((row) => [row.propertyId, row]));
+async function propertyContent(
+  ids: string[],
+  customerIp: string | null,
+  signal: AbortSignal | undefined,
+  fetchImpl: typeof fetch | undefined,
+  timeoutMs: number,
+) {
+  const content = new Map<string, ExpediaPropertyContent>();
+  const batches = chunkPropertyIds(ids).slice(0, 1);
+  for (const batch of batches) {
+    const query = new URLSearchParams();
+    query.set("language", "fr-FR");
+    query.set("supply_source", "expedia");
+    repeated(query, "property_id", batch);
+    const { data } = await eanGet("/properties/content", query, {
+      customerIp,
+      signal,
+      fetchImpl,
+      timeoutMs,
+    });
+    for (const row of parseExpediaContent(data)) content.set(row.propertyId, row);
+  }
+  return content;
 }
 
 export async function searchExpediaRates(input: {
@@ -77,6 +114,8 @@ export async function searchExpediaRates(input: {
   if (!input.coords) return [];
   const config = loadExpediaConfig();
   if (!config.apiKey || !config.sharedSecret) return [];
+  const started = Date.now();
+  const left = () => Math.max(1_000, EXPEDIA_SEARCH_BUDGET_MS - (Date.now() - started));
   const place = input.city || input.destination;
   const regionId = await cityRegionId({
     coords: input.coords,
@@ -84,6 +123,7 @@ export async function searchExpediaRates(input: {
     customerIp: input.customerIp,
     signal: input.signal,
     fetchImpl: input.fetchImpl,
+    timeoutMs: Math.min(6_000, left()),
   });
   if (!regionId) return [];
   const query = new URLSearchParams();
@@ -102,16 +142,15 @@ export async function searchExpediaRates(input: {
     customerIp: input.customerIp,
     signal: input.signal,
     fetchImpl: input.fetchImpl,
-    timeoutMs: 12_000,
+    timeoutMs: Math.min(18_000, Math.max(4_000, left() - 6_000)),
   });
   const properties = Array.isArray(data) ? data : [];
   const ids = properties
     .map((row) => (row && typeof row === "object" ? (row as { property_id?: unknown }).property_id : null))
-    .filter((id): id is string => typeof id === "string")
-    .slice(0, 40);
+    .filter((id): id is string => typeof id === "string");
   let content = new Map<string, ExpediaPropertyContent>();
   try {
-    content = await propertyContent(ids, input.customerIp, input.signal, input.fetchImpl);
+    content = await propertyContent(ids, input.customerIp, input.signal, input.fetchImpl, Math.min(8_000, left()));
   } catch (err) {
     console.error("[expedia] contenu", expediaFailureCode(err));
   }
