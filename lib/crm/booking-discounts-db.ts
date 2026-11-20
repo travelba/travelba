@@ -1,5 +1,5 @@
-import "server-only";
-
+// Pas de `server-only` : `displayed-stay` charge ce module et entre dans le graphe client
+// (aperçu exemple). Le secret de service n’est pas une variable publique.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   COMMERCIAL_DISCOUNT_LABEL,
