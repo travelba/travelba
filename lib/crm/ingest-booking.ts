@@ -75,14 +75,14 @@ import {
   issuesSummary,
   zodIssuesToBookingIssues,
 } from "@/lib/crm/booking-issues";
-import { printedStayTravelers } from "@/lib/crm/document-passengers";
+import { planTravelerInsert, printedStayTravelers, type StayTravelerRow } from "@/lib/crm/document-passengers";
 import {
   applyRoomGuestLabels,
   attachTravelerToHousehold,
   householdMembers,
 } from "@/lib/crm/household";
 import { MAIL_REVIEW_REASON } from "@/lib/crm/ingest-samples";
-import { isPlaceholderTraveler, sameRecordedTraveler } from "@/lib/crm/person-match";
+import { isPlaceholderTraveler } from "@/lib/crm/person-match";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { foldLetters } from "@/lib/crm/text";
 import {
@@ -342,7 +342,7 @@ async function upsertItemsAndTravelers(
   extract: BookingExtract,
   customer: CrmCustomer,
   companions: CrmCompanion[],
-  existingTravelers: { first_name: string | null; last_name: string | null }[],
+  existingTravelers: StayTravelerRow[],
   existingItems: CrmBookingItem[],
   docs: UploadedDoc[],
   emailIngestId?: string,
@@ -611,19 +611,43 @@ async function upsertItemsAndTravelers(
     const last = emptyToNull(linked.last_name);
     if (!first && !last) continue;
     if (skipPlaceholders && isPlaceholderTraveler(first, last)) continue;
-    const recorded = { first_name: first, last_name: last };
-    if (existingTravelers.some((row) => sameRecordedTraveler(row, recorded))) continue;
     const companion =
       linked.companion_id ? companions.find((row) => row.id === linked.companion_id) : null;
-    const { error } = await supabase.from("crm_booking_travelers").insert({
-      booking_id: bookingId,
-      companion_id: companion?.id || null,
-      is_account_holder: Boolean(linked.is_account_holder),
+    const slot: StayTravelerRow = {
       first_name: first || companion?.first_name || null,
       last_name: last || companion?.last_name || null,
-    });
+      companion_id: companion?.id || null,
+      is_account_holder: Boolean(linked.is_account_holder),
+    };
+    const plan = planTravelerInsert(existingTravelers, slot);
+    if (plan.action === "skip") continue;
+    if (plan.action === "reuse") {
+      const { error } = await supabase
+        .from("crm_booking_travelers")
+        .update({ first_name: plan.first_name, last_name: plan.last_name })
+        .eq("id", plan.id)
+        .eq("booking_id", bookingId);
+      if (error) throw dbFailure(error, "Voyageur non enregistré.");
+      const row = existingTravelers.find((item) => item.id === plan.id);
+      if (row) {
+        row.first_name = plan.first_name;
+        row.last_name = plan.last_name;
+      }
+      continue;
+    }
+    const { data: inserted, error } = await supabase
+      .from("crm_booking_travelers")
+      .insert({
+        booking_id: bookingId,
+        companion_id: slot.companion_id,
+        is_account_holder: slot.is_account_holder,
+        first_name: slot.first_name,
+        last_name: slot.last_name,
+      })
+      .select("id")
+      .single();
     if (error) throw dbFailure(error, "Voyageur non enregistré.");
-    existingTravelers.push(recorded);
+    existingTravelers.push({ ...slot, id: inserted?.id });
   }
 
   await reconcileCustomerParty(customer.id, supabase);
@@ -806,7 +830,10 @@ export async function applyExtractToBooking(opts: {
     await Promise.all([
       admin.from("crm_customers").select("*").eq("id", opts.customerId).maybeSingle(),
       admin.from("crm_travel_companions").select("*").eq("customer_id", opts.customerId),
-      admin.from("crm_booking_travelers").select("first_name, last_name").eq("booking_id", opts.bookingId),
+      admin
+        .from("crm_booking_travelers")
+        .select("id, first_name, last_name, companion_id, is_account_holder")
+        .eq("booking_id", opts.bookingId),
       admin.from("crm_booking_items").select("*").eq("booking_id", opts.bookingId),
     ]);
   if (!customer) throw new BookingIssuesError("Client introuvable", [
@@ -846,7 +873,7 @@ export async function applyExtractToBooking(opts: {
     extract,
     customer as CrmCustomer,
     (companions || []) as CrmCompanion[],
-    (travelers || []) as { first_name: string | null; last_name: string | null }[],
+    (travelers || []) as StayTravelerRow[],
     (items || []) as CrmBookingItem[],
     docs,
     opts.emailIngestId,
