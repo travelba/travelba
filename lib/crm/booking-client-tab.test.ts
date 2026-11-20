@@ -53,6 +53,9 @@ test("la barre du dossier n’a qu’un geste, le menu tient le reste", () => {
   assert.equal(primary.includes("Cacher au client"), false);
   assert.match(primary, /: null;/);
   assert.match(menu, /Cartes d’embarquement/);
+  assert.match(menu, /Ouvrir l’espace client/);
+  assert.ok(menu.indexOf("Ouvrir l’espace client") < menu.indexOf("Voir comme le client"));
+  assert.match(menu, /clientSpace\.start\(\)/);
   assert.match(menu, /Voir comme le client/);
   assert.match(menu, /Couverture/);
   assert.match(menu, /Cacher au client/);
@@ -62,8 +65,21 @@ test("la barre du dossier n’a qu’un geste, le menu tient le reste", () => {
   assert.equal(menu.includes("Aperçu de l’espace client"), false);
   assert.equal(menu.includes("Photo du lieu"), false);
   assert.match(editor, /onUsePlacePhoto/);
+  assert.match(editor, /clientSpace\.dialog/);
   assert.match(editor, /← Dossiers/);
   assert.equal(editor.includes("← Réservations"), false);
+});
+
+test("le dossier et la fiche ouvrent l’espace client par le même lien", () => {
+  const space = readFileSync(join(root, "components/admin/OpenClientSpace.tsx"), "utf8");
+  const invite = readFileSync(join(root, "components/admin/InviteCustomerPanel.tsx"), "utf8");
+  assert.match(space, /\/api\/admin\/clients\/\$\{customerId\}\/ouvrir/);
+  assert.match(space, /Lien d’ouverture prêt : 10 minutes, une seule ouverture/);
+  assert.match(space, /fenêtre privée/);
+  assert.match(space, /Rien n’est envoyé au client/);
+  assert.match(space, /Ouvrir dans un onglet/);
+  assert.match(invite, /<OpenClientSpace/);
+  assert.equal(invite.includes("/ouvrir"), false);
 });
 
 test("une étape s’applique puis s’enregistre, sans second bandeau", () => {

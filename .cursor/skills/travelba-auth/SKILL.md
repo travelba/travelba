@@ -58,7 +58,7 @@ Chaque connexion reste dans `crm_customer_logins`. Ce que le titulaire fait ensu
 
 ## Ouvrir l’espace d’un client (agence)
 
-Fiche client › « Ouvrir l’espace client » → `POST /api/admin/clients/[id]/ouvrir` (`requireStaff`, 30 par heure et par agent via `crm_rate_limit_hit`). `lib/crm/desk-open.ts` :
+Fiche client et menu **…** du dossier › « Ouvrir l’espace client » (`components/admin/OpenClientSpace.tsx`) → `POST /api/admin/clients/[id]/ouvrir` (`requireStaff`, 30 par heure et par agent via `crm_rate_limit_hit`). `lib/crm/desk-open.ts` :
 - jamais pour un compte de l’agence (`crm_staff` ou rôle Auth staff), ni à la création ni à l’ouverture ;
 - fiche sans compte : compte Auth confirmé, sans mot de passe ni message (`linkCustomerAuth`) ; un e-mail déjà pris par un agent ne se rattache jamais ;
 - lien court `channel = 'desk'`, `created_by_staff_id`, **10 minutes, une ouverture, jamais régénéré** (`DESK_LINK_TTL_MS`, `deskOpenDecision`). Pas de repli sans colonnes : un lien desk sans date deviendrait un lien de 30 jours.
