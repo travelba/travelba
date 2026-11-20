@@ -24,14 +24,23 @@ test("le nom sur la carte Pliant n’a que les caractères acceptés", () => {
 });
 
 test("le libellé Pliant montre le client, l’hôtel et la référence", () => {
+  const auto = pliantStayCaption({
+    client: "Bensaïd",
+    hotels: ["Phulay Bay"],
+    reference: "TB-2026-0088",
+  });
+  assert.equal(auto?.label, "Bensaid – Phulay Bay – TB-2026-0088");
+  assert.equal(auto?.purpose, "Bensaid – Phulay Bay – TB-2026-0088");
+
   const shown = pliantStayCaption({
     client: "Bensaïd",
     hotels: ["Phulay Bay"],
     designation: "Visa",
     reference: "TB-2026-0088",
   });
-  assert.equal(shown?.label, "Bensaid – Phulay Bay – TB-2026-0088");
-  assert.equal(shown?.purpose, "Bensaid – Phulay Bay · Visa – TB-2026-0088");
+  assert.equal(shown?.label, "Bensaid – Visa – TB-2026-0088");
+  assert.equal(shown?.purpose, "Bensaid – Visa · Phulay Bay – TB-2026-0088");
+  assert.equal(shown?.label.includes("Phulay"), false);
   assert.equal((shown?.label.length || 0) <= 40, true);
   assert.equal((shown?.purpose.length || 0) <= 200, true);
 
@@ -94,6 +103,121 @@ test("plusieurs hôtels : le nom choisi garde cet hôtel dans le libellé", () =
   });
   assert.equal(catalog?.label, "Bensaid – Phulay Bay – TB-2026-0088");
   assert.equal(catalog?.label.includes("Anantara"), false);
+});
+
+test("un nom saisi prime sur l’hôtel dans le libellé Pliant", () => {
+  const supplier = pliantStayCaption({
+    client: "El Nouchi",
+    hotels: ["Can Veri Suites"],
+    designation: "Europcar",
+    reference: "TB-2026-0208",
+  });
+  assert.equal(supplier?.label, "El Nouchi – Europcar – TB-2026-0208");
+  assert.equal(supplier?.purpose, "El Nouchi – Europcar · Can Veri Suites – TB-2026-0208");
+  assert.equal(supplier?.label.includes("Can Veri"), false);
+  assert.equal((supplier?.label.length || 0) <= 40, true);
+
+  const fits = pliantStayCaption({
+    client: "Lee",
+    hotels: ["Ritz"],
+    designation: "Taxi",
+    reference: "TB-1",
+  });
+  assert.equal(fits?.label, "Lee – Taxi · Ritz – TB-1");
+  assert.equal(fits?.purpose, fits?.label);
+
+  const partial = pliantStayCaption({
+    client: "Lee",
+    hotels: ["Ritz", "Grand Palace Hotel"],
+    designation: "Taxi",
+    reference: "TB-1",
+  });
+  assert.equal(partial?.label, "Lee – Taxi · Ritz – TB-1");
+  assert.equal(partial?.label.includes("Grand"), false);
+  assert.equal(partial?.purpose, "Lee – Taxi · Ritz · Grand Palace Hotel – TB-1");
+
+  const mentions = pliantStayCaption({
+    client: "El Nouchi",
+    hotels: ["Anantara Layan", "Can Veri Suites"],
+    designation: "Can Veri Suites",
+    reference: "TB-2026-0208",
+  });
+  assert.equal(mentions?.label, "El Nouchi – Can Veri Suit – TB-2026-0208");
+  assert.equal(mentions?.purpose, "El Nouchi – Can Veri Suites – TB-2026-0208");
+  assert.equal(mentions?.label.includes("Anantara"), false);
+  assert.equal(mentions?.purpose.includes("Anantara"), false);
+  assert.equal((mentions?.purpose.match(/Can Veri Suites/g) || []).length, 1);
+
+  const named = pliantStayCaption({
+    client: "Lee",
+    hotels: ["Ritz", "Plaza"],
+    designation: "Taxi Ritz",
+    reference: "TB-1",
+  });
+  assert.equal(named?.label, "Lee – Taxi Ritz – TB-1");
+  assert.equal(named?.purpose, named?.label);
+  assert.equal(named?.label.includes("Plaza"), false);
+  assert.equal((named?.label.match(/Ritz/g) || []).length, 1);
+
+  const none = pliantStayCaption({
+    client: "El Nouchi",
+    hotels: ["Can Veri Suites"],
+    designation: "   ",
+    reference: "TB-2026-0208",
+  });
+  assert.equal(none?.label, "El Nouchi – Can Veri Suit – TB-2026-0208");
+  assert.equal(none?.purpose, "El Nouchi – Can Veri Suites – TB-2026-0208");
+
+  const exact = pliantStayCaption({
+    client: "El Nouchi",
+    hotels: ["Inn"],
+    designation: "Europcar Taxi",
+    reference: "TB-2026-0208",
+  });
+  assert.equal(exact?.label, "El Nouchi – Europcar Taxi – TB-2026-0208");
+  assert.equal(exact?.label.length, 40);
+  assert.equal(exact?.purpose, "El Nouchi – Europcar Taxi · Inn – TB-2026-0208");
+  assert.equal(exact?.label.includes("Inn"), false);
+
+  const typed = `Europcar ${"x".repeat(80)}`;
+  const alone = pliantCardCaption({
+    client: "El Nouchi",
+    place: typed,
+    reference: "TB-2026-0208",
+  });
+  const long = pliantStayCaption({
+    client: "El Nouchi",
+    hotels: ["Can Veri Suites"],
+    designation: typed,
+    reference: "TB-2026-0208",
+  });
+  assert.equal(long?.label, alone?.label);
+  assert.equal(long?.label.startsWith("El Nouchi – Europcar"), true);
+  assert.equal(long?.label.endsWith("TB-2026-0208"), true);
+  assert.equal(long?.label.includes("Can Veri"), false);
+  assert.equal((long?.label.length || 0) <= 40, true);
+  assert.equal(long?.purpose.includes("Can Veri Suites"), true);
+  assert.equal(long?.purpose.startsWith("El Nouchi – Europcar"), true);
+  assert.equal(long?.purpose.endsWith("TB-2026-0208"), true);
+  assert.equal((long?.purpose.length || 0) <= 200, true);
+
+  const overflowing = `Europcar ${"y".repeat(190)}`;
+  const overflowingAlone = pliantCardCaption({
+    client: "El Nouchi",
+    place: overflowing,
+    reference: "TB-2026-0208",
+  });
+  const cut = pliantStayCaption({
+    client: "El Nouchi",
+    hotels: ["Can Veri Suites"],
+    designation: overflowing,
+    reference: "TB-2026-0208",
+  });
+  assert.equal(cut?.label, overflowingAlone?.label);
+  assert.equal(cut?.purpose, overflowingAlone?.purpose);
+  assert.equal(cut?.purpose.includes("Can Veri"), false);
+  assert.equal((cut?.purpose.length || 0) <= 200, true);
+  assert.equal(cut?.purpose.startsWith("El Nouchi – Europcar"), true);
 });
 
 test("la désignation interne garde les accents et tient dans quarante caractères", () => {

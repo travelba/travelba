@@ -183,9 +183,48 @@ function designationPlace(
   return parts.slice(1, -1).join(" · ");
 }
 
+function rawStay(client?: string | null, place?: string | null, reference?: string | null) {
+  return [client, place, reference].map((part) => pliantReadable(part || "")).filter(Boolean).join(CAPTION_SEP);
+}
+
+/** Hôtels encore distincts du texte saisi, sans doublon. */
+function hotelsAfterTyped(hotels: string[], typed: string) {
+  const seen = new Set<string>();
+  const typedKey = pliantKey(typed);
+  if (typedKey) seen.add(typedKey);
+  const extras: string[] = [];
+  for (const hotel of hotels) {
+    const key = pliantKey(hotel);
+    if (!key || seen.has(key) || hotelCited(key, typed)) continue;
+    seen.add(key);
+    extras.push(hotel.trim());
+  }
+  return extras;
+}
+
+function placeOf(primary: string, extras: string[]) {
+  return [primary, ...extras].filter(Boolean).join(" · ");
+}
+
+/** Retire des hôtels entiers par la fin tant que la phrase dépasse `max`. */
+function keepFittingHotels(
+  client: string | null | undefined,
+  primary: string,
+  extras: string[],
+  reference: string | null | undefined,
+  max: number
+) {
+  const kept = extras.slice();
+  while (kept.length && rawStay(client, placeOf(primary, kept), reference).length > max) kept.pop();
+  return kept;
+}
+
 /**
- * Libellé (40) et objet (200). L’hôtel prime. La désignation s’ajoute
- * si elle tient encore ; sinon elle reste dans l’objet.
+ * Libellé (40) et objet (200).
+ * Sans nom saisi : l’hôtel prime.
+ * Avec un nom saisi : « Client – saisie – Réf ». L’hôtel se colle
+ * seulement s’il tient encore dans le libellé ; sinon il reste dans l’objet.
+ * La coupe retire l’hôtel en entier avant de raccourcir le texte saisi.
  * Un nom qui cite un hôtel ne garde que celui-là.
  */
 export function pliantStayCaption(input: {
@@ -199,16 +238,29 @@ export function pliantStayCaption(input: {
   const brief = selected.cited ? citedBrief(selected.hotels, middle) : "";
   const hotels = brief ? [brief] : selected.hotels;
   const hotelPlace = pliantCardPlace({ hotels });
-  const designation = middle && pliantKey(middle) !== pliantKey(hotelPlace) ? middle : "";
-  const fullPlace = pliantCardPlace({ hotels, designation });
-  const full = pliantCardCaption({ client: input.client, place: fullPlace, reference: input.reference });
-  const shown = pliantCardCaption({
+  const typed = middle && pliantKey(middle) && pliantKey(middle) !== pliantKey(hotelPlace) ? middle : "";
+  if (!typed) {
+    return pliantCardCaption({
+      client: input.client,
+      place: hotelPlace || middle || input.designation,
+      reference: input.reference,
+    });
+  }
+  const extras = hotelsAfterTyped(hotels, typed);
+  const forPurpose = keepFittingHotels(input.client, typed, extras, input.reference, PURPOSE_MAX);
+  const forLabel = keepFittingHotels(input.client, typed, forPurpose, input.reference, LABEL_MAX);
+  const purposeCaption = pliantCardCaption({
     client: input.client,
-    place: hotelPlace || designation || input.designation,
+    place: placeOf(typed, forPurpose),
     reference: input.reference,
   });
-  const label = full && full.label === full.purpose ? full.label : shown?.label || full?.label || "";
-  const purpose = full?.purpose || shown?.purpose || label;
+  const labelCaption = pliantCardCaption({
+    client: input.client,
+    place: placeOf(typed, forLabel),
+    reference: input.reference,
+  });
+  const label = labelCaption?.label || "";
+  const purpose = purposeCaption?.purpose || label;
   if (!label && !purpose) return null;
   return { label, purpose };
 }
