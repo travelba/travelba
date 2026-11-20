@@ -810,16 +810,44 @@ export function staySleepCities(items: Array<{ kind?: string | null; details?: R
   return found;
 }
 
-/** Sous le titre choisi : la ville de l’hôtel si le titre ne la dit pas, sinon le lieu déjà prévu. */
+/** Sous le titre choisi : la ville de l’hôtel si le titre ne la dit pas. Pas la ville de départ, pas le premier segment d’un titre. */
 export function stayHeroPlace(
   title: string | null | undefined,
   destination: string | null | undefined,
-  items: Array<{ kind?: string | null; details?: Record<string, unknown> | null }> | null | undefined
+  items: Array<{
+    kind?: string | null;
+    title?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    sort_order?: number | null;
+    lifecycle?: string | null;
+    details?: Record<string, unknown> | null;
+  }> | null = null
 ) {
   const named = new Set(titleCityParts(title || "").map((part) => cityPlaceKey(part)).filter(Boolean));
-  const sleep = staySleepCities(items || []).filter((city) => !named.has(cityPlaceKey(city)));
+  const rows = items || [];
+  const sleep = staySleepCities(rows).filter((city) => !named.has(cityPlaceKey(city)));
   if (sleep.length) return sleep.join(" · ");
-  return tripPlaceLine(title, destination);
+  if (!(title || "").trim()) return null;
+  if (rows.length) {
+    const plan = tripCityPlan(rows);
+    const stayKeys = new Set(plan.destinations.map((city) => cityPlaceKey(city)).filter(Boolean));
+    const blocked = new Set([...plan.origins, ...plan.layovers].map((city) => cityPlaceKey(city)).filter(Boolean));
+    const parts = titleCityParts(destination || "").filter((part) => {
+      const key = cityPlaceKey(part);
+      return Boolean(key && stayKeys.has(key) && !blocked.has(key) && !named.has(key));
+    });
+    return parts.length ? parts.join(" · ") : null;
+  }
+  const place = tripPlaceLine(title, destination);
+  if (!place) return null;
+  const titleParts = titleCityParts(title || "");
+  const placeParts = titleCityParts(place);
+  const first = titleParts[0] || "";
+  if (titleParts.length > 1 && placeParts.length === 1 && first && cityPlaceKey(placeParts[0]) === cityPlaceKey(first)) {
+    return null;
+  }
+  return place;
 }
 
 function pushArrival(found: string[], value: string) {
@@ -894,8 +922,8 @@ export function stayHeadline(
   const cities = stayed.length ? stayed : listed;
   const stored = (title || "").trim();
   const dest = (destination || "").trim();
-  const named = stored || dest;
-  if (!named && cities.length) return cities.join(" · ");
+  if (!stored) return cities.join(" · ") || dest || fallback;
+  const named = stored;
   const tracks = titleTracksCities(named, cities, stops);
   const echoesDestination = Boolean(dest && foldPlace(named) === foldPlace(dest));
   if (cities.length >= 2 && (tracks || echoesDestination)) return cities.join(" · ");

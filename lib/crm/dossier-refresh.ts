@@ -16,10 +16,13 @@ import { createServiceClient } from "@/lib/supabase/admin";
  * Ce que l’ouverture du dossier faisait en écrivant : titre, cartes hôtel / Pliant,
  * courriers, ESTA, ETA, lien de partage. Déclenché par une écriture, pas par le GET.
  */
-export async function refreshBookingDerived(bookingId: string, options?: { signatory?: string }) {
+export async function refreshBookingDerived(
+  bookingId: string,
+  options?: { signatory?: string; keepTitle?: boolean }
+) {
   const admin = createServiceClient();
   try {
-    await syncBookingTitleFromSteps(admin, bookingId);
+    if (!options?.keepTitle) await syncBookingTitleFromSteps(admin, bookingId);
   } catch (error) {
     console.info("[dossier] titre", error instanceof Error ? error.message : "ignoré");
   }

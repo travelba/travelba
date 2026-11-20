@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
-import { clientStayFace } from "@/lib/crm/client-stay-face";
+import { clientStayFace, shownStayDestination } from "@/lib/crm/client-stay-face";
 import { cityCoverCached, ensureCityCover } from "@/lib/crm/cover-generate";
 import { cityCoverAuthFailed } from "@/lib/crm/cover-retouch";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
@@ -361,7 +361,7 @@ function clientCoverBooking(
     homeCity,
   });
   return {
-    destination: face.destination || booking.destination,
+    destination: shownStayDestination(face, booking.destination),
     title: face.title || booking.title,
     cover_image_path: booking.cover_image_path,
   };

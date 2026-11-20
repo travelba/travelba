@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { assertStaffPermission } from "@/lib/crm/agency-guard";
 import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
@@ -26,6 +27,7 @@ import {
   remindMissingPieces,
   safeConcierge,
 } from "@/lib/crm/concierge-send";
+import { clientDossierRevalidations } from "@/lib/crm/client-stay-paths";
 import { countsAsCarnetCard, type BookingStatus, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -68,7 +70,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
     patch.visible_to_client = true;
     body.visible_to_client = true;
   }
-  if ("title" in patch && !patch.title) return jsonError("Le titre du voyage est obligatoire.");
+  const titleSaved = "title" in patch;
 
   if ("customer_id" in patch && !("billing_customer_id" in patch)) {
     const travelerId = String(patch.customer_id);
@@ -257,9 +259,15 @@ export async function PATCH(request: Request, ctx: Ctx) {
       .maybeSingle();
     if (priced) booking = priced as CrmBooking;
     await syncBookingLedger(auth.supabase, booking, prev.status as BookingStatus);
-    await refreshBookingDerived(id, { signatory: hotelSignatoryName(auth.staff.full_name) });
+    await refreshBookingDerived(id, {
+      signatory: hotelSignatoryName(auth.staff.full_name),
+      keepTitle: titleSaved,
+    });
   } catch (err) {
     return jsonError(err instanceof Error ? err.message : "Écritures non retirées", 400);
+  }
+  if (titleSaved) {
+    for (const item of clientDossierRevalidations(booking.reference)) revalidatePath(item.path, item.type);
   }
   return NextResponse.json({ booking });
 }

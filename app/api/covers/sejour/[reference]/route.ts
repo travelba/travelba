@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { publicCoverPath, toCoverJpeg } from "@/lib/crm/cover-file";
 import { catalogCachePath, isCatalogPhotoId } from "@/lib/crm/cover-retouch";
-import { clientStayFace } from "@/lib/crm/client-stay-face";
+import { clientStayFace, shownStayDestination } from "@/lib/crm/client-stay-face";
 import { bookingCoverPlan, catalogPhotoId } from "@/lib/crm/covers";
 import { downloadCrmFile } from "@/lib/crm/files";
 import { isBookingReference } from "@/lib/crm/concierge-notices";
@@ -90,7 +90,7 @@ export async function GET(request: Request, ctx: Ctx) {
     });
     const plan = bookingCoverPlan(
       {
-        destination: face.destination || booking.destination,
+        destination: shownStayDestination(face, booking.destination) || null,
         title: face.title || booking.title || "",
         cover_image_path: null,
       },

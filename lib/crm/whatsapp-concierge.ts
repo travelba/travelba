@@ -7,7 +7,7 @@ import {
   hotelStayLabel,
   itemClock,
 } from "./carnet";
-import { clientStayFace } from "./client-stay-face";
+import { clientStayFace, shownStayDestination } from "./client-stay-face";
 import { placeWithPreposition, stayDestinationLine, stayDestinationNames } from "./stay-phrase";
 import { timezoneForIata } from "./airport-time";
 import { inferAirlineIata } from "./brand-marks";
@@ -591,7 +591,7 @@ export function buildConciergeDossier(input: {
       id: booking.id,
       reference: booking.reference,
       title: face.title,
-      destination: face.destination || booking.destination,
+      destination: shownStayDestination(face, booking.destination) || null,
       startDate: face.start,
       endDate: face.end,
       totalAmount:
@@ -601,7 +601,7 @@ export function buildConciergeDossier(input: {
       cover: publishedCover({
         ...booking,
         title: face.title,
-        destination: face.destination || booking.destination,
+        destination: shownStayDestination(face, booking.destination) || null,
       }),
       shareCode: typeof booking.share_code === "string" && booking.share_code ? booking.share_code : null,
       items,

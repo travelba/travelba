@@ -46,6 +46,40 @@ function labelIsAuto(value: string | null | undefined, items: StayFaceItem[], ho
   return parts.some((part) => !keys.has(cityPlaceKey(part)));
 }
 
+/**
+ * Destination lue par le client.
+ * Le titre saisi est la source du nom. Une colonne destination qui ne nomme pas
+ * les villes du séjour (ville de départ, premier segment d’un ancien titre) ne reste pas.
+ */
+export function clientFacingDestination(input: {
+  stored?: string | null;
+  suggested?: string | null;
+  auto?: boolean;
+  resolved?: string | null;
+}) {
+  const stored = (input.stored || "").trim();
+  const suggested = (input.suggested || "").trim();
+  const resolved = (input.resolved || "").trim();
+  if (!suggested) return input.auto ? stored : resolved;
+  if (!stored || input.auto) return suggested;
+  const stayKeys = new Set(splitPlaceLabel(suggested).map((part) => cityPlaceKey(part)).filter(Boolean));
+  const parts = splitPlaceLabel(stored);
+  const kept = parts.filter((part) => stayKeys.has(cityPlaceKey(part)));
+  if (kept.length !== parts.length) return suggested;
+  return resolved || suggested;
+}
+
+/** Destination affichée. Avec des cartes, la colonne stockée ne revient pas si le visage l’a écartée. */
+export function shownStayDestination(
+  face: Pick<ClientStayFace, "destination" | "fromCards">,
+  stored?: string | null
+) {
+  const fromFace = (face.destination || "").trim();
+  if (fromFace) return fromFace;
+  if (face.fromCards) return "";
+  return (stored || "").trim();
+}
+
 function stayedCities(items: StayFaceItem[], homeCity?: string | null) {
   const plan = tripCityPlan(items, undefined, homeCity);
   if (plan.destinations.length) return plan.destinations;
@@ -89,9 +123,11 @@ export function clientStayFace(input: {
   const suggested = stayed.join(" · ");
   const autoTitle = labelIsAuto(storedTitle, all, input.homeCity);
   const autoDest = labelIsAuto(storedDest, all, input.homeCity);
-  const title = autoTitle
-    ? suggested || storedTitle || storedDest || fallback
-    : stayTitleFromItems(storedTitle, autoDest ? suggested : storedDest, visible, fallback, input.homeCity);
+  const title = storedTitle
+    ? autoTitle
+      ? suggested || storedTitle
+      : stayTitleFromItems(storedTitle, autoDest ? suggested : storedDest, visible, fallback, input.homeCity)
+    : suggested || fallback;
   const labels = nextStayLabels(
     autoTitle ? suggested || storedTitle : storedTitle,
     autoDest ? suggested || storedDest : storedDest,
@@ -99,7 +135,12 @@ export function clientStayFace(input: {
     fallback,
     input.homeCity
   );
-  const destination = autoDest ? suggested || storedDest : labels.destination;
+  const destination = clientFacingDestination({
+    stored: storedDest,
+    suggested,
+    auto: autoDest,
+    resolved: autoDest ? suggested || storedDest : labels.destination,
+  });
   const span = staySpanFromSteps(visible);
   const places = stayArrivalPlaces(null, null, visible);
   return {
@@ -111,6 +152,23 @@ export function clientStayFace(input: {
     items: visible,
     fromCards: true,
   };
+}
+
+/** Nom du dossier sur un document. Le titre saisi gagne. Vide : les villes du séjour, jamais une destination stockée à part. */
+export function dossierShownName(input: {
+  title?: string | null;
+  items?: StayFaceItem[] | null;
+  homeCity?: string | null;
+  fallback?: string | null;
+}) {
+  const face = clientStayFace({
+    title: input.title,
+    destination: "",
+    items: input.items,
+    homeCity: input.homeCity,
+    fallback: "",
+  });
+  return (face.title || "").trim() || (input.fallback || "").trim();
 }
 
 /** Recopie le dossier avec le visage client. Le reste de la ligne (montant, statut) ne change pas. */

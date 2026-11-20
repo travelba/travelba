@@ -299,6 +299,10 @@ describe("carnet", () => {
     assert.equal(stayNameField(shown, shown).dirty, false);
     assert.equal(tripPlaceLine("Paris · Milan · Rome", "Paris · Milan"), null);
     assert.equal(tripPlaceLine("40 ans", "Marrakech"), "Marrakech");
+    assert.equal(stayHeadline("", "Nice", ["Mayakoba"]), "Mayakoba");
+    assert.equal(stayHeadline("", "Marrakech", []), "Marrakech");
+    assert.equal(stayHeroPlace("Nice · Bordeaux · Mayakoba", "Nice"), null);
+    assert.equal(stayHeroPlace("40 ans", "Marrakech"), "Marrakech");
   });
 
   it("sert la photo catalogue du lieu, pas Unsplash", () => {
