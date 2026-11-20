@@ -55,12 +55,16 @@ test("le geste principal du dossier ne disparaît jamais", () => {
   assert.equal(editor.includes("← Réservations"), false);
 });
 
-test("une étape s’applique puis s’enregistre, et le dit", () => {
+test("une étape s’applique puis s’enregistre, sans second bandeau", () => {
   const panel = readFileSync(join(root, "components/admin/BookingItemsPanel.tsx"), "utf8");
+  const editor = readFileSync(join(root, "components/admin/BookingEditor.tsx"), "utf8");
   assert.equal(panel.includes(">\n                    Valider\n"), false);
   assert.match(panel, /Appliquer/);
-  assert.match(panel, /Pas encore enregistré/);
-  assert.match(panel, /pendingIds\.has\(item\.id\)/);
+  assert.equal(panel.includes("Pas encore enregistré"), false);
+  assert.equal(panel.includes("pendingIds"), false);
+  assert.match(panel, /setCardVisible\(item, concealed\)/);
+  assert.equal(panel.includes('method: "PATCH"'), false);
+  assert.match(editor, /Modifications non enregistrées/);
 });
 
 test("une seule zone de dépôt sur Voyage : joindre sans lire est une option", () => {
