@@ -272,6 +272,7 @@ async function updateBookingItem(
     patch.details = priced.details;
   }
   const visibilityGesture = typeof body.client_hidden === "boolean";
+  let piecesFollow: boolean | null = null;
   if ("visible_to_client" in body) {
     const visible = Boolean(body.visible_to_client);
     if (visible && !isActiveItem(current)) {
@@ -290,6 +291,17 @@ async function updateBookingItem(
     } else if (visible) {
       patch.details = detailsForCardVisibility(base, true);
     }
+    const nextDetails =
+      patch.details && typeof patch.details === "object" && !Array.isArray(patch.details)
+        ? (patch.details as Record<string, unknown>)
+        : base;
+    const prevDetails =
+      current.details && typeof current.details === "object" && !Array.isArray(current.details)
+        ? (current.details as Record<string, unknown>)
+        : null;
+    const nextSeen = Boolean(patch.visible_to_client) && !keptHiddenFromClient(nextDetails);
+    const prevSeen = current.visible_to_client === true && !keptHiddenFromClient(prevDetails);
+    if (nextSeen !== prevSeen) piecesFollow = nextSeen;
   }
   if ("billing_company_id" in body) {
     const company = await billingCompanyPatch(supabase, bookingId, body.billing_company_id);
@@ -333,7 +345,17 @@ async function updateBookingItem(
     before.needs_review === true && after && after.needs_review !== true
       ? String(("title" in patch ? patch.title : current.title) || "Étape")
       : null;
-  if (!persist) return { patch, shown, verified, id: itemId };
+  if (!persist) {
+    return {
+      patch,
+      shown,
+      verified,
+      id: itemId,
+      piecesFollow,
+      prevVisible: current.visible_to_client,
+      prevDetails: current.details,
+    };
+  }
   const { data, error } = await supabase
     .from("crm_booking_items")
     .update(patch)
@@ -393,6 +415,12 @@ async function commitStaySteps(
   if (order.length > MAX_SORT_ORDER + 1) return jsonError(SORT_ORDER_ERROR);
 
   const preparedUpdates: { id: string; patch: Record<string, unknown> }[] = [];
+  const pieceMirrors: {
+    id: string;
+    visible: boolean;
+    prevVisible: boolean | null;
+    prevDetails: unknown;
+  }[] = [];
   for (const item of updated) {
     if (!item || typeof item !== "object") return jsonError("Étape invalide");
     const prepared = await updateBookingItem(supabase, bookingId, item as Record<string, unknown>, false);
@@ -401,6 +429,14 @@ async function commitStaySteps(
     preparedUpdates.push({ id: prepared.id, patch: prepared.patch });
     if (prepared.shown) shown.push(prepared.shown);
     if (prepared.verified) verified.push(prepared.verified);
+    if (typeof prepared.piecesFollow === "boolean") {
+      pieceMirrors.push({
+        id: prepared.id,
+        visible: prepared.piecesFollow,
+        prevVisible: typeof prepared.prevVisible === "boolean" ? prepared.prevVisible : null,
+        prevDetails: prepared.prevDetails,
+      });
+    }
   }
   const preparedCreates: { clientId: string; row: Record<string, unknown>; visible: boolean; kind: string }[] = [];
   for (const [index, item] of created.entries()) {
@@ -429,6 +465,17 @@ async function commitStaySteps(
     relink: documents.relink,
   });
   if (!written.ok) return dbError(written.error, 400);
+  for (const mirror of pieceMirrors) {
+    const mirrored = await mirrorCardPieces(supabase, bookingId, mirror.id, mirror.visible);
+    if (mirrored) {
+      await supabase
+        .from("crm_booking_items")
+        .update({ visible_to_client: mirror.prevVisible, details: mirror.prevDetails })
+        .eq("id", mirror.id)
+        .eq("booking_id", bookingId);
+      return mirrored;
+    }
+  }
   const idMap = new Map(Object.entries(written.ids));
   for (const item of preparedCreates) {
     const id = idMap.get(item.clientId);

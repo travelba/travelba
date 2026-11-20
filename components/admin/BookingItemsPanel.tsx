@@ -20,6 +20,7 @@ import {
   documentsForItems,
   flightCardSubtitle,
   flightCardTitle,
+  hotelCityLine,
   hotelDisplayName,
   itemClock,
   itemPriceLabel,
@@ -181,6 +182,14 @@ function stepTitle(item: CrmBookingItem) {
   return visibleServiceCopy(item.title);
 }
 
+/** Ligne fermée : le trajet ou la ville, comme le carnet. Le détail est dans l’étape ouverte. */
+function readingLine(item: CrmBookingItem) {
+  if (item.kind === "flight" || item.kind === "rail") return flightCardSubtitle(item);
+  if (item.kind === "hotel") return hotelCityLine(item);
+  if (item.kind === "accueil_vip") return accueilVipQuietLine(item);
+  return itemClock(item.start_at);
+}
+
 function stepSubtitle(item: CrmBookingItem) {
   const parts: string[] = [];
   if (item.kind === "flight" || item.kind === "rail") {
@@ -197,12 +206,8 @@ function stepSubtitle(item: CrmBookingItem) {
     }
   } else if (item.kind === "hotel") {
     const room = detailText(item, "room");
-    const city = detailText(item, "city");
     if (room) parts.push(room);
-    if (city) parts.push(city);
   } else if (item.kind === "accueil_vip") {
-    const quiet = accueilVipQuietLine(item);
-    if (quiet) parts.push(quiet);
     if (item.supplier) parts.push(item.supplier);
   } else if (item.supplier) {
     parts.push(item.supplier);
@@ -214,12 +219,12 @@ function stepSubtitle(item: CrmBookingItem) {
 
 const flatBtn =
   "admin-tap inline-flex h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-[var(--border)] bg-white px-3 text-xs font-semibold text-[var(--admin-navy)] disabled:opacity-40 lg:h-8";
-const flatIconBtn =
-  "admin-tap inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-white text-sm font-bold text-[var(--admin-navy)] lg:h-8 lg:w-8";
+const stepPill =
+  "inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]";
 
 /**
  * Une étape déplaçable : seule la poignée (icône grip) démarre le glisser, le reste de la carte
- * laisse passer le défilement tactile et les clics (A-35). Les flèches du menu font la même chose au clavier.
+ * laisse passer le défilement tactile et les clics (A-35). Monter et Descendre, dans l’étape ouverte, font la même chose au clavier.
  */
 function ReorderStep({
   item,
@@ -346,8 +351,6 @@ export function BookingItemsPanel({
   const pendingRef = useRef(false);
   const baselineRef = useRef(stayCards(items));
   const [pending, setPending] = useState(false);
-  /** Étapes ajoutées ou modifiées depuis le dernier Enregistrer : pastille « Pas encore enregistré ». */
-  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(() => new Set());
   const [rows, setRows] = useState(items);
   const [syncedItems, setSyncedItems] = useState(items);
   if (syncedItems !== items) {
@@ -382,8 +385,7 @@ export function BookingItemsPanel({
   const [notice, setNotice] = useState<string | null>(null);
   // Étape enregistrée mais grand livre refusé : reste affiché après router.refresh(), jusqu’au prochain enregistrement.
   const [ledgerNote, setLedgerNote] = useState<string | null>(null);
-  const [menuFor, setMenuFor] = useState<string | null>(null);
-  const [openStep, setOpenStep] = useState<string | null>(null);
+  const [openStep, setOpenStep] = useState<string | null>(openHotelItemId);
   // `?hotel=` (toast « l’hôtel a répondu ») ouvre le bureau de cet hôtel dès le montage.
   const [deskFor, setDeskFor] = useState<string | null>(() => {
     if (!openHotelItemId) return null;
@@ -507,7 +509,6 @@ export function BookingItemsPanel({
     const plan = stepCommitPlan(baselineRef.current.map(toSnapshot), cards.map(toSnapshot));
     pendingRef.current = plan.pending;
     setPending(plan.pending);
-    setPendingIds(new Set([...plan.created, ...plan.updated].map((step) => step.id)));
     setRows(next);
   }
 
@@ -547,7 +548,6 @@ export function BookingItemsPanel({
     [next[index], next[target]] = [next[target], next[index]];
     applyCardOrder(next);
     finishCardDrag();
-    setMenuFor(null);
   }
 
   const applyDraftToRows = useCallback(
@@ -705,7 +705,6 @@ export function BookingItemsPanel({
     baselineRef.current = cardRowsRef.current;
     pendingRef.current = false;
     setPending(false);
-    setPendingIds(new Set());
     setRows(remapped);
     return true;
   }
@@ -741,7 +740,6 @@ export function BookingItemsPanel({
     const plan = stepCommitPlan(baselineRef.current.map(toSnapshot), stayCards(next).map(toSnapshot));
     pendingRef.current = plan.pending;
     setPending(plan.pending);
-    setPendingIds(new Set([...plan.created, ...plan.updated].map((step) => step.id)));
     rowsRef.current = next;
     setRows(next);
   }
@@ -759,7 +757,6 @@ export function BookingItemsPanel({
     setBusy(true);
     setError(null);
     setNotice(null);
-    setMenuFor(null);
     const ok = await onVerify(ids);
     setBusy(false);
     if (!ok) setError("La vérification n’a pas été enregistrée.");
@@ -772,7 +769,6 @@ export function BookingItemsPanel({
     setSearchingHotel(true);
     setError(null);
     setNotice(null);
-    setMenuFor(null);
     try {
       const res = await fetch(`/api/admin/bookings/${bookingId}/hotel-web`, {
         method: "POST",
@@ -799,41 +795,20 @@ export function BookingItemsPanel({
     return () => onBindRef.current?.(null);
   }, []);
 
-  async function setCardVisible(item: CrmBookingItem, visible: boolean) {
+  function setCardVisible(item: CrmBookingItem, visible: boolean) {
     const decided = cardVisibilityUpdate(item, visible);
     if ("error" in decided) {
       setError(decided.error);
       onStepErrorRef.current?.(decided.error);
       return;
     }
-    setMenuFor(null);
+    setError(null);
+    onStepErrorRef.current?.(null);
     const paint = (row: CrmBookingItem) =>
       row.id === item.id
         ? { ...row, visible_to_client: decided.visible_to_client, details: decided.details }
         : row;
-    if (isDraftStepId(item.id)) {
-      remember(rowsRef.current.map(paint));
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    const res = await fetch(`/api/admin/bookings/${bookingId}/items`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: item.id, visible_to_client: visible, client_hidden: !visible }),
-    });
-    const json = (await res.json().catch(() => ({}))) as { error?: string };
-    setBusy(false);
-    if (!res.ok) {
-      const message = json.error || "La visibilité de la carte n’a pas été enregistrée.";
-      setError(message);
-      onStepErrorRef.current?.(message);
-      return;
-    }
-    baselineRef.current = baselineRef.current.map(paint);
     remember(rowsRef.current.map(paint));
-    onStepErrorRef.current?.(null);
-    router.refresh();
   }
 
   async function dismissEmail(emailId: string) {
@@ -858,7 +833,6 @@ export function BookingItemsPanel({
   async function removeItem(id: string) {
     const ids = new Set([id]);
     if (editingId && ids.has(editingId)) setEditingId(null);
-    setMenuFor(null);
     remember(rowsRef.current.filter((row) => !ids.has(row.id)));
   }
 
@@ -877,12 +851,7 @@ export function BookingItemsPanel({
           <TicketMailForm bookingId={bookingId} />
         </div>
       </div>
-      <p className="mt-1 text-xs text-muted">Déplacez une étape par sa poignée, ou Monter / Descendre dans son menu. Par défaut, l’ordre suit les dates.</p>
-      {pending ? (
-        <p className="mt-2 text-sm font-semibold text-[var(--admin-gold-dark)]">
-          Pas encore enregistré : Enregistrer, en haut, écrit ces étapes.
-        </p>
-      ) : null}
+      <p className="mt-1 text-xs text-muted">Déplacez une étape par sa poignée. Monter et Descendre sont dans l’étape ouverte. Par défaut, l’ordre suit les dates.</p>
       <div className="mt-3">
         <BusyBar active={busy} label={searchingHotel ? "Recherche de l’hôtel…" : "Enregistrement…"} />
       </div>
@@ -899,8 +868,8 @@ export function BookingItemsPanel({
           const docs = documentsForItems([item], documents);
           const exclusifs = justificatifsRetiresAvec(item.id, rows, documents);
           const subtitle = stepSubtitle(item);
+          const reading = readingLine(item);
           const ticketNames = item.kind === "flight" ? ticketTravelerNames(item.details) : [];
-          const airport = item.kind === "flight" || item.kind === "rail" ? flightCardSubtitle(item) : "";
           const checkin = checkinByItem.get(item.id);
           const when =
             item.kind === "hotel" ? shortStayRange(item.start_at, item.end_at) : shortStayDay(item.start_at);
@@ -916,17 +885,11 @@ export function BookingItemsPanel({
           const priceDiffers =
             printed != null && (stepAmount == null || Math.abs(printed - stepAmount) > 0.009);
           const counted = item.include_in_ledger && !(clientSettlesStay && !isExtraItemKind(item.kind));
-          const quiet = [
-            retiredLabel,
-            subtitle,
-            docs.length ? `${docs.length} pièce${docs.length > 1 ? "s" : ""}` : "",
-            counted ? "Compté" : "",
+          const documentPrice =
             priceDiffers && printed != null
-              ? `Prix du document : ${printedPrice(printed, typeof item.details?.document_currency === "string" ? item.details.document_currency : "")}`
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" · ");
+              ? printedPrice(printed, typeof item.details?.document_currency === "string" ? item.details.document_currency : "")
+              : "";
+          const mark = concealed ? "hidden" : cancelled ? "cancelled" : doubts.length ? "review" : null;
           const position = cardRows.findIndex((row) => row.id === item.id);
           return (
           <ReorderStep key={item.id} item={item} locked={locked} onDragEnd={finishCardDrag}>
@@ -1005,7 +968,7 @@ export function BookingItemsPanel({
               </div>
             ) : (
               <>
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+              <div className="min-w-0">
                 <div className="flex min-w-0 items-start gap-2 lg:flex-1 lg:gap-3">
                 <button
                   type="button"
@@ -1035,199 +998,139 @@ export function BookingItemsPanel({
                       ) : null}
                     </span>
                     <span className="mt-0.5 block text-xs font-semibold text-muted lg:hidden">{when || "Sans date"}</span>
-                    {cancelled ? (
-                      <span className="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
-                        Annulée
-                      </span>
-                    ) : null}
-                    {ticketNames.length ? (
-                      <span className="block break-words text-sm font-semibold text-[var(--admin-navy)]">{ticketNames.join(", ")}</span>
-                    ) : null}
-                    {airport ? <span className="block break-words text-xs text-muted lg:truncate">{airport}</span> : null}
-                    {checkin ? (
-                      <span className="mt-1 block">
-                        <OnlineCheckinBadge line={checkin} />
-                      </span>
-                    ) : null}
-                    {quiet ? <span className="block break-words text-xs text-muted lg:truncate">{quiet}</span> : null}
-                    {doubts.length ? (
-                      <span className="mt-1 block text-xs font-semibold text-accent">{doubts.join(" ")}</span>
-                    ) : null}
-                    {item.kind === "hotel" && item.details?.hotel_profile_status === "auto" ? (
-                      <span className="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
-                        Fiche à vérifier
-                      </span>
-                    ) : null}
-                    {item.kind === "hotel" && item.details?.hotel_profile_status === "verified" ? (
-                      <span className="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)] ring-1 ring-[var(--border)]">
-                        Fiche vérifiée
-                      </span>
-                    ) : null}
-                    {pendingIds.has(item.id) ? (
-                      <span className="mt-1 inline-flex rounded-full bg-[var(--admin-peach)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--admin-navy)]">
-                        Pas encore enregistré
-                      </span>
-                    ) : null}
+                    {reading ? <span className="block break-words text-xs text-muted lg:truncate">{reading}</span> : null}
                   </span>
                   {price ? <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-[var(--admin-navy)] lg:block">{price}</span> : null}
+                  {mark === "cancelled" ? <span className={stepPill}>Annulée</span> : null}
+                  {mark === "review" ? <span className={stepPill}>À vérifier</span> : null}
                   <Icon
                     name="expand_more"
                     className={`mt-0.5 h-4 w-4 shrink-0 text-muted transition ${openStep === item.id ? "rotate-180" : ""}`}
                   />
                 </button>
-                {item.kind === "hotel" && hotelRequests.some((row) => row.booking_item_id === item.id) ? (
-                  <div className="mt-2 flex gap-3">
-                    <span className="hidden w-16 shrink-0 lg:block" />
-                    <span className="hidden w-4 shrink-0 lg:block" />
-                    <div className="min-w-0 flex-1">
-                    {deskFor === item.id ? null : <HotelChecklistGlance itemId={item.id} requests={hotelRequests} />}
+                </div>
+                </div>
+              {openStep === item.id ? (
+                <div className="mt-3 space-y-3 border-t border-[var(--border)] pt-3">
+                  {doubts.length ? <p className="text-xs font-semibold text-accent">{doubts.join(" ")}</p> : null}
+                  {retiredLabel ? <p className="text-xs font-semibold text-muted">{retiredLabel}</p> : null}
+                  {ticketNames.length ? (
+                    <p className="text-sm font-semibold text-[var(--admin-navy)]">{ticketNames.join(", ")}</p>
+                  ) : null}
+                  {subtitle ? <p className="text-xs text-muted">{subtitle}</p> : null}
+                  {checkin ? <OnlineCheckinBadge line={checkin} /> : null}
+                  {documentPrice ? <p className="text-xs text-muted">Prix du document : {documentPrice}</p> : null}
+                  {counted ? <p className="text-xs font-semibold text-muted">Compté</p> : null}
+                  {docs.length ? (
+                    <p className="text-xs text-muted">{docs.length} pièce{docs.length > 1 ? "s" : ""}</p>
+                  ) : null}
+                  {item.kind === "hotel" && item.details?.hotel_profile_status === "auto" ? (
+                    <span className={stepPill}>Fiche à vérifier</span>
+                  ) : null}
+                  {item.kind === "hotel" && item.details?.hotel_profile_status === "verified" ? (
+                    <span className={stepPill}>Fiche vérifiée</span>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {doubts.length ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void verifyIds([item.id])}
+                        className="admin-tap inline-flex h-11 items-center justify-center whitespace-nowrap rounded-full bg-[var(--admin-navy)] px-3 text-xs font-semibold text-white disabled:opacity-40 lg:h-8"
+                      >
+                        Vérifié
+                      </button>
+                    ) : null}
+                    <button type="button" className={flatBtn} onClick={() => startEdit(item)}>
+                      Modifier
+                    </button>
+                    {!retired ? (
+                      <button type="button" className={flatBtn} disabled={busy} onClick={() => setCardVisible(item, concealed)}>
+                        {concealed ? "Montrer" : "Cacher"}
+                      </button>
+                    ) : null}
+                    <button type="button" className={`${flatBtn} gap-1`} disabled={busy || position <= 0} onClick={() => moveCard(item, -1)}>
+                      <Icon name="arrow_up" className="h-3.5 w-3.5" />
+                      Monter
+                    </button>
                     <button
                       type="button"
-                      className={flatBtn}
-                      onClick={() => setDeskFor(deskFor === item.id ? null : item.id)}
+                      className={`${flatBtn} gap-1`}
+                      disabled={busy || position < 0 || position >= cardRows.length - 1}
+                      onClick={() => moveCard(item, 1)}
                     >
-                      {deskFor === item.id ? "Fermer l’hôtel" : "Écrire à l’hôtel"}
+                      <Icon name="arrow_down" className="h-3.5 w-3.5" />
+                      Descendre
                     </button>
-                    {deskFor === item.id ? (
-                      <HotelDesk
+                    {countsAsCarnetCard(item.kind) ? (
+                      <MoveToDossier
                         bookingId={bookingId}
-                        item={item}
-                        requests={hotelRequests}
-                        today={today}
-                        travelers={travelers}
-                        identityDocs={identityDocs}
-                        holder={holder}
-                        cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
-                        printedAmount={printedStayAmount({
-                          le: leStayAmount(
-                            { checkIn: (item.start_at || "").slice(0, 10), hotelName: hotelDisplayName(item) },
-                            leStays.map((row) => ({
-                              checkIn: row.check_in,
-                              hotelName: row.hotel_name,
-                              total: row.total_cost,
-                              currency: row.currency,
-                            }))
-                          ),
-                          document: documentMoney(item.details),
-                          netCents: arrivals.find((arrival) => arrival.booking_item_id === item.id)?.net_cents ?? null,
-                          currency,
-                        })}
-                        messages={hotelMessages}
-                        thread={hotelThreadMessages}
-                        attached={attachedEmails}
-                        reference={reference || ""}
-                        signatory={hotelSignatory}
-                        focusReply={openHotelItemId === item.id}
-                        initialRelanceId={openHotelItemId === item.id ? openRelanceId : null}
-                        initialReplyId={openHotelItemId === item.id ? openReplyId : null}
+                        kind="etape"
+                        carteId={item.id}
+                        titre={stepTitle(item)}
+                        buttonClassName="admin-tap inline-flex h-11 items-center justify-center rounded-full border border-[var(--border)] bg-white px-3 text-xs font-semibold text-[var(--admin-navy)] lg:h-8"
                       />
                     ) : null}
-                    </div>
-                  </div>
-                ) : null}
-                </div>
-                </div>
-                <div className="relative flex items-center gap-2 lg:shrink-0">
-                  {doubts.length ? (
-                    <button
-                      type="button"
+                    <ConfirmAction
+                      size="sm"
+                      tone="danger"
+                      label="Retirer"
+                      confirmLabel="Retirer l’étape"
+                      ariaLabel={`Retirer ${stepTitle(item)}`}
+                      question={retraitQuestion(exclusifs, docs.length)}
+                      hint={exclusifs ? "Le fichier reste stocké. Un retrait se restaure." : null}
                       disabled={busy}
-                      onClick={() => void verifyIds([item.id])}
-                      className="admin-tap inline-flex h-11 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-full bg-[var(--admin-navy)] px-3 text-xs font-semibold text-white disabled:opacity-40 lg:h-8 lg:flex-none"
-                    >
-                      Vérifié
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="admin-tap inline-flex h-11 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-full border border-[var(--border)] bg-white px-3 text-xs font-semibold text-[var(--admin-navy)] lg:h-8 lg:flex-none"
-                    onClick={() => startEdit(item)}
-                  >
-                    Modifier
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Autres actions de l’étape"
-                    className={flatIconBtn}
-                    onClick={() => setMenuFor(menuFor === item.id ? null : item.id)}
-                  >
-                    …
-                  </button>
-                  {menuFor === item.id ? (
-                    <div className="absolute right-0 top-full z-30 mt-1 flex w-60 max-w-[calc(100vw-2.5rem)] flex-col gap-2 rounded-2xl border border-[var(--border)] bg-white p-2 shadow-lg">
-                      {doubts.length ? (
-                        <button type="button" className={flatBtn} disabled={busy} onClick={() => void verifyIds([item.id])}>
-                          Vérifié
-                        </button>
-                      ) : null}
-                      {item.kind === "hotel" && !isDraftStepId(item.id) ? (
-                        <button
-                          type="button"
-                          className={`${flatBtn} h-auto whitespace-normal py-2 text-left`}
-                          disabled={busy}
-                          onClick={() => void searchHotel(item.id)}
-                        >
-                          Rechercher les infos de l’hôtel
-                        </button>
-                      ) : null}
-                      {!retired ? (
+                      onConfirm={async () => {
+                        removeItem(item.id);
+                      }}
+                    />
+                  </div>
+                  {item.kind === "hotel" && hotelRequests.some((row) => row.booking_item_id === item.id) ? (
+                    <div>
+                      {deskFor === item.id ? null : <HotelChecklistGlance itemId={item.id} requests={hotelRequests} />}
                       <button
                         type="button"
                         className={flatBtn}
-                        disabled={busy}
-                        onClick={() => void setCardVisible(item, !item.visible_to_client)}
+                        onClick={() => setDeskFor(deskFor === item.id ? null : item.id)}
                       >
-                        {item.visible_to_client ? "Cacher" : "Montrer"}
+                        {deskFor === item.id ? "Fermer l’hôtel" : "Écrire à l’hôtel"}
                       </button>
-                      ) : null}
-                      <div className="flex gap-1">
-                        <button
-                          type="button"
-                          className={`${flatBtn} flex-1 gap-1`}
-                          disabled={busy || position <= 0}
-                          onClick={() => moveCard(item, -1)}
-                        >
-                          <Icon name="arrow_up" className="h-3.5 w-3.5" />
-                          Monter
-                        </button>
-                        <button
-                          type="button"
-                          className={`${flatBtn} flex-1 gap-1`}
-                          disabled={busy || position < 0 || position >= cardRows.length - 1}
-                          onClick={() => moveCard(item, 1)}
-                        >
-                          <Icon name="arrow_down" className="h-3.5 w-3.5" />
-                          Descendre
-                        </button>
-                      </div>
-                      {countsAsCarnetCard(item.kind) ? (
-                        <MoveToDossier
+                      {deskFor === item.id ? (
+                        <HotelDesk
                           bookingId={bookingId}
-                          kind="etape"
-                          carteId={item.id}
-                          titre={stepTitle(item)}
-                          buttonClassName="admin-tap flex w-full items-center justify-start rounded-full border border-[var(--border)] bg-white px-3 py-2 text-left text-xs font-semibold text-[var(--admin-navy)]"
+                          item={item}
+                          requests={hotelRequests}
+                          today={today}
+                          travelers={travelers}
+                          identityDocs={identityDocs}
+                          holder={holder}
+                          cardLast4={arrivals.find((arrival) => arrival.booking_item_id === item.id)?.card_last4 || null}
+                          printedAmount={printedStayAmount({
+                            le: leStayAmount(
+                              { checkIn: (item.start_at || "").slice(0, 10), hotelName: hotelDisplayName(item) },
+                              leStays.map((row) => ({
+                                checkIn: row.check_in,
+                                hotelName: row.hotel_name,
+                                total: row.total_cost,
+                                currency: row.currency,
+                              }))
+                            ),
+                            document: documentMoney(item.details),
+                            netCents: arrivals.find((arrival) => arrival.booking_item_id === item.id)?.net_cents ?? null,
+                            currency,
+                          })}
+                          messages={hotelMessages}
+                          thread={hotelThreadMessages}
+                          attached={attachedEmails}
+                          reference={reference || ""}
+                          signatory={hotelSignatory}
+                          focusReply={openHotelItemId === item.id}
+                          initialRelanceId={openHotelItemId === item.id ? openRelanceId : null}
+                          initialReplyId={openHotelItemId === item.id ? openReplyId : null}
                         />
                       ) : null}
-                      <ConfirmAction
-                        size="sm"
-                        tone="danger"
-                        label="Retirer"
-                        confirmLabel="Retirer l’étape"
-                        ariaLabel={`Retirer ${stepTitle(item)}`}
-                        question={retraitQuestion(exclusifs, docs.length)}
-                        hint={exclusifs ? "Le fichier reste stocké. Un retrait se restaure." : null}
-                        disabled={busy}
-                        onConfirm={async () => {
-                          removeItem(item.id);
-                        }}
-                      />
                     </div>
                   ) : null}
-                  </div>
-              </div>
-              {openStep === item.id ? (
-                <div className="mt-3 space-y-3 border-t border-[var(--border)] pt-3">
                   {item.kind === "hotel" && !isDraftStepId(item.id) ? (
                     <button
                       type="button"
@@ -1259,6 +1162,7 @@ export function BookingItemsPanel({
                   />
                 </div>
               ) : null}
+              </div>
               </>
             )}
             </div>

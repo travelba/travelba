@@ -511,7 +511,11 @@ export function staffStayFacts(input: {
 
 export type PrimaryStayButton = "enregistrer-montrer" | "enregistrer-mettre-a-jour" | "montrer" | "cacher";
 
-/** Bouton principal du dossier. Avec des changements en attente, un clic enregistre puis montre. */
+/**
+ * Libellé du geste qui change le carnet.
+ * L’en-tête n’affiche « Enregistrer et mettre à jour le carnet » que sur un séjour déjà Visible.
+ * Un séjour encore caché garde Enregistrer, qui n’écrit pas la visibilité, à côté de Montrer au client.
+ */
 export function primaryStayButton(input: { visible: boolean; unsaved: boolean }): PrimaryStayButton {
   if (input.unsaved) return input.visible ? "enregistrer-mettre-a-jour" : "enregistrer-montrer";
   return input.visible ? "cacher" : "montrer";
