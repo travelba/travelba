@@ -86,8 +86,9 @@ async function cityRegionId(input: {
   const hit = { id: picked.id, propertyIds: detailed?.propertyIds.length ? detailed.propertyIds : picked.propertyIds };
   if (!hit.propertyIds.length && full && typeof full === "object") {
     const raw = (full as { property_ids?: unknown }).property_ids;
-    const kind = Array.isArray(raw) ? `array:${raw.length}:${typeof raw[0]}` : typeof raw;
-    console.error("[expedia] region", hit.id, "sans property_id", kind);
+    const sample = Array.isArray(raw) && typeof raw[0] === "string" ? raw[0] : "";
+    const marks = sample.replace(/[A-Za-z0-9]/g, "");
+    console.error("[expedia] region", hit.id, "sans property_id", sample.length, JSON.stringify(marks.slice(0, 24)));
   }
   regionCache.set(cacheKey, hit);
   return hit;
