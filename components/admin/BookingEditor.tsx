@@ -779,6 +779,7 @@ export function BookingEditor({
   const [compact, setCompact] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const pendingStep = useRef<string | null>(null);
+  const pendingRemises = useRef(false);
   const [highlightStep, setHighlightStep] = useState<{ id: string; token: number } | null>(null);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const payerCompanies = [...billingCompanies].sort(
@@ -874,6 +875,22 @@ export function BookingEditor({
     const itemId = pendingStep.current;
     pendingStep.current = null;
     scrollToStep(itemId);
+  }, [tab]);
+
+  function openRemises() {
+    pendingRemises.current = true;
+    if (tab === "argent") {
+      document.getElementById("booking-remises")?.scrollIntoView({ block: "start", behavior: "smooth" });
+      pendingRemises.current = false;
+      return;
+    }
+    setTab("argent");
+  }
+
+  useEffect(() => {
+    if (tab !== "argent" || !pendingRemises.current) return;
+    pendingRemises.current = false;
+    document.getElementById("booking-remises")?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [tab]);
 
   useEffect(() => {
@@ -1717,6 +1734,15 @@ export function BookingEditor({
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {stateChip}
+          <button
+            type="button"
+            onClick={openRemises}
+            className="inline-flex items-center rounded-full bg-[#f8f3eb] px-3 py-1 text-sm font-semibold text-[var(--admin-navy)] ring-1 ring-[var(--admin-gold)]"
+          >
+            {panelLines.length
+              ? `${panelLines.length} remise${panelLines.length > 1 ? "s" : ""}`
+              : "Remises"}
+          </button>
           {customer?.hide_client_prices ? (
             <span className="inline-flex items-center rounded-full bg-[#f8f3eb] px-3 py-1 text-sm font-semibold text-[var(--admin-navy)] ring-1 ring-[var(--admin-gold)]">
               Prix masqués au client
@@ -2636,6 +2662,17 @@ export function BookingEditor({
                 </select>
               </label>
             </div>
+            <BookingDiscountPanel
+              bookingId={booking.id}
+              currency={booking.currency}
+              gross={grossStay}
+              net={accounting?.totals.cost ?? null}
+              margin={accounting?.totals.margin ?? null}
+              lines={panelLines}
+              tableReady={discounts != null}
+              onLines={setDiscountOverride}
+              onArgentRefresh={refreshArgent}
+            />
             <AgencyFeeRateField
               label="Commission d’agence"
               value={feeChoice}
@@ -2683,17 +2720,6 @@ export function BookingEditor({
               onCommissionChange={setCommissionOverride}
               onArgentRefresh={refreshArgent}
               presets={expensePresets}
-            />
-            <BookingDiscountPanel
-              bookingId={booking.id}
-              currency={booking.currency}
-              gross={grossStay}
-              net={accounting?.totals.cost ?? null}
-              margin={accounting?.totals.margin ?? null}
-              lines={panelLines}
-              tableReady={discounts != null}
-              onLines={setDiscountOverride}
-              onArgentRefresh={refreshArgent}
             />
           </section>
 

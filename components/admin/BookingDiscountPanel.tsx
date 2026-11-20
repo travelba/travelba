@@ -280,12 +280,12 @@ export function BookingDiscountPanel({
   ) : null;
 
   return (
-    <section className="admin-af-card mt-4 rounded-3xl p-5" aria-label="Remise commerciale">
+    <section id="booking-remises" className="admin-af-card rounded-3xl p-5" aria-label="Remise commerciale">
       <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-display text-lg font-bold">Remise commerciale</h2>
         <button
           type="button"
-          className="admin-tap text-xs font-semibold text-[var(--admin-navy)] underline"
+          className="admin-tap inline-flex min-h-11 items-center rounded-full border border-[var(--admin-navy)] px-4 text-sm font-semibold text-[var(--admin-navy)] lg:min-h-0"
           onClick={beginNew}
         >
           Ajouter une remise
