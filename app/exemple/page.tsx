@@ -8,7 +8,7 @@ import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/
 import { Icon } from "@/components/crm/icons";
 import { BoardingPass } from "@/components/account/BoardingPass";
 import type { ClientBoardingCard } from "@/lib/crm/client-boarding-pass";
-import { clientVisibleItems, nextTimelineFlight, tripPlaceLine } from "@/lib/crm/carnet";
+import { clientVisibleItems, nextTimelineFlight, stayHeroPlace } from "@/lib/crm/carnet";
 import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { buildLiveFlight } from "@/lib/crm/next-flight-model";
 import { destinationWeather } from "@/lib/crm/destination-weather";
@@ -68,7 +68,7 @@ export default async function ExampleHomePage() {
   const firstName = greetingGivenName(session.customer.first_name) || "Camille";
   const countdown = jMinusLabel(nextTrip.start_date);
   const tripName = face.title || "Prochain séjour";
-  const tripPlace = tripPlaceLine(tripName, face.destination);
+  const tripPlace = stayHeroPlace(tripName, face.destination, face.items);
   const tripHref = `${EXAMPLE_BASE}/reservations/${nextTrip.reference}`;
   const weather = await destinationWeather(face.destination, face.title);
   const visibleItems = clientVisibleItems(session.items);

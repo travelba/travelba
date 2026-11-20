@@ -34,10 +34,14 @@ import {
   flightCities,
   flightIata,
   groupByDay,
+  carClosedFace,
+  carDetailPlace,
   hotelCityLine,
   hotelDisplayName,
+  hotelNightFace,
   hotelStayLabel,
   itemClock,
+  vehicleDisplayName,
   itemPriceLabel,
   undatedTimeline,
 } from "@/lib/crm/carnet";
@@ -191,7 +195,20 @@ function CardBody({
   const roomLine = item.kind === "hotel" ? hotelRoomLine(item, photos) : "";
   const roomShown =
     roomLine && roomLine.localeCompare(hotelName, "fr", { sensitivity: "accent" }) !== 0 ? roomLine : "";
-  const hotelKicker = [visibleServiceCopy(BOOKING_ITEM_LABELS.hotel), hotelCity].filter(Boolean).join(" · ");
+  const night = item.kind === "hotel" ? hotelNightFace(item, day) : null;
+  const board = item.kind === "hotel" ? detailStr(item, "board") : "";
+  const hotelLabel = visibleServiceCopy(BOOKING_ITEM_LABELS.hotel);
+  const hotelKicker =
+    night?.first && night.total
+      ? `${hotelLabel} · ${night.total} nuit${night.total > 1 ? "s" : ""}`
+      : night && !night.first
+        ? hotelLabel
+        : [hotelLabel, hotelCity].filter(Boolean).join(" · ");
+  const hotelTitle =
+    night && !night.first && night.total ? `${hotelName} · nuit ${night.index} sur ${night.total}` : hotelName;
+  const hotelNote = night?.first ? [night.total ? hotelCity : "", board].filter(Boolean).join(" · ") : "";
+  const laterPhoto = item.kind === "hotel" && night && !night.first ? photos[0] : undefined;
+  const carFace = item.kind === "car" ? carClosedFace(item, day) : null;
 
   const panel = (
     <div className="space-y-2 border-t border-[#e5e3dc] px-3.5 py-3 text-sm text-[var(--admin-navy)]">
@@ -245,9 +262,7 @@ function CardBody({
       ) : null}
       {item.kind === "car" ? (
         <p>
-          {[detailStr(item, "vehicle"), detailStr(item, "driver"), detailStr(item, "pickup"), detailStr(item, "dropoff")]
-            .filter(Boolean)
-            .join(" · ")}
+          {[vehicleDisplayName(item), detailStr(item, "driver"), carDetailPlace(item)].filter(Boolean).join(" · ")}
         </p>
       ) : null}
       {item.kind === "activity" || item.kind === "cruise" ? (
@@ -314,6 +329,7 @@ function CardBody({
         title={hotelName || item.title}
         kicker={hotelKicker}
         room={roomShown}
+        note={hotelNote}
         price={price}
         item={withoutHotelRoster(item)}
       >
@@ -325,25 +341,41 @@ function CardBody({
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white">
     <details className="group min-w-0">
-      <summary className="flex min-w-0 cursor-pointer list-none items-start gap-3 overflow-hidden px-3.5 py-3 [&::-webkit-details-marker]:hidden">
-        <BrandMark item={item} className="h-10 w-10" />
+      <summary className={`flex min-w-0 cursor-pointer list-none items-start gap-3 overflow-hidden px-3.5 [&::-webkit-details-marker]:hidden ${carFace?.quiet ? "py-2" : "py-3"}`}>
+        {carFace?.quiet ? null : laterPhoto ? (
+          // eslint-disable-next-line @next/next/no-img-element -- vignette de la nuit, la galerie reste le jour d’arrivée
+          <img
+            src={laterPhoto.thumb || laterPhoto.url}
+            alt=""
+            className="h-10 w-10 shrink-0 rounded-lg object-cover"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <BrandMark item={item} className="h-10 w-10" />
+        )}
         <div className="min-w-0 flex-1 overflow-hidden">
           <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--aura-blue)]">
-            {visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)}
-            {item.kind !== "hotel" && clock ? ` · ${clock}` : ""}
-            {endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
+            {carFace
+              ? carFace.kicker
+              : item.kind === "hotel"
+                ? hotelKicker
+                : visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)}
+            {!carFace && item.kind !== "hotel" && clock ? ` · ${clock}` : ""}
+            {!carFace && endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
             {returnLeg ? " · aller-retour" : ""}
             {item.kind === "flight" && tickets > 1 ? ` · ${tickets} billets` : ""}
             {watchLine && watchLine !== BOARDING_PASSES_READY_LABEL ? ` · ${watchLine}` : ""}
           </p>
-          <p className="break-words text-sm font-semibold leading-snug text-[var(--admin-navy)]">
-            {item.kind === "hotel"
-              ? hotelName
-              : item.kind === "flight" || item.kind === "rail"
-                ? flightTitle
-                : item.kind === "accueil_vip"
-                  ? vipTitle
-                  : visibleServiceCopy(item.title)}
+          <p className={`break-words leading-snug text-[var(--admin-navy)] ${carFace?.quiet ? "text-xs font-medium" : "text-sm font-semibold"}`}>
+            {carFace
+              ? carFace.title
+              : item.kind === "hotel"
+                ? hotelTitle
+                : item.kind === "flight" || item.kind === "rail"
+                  ? flightTitle
+                  : item.kind === "accueil_vip"
+                    ? vipTitle
+                    : visibleServiceCopy(item.title)}
           </p>
           {item.kind === "flight" || item.kind === "rail" ? (
             <>
@@ -369,11 +401,14 @@ function CardBody({
             </>
           ) : item.kind === "hotel" ? (
             <>
-              {hotelCity ? <p className="truncate text-xs text-muted">{hotelCity}</p> : null}
-              {compactHotel ? null : (
+              {hotelNote ? <p className="truncate text-xs text-muted">{hotelNote}</p> : null}
+              {!hotelNote && hotelCity ? <p className="truncate text-xs text-muted">{hotelCity}</p> : null}
+              {compactHotel || night ? null : (
                 <p className="truncate text-xs text-muted">{hotelStayLabel(item)}</p>
               )}
             </>
+          ) : item.kind === "car" ? (
+            carFace?.subtitle ? <p className="truncate text-xs text-muted">{carFace.subtitle}</p> : null
           ) : item.kind === "accueil_vip" ? (
             <p className="break-words text-xs text-muted">
               {[item.supplier, vipLeg?.flight_number, vipPlace, item.confirmation_ref].filter(Boolean).join(" · ")}

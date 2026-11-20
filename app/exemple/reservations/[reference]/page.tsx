@@ -18,7 +18,7 @@ import {
   clientVisibleItems,
   insuranceLineLabel,
   itemPriceLabel,
-  tripPlaceLine,
+  stayHeroPlace,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
 import { chargeableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
@@ -120,7 +120,7 @@ export default async function ExampleReservationPage({ params }: Props) {
     items: visibleItems,
   });
   const headline = face.title || "Séjour";
-  const placeLine = tripPlaceLine(headline, face.destination);
+  const placeLine = stayHeroPlace(headline, face.destination, face.items);
   const formalities = frenchPassportTrip(visibleItems, party.length);
   // Même formule que la page réelle : commission + billetterie + dépenses.
   const ticketCount = ticketingTicketCount({

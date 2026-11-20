@@ -4,7 +4,7 @@ import { BoardingPass } from "@/components/account/BoardingPass";
 import { Icon } from "@/components/crm/icons";
 import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/crm/calendar-ics";
 import { loadClientCheckinStatus } from "@/lib/crm/client-boarding-pass-load";
-import { clientVisibleItems, nextTimelineFlight, tripPlaceLine } from "@/lib/crm/carnet";
+import { clientVisibleItems, nextTimelineFlight, stayHeroPlace } from "@/lib/crm/carnet";
 import { clientStayFace } from "@/lib/crm/client-stay-face";
 import { boardingPassesReadyStatus } from "@/lib/crm/flight-watch";
 import { buildLiveFlight } from "@/lib/crm/next-flight-model";
@@ -68,7 +68,7 @@ export async function HomeTripHeading({
   const rows = await homeTripItems(bookingId);
   const face = clientStayFace({ title, destination, items: rows, fallback: "Prochain séjour" });
   const tripName = face.title || "Prochain séjour";
-  const tripPlace = tripPlaceLine(tripName, face.destination);
+  const tripPlace = stayHeroPlace(tripName, face.destination, rows);
   return (
     <>
       <h2 className="mt-1 font-display text-2xl font-bold leading-tight text-white">{tripName}</h2>

@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { piecesActives } from "@/lib/crm/dossier-piece";
-import { carnetVisible, clientVisibleItems, tripPlaceLine } from "@/lib/crm/carnet";
+import { carnetVisible, clientVisibleItems, stayHeroPlace } from "@/lib/crm/carnet";
 import { HiddenStayNotice } from "@/components/account/HiddenStayNotice";
 import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { siteConfig } from "@/lib/site";
@@ -114,7 +114,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
   const b = applyClientStayFace(booking, face);
   const pub = toPublicBooking(b);
   const headline = face.title || "Séjour";
-  const placeLine = tripPlaceLine(headline, face.destination);
+  const placeLine = stayHeroPlace(headline, face.destination, face.items);
   const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null; moment?: string | null }[])
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));

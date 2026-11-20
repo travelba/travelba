@@ -104,6 +104,19 @@ export function hotelCityLine(item: CrmBookingItem) {
   return city;
 }
 
+/** Première nuit ou « nuit N sur N ». L’index suit les nuits affichées, fin exclue. */
+export function hotelNightFace(item: DayItem, day: string | null | undefined) {
+  const nights = stayNightDates(item.start_at ?? null, item.end_at ?? null);
+  const total = nightsBetween(item.start_at ?? null, item.end_at ?? null);
+  const index = day ? nights.indexOf(day) : 0;
+  const place = index >= 0 ? index : 0;
+  return {
+    index: place + 1,
+    total,
+    first: place === 0,
+  };
+}
+
 export function stayNightDates(start: string | null, end: string | null) {
   const from = (start || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return [] as string[];
@@ -143,11 +156,19 @@ export function itemFirstDayKey(item: DayItem) {
   return itemDayKey(item);
 }
 
-/** Jours où la carte apparaît : hôtel et location répétés, vol/autres = jour de début. */
+/** Jours où la carte apparaît. L’hôtel s’arrête avant le départ. La location ajoute le matin de la restitution. */
 export function itemTimelineDays(item: DayItem) {
-  if (item.kind === "hotel" || item.kind === "car") {
+  if (item.kind === "hotel") {
     const nights = stayNightDates(item.start_at, item.end_at);
     return nights.length ? nights : [itemDayKey(item)];
+  }
+  if (item.kind === "car") {
+    const nights = stayNightDates(item.start_at, item.end_at);
+    const days = (nights.length ? nights : [itemDayKey(item)]).filter((key): key is string => Boolean(key));
+    const end = (item.end_at || "").slice(0, 10);
+    const start = days[0] || "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(end) && start && end > start && !days.includes(end)) days.push(end);
+    return days.length ? days : [itemDayKey(item)];
   }
   if (item.kind === "accueil_vip") {
     const days = accueilVipTimelineDays(item);
@@ -189,6 +210,37 @@ export function timelineItems(items: CrmBookingItem[]) {
   return items.filter((item) => isTimelineKind(item.kind));
 }
 
+/** Prise, jours du milieu, ou restitution. Une location d’une journée reste « same ». */
+export function carDayRole(item: DayItem, day: string | null | undefined): "same" | "pickup" | "during" | "return" {
+  if (item.kind !== "car") return "same";
+  const start = (item.start_at || "").slice(0, 10);
+  const end = (item.end_at || "").slice(0, 10);
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end <= start) return "same";
+  if (day === start) return "pickup";
+  if (day === end) return "return";
+  return "during";
+}
+
+/** Heure de l’étape ce jour-là. Une nuit d’hôtel déjà commencée n’en a pas. */
+function clockOnDay(item: CrmBookingItem, day: string) {
+  const role = carDayRole(item, day);
+  if (role === "return") return itemClock(item.end_at) ? item.end_at || "" : "";
+  if (role === "during") return "";
+  const startDay = (item.start_at || "").slice(0, 10);
+  if (startDay !== day) return "";
+  return itemClock(item.start_at) ? item.start_at || "" : "";
+}
+
+/** Le matin de la restitution, l’heure gagne : la voiture avant un vol plus tardif. */
+function compareReturnMorning(day: string, a: CrmBookingItem, b: CrmBookingItem) {
+  const aClock = clockOnDay(a, day);
+  const bClock = clockOnDay(b, day);
+  if (aClock && bClock && aClock !== bClock) return aClock.localeCompare(bClock);
+  if (aClock && !bClock) return 1;
+  if (!aClock && bClock) return -1;
+  return compareItemsByOrder(a, b);
+}
+
 export function groupByDay(items: CrmBookingItem[]) {
   const live = withLiveAccueilVip(items);
   const map = new Map<string, CrmBookingItem[]>();
@@ -202,7 +254,8 @@ export function groupByDay(items: CrmBookingItem[]) {
     }
   }
   for (const [day, list] of map) {
-    list.sort(compareItemsByOrder);
+    const restitution = list.some((item) => carDayRole(item, day) === "return");
+    list.sort((a, b) => (restitution ? compareReturnMorning(day, a, b) : compareItemsByOrder(a, b)));
     map.set(day, placeAccueilVipBesideFlights(list, day));
   }
   return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
@@ -221,6 +274,111 @@ export function itemClock(iso: string | null | undefined) {
   if (!match) return "";
   if (match[1] === "00" && match[2] === "00") return "";
   return `${match[1]}h${match[2]}`;
+}
+
+/** AUTOMATICO, AUTOMATIC : français à l’affichage. Les mots en capitales redeviennent un nom. */
+export function frenchVehicleName(value: string) {
+  const swapped = value
+    .replace(/\bautom[aá]tico\b/gi, "automatique")
+    .replace(/\bautomatic\b/gi, "automatique");
+  return swapped
+    .replace(/\p{Lu}{4,}/gu, (word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .replace(/\bautomatique\b/gi, "automatique");
+}
+
+export function vehicleDisplayName(item: Pick<CrmBookingItem, "title" | "details">) {
+  const raw = detailStr(item as CrmBookingItem, "vehicle") || (item.title || "").trim() || "Voiture";
+  return frenchVehicleName(raw);
+}
+
+/** « Palma de Majorque (PMI) » devient « Aéroport de Palma (PMI) ». Un lieu déjà nommé reste. */
+export function airportPlaceLabel(place: string) {
+  const trimmed = place.trim();
+  if (!trimmed) return "";
+  if (/a[eé]roport|airport/i.test(trimmed)) return trimmed;
+  const iata = trimmed.match(/\(([A-Z]{3})\)/);
+  if (!iata) return trimmed;
+  const city = trimmed.replace(/\s*\([A-Z]{3}\)\s*/g, " ").replace(/\s+/g, " ").trim();
+  const name = city.split(/\s+de\s+/i)[0] || city;
+  return name ? `Aéroport de ${name} (${iata[1]})` : trimmed;
+}
+
+function dayMonthFr(iso: string) {
+  const date = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+}
+
+export function carDetailPlace(item: Pick<CrmBookingItem, "details">) {
+  const pickup = detailStr(item as CrmBookingItem, "pickup");
+  const dropoff = detailStr(item as CrmBookingItem, "dropoff");
+  if (pickup && dropoff && foldPlace(pickup) === foldPlace(dropoff)) return pickup;
+  return [pickup, dropoff].filter(Boolean).join(" → ");
+}
+
+export type CarClosedFace = {
+  role: "same" | "pickup" | "during" | "return";
+  kicker: string;
+  title: string;
+  subtitle: string;
+  quiet: boolean;
+};
+
+/** Ligne fermée de la location. Le grossiste et la référence n’y sont pas. */
+export function carClosedFace(item: CrmBookingItem, day: string | null | undefined): CarClosedFace {
+  const role = carDayRole(item, day);
+  const vehicle = vehicleDisplayName(item);
+  const label = visibleServiceCopy(BOOKING_ITEM_LABELS.car);
+  const startClock = itemClock(item.start_at);
+  const endClock = itemClock(item.end_at);
+  const pickup = detailStr(item, "pickup");
+  const dropoff = detailStr(item, "dropoff");
+  const samePlace = Boolean(pickup && dropoff && foldPlace(pickup) === foldPlace(dropoff));
+  const subtitle =
+    role === "during"
+      ? ""
+      : role === "return"
+        ? airportPlaceLabel(dropoff || pickup)
+        : role === "same" && pickup && dropoff && !samePlace
+          ? `${airportPlaceLabel(pickup)} → ${airportPlaceLabel(dropoff)}`
+          : airportPlaceLabel(pickup || dropoff);
+  if (role === "during") {
+    const until = dayMonthFr(item.end_at || "");
+    return {
+      role,
+      kicker: label,
+      title: until ? `${vehicle} · avec vous jusqu’au ${until}` : vehicle,
+      subtitle,
+      quiet: true,
+    };
+  }
+  if (role === "pickup") {
+    return {
+      role,
+      kicker: startClock ? `${label} · prise en charge ${startClock}` : `${label} · prise en charge`,
+      title: vehicle,
+      subtitle,
+      quiet: false,
+    };
+  }
+  if (role === "return") {
+    return {
+      role,
+      kicker: endClock ? `${label} · restitution ${endClock}` : `${label} · restitution`,
+      title: vehicle,
+      subtitle,
+      quiet: false,
+    };
+  }
+  const range =
+    startClock && endClock && startClock !== endClock ? `${startClock} → ${endClock}` : startClock || endClock;
+  return {
+    role,
+    kicker: range ? `${label} · ${range}` : label,
+    title: vehicle,
+    subtitle,
+    quiet: false,
+  };
 }
 
 export function dayHeading(isoDate: string) {
@@ -636,6 +794,32 @@ export function tripPlaceLine(title: string | null | undefined, destination: str
   const parts = titleCityParts(place);
   if (parts.length && parts.every((part) => named.has(cityPlaceKey(part)))) return null;
   return place;
+}
+
+/** Villes où l’on dort, dans l’ordre des hôtels, sans répétition. */
+export function staySleepCities(items: Array<{ kind?: string | null; details?: Record<string, unknown> | null }>) {
+  const found: string[] = [];
+  for (const item of items) {
+    if (item.kind !== "hotel") continue;
+    const city = detailStr(item as CrmBookingItem, "city");
+    if (!city) continue;
+    const key = cityPlaceKey(city);
+    if (!key || found.some((row) => cityPlaceKey(row) === key)) continue;
+    found.push(cityLabel(city) || city);
+  }
+  return found;
+}
+
+/** Sous le titre choisi : la ville de l’hôtel si le titre ne la dit pas, sinon le lieu déjà prévu. */
+export function stayHeroPlace(
+  title: string | null | undefined,
+  destination: string | null | undefined,
+  items: Array<{ kind?: string | null; details?: Record<string, unknown> | null }> | null | undefined
+) {
+  const named = new Set(titleCityParts(title || "").map((part) => cityPlaceKey(part)).filter(Boolean));
+  const sleep = staySleepCities(items || []).filter((city) => !named.has(cityPlaceKey(city)));
+  if (sleep.length) return sleep.join(" · ");
+  return tripPlaceLine(title, destination);
 }
 
 function pushArrival(found: string[], value: string) {
