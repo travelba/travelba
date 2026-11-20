@@ -39,6 +39,7 @@ import { hotelStayFromTrip } from "@/lib/crm/hotel-search";
 import { flightCheckinViews, type StoredFlightCheckin } from "@/lib/crm/online-checkin";
 import { OnlineCheckinBadge } from "@/components/admin/OnlineCheckinMark";
 import { hasReviewMark, withoutReviewMark, reviewDoubts } from "@/lib/crm/review-doubt";
+import { BrandMark } from "@/components/crm/BrandMark";
 import { Icon } from "@/components/crm/icons";
 import { HiddenCardBadge } from "@/components/admin/HiddenCards";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
@@ -987,7 +988,11 @@ export function BookingItemsPanel({
                   className="flex w-full items-start gap-2 rounded-xl text-left lg:gap-3"
                 >
                   <span className="hidden w-16 shrink-0 pt-0.5 text-xs font-semibold text-muted lg:block">{when || "Sans date"}</span>
-                  <Icon name={kindIcon(item.kind)} className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
+                  {item.kind === "flight" || item.kind === "car" ? (
+                    <BrandMark item={item} className="h-8 w-8 shrink-0" />
+                  ) : (
+                    <Icon name={kindIcon(item.kind)} className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
+                  )}
                   <span className="min-w-0 flex-1">
                     <span className="flex items-start justify-between gap-2">
                       <span className={`min-w-0 break-words text-sm font-semibold lg:truncate ${cancelled ? "text-muted line-through" : "text-[var(--admin-navy)]"}`}>
