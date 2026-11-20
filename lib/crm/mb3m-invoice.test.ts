@@ -56,10 +56,11 @@ describe("mb3mInvoiceLine", () => {
     assert.equal(hotelZero.marginUnit, 0);
   });
 
-  it("vol, train et low cost : net et marge réels, l’activité du fichier, le TTC reste celui du CRM", () => {
+  it("vol, train et low cost : net et marge réels, le train part en 22, le TTC reste celui du CRM", () => {
     const sold = (line: { netPriceUnit: number; marginUnit?: number | null }) =>
       Math.round((line.netPriceUnit + (line.marginUnit || 0)) * 100) / 100;
     for (const activityId of [2, 5, 27, 22]) {
+      const sent = activityId === 5 ? 22 : activityId;
       const priced = mb3mInvoiceLine({
         transactionId: "tx-flight",
         label: "Air France",
@@ -67,7 +68,7 @@ describe("mb3mInvoiceLine", () => {
         activityId,
         margin: 1000.44,
       });
-      assert.equal(priced.activityId, activityId);
+      assert.equal(priced.activityId, sent);
       assert.equal(priced.netPriceUnit, 198);
       assert.equal(priced.netPriceTotal, 198);
       assert.equal(priced.marginUnit, 1000.44);
@@ -79,7 +80,7 @@ describe("mb3mInvoiceLine", () => {
         activityId,
         margin: 0,
       });
-      assert.equal(zero.activityId, activityId);
+      assert.equal(zero.activityId, sent);
       assert.equal(zero.netPriceUnit, 362);
       assert.equal(zero.marginUnit, 0);
       assert.equal(sold(zero), 362);
