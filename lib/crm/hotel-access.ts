@@ -63,13 +63,31 @@ export function clientNavHasHotel(showButton: boolean) {
   return showButton;
 }
 
-export function hotelDirectLive(customer: HotelAccessCustomer | null | undefined) {
+/**
+ * Preview et staging ne réservent pas chez Little Emperors.
+ * La production n’est pas concernée : VERCEL_ENV y vaut production, et la variable n’y est pas posée.
+ */
+export function hotelLeBookingFrozen(env: Record<string, string | undefined> = process.env) {
+  if (env.VERCEL_ENV === "preview") return true;
+  const flag = (env.HOTEL_LE_BOOKING || "").trim().toLowerCase();
+  return flag === "0" || flag === "off" || flag === "false";
+}
+
+export function hotelDirectLive(
+  customer: HotelAccessCustomer | null | undefined,
+  env: Record<string, string | undefined> = process.env
+) {
+  if (hotelLeBookingFrozen(env)) return false;
   return hotelBookingEnabled(customer) && customer?.hotel_demo !== true && customer?.hotel_direct_live === true;
 }
 
 /** API de réservation, en plus du mode réel et hors compte de démonstration. Défaut faux. */
-export function hotelLeApiBooking(customer: HotelAccessCustomer | null | undefined) {
-  return hotelDirectLive(customer) && customer?.hotel_le_api_booking === true;
+export function hotelLeApiBooking(
+  customer: HotelAccessCustomer | null | undefined,
+  env: Record<string, string | undefined> = process.env
+) {
+  if (hotelLeBookingFrozen(env)) return false;
+  return hotelDirectLive(customer, env) && customer?.hotel_le_api_booking === true;
 }
 
 /** Fermé sans accès, sans mode réel, ou sur un compte de démonstration. */

@@ -17,6 +17,7 @@ import {
   hotelBookingEnabled,
   hotelDirectLive,
   hotelLeApiBooking,
+  hotelLeBookingFrozen,
   showHotelButton,
   showPlatinumScreen,
 } from "./hotel-access";
@@ -75,6 +76,13 @@ test("le réglage du bouton est réservé à l’admin et part sur les clients a
     false
   );
   assert.equal(hotelLeApiBooking({ hotel_booking_enabled: true, hotel_direct_live: true, hotel_le_api_booking: true }), true);
+  const live = { hotel_booking_enabled: true, hotel_direct_live: true, hotel_le_api_booking: true };
+  assert.equal(hotelLeBookingFrozen({ VERCEL_ENV: "production" }), false);
+  assert.equal(hotelLeBookingFrozen({ VERCEL_ENV: "preview" }), true);
+  assert.equal(hotelLeBookingFrozen({ HOTEL_LE_BOOKING: "0" }), true);
+  assert.equal(hotelDirectLive(live, { VERCEL_ENV: "preview" }), false);
+  assert.equal(hotelLeApiBooking(live, { VERCEL_ENV: "preview" }), false);
+  assert.equal(hotelLeApiBooking(live, { VERCEL_ENV: "production" }), true);
   assert.equal(decideHotelLeApi({ enabled: true, demo: false, live: true, requested: true }), true);
   assert.equal(decideHotelLeApi({ enabled: true, demo: false, live: false, requested: true }), false);
   assert.equal(decideHotelLeApi({ enabled: false, demo: false, live: true, requested: true }), false);
