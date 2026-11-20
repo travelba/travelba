@@ -19,7 +19,7 @@ import { rememberHotelMatches } from "@/lib/crm/hotel-providers/remember";
 import { expediaFailureCode, expediaFailureText } from "@/lib/crm/expedia/client";
 import { expediaSearchEnabled, resolveExpediaSalesChannel, safeExpediaConfig } from "@/lib/crm/expedia/config";
 import { coordsForPlace } from "@/lib/crm/expedia/places";
-import { EXPEDIA_SEARCH_BUDGET_MS, searchExpediaRates } from "@/lib/crm/expedia/search";
+import { EXPEDIA_SEARCH_BUDGET_MS, prefetchExpediaRegion, searchExpediaRates } from "@/lib/crm/expedia/search";
 import type { NormalizedRate } from "@/lib/crm/hotel-providers/types";
 import { foldHotelLabel } from "@/lib/crm/hotel-catalog";
 import { attachHotelCover, loadKnownHotelOffers, loadLittleEmperorsOffers } from "@/lib/crm/little-emperors-search";
@@ -99,28 +99,14 @@ export async function POST(request: Request) {
       };
       const stays: PricedStay[] = [];
       const links: Promise<void>[] = [];
-      const expediaTask =
-        expediaOn && catalogCoords
-          ? deadline(
-              searchExpediaRates({
-                destination: parsed.query.destination,
-                city: parsed.query.city,
-                checkIn: parsed.query.checkIn,
-                checkOut: parsed.query.checkOut,
-                rooms: parsed.query.rooms,
-                salesChannel,
-                customerIp: ip,
-                coords: catalogCoords,
-              }),
-              EXPEDIA_SEARCH_BUDGET_MS + 2_000
-            )
-              .then((rates) => ({ rates, failed: false as const, code: "" }))
-              .catch((err: unknown) => {
-                const code = expediaFailureCode(err);
-                console.error("[expedia] recherche", code);
-                return { rates: [] as NormalizedRate[], failed: true as const, code };
-              })
-          : null;
+      if (expediaOn && catalogCoords) {
+        prefetchExpediaRegion({
+          coords: catalogCoords,
+          place: parsed.query.city || parsed.query.destination,
+          customerIp: ip,
+          fetchImpl: fetch,
+        });
+      }
       const covers: Promise<void>[] = [];
       let supplierFailed = false;
       let noted = false;
@@ -186,35 +172,36 @@ export async function POST(request: Request) {
             continue;
           }
           if (expediaOn) {
-            let extra = expediaTask
-              ? await expediaTask
-              : { rates: [] as NormalizedRate[], failed: false, code: "" };
-            if (!catalogCoords) {
-              const coords = stays.find((stay) => stay.coords)?.coords ?? null;
-              if (coords) {
-                try {
-                  extra = {
-                    rates: await deadline(
-                      searchExpediaRates({
-                        destination: parsed.query.destination,
-                        city: parsed.query.city,
-                        checkIn: parsed.query.checkIn,
-                        checkOut: parsed.query.checkOut,
-                        rooms: parsed.query.rooms,
-                        salesChannel,
-                        customerIp: ip,
-                        coords,
-                      }),
-                      EXPEDIA_SEARCH_BUDGET_MS + 2_000
-                    ),
-                    failed: false,
-                    code: "",
-                  };
-                } catch (err) {
-                  const code = expediaFailureCode(err);
-                  console.error("[expedia] recherche", code);
-                  extra = { rates: [], failed: true, code };
-                }
+            let extra: { rates: NormalizedRate[]; failed: boolean; code: string } = {
+              rates: [],
+              failed: false,
+              code: "",
+            };
+            const coords = catalogCoords || stays.find((stay) => stay.coords)?.coords || null;
+            if (coords) {
+              try {
+                extra = {
+                  rates: await deadline(
+                    searchExpediaRates({
+                      destination: parsed.query.destination,
+                      city: parsed.query.city,
+                      checkIn: parsed.query.checkIn,
+                      checkOut: parsed.query.checkOut,
+                      rooms: parsed.query.rooms,
+                      salesChannel,
+                      customerIp: ip,
+                      coords,
+                      preferNames: stays.map((stay) => stay.hotelName),
+                    }),
+                    EXPEDIA_SEARCH_BUDGET_MS + 2_000
+                  ),
+                  failed: false,
+                  code: "",
+                };
+              } catch (err) {
+                const code = expediaFailureCode(err);
+                console.error("[expedia] recherche", code);
+                extra = { rates: [], failed: true, code };
               }
             }
             const folded = foldProviderRates({

@@ -76,17 +76,28 @@ export function parseExpediaContent(payload: unknown): ExpediaPropertyContent[] 
   return rows;
 }
 
-export type ExpediaRegion = { id: string; name: string; type: string };
+export type ExpediaRegion = { id: string; name: string; type: string; propertyIds: string[] };
+
+function propertyIdsOf(row: Record<string, unknown>) {
+  const raw = row.property_ids ?? row.property_ids_expanded;
+  if (!Array.isArray(raw)) return [];
+  const ids: string[] = [];
+  for (const item of raw) {
+    if (typeof item === "string" && item.trim()) ids.push(item.trim());
+    else if (typeof item === "number" && Number.isInteger(item)) ids.push(String(item));
+  }
+  return ids;
+}
 
 export function parseExpediaRegions(payload: unknown): ExpediaRegion[] {
-  const rows = Array.isArray(payload) ? payload : [];
+  const rows = Array.isArray(payload) ? payload : payload && typeof payload === "object" ? [payload] : [];
   const regions: ExpediaRegion[] = [];
   for (const item of rows) {
     const row = record(item);
     const id = typeof row?.id === "string" ? row.id : "";
     const name = typeof row?.name === "string" ? row.name : "";
     const type = typeof row?.type === "string" ? row.type : "";
-    if (id && name) regions.push({ id, name, type });
+    if (id && name) regions.push({ id, name, type, propertyIds: row ? propertyIdsOf(row) : [] });
   }
   return regions;
 }

@@ -1,4 +1,5 @@
 import { foldHotelLabel } from "@/lib/crm/hotel-catalog";
+import { hotelNameScore } from "@/lib/crm/hotel-providers/matching";
 import type { HotelRoomOccupancy } from "@/lib/crm/hotel-search";
 import { eanGet, expediaFailureCode } from "./client";
 import { parseExpediaContent, parseExpediaRegions, type ExpediaPropertyContent } from "./content-parse";
@@ -12,7 +13,9 @@ export const EXPEDIA_SEARCH_BUDGET_MS = 32_000;
 /** Plafond Rapid : au-delà, l’appel est refusé. */
 export const EXPEDIA_PROPERTY_BATCH = 250;
 
-const regionCache = new Map<string, string>();
+type RegionHit = { id: string; propertyIds: string[] };
+
+const regionCache = new Map<string, RegionHit>();
 
 export function chunkPropertyIds(ids: string[], size = EXPEDIA_PROPERTY_BATCH) {
   const unique: string[] = [];
@@ -69,9 +72,20 @@ async function cityRegionId(input: {
     const name = foldHotelLabel(region.name);
     return needle && (name === needle || name.includes(needle) || needle.includes(name));
   });
-  const id = (named || regions[0]).id;
-  regionCache.set(cacheKey, id);
-  return id;
+  const picked = named || regions[0];
+  const detail = new URLSearchParams();
+  detail.set("language", "fr-FR");
+  detail.set("include", "property_ids");
+  const { data: full } = await eanGet(`/regions/${picked.id}`, detail, {
+    customerIp: input.customerIp,
+    signal: input.signal,
+    fetchImpl: input.fetchImpl,
+    timeoutMs: input.timeoutMs,
+  });
+  const detailed = parseExpediaRegions(full).find((region) => region.id === picked.id) || parseExpediaRegions(full)[0];
+  const hit = { id: picked.id, propertyIds: detailed?.propertyIds || picked.propertyIds };
+  regionCache.set(cacheKey, hit);
+  return hit;
 }
 
 async function propertyContent(
@@ -99,6 +113,17 @@ async function propertyContent(
   return content;
 }
 
+export function prefetchExpediaRegion(input: {
+  coords: { lat: number; lng: number };
+  place: string;
+  customerIp: string | null;
+  fetchImpl?: typeof fetch;
+}) {
+  void cityRegionId({ ...input, timeoutMs: 8_000 }).catch((err) => {
+    console.error("[expedia] region", expediaFailureCode(err));
+  });
+}
+
 export async function searchExpediaRates(input: {
   destination: string;
   city: string;
@@ -108,6 +133,7 @@ export async function searchExpediaRates(input: {
   salesChannel: ExpediaSalesChannel;
   customerIp: string | null;
   coords: { lat: number; lng: number } | null;
+  preferNames?: string[];
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;
 }): Promise<NormalizedRate[]> {
@@ -117,42 +143,65 @@ export async function searchExpediaRates(input: {
   const started = Date.now();
   const left = () => Math.max(1_000, EXPEDIA_SEARCH_BUDGET_MS - (Date.now() - started));
   const place = input.city || input.destination;
-  const regionId = await cityRegionId({
+  const region = await cityRegionId({
     coords: input.coords,
     place,
     customerIp: input.customerIp,
     signal: input.signal,
     fetchImpl: input.fetchImpl,
-    timeoutMs: Math.min(6_000, left()),
+    timeoutMs: Math.min(8_000, left()),
   });
-  if (!regionId) return [];
+  if (!region || !region.propertyIds.length) return [];
+  const prefer = (input.preferNames || []).map((name) => name.trim()).filter(Boolean);
+  let selected = region.propertyIds.slice(0, EXPEDIA_PROPERTY_BATCH);
+  let content = new Map<string, ExpediaPropertyContent>();
+  if (prefer.length) {
+    const matched: string[] = [];
+    for (const batch of chunkPropertyIds(region.propertyIds).slice(0, 3)) {
+      if (left() < 7_000 && matched.length) break;
+      try {
+        const batchContent = await propertyContent(batch, input.customerIp, input.signal, input.fetchImpl, Math.min(8_000, left()));
+        for (const [id, row] of batchContent) {
+          content.set(id, row);
+          const score = prefer.reduce((best, name) => Math.max(best, hotelNameScore(name, row.name, place)), 0);
+          if (score >= 0.72) matched.push(id);
+        }
+      } catch (err) {
+        console.error("[expedia] contenu", expediaFailureCode(err));
+        break;
+      }
+      if (matched.length >= 8) break;
+    }
+    if (matched.length) selected = matched.slice(0, EXPEDIA_PROPERTY_BATCH);
+  }
   const query = new URLSearchParams();
   query.set("checkin", input.checkIn);
   query.set("checkout", input.checkOut);
   query.set("currency", "EUR");
   query.set("country_code", "FR");
   query.set("language", "fr-FR");
-  query.set("region_id", regionId);
-  query.set("rate_plan_count", "4");
+  query.set("rate_plan_count", "1");
   query.set("sales_channel", input.salesChannel);
   query.set("sales_environment", "hotel_only");
   repeated(query, "occupancy", input.rooms.map(occupancyToken));
-  repeated(query, "include", ["sale_scenario.mobile_promotion"]);
+  repeated(query, "property_id", selected);
   const { data } = await eanGet("/properties/availability", query, {
     customerIp: input.customerIp,
     signal: input.signal,
     fetchImpl: input.fetchImpl,
-    timeoutMs: Math.min(18_000, Math.max(4_000, left() - 6_000)),
+    timeoutMs: Math.min(12_000, Math.max(4_000, left() - 2_000)),
   });
   const properties = Array.isArray(data) ? data : [];
-  const ids = properties
+  const missing = properties
     .map((row) => (row && typeof row === "object" ? (row as { property_id?: unknown }).property_id : null))
-    .filter((id): id is string => typeof id === "string");
-  let content = new Map<string, ExpediaPropertyContent>();
-  try {
-    content = await propertyContent(ids, input.customerIp, input.signal, input.fetchImpl, Math.min(8_000, left()));
-  } catch (err) {
-    console.error("[expedia] contenu", expediaFailureCode(err));
+    .filter((id): id is string => typeof id === "string" && !content.has(id));
+  if (missing.length) {
+    try {
+      const extra = await propertyContent(missing, input.customerIp, input.signal, input.fetchImpl, Math.min(8_000, left()));
+      for (const [id, row] of extra) content.set(id, row);
+    } catch (err) {
+      console.error("[expedia] contenu", expediaFailureCode(err));
+    }
   }
   const rates: NormalizedRate[] = [];
   for (const property of properties) {

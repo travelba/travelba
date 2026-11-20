@@ -43,6 +43,24 @@ function expediaType(parsed: unknown) {
   return type.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 40);
 }
 
+function expediaFields(parsed: unknown) {
+  if (!parsed || typeof parsed !== "object") return "";
+  const errors = (parsed as { errors?: unknown }).errors;
+  if (!Array.isArray(errors)) return "";
+  const names: string[] = [];
+  for (const item of errors) {
+    const fields = item && typeof item === "object" ? (item as { fields?: unknown }).fields : null;
+    if (!Array.isArray(fields)) continue;
+    for (const field of fields) {
+      const name = field && typeof field === "object" ? (field as { name?: unknown }).name : null;
+      if (typeof name !== "string" || !/^[a-z0-9_.-]{1,40}$/i.test(name)) continue;
+      const clean = name.toLowerCase();
+      if (!names.includes(clean)) names.push(clean);
+    }
+  }
+  return names.slice(0, 3).join("_");
+}
+
 function transportCode(caught: unknown) {
   if (!(caught instanceof Error)) return "network";
   if (caught.name === "TimeoutError" || caught.name === "AbortError") return "timeout";
@@ -116,7 +134,9 @@ export async function eanGet(
       }
       if (response.status < 200 || response.status >= 300) {
         const kind = expediaType(parsed);
-        error = error || (kind ? `http_${response.status}_${kind}` : `http_${response.status}`);
+        const fields = expediaFields(parsed);
+        const base = kind ? `http_${response.status}_${kind}` : `http_${response.status}`;
+        error = error || (fields ? `${base}_${fields}` : base);
       }
     }
   } catch (caught) {

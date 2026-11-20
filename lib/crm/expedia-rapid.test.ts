@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ExpediaConfigError, loadExpediaConfig, resolveExpediaSalesChannel } from "./expedia/config";
-import { parseExpediaContent } from "./expedia/content-parse";
+import { parseExpediaContent, parseExpediaRegions } from "./expedia/content-parse";
 import { EXPEDIA_TAX_LEGAL_FR } from "./expedia/legal";
 import { decimalStringToCents } from "./expedia/money";
 import { normalizeExpediaProperty } from "./expedia/normalize";
@@ -57,6 +57,13 @@ test("le journal d’échec Expedia ne porte ni clé ni URL", () => {
   assert.equal(chunks[0].length, EXPEDIA_PROPERTY_BATCH);
   assert.equal(chunks[1].length, 3);
   assert.equal(chunks[0][0], "1");
+});
+
+test("une région Expedia expose ses property_id", () => {
+  const regions = parseExpediaRegions([
+    { id: "1", name: "Paris", type: "city", property_ids: ["10", 11] },
+  ]);
+  assert.deepEqual(regions[0].propertyIds, ["10", "11"]);
 });
 
 test("un montant à plus de deux décimales n’est pas arrondi", () => {

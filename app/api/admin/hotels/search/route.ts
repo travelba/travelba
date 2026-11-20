@@ -4,7 +4,7 @@ import { parisTodayIso } from "@/lib/crm/dates";
 import { expediaFailureCode, expediaFailureText } from "@/lib/crm/expedia/client";
 import { expediaSearchEnabled, resolveExpediaSalesChannel, safeExpediaConfig } from "@/lib/crm/expedia/config";
 import { coordsForPlace } from "@/lib/crm/expedia/places";
-import { EXPEDIA_SEARCH_BUDGET_MS, searchExpediaRates } from "@/lib/crm/expedia/search";
+import { EXPEDIA_SEARCH_BUDGET_MS, prefetchExpediaRegion, searchExpediaRates } from "@/lib/crm/expedia/search";
 import { foldProviderRates, type AgentCompareRate } from "@/lib/crm/hotel-providers/aggregate";
 import { rememberHotelMatches } from "@/lib/crm/hotel-providers/remember";
 import type { NormalizedRate } from "@/lib/crm/hotel-providers/types";
@@ -104,24 +104,9 @@ export async function POST(request: Request) {
               fetchImpl: fetch,
             }),
         ];
-  const expediaPromise =
-    expediaOn && catalogCoords
-      ? deadline(
-          searchExpediaRates({
-            ...stay,
-            salesChannel,
-            customerIp: ip,
-            coords: catalogCoords,
-          }),
-          EXPEDIA_SEARCH_BUDGET_MS + 2_000
-        )
-          .then((rates) => ({ rates, failed: false, code: "" }))
-          .catch((err: unknown) => {
-            const code = expediaFailureCode(err);
-            console.error("[expedia] recherche", code);
-            return { rates: [] as NormalizedRate[], failed: true, code };
-          })
-      : null;
+  if (expediaOn && catalogCoords) {
+    prefetchExpediaRegion({ coords: catalogCoords, place: stay.city || stay.destination, customerIp: ip, fetchImpl: fetch });
+  }
   const stays: PricedStay[] = [];
   let leFailed = false;
   for await (const event of streamHotelSearch({ accounts: [direct, ...known], cached: null, timeoutMs: 55_000 })) {
@@ -134,13 +119,8 @@ export async function POST(request: Request) {
   let expediaFailed = false;
   let expediaCode = "";
   let expediaRates: NormalizedRate[] = [];
-  if (expediaPromise) {
-    const result = await expediaPromise;
-    expediaRates = result.rates;
-    expediaFailed = result.failed;
-    expediaCode = result.code;
-  } else if (expediaOn) {
-    const coords = stays.find((row) => row.coords)?.coords || null;
+  if (expediaOn) {
+    const coords = catalogCoords || stays.find((row) => row.coords)?.coords || null;
     if (coords) {
       try {
         expediaRates = await deadline(
@@ -149,6 +129,7 @@ export async function POST(request: Request) {
             salesChannel,
             customerIp: ip,
             coords,
+            preferNames: stays.map((row) => row.hotelName),
           }),
           EXPEDIA_SEARCH_BUDGET_MS + 2_000
         );
