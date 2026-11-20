@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSPro
 import { useRouter } from "next/navigation";
 import { WhatsappHoldButton } from "@/components/admin/WhatsappHoldButton";
 import { Icon } from "@/components/crm/icons";
-import { deliverWhatsappNotice } from "@/lib/crm/admin-notice-store";
 import { PAGE_POLL_MS, pollRunsWhileVisible } from "@/lib/crm/page-poll";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -131,12 +130,6 @@ export function WhatsappDock({
     if (known || !booted.current || message.direction !== "inbound") return;
     setTabs((current) => inboundDockTabs(current, key, dockIsMobile()));
     chime();
-    deliverWhatsappNotice({
-      id: message.id,
-      body: message.body,
-      createdAt: message.createdAt,
-      bookingId: message.bookingId,
-    });
   }
 
   useEffect(() => {

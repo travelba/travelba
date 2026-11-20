@@ -1,13 +1,13 @@
-import { whatsappAlert, type InboundChatAlert } from "./agency-alerts";
 import {
-  asAdminNotice,
   claimOsNotify,
   DISMISSED_KEY,
   isAdminNotice,
+  isPopupNotice,
   mergeAdminNotices,
   NOTICES_EVENT,
   NOTIFIED_KEY,
   OPEN_KEY,
+  POPUP_BACKLOG_MAX,
   POPUP_OWNER_KEY,
 } from "./admin-popup";
 import { browserAlert } from "./browser-alert";
@@ -100,10 +100,20 @@ export function suppressOsNotices(ids: string[]) {
  * Ajoute les notifications nouvelles, une fois par identifiant.
  * Le système ne sonne que pour celles qui n’ont pas encore sonné, sur un seul onglet.
  */
-export function deliverAdminNotices(incoming: HotelReplyNotice[]) {
-  if (typeof window === "undefined" || !incoming.length) return [];
+/** Retire du stockage les alertes qui ne doivent plus s’ouvrir (Pliant, journal, etc.). */
+export function prunePopupQueue() {
+  if (typeof window === "undefined") return [];
   const current = readAdminNotices();
-  const next = mergeAdminNotices(current, incoming, readDismissedNotices());
+  const next = current.filter(isPopupNotice).slice(-POPUP_BACKLOG_MAX);
+  if (JSON.stringify(next) !== JSON.stringify(current)) writeAdminNotices(next);
+  return next;
+}
+
+export function deliverAdminNotices(incoming: HotelReplyNotice[]) {
+  const allowed = incoming.filter(isPopupNotice);
+  if (typeof window === "undefined" || !allowed.length) return [];
+  const current = readAdminNotices().filter(isPopupNotice);
+  const next = mergeAdminNotices(current, allowed, readDismissedNotices()).slice(-POPUP_BACKLOG_MAX);
   const added = next.filter((notice) => !current.some((row) => row.id === notice.id));
   if (JSON.stringify(next) !== JSON.stringify(current)) {
     writeAdminNotices(next);
@@ -125,12 +135,6 @@ export function deliverAdminNotices(incoming: HotelReplyNotice[]) {
     });
   }
   return added;
-}
-
-export function deliverWhatsappNotice(input: InboundChatAlert) {
-  const alert = whatsappAlert(input);
-  if (!alert) return;
-  deliverAdminNotices([asAdminNotice(alert)]);
 }
 
 export function dismissAdminNotice(id: string) {

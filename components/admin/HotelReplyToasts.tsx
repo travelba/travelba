@@ -8,6 +8,7 @@ import {
   clearPopupOwner,
   dismissAdminNotice,
   deliverAdminNotices,
+  prunePopupQueue,
   readAdminNotices,
   readDismissedNotices,
   readPopupOwner,
@@ -17,12 +18,15 @@ import {
 import {
   asAdminNotice,
   DISMISSED_KEY,
+  isPopupNotice,
   NOTICES_EVENT,
   noticeIcon,
   OPEN_KEY,
   POPUP_OWNER_KEY,
+  popupCursor,
   popupWaitingLabel,
   shouldShowAdminPopup,
+  takePopupBacklog,
   VISIBLE_POPUPS,
 } from "@/lib/crm/admin-popup";
 import type { AgencyAlert } from "@/lib/crm/agency-alerts";
@@ -137,12 +141,14 @@ export function HotelReplyToasts() {
     let stopped = false;
     const tabId = newTabId();
     suppressOsNotices(readAdminNotices().map((notice) => notice.id));
+    prunePopupQueue();
     const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(TAB_CHANNEL);
-    let memorySince = readSince();
+    let memorySince = popupCursor(readSince(), Date.now());
+    writeSince(memorySince);
 
     function reload() {
       const dismissed = readDismissedNotices();
-      setQueue(readAdminNotices().filter((notice) => !dismissed.has(notice.id)));
+      setQueue(readAdminNotices().filter((notice) => isPopupNotice(notice) && !dismissed.has(notice.id)));
     }
 
     function syncOwner() {
@@ -170,11 +176,7 @@ export function HotelReplyToasts() {
       if (!shouldLead(readLeader(), tabId, now)) return;
       writeLeader(tabId, now);
       const storedSince = readSince();
-      if (storedSince && (!memorySince || storedSince > memorySince)) memorySince = storedSince;
-      if (!memorySince) {
-        memorySince = new Date().toISOString();
-        writeSince(memorySince);
-      }
+      if (storedSince && storedSince > memorySince) memorySince = storedSince;
       const since = memorySince;
       let notices: HotelReplyNotice[] = [];
       let alerts: AgencyAlert[] = [];
@@ -193,8 +195,9 @@ export function HotelReplyToasts() {
       }
       if (stopped) return;
       if (replied > 0) refresh.current();
-      const incoming = [...notices, ...alerts.map(asAdminNotice)];
-      if (incoming.length) deliverAdminNotices(incoming);
+      const incoming = [...notices, ...alerts.map(asAdminNotice)].filter(isPopupNotice);
+      const shown = takePopupBacklog(incoming);
+      if (shown.length) deliverAdminNotices(shown);
       const sinceMs = Date.parse(since);
       const latestMs = incoming.reduce((max, notice) => {
         const at = Date.parse(notice.receivedAt);

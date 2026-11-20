@@ -84,6 +84,7 @@ test("la file garde le mail, seule la notification filtre", () => {
   assert.equal(ingest.includes("status: \"ignored\""), true);
   const capture = ingest.slice(ingest.indexOf("export async function captureGmailHistory"), ingest.indexOf("export async function catchUpGmailHistory"));
   assert.equal(capture.includes("ignored"), false);
-  assert.match(route, /crm_reply/);
-  assert.match(route, /shouldNotifyInboundMail/);
+  assert.equal(route.includes("crm_email_ingest"), false);
+  assert.match(route, /hotelReplyNotices/);
+  assert.match(route, /receivedPaymentPopup/);
 });
