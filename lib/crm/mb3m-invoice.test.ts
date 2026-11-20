@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { mb3mLineSignature } from "./mb3m-account";
 import { mb3mSoapLines } from "./mb3m-conform";
-import { Mb3mError, MB3M_CREDIT_NOTE_REFUSAL } from "./mb3m";
+import { Mb3mError, MB3M_CREDIT_NOTE_REFUSAL, mb3mAddInvoice, mb3mCancelInvoice, mb3mFindPiece, mb3mReadLettrage } from "./mb3m";
 import {
   buildMb3mInvoiceContext,
   mb3mInvoiceBlocker,
   mb3mInvoiceLine,
+  mb3mLettrageWarning,
+  mb3mReplacementHold,
   reissueMb3mInvoice,
   runMb3mInvoice,
   storeMb3mPdf,
@@ -14,7 +16,8 @@ import {
   type Mb3mInvoiceDeps,
   type Mb3mStoredPiece,
 } from "./mb3m-invoice";
-import { mb3mInvoiceChip, mb3mPreparationView } from "./mb3m-prep";
+import { mb3mInvoiceChip, mb3mLettrageHoldNotice, mb3mPreparationView } from "./mb3m-prep";
+import { formatMoney } from "./money";
 
 const previous = {
   user: process.env.MB3M_API_USER,
@@ -561,6 +564,7 @@ describe("facture MB3M", () => {
       addInvoice,
       agencyUid: async () => null,
       findPiece: async () => "open",
+      readLettrage: async () => ({ lettered: false, amount: 1050, balance: 1050, seen: true }),
       cancelInvoice: async (_folder, number) => {
         calls.push(`cancel ${number}`);
       },
@@ -1439,5 +1443,147 @@ describe("facture MB3M", () => {
       if (previous === undefined) delete process.env.MB3M_ALLOW_CREDIT_NOTE;
       else process.env.MB3M_ALLOW_CREDIT_NOTE = previous;
     }
+  });
+
+  it("ne remplace pas une pro forma lettrée, la remplace sinon, et s’arrête si la lecture échoue", async () => {
+    arm();
+    const gap = mb3mLettrageWarning({
+      number: "2217",
+      kind: "lettered",
+      nextAmount: 5391.65,
+      currentAmount: 5404.15,
+    });
+    assert.match(gap, /pro forma n° 2217/);
+    assert.match(gap, /pas remplacée/);
+    assert.match(gap, /Délettrez le règlement/);
+    assert.equal(gap.replace(/\s/g, " ").includes(formatMoney(-12.5).replace(/\s/g, " ")), true);
+    assert.equal(
+      mb3mLettrageHoldNotice({ statut: "bloque_lettrage", avertissement: gap }),
+      gap.replace(/\s+/g, " ").trim()
+    );
+    assert.equal(mb3mLettrageHoldNotice({ avertissement: "facture Amadeus" }), null);
+
+    const next = context({
+      amount: 5391.65,
+      lines: [{ transactionId: "tx-1", label: "Hôtel", amount: 5391.65, activityId: 3 }],
+    });
+    const open = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "01-0002217",
+      folderUid: "folder-uid",
+      pieceNumber: "2217",
+      amount: 5404.15,
+      signature: "ancienne",
+      transactionIds: ["tx-1"],
+      attemptStatus: "preparing",
+      attemptError: "ancienne erreur",
+    });
+
+    const run = async (mode: "lettered" | "open" | "unread" | "printed") => {
+      const actions: string[] = [];
+      const saves: Parameters<Mb3mInvoiceDeps["save"]>[1][] = [];
+      let finds = 0;
+      let paymentReads = 0;
+      const fetchImpl: typeof fetch = async (_url, init) => {
+        const action = String(new Headers(init?.headers).get("SOAPAction"));
+        actions.push(action);
+        const body = String(init?.body || "");
+        if (action.includes("AddPieces")) {
+          return new Response(
+            `<FolderOperationResponse><ResultCode>1</ResultCode><Invoices><Invoice><Number>2218</Number><Uid>new</Uid></Invoice></Invoices></FolderOperationResponse>`
+          );
+        }
+        if (action.includes("CancelInvoice")) {
+          return new Response(`<FolderOperationResponse><ResultCode>1</ResultCode></FolderOperationResponse>`);
+        }
+        if (mode === "unread" && body.includes("IncludePayments")) {
+          return new Response(`<s:Fault><faultstring>lecture impossible</faultstring></s:Fault>`, { status: 500 });
+        }
+        if (body.includes("IncludePayments")) {
+          paymentReads += 1;
+          const balance = mode === "lettered" || (mode === "printed" && paymentReads > 1) ? "0.00" : "5404.15";
+          return new Response(
+            `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>2</TotalCount><Piece><Amount>5404.15</Amount><Balance>${balance}</Balance><Folder><Id>01-0002217</Id></Folder><Identity><Number>2217</Number></Identity><IsPayment>false</IsPayment></Piece><Piece><Amount>5404.15</Amount><Balance>${balance}</Balance><Folder><Id>01-0002217</Id></Folder><Identity><Number>2216</Number></Identity><IsPayment>true</IsPayment><DateCreation>2026-11-18T00:00:00</DateCreation></Piece></FindAllPiecesResponse>`
+          );
+        }
+        finds += 1;
+        const printed = mode === "printed" && finds > 1;
+        return new Response(
+          `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>1</TotalCount><Invoice><Number>2217</Number>${printed ? "<DatePrint>2026-11-18T10:00:00</DatePrint>" : ""}</Invoice></FindAllPiecesResponse>`
+        );
+      };
+      const deps: Mb3mInvoiceDeps = {
+        now: () => Date.now(),
+        claim: async () => ({ piece: { ...open }, created: false, owned: true }),
+        save: async (_id, patch) => {
+          saves.push(patch);
+        },
+        remove: async () => undefined,
+        savePerson: async () => ({ uid: "customer-uid", partnerId: "11111111222243" }),
+        saveCompany: async () => {
+          throw new Error("fiche société");
+        },
+        saveFolder: async () => {
+          actions.push("Save");
+          return { id: "01-0002217", uid: "folder-uid" };
+        },
+        addInvoice: (input) => mb3mAddInvoice(input, fetchImpl),
+        findPiece: (number) => mb3mFindPiece(number, fetchImpl),
+        readLettrage: (input) => mb3mReadLettrage(input, fetchImpl),
+        cancelInvoice: (folder, number) => mb3mCancelInvoice(folder, number, fetchImpl),
+        renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+        putPdf: async () => "doc-1",
+      };
+      return { actions, saves, result: await runMb3mInvoice(next, deps) };
+    };
+
+    const blocked = await run("lettered");
+    assert.equal(blocked.actions.some((action) => action.includes("AddPieces") || action.includes("CancelInvoice") || action === "Save"), false);
+    assert.equal(blocked.result.statut, "bloque_lettrage");
+    assert.equal(blocked.result.number, "2217");
+    assert.equal(blocked.result.created, false);
+    assert.equal(blocked.result.replaced, false);
+    assert.match(blocked.result.avertissement || "", /2217/);
+    assert.match(blocked.result.avertissement || "", /pas remplacée/);
+    assert.equal((blocked.result.avertissement || "").replace(/\s/g, " ").includes(formatMoney(-12.5).replace(/\s/g, " ")), true);
+    assert.equal(blocked.saves.some((patch) => patch.attemptStatus === "failed"), false);
+    assert.deepEqual(blocked.saves, [{ attemptStatus: null, attemptError: null }]);
+
+    const replaced = await run("open");
+    const writes = replaced.actions.filter((action) => action.includes("AddPieces") || action.includes("CancelInvoice"));
+    assert.deepEqual(
+      writes.map((action) => (action.includes("AddPieces") ? "AddPieces" : "CancelInvoice")),
+      ["AddPieces", "CancelInvoice"]
+    );
+    assert.equal(replaced.result.replaced, true);
+    assert.equal(replaced.result.number, "2218");
+    assert.equal(replaced.result.statut, undefined);
+    assert.equal(replaced.saves.some((patch) => patch.pieceNumber === "2218"), true);
+    assert.equal(replaced.saves.some((patch) => patch.attemptStatus === "failed"), false);
+
+    const unread = await run("unread");
+    assert.equal(unread.actions.some((action) => action.includes("AddPieces") || action.includes("CancelInvoice")), false);
+    assert.equal(unread.result.statut, "avertissement");
+    assert.match(unread.result.avertissement || "", /vérification du lettrage est impossible/);
+    assert.match(unread.result.avertissement || "", /2217/);
+    assert.equal(unread.saves.some((patch) => patch.attemptStatus === "failed"), false);
+
+    const printed = await run("printed");
+    assert.equal(printed.actions.some((action) => action.includes("AddPieces") || action.includes("CancelInvoice")), false);
+    assert.equal(printed.result.statut, "bloque_lettrage");
+    assert.equal(printed.result.printed, true);
+    assert.equal(printed.saves.some((patch) => patch.attemptStatus === "failed"), false);
+
+    const credit = await mb3mReplacementHold((input) => mb3mReadLettrage(input, async () => new Response(
+      `<FindAllPiecesResponse><ResultCode>1</ResultCode><Piece><Amount>100</Amount><Balance>0</Balance><Identity><Number>2217</Number></Identity><IsPayment>false</IsPayment></Piece></FindAllPiecesResponse>`
+    )), {
+      number: "2217",
+      folderId: null,
+      customerUid: null,
+      nextAmount: 100,
+      currentAmount: 100,
+    });
+    assert.equal(credit?.statut, "bloque_lettrage");
+    assert.match(credit?.avertissement || "", /2217/);
   });
 });

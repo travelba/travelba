@@ -824,6 +824,7 @@ type Mb3mSync = {
   enregistre: boolean;
   remplacee: boolean;
   lignes: { dossier: string; libelle: string; activite: number | null; net: number; marge: number | null }[];
+  statut?: "bloque_lettrage" | "avertissement" | null;
 };
 
 async function guardGroupedMb3m(admin: SupabaseClient, invoiceId: string): Promise<GroupedResult<{
@@ -880,6 +881,17 @@ async function syncGroupedMb3m(input: {
       },
       groupedMb3mDeps(service)
     );
+    if (pushed.statut === "bloque_lettrage" || pushed.statut === "avertissement") {
+      return {
+        numero: pushed.number,
+        erreur: null,
+        avertissement: pushed.avertissement,
+        enregistre: false,
+        remplacee: false,
+        lignes: pushed.lignes,
+        statut: pushed.statut,
+      };
+    }
     let stored = false;
     try {
       stored = await writeGroupedMb3m(service, input.invoiceId, {
@@ -1030,6 +1042,7 @@ export async function factureGroupee(args: {
       numero_mb3m: pushed.data.numero,
       erreur_mb3m: pushed.data.erreur,
       avertissement: pushed.data.avertissement,
+      statut: pushed.data.statut,
       remplacee: pushed.data.remplacee,
       lignes: pushed.data.lignes,
     };

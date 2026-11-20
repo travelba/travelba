@@ -447,6 +447,53 @@ describe("pièce MB3M de la facture groupée", () => {
     assert.deepEqual(cancelled, ["4542", "4601"]);
   });
 
+  it("ne remplace pas une pro forma groupée déjà lettrée, et s’arrête si la lecture échoue", async () => {
+    arm();
+    const blocked = async (read: GroupedMb3mDeps["readLettrage"]) => {
+      const calls: string[] = [];
+      const deps = fakeDeps({
+        findPiece: async () => "open",
+        readLettrage: read,
+        saveFolder: async () => {
+          calls.push("dossier");
+          return { id: "22-1", uid: "f" };
+        },
+        addInvoice: async () => {
+          calls.push("ajout");
+          return { number: "9", uid: "" };
+        },
+        cancelInvoice: async () => {
+          calls.push("annulation");
+        },
+      });
+      const pushed = await emitGroupedMb3mPiece(
+        {
+          customerId: CUSTOMER,
+          invoiceId: INVOICE,
+          number: "FG-2026-0002",
+          contexts: nilosContexts(),
+          previous: { pieceNumber: "4542", folderId: "22-0000025", customerUid: "client-connu" },
+        },
+        deps
+      );
+      return { calls, pushed };
+    };
+    const lettered = await blocked(async () => ({ lettered: true, amount: 5404.15, balance: 0, seen: true }));
+    assert.deepEqual(lettered.calls, []);
+    assert.equal(lettered.pushed.replaced, false);
+    assert.equal(lettered.pushed.number, "4542");
+    assert.equal(lettered.pushed.statut, "bloque_lettrage");
+    assert.match(lettered.pushed.avertissement || "", /4542/);
+    assert.match(lettered.pushed.avertissement || "", /pas remplacée/);
+    const unread = await blocked(async () => {
+      throw new Error("lecture impossible");
+    });
+    assert.deepEqual(unread.calls, []);
+    assert.equal(unread.pushed.statut, "avertissement");
+    assert.match(unread.pushed.avertissement || "", /vérification du lettrage est impossible/);
+    assert.equal(unread.pushed.replaced, false);
+  });
+
   it("n’enregistre pas le numéro si la colonne n’est pas encore là", async () => {
     const missing = { code: "42703", message: "column mb3m_piece_number does not exist" };
     assert.equal(missingGroupedMb3mColumn(missing), true);
@@ -491,6 +538,7 @@ function fakeDeps(partial: Partial<GroupedMb3mDeps>): GroupedMb3mDeps {
     saveFolder: async (input) => ({ id: input.id || "22-0000099", uid: "dossier-uid" }),
     addInvoice: async () => ({ number: "4542", uid: "piece-uid" }),
     findPiece: async () => "missing",
+    readLettrage: async () => ({ lettered: false, amount: null, balance: null, seen: true }),
     cancelInvoice: async () => undefined,
     agencyUid: async () => null,
     ...partial,
