@@ -436,11 +436,16 @@ describe("client MB3M Partners", () => {
 
   it("garde l’activité du fichier, la marge, et n’écrit une commission que si CommissionId est posé", () => {
     const base = { quantity: 1, netPriceUnit: 400, netPriceTotal: 400 };
-    for (const activityId of [2, 5, 27, 1001] as const) {
-      assert.equal(mb3mPrestationActivityId(activityId), activityId);
+    for (const activityId of [2, 5, 9, 27, 34, 1001] as const) {
+      const sent = activityId === 5 || activityId === 9 ? 22 : activityId;
+      assert.equal(mb3mPrestationActivityId(activityId), sent);
       const air = linesXml("InvoiceLine", [{ ...base, label: "Vol", activityId }]);
-      if (activityId === 5) {
-        assert.ok(air.includes(`<ActivityId>${activityId}</ActivityId><Label>Vol</Label>`), air);
+      if (activityId === 5 || activityId === 9) {
+        assert.ok(air.includes(`<ActivityId>22</ActivityId><Label>Vol</Label>`), air);
+        assert.equal(air.includes(`<ActivityId>${activityId}</ActivityId>`), false);
+        assert.equal(air.includes("Commission"), false);
+      } else if (activityId === 34) {
+        assert.ok(air.includes("<ActivityId>34</ActivityId><Label>Vol</Label>"), air);
         assert.equal(air.includes("Commission"), false);
       } else {
         assert.ok(
@@ -485,7 +490,7 @@ describe("client MB3M Partners", () => {
     assert.equal(credit.includes("CommissionId"), false);
   });
 
-  it("le train et le vol partent en 22 avec le net et la marge du CRM, sans commission", async () => {
+  it("le train part en 22, le vol garde la commission de 1 €, le net et la marge restent", async () => {
     process.env.VERCEL_ENV = "production";
     const train = "11111111-1111-4111-8111-111111111111";
     const fee = "22222222-2222-4222-8222-222222222222";
@@ -533,7 +538,7 @@ describe("client MB3M Partners", () => {
     assert.equal(flight?.netPriceUnit, 198);
     assert.equal(flight?.marginUnit, 1000.44);
     assert.equal(Math.round(((flight?.netPriceUnit || 0) + (flight?.marginUnit || 0)) * 100) / 100, 1198.44);
-    assert.equal(trainLine?.activityId, 5);
+    assert.equal(trainLine?.activityId, 22);
     assert.equal(trainLine?.netPriceUnit, 0.01);
     assert.equal(trainLine?.marginUnit, 361.99);
     assert.equal(Math.round(((trainLine?.netPriceUnit || 0) + (trainLine?.marginUnit || 0)) * 100) / 100, 362);
@@ -542,7 +547,8 @@ describe("client MB3M Partners", () => {
     assert.ok(xml.includes("<CommissionNetTotal>1</CommissionNetTotal><CommissionTotal>1</CommissionTotal>"));
     assert.equal(xml.includes("CommissionId"), false);
     assert.ok(xml.includes("<ActivityId>2</ActivityId><CommissionNetTotal>1</CommissionNetTotal>"));
-    assert.ok(xml.includes("<ActivityId>5</ActivityId>"));
+    assert.ok(xml.includes("<ActivityId>22</ActivityId>"));
+    assert.equal(xml.includes("<ActivityId>5</ActivityId>"), false);
     assert.ok(xml.includes("<NetPriceTotal>198</NetPriceTotal>"));
     assert.ok(xml.includes("<MarginUnit>1000.44</MarginUnit>"));
     arm();
@@ -589,11 +595,12 @@ describe("client MB3M Partners", () => {
       assert.ok(body.includes("<CommissionNetTotal>1</CommissionNetTotal><CommissionTotal>1</CommissionTotal>"), body);
       assert.equal(body.includes("CommissionId"), false);
       assert.ok(body.includes("<ActivityId>2</ActivityId>"));
-      assert.ok(body.includes("<ActivityId>5</ActivityId>"));
+      assert.ok(body.includes("<ActivityId>22</ActivityId>"));
+      assert.equal(body.includes("<ActivityId>5</ActivityId>"), false);
       assert.ok(body.includes("<NetPriceTotal>198</NetPriceTotal>"));
       assert.ok(body.includes("<MarginUnit>1000.44</MarginUnit>"));
       const close = body.includes("</InvoiceLine>") ? "</InvoiceLine>" : "</CreditNoteLine>";
-      const trainAt = body.indexOf("<ActivityId>5</ActivityId>");
+      const trainAt = body.indexOf("<ActivityId>22</ActivityId>");
       const trainLine = body.slice(trainAt, body.indexOf(close, trainAt) + close.length);
       assert.equal(trainLine.includes("Commission"), false, trainLine);
     }

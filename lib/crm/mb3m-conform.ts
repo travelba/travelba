@@ -1,7 +1,9 @@
 /**
  * Facture MB3M conforme au fichier agence (activités du 12/11/2026, fournisseurs existants).
  * Le CRM ne crée aucun fournisseur. Les vols (2, 1001, 27) partent avec une commission
- * fixe de 1 € (`MB3M_FLIGHT_EURO_COMMISSION=0` les retient). `MB3M_FLIGHT_COMMISSION=1`
+ * fixe de 1 €. Le train (5) et le maritime (9) partent en Divers terrestre (22).
+ * Même drapeau, temporaire, en attendant CommissionId (API 1.78.0) :
+ * `MB3M_FLIGHT_EURO_COMMISSION=0` retire les deux. `MB3M_FLIGHT_COMMISSION=1`
  * reste le chemin CommissionId, non utilisé.
  */
 
@@ -10,7 +12,7 @@ import { MB3M_AIRLINE_PROVIDERS, MB3M_PROVIDERS, type Mb3mCatalogProvider } from
 import { mb3mVerifiedProviderId } from "@/lib/crm/mb3m-verified-providers";
 import { readMb3mActivityOverride } from "@/lib/crm/mb3m-activity";
 import type { Mb3mAccountLine } from "@/lib/crm/mb3m-account";
-import { mb3mFlightEuroCommissionEnabled, type Mb3mLine } from "@/lib/crm/mb3m";
+import { mb3mFlightEuroCommissionEnabled, mb3mPrestationActivityId, type Mb3mLine } from "@/lib/crm/mb3m";
 import { siteConfig } from "@/lib/site";
 
 /** Activités du fichier MB3M. 14 (frais généraux) n’est jamais une ligne de facture. */
@@ -568,7 +570,7 @@ export function mb3mInvoiceRefCommand(dossierRef: string, lines: Mb3mLine[]) {
   return dossierRef;
 }
 
-/** Ligne SOAP. Les frais d’agence sont Custom, sans marge. Les vols partent avec la commission fixe de 1 €, sans CommissionId. */
+/** Ligne SOAP. Les frais d’agence sont Custom, sans marge. Les vols partent avec la commission fixe de 1 €, sans CommissionId. Le train et le maritime partent en 22. */
 export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): Mb3mLine {
   if (line.customCode) {
     const amount = Math.round(line.amount * 100) / 100;
@@ -595,7 +597,7 @@ export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): M
     quantity: 1,
     netPriceUnit: net,
     netPriceTotal: net,
-    activityId: line.activityId ?? undefined,
+    activityId: mb3mPrestationActivityId(line.activityId),
     type: "Standard",
     marginUnit: margin,
     note: line.note ?? null,

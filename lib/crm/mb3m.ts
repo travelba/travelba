@@ -700,12 +700,22 @@ export async function mb3mSaveFolder(
 }
 
 /**
- * Activité envoyée telle quelle. 2 = aérien, 1001 = achat direct, 27 = low cost, 5 = train.
+ * Contournement temporaire, en attendant CommissionId (API MB3M 1.78.0).
+ * Les vols (2, 1001, 27) gardent leur activité et partent avec une commission fixe de 1 €.
+ * Le train (5, ferroviaire, code 143) et le maritime (9, code 142) sont aussi de la billetterie :
+ * sans commission, MB3M répond -22. Ils partent en Divers terrestre (22).
+ * Même drapeau : `MB3M_FLIGHT_EURO_COMMISSION=0` retire les deux et renvoie l’activité du fichier.
+ * Low cost (27) et achat direct (1001) ont déjà la commission de 1 €. FTI TICKET (34, code 144)
+ * n’est jamais choisi, donc pas envoyé.
  * Les frais généraux (14) ne sont pas une ligne de facture.
  */
+const MB3M_LAND_ACTIVITY = 22;
+const MB3M_TICKETING_AS_LAND = new Set<number>([5, 9]);
+
 export function mb3mPrestationActivityId(activityId: number | null | undefined) {
   if (activityId == null) return undefined;
   if (activityId === 14) throw new Mb3mError("Les frais généraux ne sont pas une ligne de facture.", -1);
+  if (mb3mFlightEuroCommissionEnabled() && MB3M_TICKETING_AS_LAND.has(activityId)) return MB3M_LAND_ACTIVITY;
   return activityId;
 }
 
@@ -726,8 +736,9 @@ export function mb3mDefaultProviderId() {
 }
 
 /**
- * Commission fixe de 1 € sur les vols (activités 2, 1001, 27), en attendant l’API MB3M.
- * Activé par défaut. `MB3M_FLIGHT_EURO_COMMISSION=0` le retire et retient à nouveau les vols.
+ * Commission fixe de 1 € sur les vols (activités 2, 1001, 27), en attendant CommissionId
+ * (API MB3M 1.78.0). Activé par défaut. `MB3M_FLIGHT_EURO_COMMISSION=0` le retire,
+ * retient à nouveau les vols, et renvoie le train et le maritime sur leur activité du fichier.
  * Ce n’est pas `MB3M_FLIGHT_COMMISSION` : celui-là enverrait un CommissionId, absent du WSDL.
  */
 export const MB3M_FLIGHT_EURO_COMMISSION_AMOUNT = 1;
@@ -782,7 +793,7 @@ export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine
       const refPiece = tag("RefPiece", (line.refPiece || "").trim().slice(0, 40));
       // Ordre WCF : ActivityId, CommissionNetTotal, CommissionTotal, CustomType, Label,
       // MarginUnit, NetPriceTotal, NetPriceUnit, Note, ProviderId, Quantity, RefPiece, Type.
-      // CommissionId n’est pas dans le WSDL.
+      // CommissionId n’est pas dans le WSDL (API 1.78.0). Le train et le maritime partent en 22.
       return `<${kind}>${activity}${commissionIdXml(line)}${flightEuroCommissionXml(line)}${customTypeXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${providerXml(line, providerFallback)}${tag("Quantity", quantity(line.quantity))}${refPiece}${tag("Type", type)}</${kind}>`;
     })
     .join("");
