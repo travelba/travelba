@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { routing } from "./i18n/routing";
 import { gateAgencyApi } from "./lib/crm/agency-gate";
 import { IN_APP_STAY_COOKIE, IN_APP_STAY_MAX_AGE, IN_APP_STAY_PARAM, inAppHandoffDecision, inAppHandoffHtml } from "./lib/crm/in-app-browser";
+import { clubMaquetteRequest } from "./lib/crm/club-maquette";
 import { catalogueCrawlerDecision } from "./lib/crm/public-catalogue";
 import { updateSession } from "./lib/supabase/middleware";
 
@@ -140,6 +141,24 @@ async function route(request: NextRequest) {
   }
 
   if (path === "/anniversaire-cyril" || path.startsWith("/anniversaire-cyril/")) {
+    return NextResponse.next();
+  }
+
+  // Maquette Club : aucune session, aucune écriture. Fermée en production.
+  // L’admin reste sur /admin/maquette-club, sans la session ni les compteurs réels.
+  const maquette = clubMaquetteRequest(path, process.env.VERCEL_ENV);
+  if (maquette === "redirect") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/connexion";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+  if (maquette === "next") {
+    if (path === "/admin/maquette-club" || path.startsWith("/admin/maquette-club/")) {
+      const headers = new Headers(request.headers);
+      headers.set("x-travelba-maquette", "club");
+      return NextResponse.next({ request: { headers } });
+    }
     return NextResponse.next();
   }
 
