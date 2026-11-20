@@ -125,7 +125,7 @@ export function parseExpediaRegions(payload: unknown): ExpediaRegion[] {
     const id = typeof row?.id === "string" ? row.id : "";
     const name = typeof row?.name === "string" ? row.name : "";
     const type = typeof row?.type === "string" ? row.type : "";
-    if (id && name) regions.push({ id, name, type, propertyIds: row ? propertyIdsOf(row) : [] });
+    if (id) regions.push({ id, name, type, propertyIds: row ? propertyIdsOf(row) : [] });
   }
   return regions;
 }
