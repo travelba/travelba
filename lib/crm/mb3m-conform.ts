@@ -1,10 +1,10 @@
 /**
  * Facture MB3M conforme au fichier agence (activités du 12/11/2026, fournisseurs existants).
  * Le CRM ne crée aucun fournisseur. Les vols (2, 1001, 27) partent avec une commission
- * fixe de 1 €. Le train (5) et le maritime (9) partent en Divers terrestre (22).
- * Même drapeau, temporaire, en attendant CommissionId (API 1.78.0) :
- * `MB3M_FLIGHT_EURO_COMMISSION=0` retire les deux. `MB3M_FLIGHT_COMMISSION=1`
- * reste le chemin CommissionId, non utilisé.
+ * fixe de 1 € quand `MB3M_FLIGHT_EURO_COMMISSION` n’est pas `0`. Le train (5) et le
+ * maritime (9) partent toujours en Divers terrestre (22), sans commission, tant que
+ * CommissionId n’est pas utilisé. Un choix `mb3m_activity` sur la carte prime.
+ * `MB3M_FLIGHT_COMMISSION=1` reste le chemin CommissionId, non utilisé.
  */
 
 import { agencyEmailHtml } from "@/lib/crm/email-html";
@@ -461,6 +461,7 @@ export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mCon
         label: mb3mFeeLabel(code, line.label),
       };
     }
+    // Choix explicite de la carte. Il prime sur le remap d’envoi train 5 / maritime 9 → 22.
     if (item && readMb3mActivityOverride(item.details) === "land") {
       const named = mb3mProviderByName("DIVERS TERRESTRE");
       const providerName = named?.name || "DIVERS TERRESTRE";
@@ -570,7 +571,7 @@ export function mb3mInvoiceRefCommand(dossierRef: string, lines: Mb3mLine[]) {
   return dossierRef;
 }
 
-/** Ligne SOAP. Les frais d’agence sont Custom, sans marge. Les vols partent avec la commission fixe de 1 €, sans CommissionId. Le train et le maritime partent en 22. */
+/** Ligne SOAP. Les frais d’agence sont Custom, sans marge. Les vols partent avec la commission fixe de 1 €, sans CommissionId, seulement si le drapeau est ouvert. Le train et le maritime partent toujours en 22. */
 export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): Mb3mLine {
   if (line.customCode) {
     const amount = Math.round(line.amount * 100) / 100;

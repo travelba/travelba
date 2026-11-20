@@ -184,6 +184,7 @@ describe("pièce MB3M de la facture groupée", () => {
     assert.equal(fee?.customType?.lineType, 4);
     assert.equal(/%|IATA|APST/.test(built.lines.map((row) => `${row.label} ${row.note || ""}`).join(" ")), false);
     const frankfurt = built.lines.find((row) => row.label === "Train Francfort");
+    assert.equal(frankfurt?.activityId, MB3M_ACTIVITY.land);
     assert.match(frankfurt?.note || "", /TB-2026-0077/);
     assert.match(frankfurt?.note || "", /Francfort/);
     assert.match(frankfurt?.note || "", /Louis Martin/);
