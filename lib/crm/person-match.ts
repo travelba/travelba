@@ -21,11 +21,78 @@ export function nameTokens(value: string | null | undefined) {
     .filter((token) => token.length >= 2);
 }
 
+/**
+ * Mot d’occupation (FR/EN), sans accent.
+ * « an » / « year » ne comptent qu’avec un chiffre, une parenthèse, ou seuls.
+ * « guest » et « pax » non plus : « Guest A » et « Pax Test » sont des noms, « 2 guests » est rejeté par le chiffre.
+ */
+const OCCUPANCY_TOKEN =
+  /^(?:adultes?|adults?|enfants?|child(?:ren)?|kids?|bebes?|bab(?:y|ies)|infants?|personnes?|persons?|occupants?|chambres?|rooms?|voyageurs?|travell?ers?)$/;
+const AGE_TOKEN = /^(?:an|ans|year|years)$/;
+const AGE_FILLER =
+  /^(?:de|du|des|un|une|et|moins|of|old|yo|an|ans|year|years|adultes?|adults?|enfants?|child(?:ren)?|kids?|bebes?|bab(?:y|ies)|infants?|personnes?|persons?|occupants?|chambres?|rooms?|voyageurs?|travell?ers?)$/;
+
+function occupancyTokens(value: string) {
+  return foldName(value).split(" ").filter(Boolean);
+}
+
+/**
+ * Libellé de chambre, pas une personne : « 2 adultes », « 1 Adult », « 2 Adulte(s) »,
+ * « 1 personne(s) », « 1 Enfant », « 5 ans) », « 2 enfants (1 an ».
+ * Un prénom « An » suivi d’un nom (« An Nguyen ») reste un nom.
+ */
+export function isOccupancyGuestLabel(value: string | null | undefined) {
+  const text = (value || "").replace(/\s+/g, " ").trim();
+  if (!text) return false;
+  if (/[()（）[\]]/.test(text)) return true;
+  const tokens = occupancyTokens(text);
+  if (tokens.some((token) => OCCUPANCY_TOKEN.test(token))) return true;
+  const counted = /\d/.test(text);
+  if (counted && (tokens.some((token) => AGE_TOKEN.test(token)) || /^\d+\b/.test(text))) return true;
+  if (
+    tokens.some((token) => AGE_TOKEN.test(token)) &&
+    tokens.every((token) => token.length < 3 || AGE_FILLER.test(token))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** « Adulte 2 » : voyageur sans nom, quand le document n’imprime personne. */
+export function isUnnamedAdult(first: string | null | undefined, last: string | null | undefined) {
+  return foldName(first) === "adulte" && /^\d+$/.test((last || "").trim());
+}
+
+/** Libellé d’occupation déjà découpé en prénom / nom. « Adulte N » n’en fait pas partie. */
+export function isDerivedOccupancyTraveler(
+  first: string | null | undefined,
+  last: string | null | undefined
+) {
+  if (isUnnamedAdult(first, last)) return false;
+  const joined = [first, last]
+    .map((part) => (part || "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return isOccupancyGuestLabel(joined);
+}
+
 export function isPlaceholderTraveler(
   first: string | null | undefined,
   last: string | null | undefined
 ) {
-  return foldName(first) === "adulte" && /^\d+$/.test((last || "").trim());
+  return isUnnamedAdult(first, last) || isDerivedOccupancyTraveler(first, last);
+}
+
+const PERSON_NAME = /^[\p{L}'’‘ʼ\-]+(?:\s+[\p{L}'’‘ʼ\-]+)+$/u;
+
+/** Un segment « Prénom Nom ». Un chiffre, une parenthèse ou un mot d’occupation : rien. */
+export function parseGuestLabel(value: string): PersonName | null {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (!text || isOccupancyGuestLabel(text)) return null;
+  if (!PERSON_NAME.test(text)) return null;
+  const parts = text.split(" ");
+  if (parts.length < 2 || parts.some((part) => !/\p{L}/u.test(part))) return null;
+  return { first_name: parts.slice(0, -1).join(" "), last_name: parts[parts.length - 1] || null };
 }
 
 function editDistance(a: string, b: string) {

@@ -3,10 +3,13 @@ import test from "node:test";
 import {
   firstNameOnlyMatches,
   firstNamesMatch,
+  isDerivedOccupancyTraveler,
+  isOccupancyGuestLabel,
   isPlaceholderTraveler,
   lastNamesMatch,
   matchTravelerToParty,
   namesReferToSamePerson,
+  parseGuestLabel,
   holderMatchesAddedTraveler,
   sameAddedTraveler,
   sameRecordedTraveler,
@@ -72,6 +75,84 @@ test("un nom imparfait désigne la même personne", () => {
     ),
     false
   );
+});
+
+test("un libellé d’occupation n’est pas un voyageur", () => {
+  const labels = [
+    "2 adultes, 2 enfants (1 an, 5 ans)",
+    "2 adultes",
+    "2 enfants (1 an",
+    "5 ans)",
+    "1 Adult",
+    "2 Adults",
+    "2 Adulte(s)",
+    "1 personne(s)",
+    "1 Enfant",
+    "1 adulte",
+    "2 adultes, 2 enfants de 5 et 8 ans",
+    "1 adulte, 1 enfant de moins d’un an",
+    "1 bébé",
+    "2 Bébés",
+    "1 child",
+    "2 children",
+    "1 kid",
+    "2 kids",
+    "1 baby",
+    "1 infant",
+    "2 pax",
+    "1 guest",
+    "2 guests",
+    "1 occupant",
+    "1 chambre",
+    "1 room",
+    "1 personne",
+    "2 personnes",
+    "1 person",
+    "2 persons",
+    "1 an",
+    "5 ans",
+    "2 years",
+    "moins d’un an",
+  ];
+  for (const label of labels) {
+    assert.equal(isOccupancyGuestLabel(label), true, label);
+    assert.equal(parseGuestLabel(label), null, label);
+  }
+  const split = [
+    ["2", "adultes"],
+    ["2 enfants (1", "an"],
+    ["5", "ans)"],
+    ["1", "Adult"],
+    ["2", "Adults"],
+    ["2", "Adulte(s)"],
+    ["1", "personne(s)"],
+    ["1", "Enfant"],
+    ["1", "bébé"],
+    ["2", "children"],
+    ["1", "guest"],
+    ["1", "chambre"],
+    ["2", "rooms"],
+    ["5", "ans"],
+    ["1", "year"],
+  ] as const;
+  for (const [first, last] of split) {
+    assert.equal(isPlaceholderTraveler(first, last), true, `${first} ${last}`);
+    assert.equal(isDerivedOccupancyTraveler(first, last), true, `${first} ${last}`);
+    assert.equal(parseGuestLabel(`${first} ${last}`), null, `${first} ${last}`);
+  }
+  assert.equal(isPlaceholderTraveler("Adulte", "2"), true);
+  assert.equal(isDerivedOccupancyTraveler("Adulte", "2"), false);
+  assert.equal(isPlaceholderTraveler("Camille", "2"), false);
+  assert.equal(isPlaceholderTraveler("Benjamin", "Boukris"), false);
+  assert.equal(isPlaceholderTraveler("Jean-Pierre", "D'Arc"), false);
+  assert.equal(isPlaceholderTraveler("An", "Nguyen"), false);
+  assert.equal(isPlaceholderTraveler("Guest", "A"), false);
+  assert.deepEqual(parseGuestLabel("Benjamin Boukris"), { first_name: "Benjamin", last_name: "Boukris" });
+  assert.deepEqual(parseGuestLabel("Jean-Pierre D'Arc"), { first_name: "Jean-Pierre", last_name: "D'Arc" });
+  assert.deepEqual(parseGuestLabel("Jean-Pierre D’Arc"), { first_name: "Jean-Pierre", last_name: "D’Arc" });
+  assert.deepEqual(parseGuestLabel("An Nguyen"), { first_name: "An", last_name: "Nguyen" });
+  assert.deepEqual(parseGuestLabel("Guest A"), { first_name: "Guest", last_name: "A" });
+  assert.deepEqual(parseGuestLabel("Pax Test"), { first_name: "Pax", last_name: "Test" });
 });
 
 test("un placeholder et un nom trop différent ne matchent pas", () => {

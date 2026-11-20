@@ -9,6 +9,7 @@ import {
   foldName,
   isPlaceholderTraveler,
   lastNamesMatch,
+  parseGuestLabel,
 } from "@/lib/crm/person-match";
 import { siteConfig } from "@/lib/site";
 import {
@@ -853,9 +854,9 @@ export type HotelStayCard = {
 };
 
 function guestPerson(value: string): ExtractPerson | null {
-  const parts = value.trim().split(/\s+/).filter(Boolean);
-  if (parts.length < 2) return null;
-  return { first_name: parts.slice(0, -1).join(" "), last_name: parts[parts.length - 1] };
+  const person = parseGuestLabel(value);
+  if (!person?.first_name || !person.last_name) return null;
+  return { first_name: person.first_name, last_name: person.last_name };
 }
 
 function cardGuests(card: HotelStayCard): ExtractPerson[] {
