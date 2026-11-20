@@ -29,6 +29,7 @@ import { missingDbColumn } from "@/lib/crm/optional-column";
 import { deleteEmptyBillingCompany, upsertBillingCompany, type BillingCompanyInput } from "@/lib/crm/billing-companies";
 import { customerEmailError, normalizeCustomerEmail, otherCustomerEmailBlock, CUSTOMER_EMAIL_COPY } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
+import { applyCustomerZeroFees } from "@/lib/crm/zero-fees";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { extraMomentOf, extraPlaceOf, extraServiceLeg } from "@/lib/crm/extras";
 import { isCancellationExtract } from "@/lib/crm/ingest-types";
@@ -483,6 +484,10 @@ export function prepareClientUpdate(input: Record<string, unknown>) {
   if ("masquer_prix" in input) {
     if (typeof input.masquer_prix !== "boolean") throw new McpWriteError("masquer_prix : vrai ou faux.");
     patch.hide_client_prices = input.masquer_prix;
+  }
+  if ("zero_frais" in input) {
+    if (typeof input.zero_frais !== "boolean") throw new McpWriteError("zero_frais : vrai ou faux.");
+    patch.zero_fees = input.zero_frais;
   }
   const removeCompanyId =
     input.supprimer_societe_id == null || input.supprimer_societe_id === ""
@@ -1291,6 +1296,11 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
       }
     }
   }
+  let turnOnZeroFees = false;
+  if (patch.zero_fees === true) {
+    const before = await db.from("crm_customers").select("zero_fees").eq("id", id).maybeSingle();
+    turnOnZeroFees = Boolean(before.error) || (before.data as { zero_fees?: boolean | null } | null)?.zero_fees !== true;
+  }
   let row = holder as Pick<CrmCustomer, "id" | "first_name" | "last_name" | "email"> & {
     phone?: string | null;
     company_name?: string | null;
@@ -1305,6 +1315,9 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
     if (error || !data) {
       if ("hide_client_prices" in patch && (error?.code === "42703" || error?.code === "PGRST204")) {
         throw new McpWriteError("Le masquage des prix n’est pas encore en place. Appliquez la migration, puis réessayez.");
+      }
+      if ("zero_fees" in patch && (error?.code === "42703" || error?.code === "PGRST204")) {
+        throw new McpWriteError("Zéro frais n’est pas encore en place. Appliquez la migration, puis réessayez.");
       }
       failDb(error, "Client non enregistré.");
     }
@@ -1326,6 +1339,17 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
       row = { ...row, company_name: (refreshed.data as { company_name?: string | null }).company_name ?? null };
     }
   }
+  let frais_retires = 0;
+  let frais_laisses = 0;
+  if (turnOnZeroFees) {
+    try {
+      const cleared = await applyCustomerZeroFees(db, id);
+      frais_retires = cleared.retires;
+      frais_laisses = cleared.laisses;
+    } catch (err) {
+      console.error("[mcp] zéro frais", err instanceof Error ? err.message : "error");
+    }
+  }
   if ("agency_fee_rate" in patch) {
     try {
       await syncInheritedAgencyFees(db, id);
@@ -1334,16 +1358,20 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
     }
   }
   const rateRead = await db.from("crm_customers").select("agency_fee_rate").eq("id", id).maybeSingle();
-  const hideRead = await db.from("crm_customers").select("hide_client_prices").eq("id", id).maybeSingle();
+  const withZero = await db.from("crm_customers").select("hide_client_prices, zero_fees").eq("id", id).maybeSingle();
+  const hideRead =
+    withZero.error && /zero_fees/i.test(withZero.error.message || "")
+      ? await db.from("crm_customers").select("hide_client_prices").eq("id", id).maybeSingle()
+      : withZero;
   const storedRate = rateRead.error
     ? "agency_fee_rate" in patch
       ? patch.agency_fee_rate
       : null
     : rateRead.data?.agency_fee_rate;
   const commission_agence = formatAgencyFeePercent(typeof storedRate === "number" ? storedRate : Number(storedRate));
-  const masquer_prix = hideRead.error
-    ? patch.hide_client_prices === true
-    : (hideRead.data as { hide_client_prices?: boolean | null } | null)?.hide_client_prices === true;
+  const flags = hideRead.data as { hide_client_prices?: boolean | null; zero_fees?: boolean | null } | null;
+  const masquer_prix = hideRead.error ? patch.hide_client_prices === true : flags?.hide_client_prices === true;
+  const zero_frais = hideRead.error ? patch.zero_fees === true : flags?.zero_fees === true;
   return {
     id: row.id,
     nom: customerFullName(row),
@@ -1356,5 +1384,8 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
     societe_retiree: societeRetiree,
     commission_agence,
     masquer_prix,
+    zero_frais,
+    frais_retires,
+    frais_laisses,
   };
 }

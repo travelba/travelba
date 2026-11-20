@@ -3,12 +3,12 @@
 import { useState } from "react";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
+import { statementFilenameFromDisposition } from "@/lib/crm/statement-filename";
 
 type Audience = "client" | "staff";
 
 function filenameFrom(header: string | null) {
-  const match = header?.match(/filename="([^"]+)"/);
-  return match?.[1] || "Releve-de-compte.pdf";
+  return statementFilenameFromDisposition(header);
 }
 
 function saveBlob(blob: Blob, filename: string) {

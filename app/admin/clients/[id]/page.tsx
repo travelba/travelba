@@ -6,9 +6,11 @@ import { redactVaultDocument } from "@/lib/crm/agency-access";
 import { staffAllows } from "@/lib/crm/agency-guard";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
+import { TwinAccountPanel } from "@/components/admin/TwinAccountPanel";
 import { HotelAccessCard } from "@/components/admin/HotelAccessCard";
 import { HotelDirectDesk, type DirectDeskStay } from "@/components/admin/HotelDirectDesk";
 import { CLIENT_PHASE_LABEL, type ClientPhase } from "@/lib/crm/hotel-direct";
+import { GroupedInvoicePanel } from "@/components/admin/GroupedInvoicePanel";
 import { Mb3mFicheAction } from "@/components/admin/Mb3mFicheAction";
 import {
   ArchiveBookingButton,
@@ -27,6 +29,7 @@ import { agencyPayFollowUp } from "@/lib/crm/client-pay";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
 import { repairCustomerDownloads } from "@/lib/crm/download-journal";
 import { getPortalAccess } from "@/lib/crm/invite";
+import { listCustomerTwins } from "@/lib/crm/customer-twins";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { readPendingAccess } from "@/lib/crm/hotel-access-run";
 import { mb3mRealm } from "@/lib/crm/mb3m";
@@ -251,6 +254,11 @@ export default async function AdminClientDetailPage({ params }: Props) {
                   Prix masqués au client
                 </span>
               ) : null}
+              {c.zero_fees ? (
+                <span className="ml-3 align-middle rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+                  Zéro frais
+                </span>
+              ) : null}
             </h1>
             <p className="mt-2 max-w-xl break-words text-sm text-white/70">
               {[contactLine, `Dernière visite · ${lastVisit}`].filter(Boolean).join("  ·  ")}
@@ -262,6 +270,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                 <StatementRequest endpoint={`/api/admin/clients/${c.id}/releve`} audience="staff" />
               </Suspense>
             </div>
+            <GroupedInvoicePanel customerId={c.id} />
             <Link
               href={clientLedgerAdminHref(c.id)}
               className="admin-af-btn-accent inline-flex rounded-full px-5 py-2.5 text-sm"
@@ -331,6 +340,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-5">
+      <TwinAccounts customerId={c.id} customerName={customerFullName(c)} />
       <CustomerEditor
         key={c.updated_at}
         customer={c}
@@ -558,6 +568,23 @@ export default async function AdminClientDetailPage({ params }: Props) {
         </aside>
       </div>
     </div>
+  );
+}
+
+async function TwinAccounts({ customerId, customerName }: { customerId: string; customerName: string }) {
+  let twins: { id: string; nom: string }[] = [];
+  try {
+    twins = await listCustomerTwins(createServiceClient(), customerId);
+  } catch {
+    twins = [];
+  }
+  return (
+    <TwinAccountPanel
+      key={twins.map((twin) => twin.id).join() || "aucun"}
+      customerId={customerId}
+      customerName={customerName}
+      twins={twins}
+    />
   );
 }
 

@@ -952,9 +952,22 @@ test("le tableau sonde aussi l’onglet en arrière-plan", () => {
   const end = src.indexOf("function onMessage");
   const tick = src.slice(start, end);
   assert.doesNotMatch(tick, /visibilityState === "hidden"\) return/);
-  assert.match(tick, /browserAlert/);
+  assert.doesNotMatch(tick, /visibilityState === "hidden"/);
+  assert.match(tick, /deliverAdminNotices/);
+  assert.match(tick, /takePopupBacklog/);
+  assert.match(src, /popupCursor/);
   assert.match(tick, /replied > 0/);
-  assert.match(src, /askBrowserAlerts/);
+  assert.doesNotMatch(src, /pointerdown/);
+  const prompt = readFileSync(join(process.cwd(), "components/admin/BrowserAlertPrompt.tsx"), "utf8");
+  assert.match(prompt, /askBrowserAlerts/);
+  assert.match(prompt, /Activer les notifications/);
+  const store = readFileSync(join(process.cwd(), "lib/crm/admin-notice-store.ts"), "utf8");
+  assert.match(store, /browserAlert\(/);
+  const dock = readFileSync(join(process.cwd(), "components/admin/WhatsappDock.tsx"), "utf8");
+  assert.doesNotMatch(dock, /browserAlert/);
+  assert.doesNotMatch(dock, /deliverWhatsappNotice/);
+  const inbox = readFileSync(join(process.cwd(), "components/admin/WhatsappInbox.tsx"), "utf8");
+  assert.doesNotMatch(inbox, /browserAlert\(/);
 });
 
 test("le cron relit le fil Gmail, la Boîte ne le fait plus au rendu", () => {

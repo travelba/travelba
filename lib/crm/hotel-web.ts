@@ -1,7 +1,7 @@
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 import { z } from "zod";
 import { CITY_ALIASES } from "./city-names";
-import { foldHotelLabel } from "./hotel-catalog";
+import { foldHotelLabel, matchHotelLabel } from "./hotel-catalog";
 import { catalogNameAgrees, clockStorage } from "./hotel-gallery";
 
 /**
@@ -14,7 +14,8 @@ export const HOTEL_WEB_REVIEW_REASON = "Infos hôtel trouvées par recherche web
 export const PERPLEXITY_MISSING_KEY_WARNING =
   "[hotel-web] PERPLEXITY_API_KEY absente : recherche non lancée.";
 
-const PHOTO_CAP = 6;
+export const HOTEL_WEB_PHOTO_CAP = 8;
+const PHOTO_CAP = HOTEL_WEB_PHOTO_CAP;
 const SOURCE_CAP = 8;
 const NAME_STOP = new Set(["hotel", "hotels", "the", "le", "la", "les", "de", "du", "des", "and"]);
 const EMAIL = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
@@ -132,11 +133,22 @@ export function hotelCacheKey(name: string, city: string) {
   return `${hotel}|${place}`;
 }
 
-export function isLittleEmperorsHotel(item: HotelWebItem) {
-  const details = item.details || {};
-  if (text(details.source_family) === "little_emperors") return true;
-  if (details.le_hotel_id != null && String(details.le_hotel_id).trim() !== "") return true;
-  return (item.supplier || "").toLowerCase().includes("little emperor");
+/** Identifiant Little Emperors réel. Le nom du fournisseur ne suffit pas. */
+export function realLeHotelId(details: Record<string, unknown> | null | undefined) {
+  const raw = details?.le_hotel_id;
+  if (typeof raw === "number") return Number.isInteger(raw) && raw > 0 ? String(raw) : "";
+  if (typeof raw === "string" && /^[1-9]\d*$/.test(raw.trim())) return raw.trim();
+  return "";
+}
+
+/**
+ * Hôtel déjà couvert par Little Emperors.
+ * `catalogMatch` vient d’une ligne unique de `crm_le_hotels` (nom + ville).
+ * Le libellé fournisseur et `source_family` seuls ne comptent pas.
+ */
+export function isLittleEmperorsHotel(item: HotelWebItem, catalogMatch = false) {
+  if (realLeHotelId(item.details)) return true;
+  return catalogMatch === true;
 }
 
 export function hotelSearchIdentity(item: HotelWebItem) {
@@ -203,6 +215,22 @@ export function acceptHotelWebsite(value: unknown) {
   const url = acceptHttpsUrl(value);
   if (!url || BLOCKED_HOST.test(new URL(url).hostname)) return "";
   return url;
+}
+
+/** Hôte du site officiel, sans www. */
+export function officialSiteHost(website: string) {
+  const url = acceptHotelWebsite(website);
+  if (!url) return "";
+  return new URL(url).hostname.replace(/^www\./i, "").toLowerCase();
+}
+
+/** L’image est servie par le site officiel ou un sous-domaine de ce site. */
+export function imageOnOfficialSite(imageUrl: string, website: string) {
+  const host = officialSiteHost(website);
+  const image = acceptHttpsUrl(imageUrl);
+  if (!host || !image) return false;
+  const imageHost = new URL(image).hostname.replace(/^www\./i, "").toLowerCase();
+  return imageHost === host || imageHost.endsWith(`.${host}`);
 }
 
 function acceptClock(value: unknown) {
@@ -278,11 +306,12 @@ export function extractJsonObject(value: string) {
 }
 
 function cleanFacts(data: z.infer<typeof hotelWebPayloadSchema>): HotelWebFacts {
+  const website = acceptHotelWebsite(data.website);
   const photos: HotelWebFacts["photos"] = [];
   const seenPhotos = new Set<string>();
   for (const entry of data.photos || []) {
     const url = acceptHotelPhotoUrl(typeof entry === "string" ? entry : entry.url);
-    if (!url || seenPhotos.has(url)) continue;
+    if (!url || seenPhotos.has(url) || !imageOnOfficialSite(url, website)) continue;
     seenPhotos.add(url);
     const caption = typeof entry === "string" ? "" : text(entry.caption ?? entry.legende).slice(0, 120);
     photos.push({ url, caption });
@@ -519,9 +548,12 @@ export function mergeHotelWebFacts(
 }
 
 export function hotelWebUserPrompt(name: string, city: string) {
+  const place = city.trim()
+    ? `Ville : ${city}`
+    : "Ville : inconnue. Cherche avec le nom seul, sans inventer la ville.";
   return [
     `Hôtel : ${name}`,
-    `Ville : ${city}`,
+    place,
     "Réponds par un objet JSON avec les clés address, website, description, check_in, check_out, reception, reservations, concierge, photos, sources.",
     "reception, reservations et concierge valent { phone, email }.",
     "photos vaut [{ url, caption }]. check_in et check_out valent HH:mm.",
@@ -591,6 +623,7 @@ function perplexityBody(name: string, city: string, schema: boolean) {
   return {
     model: PERPLEXITY_HOTEL_MODEL,
     temperature: 0,
+    return_images: true,
     messages: [
       { role: "system", content: HOTEL_WEB_SYSTEM },
       { role: "user", content: hotelWebUserPrompt(name, city) },
@@ -604,6 +637,132 @@ function perplexityBody(name: string, city: string, schema: boolean) {
         }
       : {}),
   };
+}
+
+function pushSource(sources: string[], seen: Set<string>, value: unknown) {
+  const url = acceptHttpsUrl(value);
+  if (!url || seen.has(url) || privateHost(new URL(url).hostname)) return;
+  seen.add(url);
+  if (sources.length < SOURCE_CAP) sources.push(url);
+}
+
+function imageCaption(value: unknown) {
+  const row = asRecord(value);
+  return text(row?.caption ?? row?.title ?? row?.legende).slice(0, 120);
+}
+
+/**
+ * Images et pages de la réponse Perplexity.
+ * Une image n’est gardée que si son URL est sur le domaine du site officiel.
+ */
+export function readPerplexityHotelMedia(payload: unknown, website: string) {
+  const root = asRecord(payload);
+  const photos: HotelWebFacts["photos"] = [];
+  const seenPhotos = new Set<string>();
+  const sources: string[] = [];
+  const seenSources = new Set<string>();
+  const images = Array.isArray(root?.images) ? root.images : [];
+  for (const entry of images) {
+    const row = asRecord(entry);
+    const candidate = typeof entry === "string" ? entry : text(row?.image_url ?? row?.url ?? row?.image);
+    if (!candidate || !imageOnOfficialSite(candidate, website) || seenPhotos.has(candidate)) continue;
+    seenPhotos.add(candidate);
+    photos.push({ url: acceptHttpsUrl(candidate), caption: imageCaption(entry) });
+    if (photos.length >= PHOTO_CAP) break;
+  }
+  const results = Array.isArray(root?.search_results) ? root.search_results : [];
+  for (const entry of results) {
+    const row = asRecord(entry);
+    const page = typeof entry === "string" ? entry : text(row?.url);
+    pushSource(sources, seenSources, page);
+    const thumb = text(row?.image_url ?? row?.thumbnail ?? row?.image);
+    if (!thumb || photos.length >= PHOTO_CAP || !imageOnOfficialSite(thumb, website) || seenPhotos.has(thumb)) continue;
+    seenPhotos.add(thumb);
+    photos.push({ url: acceptHttpsUrl(thumb), caption: imageCaption(entry) });
+  }
+  const citations = Array.isArray(root?.citations) ? root.citations : [];
+  for (const entry of citations) pushSource(sources, seenSources, entry);
+  return { photos, sources };
+}
+
+/** og:image (ou twitter:image) déclaré par la page du site officiel. */
+export function readOfficialOgImage(html: string, website: string) {
+  const site = acceptHotelWebsite(website);
+  if (!site || !html) return "";
+  const patterns = [
+    /<meta[^>]+property=["']og:image(?::url)?["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::url)?["']/i,
+    /<meta[^>]+name=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image(?::src)?["']/i,
+  ];
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    const raw = match?.[1]?.trim();
+    if (!raw) continue;
+    try {
+      const resolved = new URL(raw, site).toString();
+      const safe = acceptHttpsUrl(resolved);
+      if (safe) return safe;
+    } catch {
+      continue;
+    }
+  }
+  return "";
+}
+
+function mergeWebMedia(facts: HotelWebFacts, media: { photos: HotelWebFacts["photos"]; sources: string[] }): HotelWebFacts {
+  const photos = [...facts.photos];
+  const seenPhotos = new Set(photos.map((photo) => photo.url));
+  for (const photo of media.photos) {
+    if (!photo.url || seenPhotos.has(photo.url)) continue;
+    seenPhotos.add(photo.url);
+    photos.push(photo);
+    if (photos.length >= PHOTO_CAP) break;
+  }
+  const sources = [...facts.sources];
+  const seenSources = new Set(sources);
+  for (const url of media.sources) {
+    if (seenSources.has(url)) continue;
+    seenSources.add(url);
+    sources.push(url);
+    if (sources.length >= SOURCE_CAP) break;
+  }
+  return { ...facts, photos, sources };
+}
+
+function sameOfficialHost(url: string, website: string) {
+  const host = officialSiteHost(website);
+  const next = officialSiteHost(url);
+  if (!host || !next) return false;
+  return next === host || next.endsWith(`.${host}`) || host.endsWith(`.${next}`);
+}
+
+async function officialOgImage(website: string, fetchImpl: FetchLike) {
+  try {
+    let target = website;
+    let response = await fetchImpl(target, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(8_000),
+      headers: { Accept: "text/html" },
+    });
+    if (response.status >= 300 && response.status < 400) {
+      const next = response.headers.get("location");
+      if (!next) return "";
+      const resolved = acceptHttpsUrl(new URL(next, target).toString());
+      if (!resolved || !sameOfficialHost(resolved, website)) return "";
+      target = resolved;
+      response = await fetchImpl(target, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(8_000),
+        headers: { Accept: "text/html" },
+      });
+    }
+    if (!response.ok) return "";
+    const html = (await response.text()).slice(0, 400_000);
+    return readOfficialOgImage(html, website);
+  } catch {
+    return "";
+  }
 }
 
 function readModelJson(payload: unknown) {
@@ -648,7 +807,13 @@ export async function loadPerplexityHotel(
     const payload = (await response.json()) as unknown;
     const parsed = parseHotelWebPayload(readModelJson(payload));
     if ("error" in parsed) return { error: "reponse_invalide" };
-    return { facts: parsed.facts, model: PERPLEXITY_HOTEL_MODEL };
+    let facts = mergeWebMedia(parsed.facts, readPerplexityHotelMedia(payload, parsed.facts.website || ""));
+    if (!facts.photos.length && facts.website) {
+      const og = await officialOgImage(facts.website, fetchImpl);
+      if (og) facts = { ...facts, photos: [{ url: og, caption: "" }] };
+    }
+    if (!hotelWebFactsUseful(facts)) return { error: "reponse_invalide" };
+    return { facts, model: PERPLEXITY_HOTEL_MODEL };
   } catch {
     return { error: "reseau" };
   }
@@ -663,6 +828,7 @@ export type CatalogueHotelRow = {
   check_out_time?: string | null;
   images?: unknown;
   website?: string | null;
+  country?: string | null;
 };
 
 export type CatalogueContactRow = {
@@ -674,8 +840,26 @@ export type CatalogueContactRow = {
   phone?: string | null;
 };
 
-/** Une seule fiche catalogue pour ce nom et cette ville. Deux hôtels possibles : aucune. */
-export function pickCatalogueHotel<T extends CatalogueHotelRow>(rows: T[], name: string, city: string) {
+/**
+ * Une seule fiche catalogue pour ce nom et cette ville. Deux hôtels possibles : aucune.
+ * `loose` reprend la correspondance Little Emperors (nom court dans le nom long, ville compatible).
+ * Sans `loose`, le nom et la ville doivent être les mêmes : le catalogue Ratehawk reste strict.
+ */
+export function pickCatalogueHotel<T extends CatalogueHotelRow>(
+  rows: T[],
+  name: string,
+  city: string,
+  opts?: { loose?: boolean; country?: string }
+) {
+  if (opts?.loose) {
+    const labeled = rows.map((row) => ({
+      row,
+      name: String(row.name || ""),
+      city: String(row.city || row.region_name || ""),
+      country: typeof row.country === "string" ? row.country : "",
+    }));
+    return matchHotelLabel({ name, city, country: opts.country || "" }, labeled)?.row ?? null;
+  }
   const wantName = hotelNameKey(name);
   const wantCity = hotelCityKey(city);
   if (!wantName || !wantCity) return null;

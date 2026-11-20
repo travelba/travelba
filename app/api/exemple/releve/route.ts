@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/crm/auth";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { readExample } from "@/lib/crm/example-store";
+import { statementExportName } from "@/lib/crm/statement-filename";
 import { buildStatement, statementHolderLines } from "@/lib/crm/statement";
 import { attachStatementTransfer } from "@/lib/crm/statement-wire";
 import { renderStatementPdf } from "@/lib/crm/statement-pdf";
@@ -19,17 +20,18 @@ function previewPdf() {
 export async function GET() {
   const preview = previewPdf();
   if (preview instanceof NextResponse) return preview;
+  const issuedAt = new Date();
   const pdf = await renderStatementPdf(
     await attachStatementTransfer(
       buildStatement({
         view: preview.ledger,
         holderName: customerFullName(preview.customer),
         holderLines: statementHolderLines(preview.customer),
-        issuedAt: new Date(),
+        issuedAt,
       })
     )
   );
-  return statementPdfResponse(pdf);
+  return statementPdfResponse(pdf, statementExportName(preview.customer, { issuedAt }));
 }
 
 export async function POST() {

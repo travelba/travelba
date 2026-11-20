@@ -7,7 +7,7 @@ import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
 import { isClientUpcomingStay } from "@/lib/crm/client-stays";
 import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
-import { clientTripOwnerIds } from "@/lib/crm/company-peers";
+import { clientTripOwnerIds, clientTwinIds } from "@/lib/crm/company-peers";
 import { tripPlaceLine } from "@/lib/crm/carnet";
 import { applyClientStayFace } from "@/lib/crm/client-stay-face";
 import { loadClientStayFaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
@@ -26,7 +26,7 @@ import {
 } from "@/components/account/HomeTripExtras";
 import { Icon } from "@/components/crm/icons";
 import { greetingGivenName } from "@/lib/crm/identity";
-import { clientHidesPrices, stayHidesPrices, stripClientMoneyItem } from "@/lib/crm/client-price-privacy";
+import { clientHidesPrices, foreignPriceOwnerIds, stayHidesPrices, stripClientMoneyItem } from "@/lib/crm/client-price-privacy";
 import { hiddenPriceCustomerIds } from "@/lib/crm/client-price-privacy-load";
 
 export default async function AccountHomePage({ searchParams }: { searchParams: Promise<{ confirme?: string }> }) {
@@ -175,9 +175,10 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
   }
 
   const face = faces[nextTrip.id];
+  const twinIds = await clientTwinIds(customer.id);
   const hiddenOwners = clientHidesPrices(customer)
     ? new Set<string>()
-    : await hiddenPriceCustomerIds(nextTrip.customer_id === customer.id ? [] : [nextTrip.customer_id]);
+    : await hiddenPriceCustomerIds(foreignPriceOwnerIds(customer.id, [nextTrip.customer_id], twinIds));
   const hideMoney = stayHidesPrices(customer, nextTrip.customer_id, hiddenOwners);
   const heroItems = hideMoney ? face?.items?.map((item) => stripClientMoneyItem(item)) : face?.items;
   const countdown = jMinusLabel(nextTrip.start_date);

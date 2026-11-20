@@ -64,6 +64,7 @@ const EXPECTED = [
   "definir_visibilite_carte",
   "preparer_message_carnet",
   "ajouter_hotel",
+  "fiche_hotel",
   "enrichir_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
@@ -147,6 +148,8 @@ const EXPECTED = [
   "reprendre_formalite",
   "ratehawk",
   "carte_arrivee",
+  "facture_groupee",
+  "compte_jumeau",
 ];
 
 const WRITE_TOOLS = [
@@ -259,6 +262,8 @@ const WRITE_TOOLS = [
   "reprendre_formalite",
   "ratehawk",
   "carte_arrivee",
+  "facture_groupee",
+  "compte_jumeau",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {

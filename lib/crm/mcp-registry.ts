@@ -50,6 +50,7 @@ import {
   updateVol,
   validerLecture,
 } from "@/lib/crm/mcp-trip";
+import { lireFicheHotel } from "@/lib/crm/hotel-enrich";
 import { enrichirHotel } from "@/lib/crm/hotel-web-run";
 import { inviteClientAccess, setCompanyRole, updateCompanionIdentity, updateHolderProfile } from "@/lib/crm/mcp-account";
 import { updateVoyageur } from "@/lib/crm/traveler-update";
@@ -84,6 +85,7 @@ import { envoyerMessageLibre } from "@/lib/crm/mcp-free-message";
 import { redactMcp } from "@/lib/crm/mcp-redact";
 import { releaseMatchedCredit } from "@/lib/crm/unmatch-credit";
 import { preparerFactureMb3m, statutFactureMb3m } from "@/lib/crm/mcp-mb3m-invoice";
+import { factureGroupee } from "@/lib/crm/grouped-invoice-run";
 import { envoyerFacture } from "@/lib/crm/mcp-invoice";
 import {
   comptabiliteSortie,
@@ -127,6 +129,7 @@ import {
   retirerPieceDossier,
 } from "@/lib/crm/mcp-dossier-pieces";
 import { supprimerCompagnon, supprimerPieceClient } from "@/lib/crm/remove-companion";
+import { setCustomerTwin, TwinLinkError } from "@/lib/crm/customer-twins";
 import { currentMcpAccess } from "@/lib/crm/mcp-auth";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
@@ -143,7 +146,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 144;
+export const MCP_TOOL_CAP = 147;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -338,7 +341,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "chercher_clients",
     description:
-      "Cherche un client par nom, société, e-mail ou téléphone. echeance vrai : pièces qui expirent dans 90 jours, sans numéro.",
+      "Cherche un client par nom, société, e-mail ou téléphone. echeance vrai : pièces qui expirent dans 90 jours, sans numéro. jumeaux : fiches liées, chacune garde son accès. zero_frais : aucun frais automatique sur les dossiers de cette fiche.",
     input: {
       q,
       echeance: z.boolean().optional().describe("Pièces à échéance, sans numéro de pièce"),
@@ -351,7 +354,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_client",
     description:
-      "Fiche d’un client : coordonnées, toutes les sociétés de facturation (societes : identifiant, raison sociale, SIRET, identifiant d’entreprise, TVA ou numéro fiscal, e-mail, adresse, code postal, ville, pays en code ISO, principale ; pas de téléphone sur la société), encours (signe brut), pièces à échéance (type et date, jamais le numéro), masquer_prix (vrai si l’espace client ne reçoit plus les montants). id ou q.",
+      "Fiche d’un client : coordonnées, toutes les sociétés de facturation (societes : identifiant, raison sociale, SIRET, identifiant d’entreprise, TVA ou numéro fiscal, e-mail, adresse, code postal, ville, pays en code ISO, principale ; pas de téléphone sur la société), encours (signe brut), pièces à échéance (type et date, jamais le numéro), masquer_prix (vrai si l’espace client ne reçoit plus les montants), zero_frais (vrai si cette fiche ne reçoit plus de frais automatiques), jumeaux (id et nom, accès séparés, mêmes dossiers). id ou q.",
     input: { id, q },
     run: (args: ToolArgs) => readFicheClient({ id: str(args, "id"), q: str(args, "q") }),
   },
@@ -1001,7 +1004,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_client",
     write: true,
     description:
-      "Met à jour le prénom, le nom, l’e-mail, le téléphone, la société ou la commission d’agence d’un client déjà identifié. commission_agence : 10, 7,5, 5, ou defaut pour 10 %. Les dossiers sans dérogation suivent. masquer_prix vrai : l’espace client, le carnet, l’aperçu et les partages de ce client ne reçoivent plus aucun prix, montant, solde, transaction, relevé ni lien de paiement, sur tous ses dossiers. Faux les montre de nouveau. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). supprimer_societe_id retire une société vide, sans raison sociale ni SIRET, qui n’est pas utilisée. Ne crée pas de fiche. Aucun message.",
+      "Met à jour le prénom, le nom, l’e-mail, le téléphone, la société ou la commission d’agence d’un client déjà identifié. commission_agence : 10, 7,5, 5, ou defaut pour 10 %. Les dossiers sans dérogation suivent. masquer_prix vrai : l’espace client, le carnet, l’aperçu et les partages de ce client ne reçoivent plus aucun prix, montant, solde, transaction, relevé ni lien de paiement, sur tous ses dossiers. Faux les montre de nouveau. zero_frais vrai : aucun frais de billeterie ni commission d’agence automatique sur les dossiers de cette fiche (comme sans_frais). Les frais déjà là sont retirés des dossiers non facturés. Un dossier partagé avec un compte jumeau suit la fiche propriétaire. Faux n’ajoute rien. La société est enregistrée sur la fiche (même SIRET : mise à jour, pas une seconde ligne). supprimer_societe_id retire une société vide, sans raison sociale ni SIRET, qui n’est pas utilisée. Ne crée pas de fiche. Aucun message.",
     input: {
       id: z.string().trim().describe("Identifiant du client"),
       prenom: z.string().max(80).optional().describe("Prénom"),
@@ -1025,6 +1028,10 @@ export const MCP_TOOLS: ToolDef[] = [
         .boolean()
         .optional()
         .describe("Vrai : l’espace client de cette fiche ne reçoit plus aucun prix ni transaction. Faux : les montre."),
+      zero_frais: z
+        .boolean()
+        .optional()
+        .describe("Vrai : aucun frais automatique sur les dossiers de cette fiche, et retrait sur les dossiers non facturés. Faux : n’ajoute rien."),
       ...COMPANY_FIELDS,
     },
     run: (args) => updateClient(args),
@@ -1541,11 +1548,25 @@ export const MCP_TOOLS: ToolDef[] = [
     run: (args) => addHotel(args),
   },
   {
+    name: "fiche_hotel",
+    description:
+      "Lit la fiche hôtel réutilisable (hors Little Emperors) : contacts par rôle, photos, description, sources, statut à vérifier ou vérifiée. nom et ville, ou carte_id. Lecture seule. Aucun message.",
+    input: {
+      nom: z.string().trim().max(180).optional().describe("Nom de l’hôtel"),
+      ville: z.string().trim().max(80).optional().describe("Ville"),
+      carte_id: z.string().trim().max(80).optional().describe("Identifiant de la carte hôtel"),
+    },
+    run: async (args) => {
+      const { createServiceClient } = await import("@/lib/supabase/admin");
+      return lireFicheHotel(createServiceClient(), args);
+    },
+  },
+  {
     name: "enrichir_hotel",
     write: true,
     openWorld: true,
     description:
-      "Recherche les informations publiques d’une carte hôtel (adresse, réception, réservations, concierge, site, description en français, photos, heures) et ne remplit que les champs vides. Les sources sont dans details. La carte est marquée à vérifier. La visibilité ne change pas. Aucun message. Sans clé Perplexity, rien n’est écrit par la recherche.",
+      "Recherche les informations publiques d’une carte hôtel et alimente la fiche réutilisable. Ne remplit que les champs vides de la carte. La réponse contient la fiche (contacts, photos, description, sources, statut). Les e-mails restent à vérifier. La visibilité ne change pas. Aucun message. Sans clé Perplexity, la fiche déjà connue est quand même renvoyée.",
     input: {
       carte_id: z.string().trim().max(80).describe("Identifiant de la carte hôtel"),
     },
@@ -2893,6 +2914,59 @@ export const MCP_TOOLS: ToolDef[] = [
       confirmer: confirmOpt,
     },
     run: (args: ToolArgs) => carteArrivee(args),
+  },
+  {
+    name: "facture_groupee",
+    write: true,
+    selfJournal: true,
+    description:
+      "Prépare une facture pro forma groupée pour plusieurs dossiers d’un même payeur, et une seule pièce pro forma MB3M à son nom. client_id, dossiers (identifiants ou références TB-…). Une section par dossier : référence, destination, dates, voyageurs, lignes de vente, remise commerciale négative, sous-total, paiements déjà reçus. Total général, total payé, reste à payer. Un dossier en commission garde sa ligne déjà au livre, sans pourcentage. Le PDF est déposé sur chaque dossier, masqué au client. confirmer true crée aussi la pièce MB3M (AddPieces), sans l’imprimer. facture_id met à jour cette facture et remplace la pro forma MB3M si elle n’est pas imprimée ; une pièce imprimée est refusée. Un règlement lettré, ou une lecture du lettrage impossible, bloque ce remplacement : rien n’est écrit, statut bloque_lettrage ou avertissement, sans erreur. action mb3m, avec facture_id ou numero FG-AAAA-NNNN, pousse une facture déjà générée vers MB3M sans refaire le PDF. action retirer retire les justificatifs sans effacer le fichier ; restaurer les remet, toujours masqués. Sans confirmer, aperçu seulement : MB3M n’est pas appelé en écriture. Aucun e-mail, aucun WhatsApp, aucun avoir.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant de la fiche"),
+      dossiers: z.array(z.string().trim().max(80)).max(30).optional().describe("Identifiants ou références TB-…, au moins deux"),
+      facture_id: z.string().trim().max(80).optional().describe("Facture groupée à mettre à jour, pousser vers MB3M, retirer ou restaurer"),
+      numero: z.string().trim().max(40).optional().describe("Numéro FG-AAAA-NNNN, pour créer la pièce MB3M sans refaire le PDF"),
+      action: z.enum(["generer", "retirer", "restaurer", "mb3m"]).optional().describe("generer par défaut. mb3m ne refait pas le PDF"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) =>
+      factureGroupee({
+        client_id: typeof args.client_id === "string" ? args.client_id : undefined,
+        dossiers: Array.isArray(args.dossiers) ? args.dossiers.filter((value): value is string => typeof value === "string") : undefined,
+        facture_id: typeof args.facture_id === "string" ? args.facture_id : undefined,
+        numero: typeof args.numero === "string" ? args.numero : undefined,
+        action: typeof args.action === "string" ? args.action : undefined,
+        confirmer: args.confirmer === true,
+      }),
+  },
+  {
+    name: "compte_jumeau",
+    write: true,
+    selfJournal: true,
+    description:
+      "Lie ou délie deux fiches. Chacune garde son accès. Les dossiers de l’une apparaissent dans l’espace de l’autre, sans copie, sans second débit, sans second relevé. client_id et jumeau_id. action lier ou delier. Sans confirmer, aperçu. confirmer true écrit. Aucun e-mail, aucun WhatsApp.",
+    input: {
+      client_id: z.string().trim().max(80).describe("Identifiant de la première fiche"),
+      jumeau_id: z.string().trim().max(80).describe("Identifiant de l’autre fiche"),
+      action: z.enum(["lier", "delier"]).describe("lier ou delier"),
+      confirmer: confirmOpt,
+    },
+    run: async (args: ToolArgs) => {
+      try {
+        const { createServiceClient } = await import("@/lib/supabase/admin");
+        const staff = currentMcpAccess().staff;
+        return await setCustomerTwin(createServiceClient(), {
+          clientId: typeof args.client_id === "string" ? args.client_id : "",
+          twinId: typeof args.jumeau_id === "string" ? args.jumeau_id : "",
+          action: args.action === "delier" ? "delier" : "lier",
+          confirmer: args.confirmer === true,
+          staff: staff ? { id: staff.id, name: staff.name, path: "/api/mcp" } : null,
+        });
+      } catch (error) {
+        if (error instanceof TwinLinkError) throw new McpWriteError(error.message);
+        throw error;
+      }
+    },
   },
 ];
 

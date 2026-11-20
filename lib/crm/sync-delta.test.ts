@@ -141,6 +141,13 @@ test("Little Emperors ne relit pas un séjour déjà lié et identique", () => {
   assert.equal(leBookingNeedsWork({ ...leStay, status: "unmatched" }, leStay), true);
   assert.equal(leBookingNeedsWork({ ...leStay, status: "linked" }, leStay), false);
   assert.equal(leBookingNeedsWork({ ...leStay, status: "linked", state: "confirmed" }, { ...leStay, state: "cancelled" }), true);
+  const cancelled = { ...leStay, state: "cancelled", is_cancellable: false };
+  assert.equal(leBookingNeedsWork({ ...cancelled, status: "unmatched" }, cancelled), false);
+  assert.equal(leBookingNeedsWork({ ...cancelled, status: "linked" }, cancelled), false);
+  assert.equal(
+    leBookingNeedsWork({ ...cancelled, status: "linked" }, { ...cancelled, hotel_name: "Autre hôtel" }),
+    true
+  );
   assert.equal(
     lePayloadMatches(
       { ...leStay, status: "linked", crm_booking_id: "b1", benefits: ["Petit-déjeuner"] },

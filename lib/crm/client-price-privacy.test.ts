@@ -6,6 +6,7 @@ import {
   clientHidesPrices,
   isClientInvoiceDocument,
   isClientMoneyFile,
+  foreignPriceOwnerIds,
   stayHidesPrices,
   stripClientMoneyItem,
 } from "./client-price-privacy";
@@ -87,6 +88,13 @@ test("le relevé, la pro forma et la facture sont des fichiers d’argent", () =
   assert.equal(isClientMoneyFile("bookings/1/billet.pdf"), false);
   assert.equal(isClientInvoiceDocument({ kind: "invoice", file_name: "amadeus.pdf", storage_path: "bookings/1/a.pdf" }), true);
   assert.equal(isClientInvoiceDocument({ kind: "ticket", file_name: "e-ticket.pdf", storage_path: "bookings/1/e.pdf" }), false);
+});
+
+test("un jumeau suit le masquage de la fiche qui consulte", () => {
+  const owners = foreignPriceOwnerIds("guy", ["guy", "beatrice", "collab"], ["beatrice"]);
+  assert.deepEqual(owners, ["collab"]);
+  assert.equal(stayHidesPrices({ hide_client_prices: false }, "beatrice", new Set(owners)), false);
+  assert.equal(stayHidesPrices({ hide_client_prices: true }, "beatrice", new Set()), true);
 });
 
 test("un dossier du client masqué l’est aussi pour un autre regard", () => {

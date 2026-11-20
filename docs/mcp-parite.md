@@ -30,6 +30,8 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Lien d’accès magique 24 h (mot de passe déjà posé) | hors API — le bouton « Envoyer un lien d’accès » reste à l’écran |
 | Compte en veille, IBAN, téléphone secondaire, fidélité | partiel : pas de champ dédié sur `mettre_a_jour_client` |
 | Retirer un accompagnateur de la fiche | `supprimer_compagnon` (`confirmer` = nom complet) — ajouté. Réservé aux administrateurs. Pièces d’identité et fichiers compris. S’il est voyageur, refus en listant les dossiers, sauf `retirer_des_dossiers` true (lignes voyageur seulement). Réservations, paiements, factures et grand livre inchangés |
+| Compte jumeau | `compte_jumeau` — ajouté. Sans `confirmer`, aperçu. `confirmer` true lie ou délie. Aucun message. `fiche_client` et `chercher_clients` exposent `jumeaux` |
+| Zéro frais | `mettre_a_jour_client` `zero_frais` — ajouté. Retire les frais automatiques des dossiers non facturés de la fiche propriétaire |
 
 ## Dossiers et cartes
 
@@ -46,7 +48,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Voyageurs du dossier | `ajouter_voyageur`, `modifier_voyageur`, `retirer_voyageur`, `fusionner_compagnon` — couvert |
 | Changer le client du dossier | `changer_client_dossier` — ajouté. Sans `confirmer`, aperçu. Crée la fiche si besoin, sans invitation. Voyageurs qui sont l’ancien client, grand livre, paiements et payeur de ce dossier suivent. Aucun message. |
 | Vol, hôtel, accueil VIP | `ajouter_vol`, `modifier_vol`, `ajouter_hotel`, `modifier_hotel`, `ajouter_accueil_vip` — couvert |
-| Rechercher les infos d’une carte hôtel | `enrichir_hotel` (`carte_id`) — ajouté. Seulement les champs vides. Sources dans details. À vérifier. La visibilité ne change pas. Aucun message |
+| Rechercher les infos d’une carte hôtel | `enrichir_hotel` (`carte_id`) — ajouté. Fiche réutilisable, seulement les champs vides. À vérifier. La visibilité ne change pas. Aucun message. `fiche_hotel` lit cette fiche |
 | Classer un courrier hôtel sans écrire | `classer_courrier_hotel` — ajouté. `rouvrir` true rouvre. Aucun e-mail. Un message entrant plus récent rouvre le fil |
 | Train, transfert, activité, frais, dépense, autres types | `ajouter_carte`, `modifier_carte` — ajouté |
 | Marquer une carte vérifiée (lecture douteuse) | `valider_lecture`, et `effacer_avertissement` sur `modifier_vol`, `modifier_hotel`, `modifier_carte` — ajouté. Ne change pas la visibilité, n’envoie rien. |
@@ -89,6 +91,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Rapprocher une sortie Revolut ou un débit Pliant (geste simple) | `rapprocher_depense_revolut`, `rapprocher_pliant` — couvert |
 | Remettre un crédit non rattaché | `remettre_non_rattache` — couvert |
 | Préparer / lire la facture MB3M | `preparer_facture_mb3m`, `statut_facture_mb3m` — couvert. `preparer_facture_mb3m` : sans `confirmer`, aperçu, aucune pièce |
+| Facture groupée (plusieurs dossiers, même payeur) | `facture_groupee` — ajouté. Sans `confirmer`, aperçu, aucun appel MB3M en écriture. PDF pro forma masqué sur chaque dossier, et une pièce pro forma MB3M au nom du payeur. `action` `mb3m` pousse une facture déjà générée sans refaire le PDF. Aucun envoi, aucune impression |
 | Envoyer la facture et demander le paiement | `envoyer_facture` — ajouté. Sans `confirmer`, aperçu seulement |
 | Avoir et nouvelle facture (marge périmée) | `reprendre_facture_mb3m` — seulement si `MB3M_ALLOW_CREDIT_NOTE` vaut `true` (non définie en production). Sinon refus. Avec le drapeau : sans `confirmer`, aperçu, aucun avoir |
 | Créditer un virement, Revolut ou Stripe | `crediter_virement`, `crediter_revolut`, `crediter_stripe` — sans `confirmer`, aperçu, rien n’est écrit |

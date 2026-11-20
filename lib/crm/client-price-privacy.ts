@@ -40,6 +40,20 @@ export function clientHidesPrices(customer: { hide_client_prices?: boolean | nul
   return customer?.hide_client_prices === true;
 }
 
+/**
+ * Titulaires dont l’option de prix s’applique encore.
+ * Un jumeau suit seulement la fiche qui consulte.
+ */
+export function foreignPriceOwnerIds(viewerId: string, ownerIds: Iterable<string | null | undefined>, twinIds: Iterable<string>) {
+  const twins = new Set(twinIds);
+  const out: string[] = [];
+  for (const id of ownerIds) {
+    if (!id || id === viewerId || twins.has(id) || out.includes(id)) continue;
+    out.push(id);
+  }
+  return out;
+}
+
 /** Le séjour est masqué si le client qui regarde, ou le titulaire du dossier, a l’option. */
 export function stayHidesPrices(
   viewer: { hide_client_prices?: boolean | null } | null | undefined,

@@ -14,12 +14,14 @@ import { customerFullName, type CrmBooking } from "@/lib/crm/types";
 import { todayIsoDate } from "@/lib/crm/money";
 import type { CustomerNameRow } from "@/lib/crm/customer-search";
 import { bookingListSearchText } from "@/lib/crm/booking-search";
+import { directoryRank } from "@/lib/crm/directory-search";
 import { bookingPayerLabel, type FundingCompany } from "@/lib/crm/funding-wallet";
 import { smartSearchMatch } from "@/lib/crm/smart-search";
 import {
   ADMIN_PAGE_SIZE,
   BOOKING_SORTS,
   bookingSortParam,
+  compareBookingsByProximity,
   firstParam,
   listHref,
   pageOverflow,
@@ -47,6 +49,7 @@ type ListCustomer = CustomerNameRow & {
   company_name: string | null;
   email: string | null;
   phone: string | null;
+  usage_name?: string | null;
 };
 
 function pickRecord<T>(source: Record<string, T>, ids: Set<string>) {
@@ -313,11 +316,11 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
   const walletIds = [
     ...new Set(pool.flatMap((row) => [row.billing_customer_id, row.customer_id].filter(Boolean))),
   ];
-  const [{ data: customerRows }, { data: companyRows }, maps, displayed, owners, colleagues] = await Promise.all([
+  const [{ data: customerRows }, { data: companyRows }, { data: travelerRows }, { data: companionRows }, maps, displayed, owners, colleagues] = await Promise.all([
     customerIds.length
       ? supabase
           .from("crm_customers")
-          .select("id, first_name, last_name, company_name, email, phone")
+          .select("id, first_name, last_name, usage_name, company_name, email, phone")
           .in("id", customerIds)
       : Promise.resolve({ data: [] as ListCustomer[] }),
     walletIds.length
@@ -326,6 +329,15 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
           .select("id, customer_id, company_name, funding, sort_order")
           .in("customer_id", walletIds)
       : Promise.resolve({ data: [] as (FundingCompany & { customer_id: string })[] }),
+    q && pool.length
+      ? supabase.from("crm_booking_travelers").select("booking_id, first_name, last_name").in(
+          "booking_id",
+          pool.map((row) => row.id)
+        )
+      : Promise.resolve({ data: [] as { booking_id: string; first_name: string | null; last_name: string | null }[] }),
+    q && customerIds.length
+      ? supabase.from("crm_travel_companions").select("customer_id, first_name, last_name, usage_name").in("customer_id", customerIds)
+      : Promise.resolve({ data: [] as { customer_id: string; first_name: string | null; last_name: string | null; usage_name: string | null }[] }),
     loadStayMaps(
       supabase,
       pool.map((row) => row.id)
@@ -335,6 +347,27 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
     colleaguesPromise,
   ]);
   const customersById = new Map(((customerRows || []) as ListCustomer[]).map((row) => [row.id, row]));
+  const travelerNames = new Map<string, string[]>();
+  for (const person of (travelerRows || []) as { booking_id: string; first_name: string | null; last_name: string | null }[]) {
+    const name = [person.first_name, person.last_name].filter(Boolean).join(" ");
+    if (!name) continue;
+    const list = travelerNames.get(person.booking_id) || [];
+    list.push(name);
+    travelerNames.set(person.booking_id, list);
+  }
+  const companionNames = new Map<string, string[]>();
+  for (const person of (companionRows || []) as {
+    customer_id: string;
+    first_name: string | null;
+    last_name: string | null;
+    usage_name: string | null;
+  }[]) {
+    const name = [person.first_name, person.last_name, person.usage_name].filter(Boolean).join(" ");
+    if (!name) continue;
+    const list = companionNames.get(person.customer_id) || [];
+    list.push(name);
+    companionNames.set(person.customer_id, list);
+  }
   const companiesByCustomer = new Map<string, (FundingCompany & { customer_id: string })[]>();
   for (const company of (companyRows || []) as (FundingCompany & { customer_id: string })[]) {
     const list = companiesByCustomer.get(company.customer_id) || [];
@@ -364,22 +397,34 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
         archived_at: row.archived_at,
         visible_to_client: row.visible_to_client,
         currency: row.currency,
-        customer: customer ? customerFullName(customer) : "",
+        customer: customer
+          ? [customer.first_name, customer.last_name, customer.usage_name, customerFullName(customer)].filter(Boolean).join(" ")
+          : "",
         company: [customer?.company_name, payerLabels[row.id]].filter(Boolean).join(" "),
         email: customer?.email,
         phone: customer?.phone,
         places: maps.arrival[row.id],
         routes: maps.route[row.id],
         layovers: maps.layovers[row.id],
+        people: [...(travelerNames.get(row.id) || []), ...(companionNames.get(row.customer_id) || [])],
         amount: displayed.get(row.id) ?? Number(row.total_amount),
         assignee: owners[row.id] || "À prendre",
       })
     );
   }
-  const matchedRaw = q
-    ? listResult.scanned.filter((row) => smartSearchMatch(q, searchText.get(row.id)))
-    : listResult.scanned;
-  const matched = q && order.proximity ? sortBookingsByProximity(matchedRaw, today) : matchedRaw;
+  const matchesSearch = (id: string) => {
+    const text = searchText.get(id) || "";
+    return directoryRank(q, text) != null || smartSearchMatch(q, text);
+  };
+  const matchedRaw = q ? listResult.scanned.filter((row) => matchesSearch(row.id)) : listResult.scanned;
+  const matched = q
+    ? matchedRaw.slice().sort((a, b) => {
+        const left = directoryRank(q, searchText.get(a.id) || "") ?? 3;
+        const right = directoryRank(q, searchText.get(b.id) || "") ?? 3;
+        if (left !== right) return left - right;
+        return order.proximity ? compareBookingsByProximity(a, b, today) : 0;
+      })
+    : matchedRaw;
   const total = q ? matched.length : (listResult.count ?? matched.length);
   // `?page=999` : on renvoie sur la dernière page plutôt qu’un résumé « 301-312 » au-dessus d’une liste vide.
   const lastPage = pageOverflow(page, total);
@@ -396,7 +441,7 @@ export default async function AdminReservationsPage({ searchParams }: Props) {
   });
   const hiddenArchiveHits =
     q && state !== "archive"
-      ? listResult.archived.filter((row) => smartSearchMatch(q, searchText.get(row.id))).length
+      ? listResult.archived.filter((row) => matchesSearch(row.id)).length
       : 0;
   const rowIds = new Set(rows.map((row) => row.id));
   const customers = [...customersById.values()].filter((row) => rows.some((booking) => booking.customer_id === row.id));

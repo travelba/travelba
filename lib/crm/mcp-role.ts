@@ -76,6 +76,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   definir_visibilite_carte: "edit_dossiers",
   preparer_message_carnet: "message_client",
   ajouter_hotel: "edit_dossiers",
+  fiche_hotel: "agency",
   enrichir_hotel: "edit_dossiers",
   modifier_hotel: "edit_dossiers",
   ajouter_accueil_vip: "edit_dossiers",
@@ -159,6 +160,8 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   reprendre_formalite: "edit_dossiers",
   ratehawk: "edit_dossiers",
   carte_arrivee: "edit_dossiers",
+  facture_groupee: "edit_finances",
+  compte_jumeau: "edit_dossiers",
 };
 
 export type McpStaffGate = {

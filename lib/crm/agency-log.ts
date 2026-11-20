@@ -126,22 +126,38 @@ export async function recordAgencyJournal(entry: AgencyJournalInput) {
 
 const PLIANT_ALERT_WINDOW_MS = 6 * 60 * 60 * 1000;
 
+/** Vrai si cette phrase a déjà été écrite dans la fenêtre. Sert au dédoublonnage, pas à la lecture limitée. */
+export function pliantAlertSeen(
+  rows: { summary?: string | null; created_at?: string | null }[],
+  text: string,
+  now = Date.now(),
+  windowMs = PLIANT_ALERT_WINDOW_MS
+) {
+  return rows.some((row) => {
+    const at = Date.parse(row.created_at || "");
+    return row.summary === text && Number.isFinite(at) && now - at < windowMs && now - at >= 0;
+  });
+}
+
 /** Alerte interne. Le client n’est pas prévenu. Une même phrase n’est pas répétée pendant six heures. */
 export async function recordPliantAlert(summary: string, entityId?: string | null, admin?: SupabaseClient) {
   const text = scrubPliantLog(summary, 240);
   if (!text) return;
   try {
     const db = admin ?? createServiceClient({ allowPreview: true });
-    const existing = await db.from("crm_agency_alerts").select("summary, created_at").eq("kind", "pliant").limit(20);
+    const since = new Date(Date.now() - PLIANT_ALERT_WINDOW_MS).toISOString();
+    const existing = await db
+      .from("crm_agency_alerts")
+      .select("summary, created_at")
+      .eq("kind", "pliant")
+      .eq("summary", text)
+      .gte("created_at", since)
+      .limit(1);
     if (existing.error) {
       console.error("[pliant] alerte", "non écrite");
       return;
     }
-    const fresh = ((existing.data || []) as { summary?: string; created_at?: string }[]).some((row) => {
-      const at = Date.parse(row.created_at || "");
-      return row.summary === text && Number.isFinite(at) && Date.now() - at < PLIANT_ALERT_WINDOW_MS;
-    });
-    if (fresh) return;
+    if (pliantAlertSeen((existing.data || []) as { summary?: string; created_at?: string }[], text)) return;
     const inserted = await db.from("crm_agency_alerts").insert({
       kind: "pliant",
       summary: text,
