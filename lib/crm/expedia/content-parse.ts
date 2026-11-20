@@ -82,8 +82,10 @@ function propertyIdsOf(row: Record<string, unknown>) {
   const raw = row.property_ids ?? row.property_ids_expanded ?? row.property_id;
   const ids: string[] = [];
   const push = (item: unknown) => {
-    if (typeof item === "string" && /^\d+$/.test(item.trim())) ids.push(item.trim());
-    else if (typeof item === "number" && Number.isInteger(item)) ids.push(String(item));
+    if (typeof item === "string") {
+      const value = item.trim();
+      if (value && value.length <= 40 && !/\s/.test(value)) ids.push(value);
+    } else if (typeof item === "number" && Number.isInteger(item)) ids.push(String(item));
   };
   if (typeof raw === "string") for (const item of raw.split(/[^\d]+/)) push(item);
   else if (Array.isArray(raw)) {

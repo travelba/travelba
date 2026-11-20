@@ -162,7 +162,7 @@ export async function searchExpediaRates(input: {
   let content = new Map<string, ExpediaPropertyContent>();
   if (prefer.length) {
     const matched: string[] = [];
-    for (const batch of chunkPropertyIds(region.propertyIds).slice(0, 3)) {
+    for (const batch of chunkPropertyIds(region.propertyIds).slice(0, 6)) {
       if (left() < 7_000 && matched.length) break;
       try {
         const batchContent = await propertyContent(batch, input.customerIp, input.signal, input.fetchImpl, Math.min(8_000, left()));
