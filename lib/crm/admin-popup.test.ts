@@ -3,10 +3,13 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   claimOsNotify,
+  isPopupNotice,
   mergeAdminNotices,
   noticeIcon,
+  popupCursor,
   popupWaitingLabel,
   shouldShowAdminPopup,
+  takePopupBacklog,
 } from "./admin-popup";
 import { browserAlertBanner, browserAlertChoice, browserAlertStatus } from "./browser-alert";
 import type { HotelReplyNotice } from "./hotel-reply-notice";
@@ -62,14 +65,42 @@ test("le bandeau ne redemande pas après un choix", () => {
   assert.match(browserAlertStatus("unsupported").note || "", /indisponibles/);
 });
 
-test("la file et le quai passent par la même fenêtre", () => {
-  assert.equal(noticeIcon("WhatsApp"), "chat");
+test("seules une réponse d’hôtel et un paiement reçu s’ouvrent", () => {
+  assert.equal(isPopupNotice(notice("hotel")), true);
+  assert.equal(isPopupNotice({ kicker: "Pliant", hotel: "Pliant", excerpt: "Little Emperors a annulé le séjour." }), false);
+  assert.equal(isPopupNotice({ kicker: "WhatsApp", hotel: "Message client", excerpt: "Bonjour" }), false);
+  assert.equal(isPopupNotice({ kicker: "E-mail", hotel: "Message reçu", excerpt: "Un e-mail est arrivé dans la file." }), false);
+  assert.equal(isPopupNotice({ kicker: "Concierge", hotel: "Modification", excerpt: "Le concierge a modifié un dossier." }), false);
+  assert.equal(isPopupNotice({ kicker: "Passeport ouvert", hotel: "Passeport ouvert", excerpt: "Passeport ouvert." }), false);
+  assert.equal(isPopupNotice({ kicker: "Carte ouverte", hotel: "Carte ouverte", excerpt: "Carte ouverte." }), false);
+  assert.equal(isPopupNotice({ kicker: "Export", hotel: "Export", excerpt: "Export du journal." }), false);
+  assert.equal(
+    isPopupNotice({ kicker: "Paiement", hotel: "Paiement client", excerpt: "Virement reçu · 1 200 € · Cabinet" }),
+    true
+  );
+  assert.equal(
+    isPopupNotice({ kicker: "Paiement", hotel: "Paiement", excerpt: "Paiement de 6 000 €, au-dessus du seuil." }),
+    false
+  );
+  const now = Date.parse("2026-11-20T09:00:00.000Z");
+  assert.equal(popupCursor(null, now), new Date(now - 3 * 60 * 1000).toISOString());
+  assert.equal(popupCursor("2026-11-19T09:00:00.000Z", now), new Date(now - 3 * 60 * 1000).toISOString());
+  assert.equal(popupCursor("2026-11-20T08:59:00.000Z", now), "2026-11-20T08:59:00.000Z");
+  assert.deepEqual(
+    takePopupBacklog(["a", "b", "c", "d"]).slice(),
+    ["b", "c", "d"]
+  );
+  const route = readFileSync(new URL("../../app/api/admin/hotel-replies/route.ts", import.meta.url), "utf8");
+  assert.match(route, /receivedPaymentPopup/);
+  assert.match(route, /hotelReplyNotices/);
+  assert.equal(route.includes("crm_whatsapp_messages"), false);
+  assert.equal(route.includes("crm_email_ingest"), false);
+  assert.match(route, /\.eq\("kind", "payment"\)/);
+});
+
+test("le libellé de la file reste lisible", () => {
   assert.equal(noticeIcon(undefined), "hotel");
+  assert.equal(noticeIcon("Paiement"), "payments");
   assert.equal(popupWaitingLabel(1), "Encore une notification");
   assert.equal(popupWaitingLabel(3), "Encore 3 notifications");
-  const route = readFileSync(new URL("../../app/api/admin/hotel-replies/route.ts", import.meta.url), "utf8");
-  assert.match(route, /crm_whatsapp_messages/);
-  assert.match(route, /read_at/);
-  assert.equal(route.includes("chats: []"), false);
-  assert.equal(route.includes('.eq("kind", "payment")'), false);
 });

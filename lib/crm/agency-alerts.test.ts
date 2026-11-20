@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agencyAlerts } from "./agency-alerts";
+import { agencyAlerts, receivedPaymentPopup } from "./agency-alerts";
 
 test("un e-mail et un WhatsApp deviennent chacun une alerte, sans adresse", () => {
   const alerts = agencyAlerts({
@@ -129,6 +129,55 @@ test("chaque type d’alerte du journal ouvre une page, sans IBAN", () => {
   assert.equal(byId["alert:pl1"]?.body.includes("FR76"), false);
   assert.equal(byId["alert:x1"]?.title, "Alerte");
   assert.equal(byId["alert:x1"]?.href, "/admin/journal");
+});
+
+test("la fenêtre ne prend qu’un encaissement reçu", () => {
+  const wire = receivedPaymentPopup({
+    id: "w",
+    kind: "payment",
+    summary: "Virement reçu · 1 200 € · Cabinet",
+    createdAt: "2026-11-20T09:00:00.000Z",
+    entityType: "revolut",
+    entityId: "tx-1",
+  });
+  const card = receivedPaymentPopup({
+    id: "s",
+    kind: "payment",
+    summary: "Camille a réglé 400 € par carte.",
+    createdAt: "2026-11-20T09:01:00.000Z",
+    entityType: "client",
+    entityId: "33333333-3333-4333-8333-333333333333",
+  });
+  const pliant = receivedPaymentPopup({
+    id: "pl",
+    kind: "pliant",
+    summary: "Little Emperors a annulé le séjour TB-2026-1.",
+    createdAt: "2026-11-20T09:02:00.000Z",
+    entityType: "card",
+    entityId: null,
+  });
+  const seuil = receivedPaymentPopup({
+    id: "big",
+    kind: "payment",
+    summary: "Paiement de 6 000 €, au-dessus du seuil.",
+    createdAt: "2026-11-20T09:03:00.000Z",
+    entityType: "finance",
+    entityId: null,
+  });
+  const refused = receivedPaymentPopup({
+    id: "no",
+    kind: "payment",
+    summary: "Camille : paiement refusé · 400 € · carte.",
+    createdAt: "2026-11-20T09:04:00.000Z",
+    entityType: "client",
+    entityId: "33333333-3333-4333-8333-333333333333",
+  });
+  assert.equal(wire?.kicker, "Paiement");
+  assert.equal(wire?.href, "/admin/argent?onglet=a-encaisser");
+  assert.match(card?.body || "", /a réglé/);
+  assert.equal(pliant, null);
+  assert.equal(seuil, null);
+  assert.equal(refused, null);
 });
 
 test("un objet vide et un message vide restent annoncés", () => {

@@ -5,3 +5,4 @@
 - `import-le-hotel-contacts.mjs` — 2026-09-29 : charge l'export JSON Little Emperors dans `crm_le_hotels` / `crm_hotel_contacts` (`node scripts/one-shot/import-le-hotel-contacts.mjs <export.json>`, fichier hors git).
 - `backfill-pliant-expenses.ts` — à jouer après le déploiement « dépenses Pliant → lignes Dépense » : crée la ligne Dépense des coûts Pliant déjà rattachés sur le montant du séjour (`npx tsx scripts/one-shot/backfill-pliant-expenses.ts` simule, `APPLY=1` écrit, `REFERENCE=TB-…` cible un dossier). Chaque ligne est un débit client dès que le séjour est Visible : lire la simulation avant.
 - `retouch-catalog.ts` — 2026-09-24 : télécharge et retouche les couvertures du catalogue dans `public/` (`npx tsx scripts/one-shot/retouch-catalog.ts`).
+- `mark-duplicate-pliant-alerts-read.sql` — **pas appliqué**. SQL manuel pour marquer comme lues les alertes Pliant en double (une par texte). Ne pas le passer dans les migrations.

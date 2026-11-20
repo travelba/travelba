@@ -7,6 +7,9 @@ export const NOTIFIED_KEY = "tba-admin-os-notified";
 export const POPUP_OWNER_KEY = "tba-admin-popup-owner";
 export const NOTICES_EVENT = "tba-admin-notices";
 export const VISIBLE_POPUPS = 1;
+/** Au chargement, on ne reprend que les toutes dernières minutes, et trois au plus. */
+export const POPUP_BACKLOG_MS = 3 * 60 * 1000;
+export const POPUP_BACKLOG_MAX = 3;
 const QUEUE_CAP = 30;
 
 const ICONS: Record<string, string> = {
@@ -34,6 +37,31 @@ export function popupWaitingLabel(count: number) {
   if (count <= 0) return "";
   if (count === 1) return "Encore une notification";
   return `Encore ${count} notifications`;
+}
+
+/** Réponse d’hôtel, ou paiement reçu. Le journal, Pliant, WhatsApp et le reste ne s’ouvrent pas. */
+export function isPopupNotice(notice: { kicker?: string; hotel?: string; excerpt?: string }) {
+  const kicker = (notice.kicker || "").trim();
+  if (!kicker || kicker === "L’hôtel a répondu" || kicker === "Hôtel") return true;
+  if (kicker !== "Paiement") return false;
+  const text = `${notice.hotel || ""} ${notice.excerpt || ""}`;
+  if (/refus|abandon|rejet|au-dessus du seuil|échou|prélèvement annulé/i.test(text)) return false;
+  return /virement reçu|prélèvement sepa reçu|a réglé|paiement reçu/i.test(text);
+}
+
+/** Curseur au chargement : pas plus vieux que la petite fenêtre, jamais dans le futur. */
+export function popupCursor(stored: string | null | undefined, now: number, backlogMs = POPUP_BACKLOG_MS) {
+  const floorMs = now - backlogMs;
+  const at = stored ? Date.parse(stored) : Number.NaN;
+  if (!Number.isFinite(at) || at < floorMs) return new Date(floorMs).toISOString();
+  if (at > now) return new Date(now).toISOString();
+  return new Date(at).toISOString();
+}
+
+/** Les plus récentes, trois au plus. Le reste du lot ne s’ouvre pas. */
+export function takePopupBacklog<T>(rows: T[], max = POPUP_BACKLOG_MAX) {
+  if (max <= 0) return [];
+  return rows.length <= max ? rows : rows.slice(-max);
 }
 
 export function asAdminNotice(alert: AgencyAlert): HotelReplyNotice {

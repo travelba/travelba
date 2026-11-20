@@ -72,7 +72,7 @@ export function BrowserAlertMenuItem({ onDone }: { onDone: () => void }) {
 const COPY = {
   ask: {
     title: "Notifications",
-    body: "Chaque alerte de l’agence s’ouvre ici. Le navigateur peut aussi l’afficher, même si cet onglet est en arrière-plan. Le choix est mémorisé sur cet appareil.",
+    body: "Une réponse d’hôtel ou un paiement reçu s’ouvre ici. Le navigateur peut aussi l’afficher, même si cet onglet est en arrière-plan. Le choix est mémorisé sur cet appareil.",
   },
   denied: {
     title: "Notifications bloquées",

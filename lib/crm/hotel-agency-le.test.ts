@@ -106,6 +106,10 @@ function memory() {
         state.filters.push({ kind: "eq", col, val });
         return api;
       },
+      gte(col: string, val: unknown) {
+        state.filters.push({ kind: "gte", col, val });
+        return api;
+      },
       neq(col: string, val: unknown) {
         state.filters.push({ kind: "neq", col, val });
         return api;
@@ -140,6 +144,7 @@ function memory() {
     function matches(row: Row) {
       return state.filters.every((filter) => {
         if (filter.kind === "eq") return row[filter.col] === filter.val;
+        if (filter.kind === "gte") return String(row[filter.col] ?? "") >= String(filter.val ?? "");
         if (filter.kind === "neq") return row[filter.col] !== filter.val;
         if (filter.kind === "is") return filter.val == null ? row[filter.col] == null : row[filter.col] === filter.val;
         return Array.isArray(filter.val) && filter.val.includes(row[filter.col]);

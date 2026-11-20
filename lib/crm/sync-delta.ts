@@ -293,9 +293,10 @@ function leCancelled(state: string | null | undefined) {
   return normalized === "cancelled" || normalized === "canceled";
 }
 
-/** Faux seulement si la ligne stockée porte déjà le même séjour. Une ligne sans dossier reste à relire. */
+/** Faux seulement si la ligne stockée porte déjà le même séjour. Une annulation déjà enregistrée n’est pas reprise. */
 export function leBookingNeedsWork(stored: LeSnap | null, booking: LeSnap) {
   if (!stored) return true;
+  if (leCancelled(booking.state) && leCancelled(stored.state)) return !leListEqual(stored, booking);
   if ((stored.status || "") === "unmatched") return true;
   if (leCancelled(booking.state) && !leCancelled(stored.state)) return true;
   return !leListEqual(stored, booking);

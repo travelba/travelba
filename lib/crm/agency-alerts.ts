@@ -118,6 +118,22 @@ function storedHref(row: StoredAgencyAlert) {
   return "/admin/journal";
 }
 
+/** Virement, Stripe ou prélèvement arrivé. Un refus, une annulation ou un seuil du journal ne comptent pas. */
+export function paymentTextReceived(text: string | null | undefined) {
+  const value = text || "";
+  if (/refus|abandon|rejet|au-dessus du seuil|échou|prélèvement annulé/i.test(value)) return false;
+  return /virement reçu|prélèvement sepa reçu|a réglé|paiement reçu/i.test(value);
+}
+
+/** Fenêtre : un encaissement reçu. Pliant, le journal et le reste restent dans leurs listes. */
+export function receivedPaymentPopup(row: StoredAgencyAlert): AgencyAlert | null {
+  if (row.kind !== "payment" || !row.id || !row.createdAt) return null;
+  if (/refus|abandon|rejet|au-dessus du seuil|échou|prélèvement annulé/i.test(row.summary || "")) return null;
+  const channel = row.entityType === "revolut" || row.entityType === "stripe";
+  if (!channel && !paymentTextReceived(row.summary)) return null;
+  return storedAgencyAlert(row);
+}
+
 /** Une alerte du journal, quel que soit son type. Le corps ne porte ni IBAN ni numéro de carte. */
 export function storedAgencyAlert(row: StoredAgencyAlert): AgencyAlert | null {
   if (!row.id || !row.createdAt) return null;
