@@ -490,6 +490,52 @@ describe("client MB3M Partners", () => {
     assert.equal(credit.includes("CommissionId"), false);
   });
 
+  it("le train et le maritime partent en 22 avec ou sans la commission vol de 1 €", () => {
+    const previous = process.env.MB3M_FLIGHT_EURO_COMMISSION;
+    const piece = (activityId: number, label: string) =>
+      linesXml("InvoiceLine", [{ label, quantity: 1, netPriceUnit: 362, netPriceTotal: 362, marginUnit: 0, activityId }]);
+    try {
+      for (const flag of ["0", "1"] as const) {
+        process.env.MB3M_FLIGHT_EURO_COMMISSION = flag;
+        assert.equal(mb3mPrestationActivityId(5), 22);
+        assert.equal(mb3mPrestationActivityId(9), 22);
+        assert.equal(mb3mPrestationActivityId(2), 2);
+        assert.equal(mb3mPrestationActivityId(1001), 1001);
+        assert.equal(mb3mPrestationActivityId(27), 27);
+        assert.equal(mb3mPrestationActivityId(22), 22);
+        for (const [activityId, label] of [
+          [5, "Train"],
+          [9, "Maritime"],
+        ] as const) {
+          const xml = piece(activityId, label);
+          assert.ok(xml.includes(`<ActivityId>22</ActivityId><Label>${label}</Label>`), xml);
+          assert.equal(xml.includes(`<ActivityId>${activityId}</ActivityId>`), false);
+          assert.equal(xml.includes("Commission"), false);
+        }
+        const flight = piece(2, "Vol");
+        assert.ok(flight.includes("<ActivityId>2</ActivityId>"), flight);
+        assert.equal(flight.includes("<ActivityId>22</ActivityId>"), false);
+        if (flag === "0") {
+          assert.equal(flight.includes("Commission"), false);
+        } else {
+          assert.ok(
+            flight.includes(
+              "<ActivityId>2</ActivityId><CommissionNetTotal>1</CommissionNetTotal><CommissionTotal>1</CommissionTotal><Label>Vol</Label>"
+            ),
+            flight
+          );
+          assert.equal(flight.includes("CommissionId"), false);
+        }
+        const forced = piece(22, "Divers");
+        assert.ok(forced.includes("<ActivityId>22</ActivityId><Label>Divers</Label>"), forced);
+        assert.equal(forced.includes("Commission"), false);
+      }
+    } finally {
+      if (previous === undefined) delete process.env.MB3M_FLIGHT_EURO_COMMISSION;
+      else process.env.MB3M_FLIGHT_EURO_COMMISSION = previous;
+    }
+  });
+
   it("le train part en 22, le vol garde la commission de 1 €, le net et la marge restent", async () => {
     process.env.VERCEL_ENV = "production";
     const train = "11111111-1111-4111-8111-111111111111";

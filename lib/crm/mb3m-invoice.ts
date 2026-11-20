@@ -247,7 +247,8 @@ type PiecePatch = {
  * Une ligne de marge pure (frais, prestation sans coût pointé) part donc avec un net plancher
  * d’un centime et la marge qui complète : la pièce imprime le bon montant, la marge varie de 0,01 €.
  * Un frais d’agence part en ligne Custom, sans marge. Un vol garde son activité (2, 1001 ou 27).
- * Le train et le maritime partent en 22, le temps que l’API accepte CommissionId.
+ * Le train et le maritime partent toujours en 22, tant que CommissionId n’est pas utilisé.
+ * `MB3M_FLIGHT_EURO_COMMISSION` ne concerne que la commission de 1 € des vols.
  */
 export const MB3M_MIN_NET = 0.01;
 

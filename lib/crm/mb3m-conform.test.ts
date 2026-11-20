@@ -319,8 +319,13 @@ describe("lignes de facture", () => {
       const off = linesXml("InvoiceLine", [{ label: "Vol", quantity: 1, netPriceUnit: 10, netPriceTotal: 10, activityId: 2 }]);
       assert.equal(off.includes("Commission"), false);
       const railOff = linesXml("InvoiceLine", [{ label: "Train", quantity: 1, netPriceUnit: 10, netPriceTotal: 10, activityId: 5 }]);
-      assert.ok(railOff.includes("<ActivityId>5</ActivityId>"), railOff);
-      assert.equal(railOff.includes("<ActivityId>22</ActivityId>"), false);
+      assert.ok(railOff.includes("<ActivityId>22</ActivityId>"), railOff);
+      assert.equal(railOff.includes("<ActivityId>5</ActivityId>"), false);
+      assert.equal(railOff.includes("Commission"), false);
+      const seaOff = linesXml("InvoiceLine", [{ label: "Maritime", quantity: 1, netPriceUnit: 10, netPriceTotal: 10, activityId: 9 }]);
+      assert.ok(seaOff.includes("<ActivityId>22</ActivityId>"), seaOff);
+      assert.equal(seaOff.includes("<ActivityId>9</ActivityId>"), false);
+      assert.equal(seaOff.includes("Commission"), false);
     } finally {
       delete process.env.MB3M_FLIGHT_EURO_COMMISSION;
     }
@@ -403,6 +408,12 @@ describe("lignes de facture", () => {
     const ferryXml = linesXml("InvoiceLine", ferrySoap);
     assert.ok(ferryXml.includes("<ActivityId>22</ActivityId>"), ferryXml);
     assert.equal(ferryXml.includes("Commission"), false);
+    const maritimeOn = conformMb3mAccountLines(
+      [{ transactionId: "tx-sea", label: "Maritime Bastia", amount: 120, margin: 20, activityId: 9, itemId: "sea-1", chargeKind: "maritime" }],
+      [{ id: "sea-1", kind: "maritime", supplier: "Corsica Ferries", title: "Maritime Bastia" }]
+    );
+    assert.equal(maritimeOn[0]?.activityId, MB3M_ACTIVITY.ferry);
+    assert.equal(mb3mSoapLines(maritimeOn, 0.01)[0]?.activityId, MB3M_ACTIVITY.land);
 
     for (const kind of ["flight", "rail", "ferry", "maritime", "low_cost", "hotel"]) {
       assert.notEqual(
@@ -422,14 +433,45 @@ describe("lignes de facture", () => {
     process.env.MB3M_FLIGHT_EURO_COMMISSION = "0";
     try {
       const restored = mb3mSoapLines(train, 0.01);
-      assert.equal(restored[0]?.activityId, MB3M_ACTIVITY.rail);
+      assert.equal(train[0]?.activityId, MB3M_ACTIVITY.rail);
+      assert.equal(train[0]?.providerName, "OUIGO direct");
+      assert.equal(restored[0]?.activityId, MB3M_ACTIVITY.land);
       const restoredXml = linesXml("InvoiceLine", [
         { label: "Train", quantity: 1, netPriceUnit: 362, netPriceTotal: 362, activityId: 5, marginUnit: 0 },
       ]);
-      assert.ok(restoredXml.includes("<ActivityId>5</ActivityId>"), restoredXml);
-      assert.equal(restoredXml.includes("<ActivityId>22</ActivityId>"), false);
+      assert.ok(restoredXml.includes("<ActivityId>22</ActivityId>"), restoredXml);
+      assert.equal(restoredXml.includes("<ActivityId>5</ActivityId>"), false);
+      assert.equal(restoredXml.includes("Commission"), false);
       const ferryRestored = mb3mSoapLines(ferry, 0.01);
-      assert.equal(ferryRestored[0]?.activityId, MB3M_ACTIVITY.ferry);
+      assert.equal(ferry[0]?.activityId, MB3M_ACTIVITY.ferry);
+      assert.equal(ferryRestored[0]?.activityId, MB3M_ACTIVITY.land);
+      const maritime = conformMb3mAccountLines(
+        [{ transactionId: "tx-sea", label: "Maritime Bastia", amount: 120, margin: 20, activityId: 9, itemId: "sea-1", chargeKind: "maritime" }],
+        [{ id: "sea-1", kind: "maritime", supplier: "Corsica Ferries", title: "Maritime Bastia" }]
+      );
+      assert.equal(maritime[0]?.activityId, MB3M_ACTIVITY.ferry);
+      assert.equal(maritime[0]?.held, false);
+      assert.equal(mb3mSoapLines(maritime, 0.01)[0]?.activityId, MB3M_ACTIVITY.land);
+      const flightHeld = conformMb3mAccountLines(
+        [{ transactionId: "tx-flight", label: "Vol Air France", amount: 400, activityId: 2, itemId: "flight-off", chargeKind: "flight" }],
+        [{ id: "flight-off", kind: "flight", supplier: "Air France", details: { airline_iata: "AF", sale_channel: "amadeus" } }]
+      );
+      assert.equal(flightHeld[0]?.held, true);
+      assert.equal(flightHeld[0]?.activityId, MB3M_ACTIVITY.air);
+      assert.equal(mb3mSoapLines(flightHeld, 0.01).length, 0);
+      const flightXml = linesXml("InvoiceLine", [
+        { label: "Vol", quantity: 1, netPriceUnit: 400, netPriceTotal: 400, activityId: 2 },
+      ]);
+      assert.ok(flightXml.includes("<ActivityId>2</ActivityId>"), flightXml);
+      assert.equal(flightXml.includes("Commission"), false);
+      const forcedTrain = conformMb3mAccountLines(
+        [{ transactionId: "tx-train", label: "Train", amount: 362, activityId: 5, itemId: "rail-land", chargeKind: "rail" }],
+        [{ id: "rail-land", kind: "rail", supplier: "OUIGO", title: "Train", details: { sale_channel: "ouigo", mb3m_activity: "land" } }]
+      );
+      assert.equal(forcedTrain[0]?.activityId, MB3M_ACTIVITY.land);
+      assert.equal(forcedTrain[0]?.providerName, "DIVERS TERRESTRE");
+      assert.equal(forcedTrain[0]?.held, false);
+      assert.equal(mb3mSoapLines(forcedTrain, 0.01)[0]?.activityId, MB3M_ACTIVITY.land);
     } finally {
       delete process.env.MB3M_FLIGHT_EURO_COMMISSION;
     }
@@ -626,6 +668,12 @@ describe("lignes de facture", () => {
     );
     assert.equal(stillFlight[0]?.activityId, 22);
     assert.equal(stillFlight[0]?.held, false);
+    assert.equal(stillFlight[0]?.providerName, "DIVERS TERRESTRE");
+    const stillSoap = mb3mSoapLines(stillFlight, 0.01);
+    assert.equal(stillSoap[0]?.activityId, 22);
+    const stillXml = linesXml("InvoiceLine", stillSoap);
+    assert.equal(stillXml.includes("<ActivityId>22</ActivityId>"), true);
+    assert.equal(stillXml.includes("Commission"), false);
     const kept = withMb3mActivity({ airline_iata: "AF", pnr: "ABC123" }, "divers terrestres");
     assert.equal("error" in kept, false);
     if (!("error" in kept)) {

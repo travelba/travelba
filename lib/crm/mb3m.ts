@@ -701,12 +701,15 @@ export async function mb3mSaveFolder(
 
 /**
  * Contournement temporaire, en attendant CommissionId (API MB3M 1.78.0).
- * Les vols (2, 1001, 27) gardent leur activité et partent avec une commission fixe de 1 €.
+ * Les vols (2, 1001, 27) gardent leur activité. La commission fixe de 1 €
+ * suit seulement `MB3M_FLIGHT_EURO_COMMISSION`.
  * Le train (5, ferroviaire, code 143) et le maritime (9, code 142) sont aussi de la billetterie :
- * sans commission, MB3M répond -22. Ils partent en Divers terrestre (22).
- * Même drapeau : `MB3M_FLIGHT_EURO_COMMISSION=0` retire les deux et renvoie l’activité du fichier.
- * Low cost (27) et achat direct (1001) ont déjà la commission de 1 €. FTI TICKET (34, code 144)
- * n’est jamais choisi, donc pas envoyé.
+ * sans commission, MB3M répond -22. Tant que CommissionId n’est pas envoyé, ils partent
+ * toujours en Divers terrestre (22), que le drapeau vol soit ouvert ou à `0`.
+ * Un choix déjà posé sur la carte (`mb3m_activity`) arrive ici comme une autre activité
+ * (22 pour divers terrestres) : il n’est pas dans cette liste, donc il reste.
+ * Low cost (27) et achat direct (1001) ont la commission de 1 € quand le drapeau est ouvert.
+ * FTI TICKET (34, code 144) n’est jamais choisi, donc pas envoyé.
  * Les frais généraux (14) ne sont pas une ligne de facture.
  */
 const MB3M_LAND_ACTIVITY = 22;
@@ -715,7 +718,7 @@ const MB3M_TICKETING_AS_LAND = new Set<number>([5, 9]);
 export function mb3mPrestationActivityId(activityId: number | null | undefined) {
   if (activityId == null) return undefined;
   if (activityId === 14) throw new Mb3mError("Les frais généraux ne sont pas une ligne de facture.", -1);
-  if (mb3mFlightEuroCommissionEnabled() && MB3M_TICKETING_AS_LAND.has(activityId)) return MB3M_LAND_ACTIVITY;
+  if (MB3M_TICKETING_AS_LAND.has(activityId)) return MB3M_LAND_ACTIVITY;
   return activityId;
 }
 
@@ -737,8 +740,8 @@ export function mb3mDefaultProviderId() {
 
 /**
  * Commission fixe de 1 € sur les vols (activités 2, 1001, 27), en attendant CommissionId
- * (API MB3M 1.78.0). Activé par défaut. `MB3M_FLIGHT_EURO_COMMISSION=0` le retire,
- * retient à nouveau les vols, et renvoie le train et le maritime sur leur activité du fichier.
+ * (API MB3M 1.78.0). Activé par défaut. `MB3M_FLIGHT_EURO_COMMISSION=0` la retire
+ * et retient à nouveau les vols. Le train et le maritime restent en activité 22.
  * Ce n’est pas `MB3M_FLIGHT_COMMISSION` : celui-là enverrait un CommissionId, absent du WSDL.
  */
 export const MB3M_FLIGHT_EURO_COMMISSION_AMOUNT = 1;
