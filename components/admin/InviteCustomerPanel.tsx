@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PortalAccess } from "@/lib/crm/invite";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
+import { OpenClientSpace } from "@/components/admin/OpenClientSpace";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
@@ -42,10 +43,6 @@ export function InviteCustomerPanel({
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sendingAccess, setSendingAccess] = useState(false);
-  // Ouverture par l’agence (B-06) : lien à usage unique, 10 minutes, rien n’est envoyé au client.
-  const [deskLink, setDeskLink] = useState<string | null>(null);
-  const [deskBusy, setDeskBusy] = useState(false);
-  const [deskCopied, setDeskCopied] = useState(false);
 
   const copy = STATUS_COPY[status];
 
@@ -73,35 +70,6 @@ export function InviteCustomerPanel({
     }
     setInfo("Lien d’accès envoyé par WhatsApp. Le mot de passe du client ne change pas.");
     router.refresh();
-  }
-
-  async function openSpace() {
-    if (deskBusy) return;
-    setDeskBusy(true);
-    setError(null);
-    setInfo(null);
-    setDeskCopied(false);
-    const result = await adminAction<{ url?: string }>(`/api/admin/clients/${customerId}/ouvrir`, {
-      method: "POST",
-    });
-    setDeskBusy(false);
-    if (!result.ok || typeof result.data?.url !== "string") {
-      setDeskLink(null);
-      setError(result.error || "Lien indisponible. Réessayez.");
-      return;
-    }
-    setDeskLink(result.data.url);
-    router.refresh();
-  }
-
-  async function copyDeskLink() {
-    if (!deskLink) return;
-    try {
-      await navigator.clipboard.writeText(deskLink);
-      setDeskCopied(true);
-    } catch {
-      setError("Copie impossible — sélectionnez le lien manuellement.");
-    }
   }
 
   async function sendInvite() {
@@ -164,34 +132,8 @@ export function InviteCustomerPanel({
             Lien généré — valable 30 jours.
           </p>
         ) : null}
-        {deskLink ? (
-          <div className="mt-3 rounded-2xl bg-[var(--admin-peach)] px-3 py-2 text-xs text-[var(--admin-navy)]">
-            <p className="font-semibold">Lien d’ouverture prêt : 10 minutes, une seule ouverture.</p>
-            <p className="mt-1">
-              Ouvrez-le dans une fenêtre privée ou sur le téléphone du client : ce navigateur reste connecté à
-              l’agence. L’ouverture est enregistrée à votre nom dans l’historique du client.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void copyDeskLink()}
-                className="rounded-full border border-border bg-white px-3 py-1.5 font-semibold"
-              >
-                {deskCopied ? "Lien copié" : "Copier le lien"}
-              </button>
-              <a
-                href={deskLink}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-full border border-border bg-white px-3 py-1.5 font-semibold"
-              >
-                Ouvrir dans un onglet
-              </a>
-            </div>
-          </div>
-        ) : null}
       </div>
-      <BusyBar active={loading || sendingAccess || deskBusy} label={deskBusy ? "Préparation du lien…" : "Envoi…"} />
+      <BusyBar active={loading || sendingAccess} label="Envoi…" />
       <div className={`flex shrink-0 flex-col gap-2 ${stacked ? "items-start" : "items-end"}`}>
         <div className="flex flex-wrap justify-end gap-2">
           {link ? (
@@ -239,18 +181,11 @@ export function InviteCustomerPanel({
           hint="Un lien personnel, à usage unique, valable 30 jours. Aucun mot de passe."
           confirmLabel="Envoyer"
           align={stacked ? "start" : "end"}
-          disabled={loading || sendingAccess || deskBusy}
+          disabled={loading || sendingAccess}
           busyLabel="Envoi…"
           onConfirm={sendAccessWhatsapp}
         />
-        <button
-          type="button"
-          onClick={() => void openSpace()}
-          disabled={deskBusy}
-          className="text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline disabled:opacity-60"
-        >
-          {deskBusy ? "Préparation…" : "Ouvrir l’espace client"}
-        </button>
+        <OpenClientSpace customerId={customerId} />
       </div>
     </section>
   );

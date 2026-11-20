@@ -73,6 +73,7 @@ import { bookingCoverPlan, catalogPhotoId } from "@/lib/crm/covers";
 import { ReviewDoubtList } from "@/components/crm/ReviewDoubtList";
 import { reviewDoubts, reviewStepLabel } from "@/lib/crm/review-doubt";
 import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
+import { useOpenClientSpace } from "@/components/admin/OpenClientSpace";
 import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
 import { ChargeControl } from "@/components/admin/ChargeControl";
 import { ResponsableForm } from "@/components/admin/ResponsableForm";
@@ -733,6 +734,7 @@ export function BookingEditor({
     void adminAction(`/api/admin/bookings/${booking.id}/vu`, { method: "POST" });
   }, [booking.id]);
   const [more, setMore] = useState(false);
+  const clientSpace = useOpenClientSpace(booking.customer_id);
   useEffect(() => {
     if (!more) return;
     function close(event: MouseEvent) {
@@ -1519,6 +1521,17 @@ export function BookingEditor({
           Cartes d’embarquement
         </button>
       ) : null}
+      <button
+        type="button"
+        className={menuItem}
+        disabled={clientSpace.busy}
+        onClick={() => {
+          setMore(false);
+          void clientSpace.start();
+        }}
+      >
+        Ouvrir l’espace client
+      </button>
       {shareUrl ? (
         <a href={shareUrl} target="_blank" rel="noreferrer" className={menuItem}>
           Voir comme le client
@@ -1858,6 +1871,7 @@ export function BookingEditor({
         {flash ? <p className="text-sm text-[var(--admin-navy)]">{flash}</p> : null}
         <IssuesList issues={issues} />
       </header>
+      {clientSpace.dialog}
       {passesOpen ? (
         <BoardingPassSend
           bookingId={booking.id}
