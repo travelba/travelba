@@ -56,6 +56,16 @@ function db(supabase?: SupabaseClient) {
   return supabase || createServiceClient();
 }
 
+/** Lecture : sans client et sans clé de service, la table est illisible et les colonnes restent. */
+function readDb(supabase?: SupabaseClient): SupabaseClient | null {
+  if (supabase) return supabase;
+  try {
+    return createServiceClient();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Lignes du dossier, dans l’ordre de saisie.
  * `null` : la table n’est pas encore là, la lecture reste sur les colonnes du dossier.
@@ -66,7 +76,9 @@ export async function loadDiscountLines(
 ): Promise<Map<string, DiscountLine[]> | null> {
   const map = new Map<string, DiscountLine[]>();
   if (!bookingIds.length) return map;
-  const { data, error } = await db(supabase)
+  const client = readDb(supabase);
+  if (!client) return null;
+  const { data, error } = await client
     .from("crm_booking_discounts")
     .select("id, booking_id, label, kind, quantity, unit_price, percent, sort_order")
     .in("booking_id", bookingIds)
