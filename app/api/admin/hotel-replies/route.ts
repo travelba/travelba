@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { agencyAlerts, type ConciergeChangeAlert, type PaymentAlert } from "@/lib/crm/agency-alerts";
+import { agencyAlerts, type ConciergeChangeAlert, type InboundChatAlert, type StoredAgencyAlert } from "@/lib/crm/agency-alerts";
 import { loadTicketDuplicateAlerts } from "@/lib/crm/ticket-duplicate-alerts";
 import { CONCIERGE_WRITE_SOURCE } from "@/lib/crm/concierge-client-write";
 import { shouldNotifyInboundMail } from "@/lib/crm/email-reply-gate";
@@ -38,9 +38,7 @@ export async function GET(request: Request) {
     .order("received_at", { ascending: true })
     .limit(20);
 
-  if (error) return NextResponse.json({ notices: [], alerts: [], replied: 0 });
-
-  const messages = (data || []) as {
+  const messages = (error ? [] : data || []) as {
     id: string;
     booking_id: string;
     booking_item_id: string;
@@ -108,38 +106,80 @@ export async function GET(request: Request) {
       .map((row) => ({ id: row.id, subject: row.subject, received_at: row.received_at }));
   }
 
+  const sinceMs = Date.parse(since);
   const alerts = agencyAlerts({
     emails: emailRows.map((row) => ({
       id: row.id,
       subject: row.subject,
       receivedAt: row.received_at,
     })),
-    chats: [],
+    chats: await inboundChats(admin, since),
     changes: await conciergeChanges(admin, since),
-    payments: await paymentAlerts(admin, since),
-    tickets: await loadTicketDuplicateAlerts(admin),
+    tickets: (await loadTicketDuplicateAlerts(admin)).filter((row) => Date.parse(row.at) > sinceMs),
+    stored: await storedAlerts(admin, since),
   });
 
   return NextResponse.json({ notices: hotelReplyNotices(rows, since), alerts, replied });
 }
 
-async function paymentAlerts(admin: ReturnType<typeof createServiceClient>, since: string): Promise<PaymentAlert[]> {
+async function storedAlerts(admin: ReturnType<typeof createServiceClient>, since: string): Promise<StoredAgencyAlert[]> {
   const selected = await admin
     .from("crm_agency_alerts")
-    .select("id, summary, created_at, entity_id, entity_type")
-    .eq("kind", "payment")
+    .select("id, kind, summary, created_at, entity_id, entity_type")
+    .is("read_at", null)
+    .gt("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(20);
+  if (selected.error) return [];
+  return (
+    (selected.data || []) as {
+      id: string;
+      kind: string;
+      summary: string | null;
+      created_at: string;
+      entity_id: string | null;
+      entity_type: string | null;
+    }[]
+  ).map((row) => ({
+    id: String(row.id),
+    kind: row.kind,
+    summary: row.summary,
+    createdAt: row.created_at,
+    entityId: row.entity_id,
+    entityType: row.entity_type,
+  }));
+}
+
+async function inboundChats(admin: ReturnType<typeof createServiceClient>, since: string): Promise<InboundChatAlert[]> {
+  const selected = await admin
+    .from("crm_whatsapp_messages")
+    .select("id, body, created_at, booking_id")
+    .eq("direction", "inbound")
     .gt("created_at", since)
     .order("created_at", { ascending: true })
     .limit(8);
-  if (selected.error) return [];
-  return (
-    (selected.data || []) as { id: string; summary: string | null; created_at: string; entity_id: string | null; entity_type: string | null }[]
-  ).map((row) => ({
+  if (!selected.error) {
+    return (
+      (selected.data || []) as { id: string; body: string | null; created_at: string; booking_id: string | null }[]
+    ).map((row) => ({
+      id: String(row.id),
+      body: row.body,
+      createdAt: row.created_at,
+      bookingId: row.booking_id,
+    }));
+  }
+  const fallback = await admin
+    .from("crm_whatsapp_messages")
+    .select("id, body, created_at")
+    .eq("direction", "inbound")
+    .gt("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(8);
+  if (fallback.error) return [];
+  return ((fallback.data || []) as { id: string; body: string | null; created_at: string }[]).map((row) => ({
     id: String(row.id),
-    summary: row.summary,
+    body: row.body,
     createdAt: row.created_at,
-    customerId: row.entity_type === "client" ? row.entity_id : null,
-    queue: row.entity_type === "revolut" || row.entity_type === "stripe",
   }));
 }
 

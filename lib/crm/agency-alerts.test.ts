@@ -49,6 +49,88 @@ test("une modification du concierge ouvre le dossier", () => {
   assert.equal(alerts[0]?.title, "Modification du concierge");
 });
 
+test("un WhatsApp rattaché à un dossier ouvre le séjour, sans numéro", () => {
+  const alerts = agencyAlerts({
+    emails: [],
+    chats: [
+      {
+        id: "w9",
+        body: "Où est mon transfert ?",
+        createdAt: "2026-11-02T08:00:00.000Z",
+        bookingId: "11111111-1111-4111-8111-111111111111",
+      },
+    ],
+  });
+  assert.equal(alerts[0]?.href, "/admin/reservations/11111111-1111-4111-8111-111111111111?tab=whatsapp");
+  assert.equal(alerts[0]?.id, "wa:w9");
+  assert.equal(JSON.stringify(alerts).includes("+33"), false);
+});
+
+test("chaque type d’alerte du journal ouvre une page, sans IBAN", () => {
+  const booking = "22222222-2222-4222-8222-222222222222";
+  const client = "33333333-3333-4333-8333-333333333333";
+  const alerts = agencyAlerts({
+    emails: [],
+    chats: [],
+    payments: [
+      { id: "p1", summary: "Virement reçu", createdAt: "2026-11-02T09:00:00.000Z", customerId: client },
+      {
+        id: "p2",
+        summary: "Prélèvement SEPA reçu",
+        createdAt: "2026-11-02T09:01:00.000Z",
+        customerId: null,
+        queue: true,
+      },
+    ],
+    stored: [
+      {
+        id: "c1",
+        kind: "card_reveal",
+        summary: "Carte ouverte (numéro complet).",
+        createdAt: "2026-11-02T09:02:00.000Z",
+        entityType: "card",
+        entityId: booking,
+      },
+      {
+        id: "r1",
+        kind: "role_change",
+        summary: "Rôle modifié.",
+        createdAt: "2026-11-02T09:03:00.000Z",
+        entityType: "user",
+        entityId: client,
+      },
+      {
+        id: "pl1",
+        kind: "pliant",
+        summary: "Lecture du compte refusée. FR76 3000 6000 0112 3456 7890 189",
+        createdAt: "2026-11-02T09:04:00.000Z",
+        entityType: "card",
+        entityId: null,
+      },
+      {
+        id: "x1",
+        kind: "inconnu",
+        summary: "",
+        createdAt: "2026-11-02T09:05:00.000Z",
+        entityType: null,
+        entityId: null,
+      },
+    ],
+  });
+  const byId = Object.fromEntries(alerts.map((row) => [row.id, row]));
+  assert.equal(byId["pay:p1"]?.href, `/admin/clients/${client}`);
+  assert.equal(byId["pay:p1"]?.title, "Paiement client");
+  assert.equal(byId["pay:p2"]?.href, "/admin/argent?onglet=a-encaisser");
+  assert.equal(byId["pay:p2"]?.title, "Prélèvement SEPA");
+  assert.equal(byId["alert:c1"]?.href, `/admin/reservations/${booking}`);
+  assert.equal(byId["alert:c1"]?.kicker, "Carte ouverte");
+  assert.equal(byId["alert:r1"]?.href, "/admin/equipe");
+  assert.equal(byId["alert:pl1"]?.href, "/admin/journal");
+  assert.equal(byId["alert:pl1"]?.body.includes("FR76"), false);
+  assert.equal(byId["alert:x1"]?.title, "Alerte");
+  assert.equal(byId["alert:x1"]?.href, "/admin/journal");
+});
+
 test("un objet vide et un message vide restent annoncés", () => {
   const alerts = agencyAlerts({
     emails: [{ id: "", subject: "x", receivedAt: "2026-10-26T12:00:00.000Z" }, { id: "m2", subject: "  ", receivedAt: "2026-10-26T12:01:00.000Z" }],

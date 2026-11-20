@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, type CSSProperties, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { AdminOmnibar } from "@/components/admin/AdminOmnibar";
+import { BrowserAlertMenuItem } from "@/components/admin/BrowserAlertPrompt";
 import { Icon } from "@/components/crm/icons";
 import { siteConfig } from "@/lib/site";
 import { useFixedMenu } from "@/lib/crm/use-fixed-menu";
@@ -179,6 +180,7 @@ export function UserMenuPanel({
             <Icon name="support_agent" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
             WhatsApp agence
           </a>
+          <BrowserAlertMenuItem onDone={onClose} />
         </>
       )}
       <button
