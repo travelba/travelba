@@ -119,7 +119,8 @@ describe("carte hôtel horizontale", () => {
     assert.match(html, /Paris → Nice/);
     assert.match(html, /CDG → NCE/);
     assert.match(html, /Anantara Plaza Nice Hotel/);
-    assert.match(html, /Hôtel · Nice/);
+    assert.match(html, /Hôtel · 2 nuits/);
+    assert.match(html, /nuit 2 sur 2/);
     assert.match(html, /Grand Premium Garden View Room with Balcony/);
     assert.match(html, /6 photos/);
     assert.match(html, /Voir les 6 photos de Anantara Plaza Nice Hotel/);

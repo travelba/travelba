@@ -23,7 +23,7 @@ import {
   insuranceLineLabel,
   itemPriceLabel,
   publishRevealIds,
-  tripPlaceLine,
+  stayHeroPlace,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
 import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
@@ -320,7 +320,7 @@ function ClientScreen({
   });
   const headline = face.title || "Séjour";
   const clientNote = shownClientNote(booking.notes_client);
-  const placeLine = tripPlaceLine(headline, face.destination);
+  const placeLine = stayHeroPlace(headline, face.destination, face.items);
   const formalities = frenchPassportTrip(items, travelers.length);
   const feeExtras = agencyFeeExtraAmounts(allItems);
   const stayTotal = bookingTotalFromItems(allItems);

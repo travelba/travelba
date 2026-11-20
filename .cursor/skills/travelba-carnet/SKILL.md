@@ -45,7 +45,8 @@ Accueil `/mon-compte` = prochain séjour, **même** `CarnetItinerary` que le dé
 
 ## Timeline
 
-- Grouper par jour (`groupByDay`). **Hôtel et location** répétés chaque jour de stay (`stayNightDates` : start inclus, fin **exclue**). Vol = jour de départ.
+- Grouper par jour (`groupByDay`). **Hôtel** répété chaque nuit (`stayNightDates` : start inclus, fin **exclue**). La première nuit porte « N nuits » et la pension si elle est écrite. Les suivantes : « nuit N sur N », photo en petit. Vol = jour de départ.
+- **Location** : les mêmes jours, plus le matin de la restitution. Ce matin-là la carte dit « restitution » et passe avant un vol plus tardif. La prise dit « prise en charge » et le lieu une fois (`Aéroport de Palma (PMI)`). Les jours entre les deux sont une ligne « avec vous jusqu’au … », sans `09h30 → 09h30`. `AUTOMATICO` s’affiche « automatique ». Le grossiste n’est pas sur la ligne fermée. Une location d’une seule journée garde l’horaire du jour.
 - Jours **sans aucune** carte : **sautés** (pas de ligne vide entre deux villes).
 - Hôtel : **pas d’horloge**. `itemClock` ignore `T00:00:00` (timestamptz minuit ≠ 00h00 check-in). Carte compacte : **nom d’établissement** (`details.hotel_name` / `hotelDisplayName`) en titre, **ville** (`hotelCityLine`) en dessous. Jamais la ville à la place du nom.
 - Vol : titre = **villes** (`Rome → Paris`, `flightCities`), dessous le **code** (`FCO → CDG`, `flightIata`). Si une seule ville est lue, la continuité du même billet complète l’autre côté : le libellé reste « origine → destination ». Seychelles = SEZ, Dubaï = DXB, Emirates ou Qatar vers Paris = CDG : l’avertissement IATA disparaît. Il reste si le code ne se déduit pas. N° de vol, classe, horaire et référence restent dans le détail. Même règle sur le carnet client et la fiche agence. Chaque trajet est une carte, même s’il partage le PNR. Les voyageurs imprimés sur ce trajet s’affichent sur la carte. Le prix du séjour ne change pas.

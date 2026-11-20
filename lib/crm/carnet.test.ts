@@ -11,6 +11,12 @@ import {
   stayNameField,
   tripHeadline,
   tripPlaceLine,
+  stayHeroPlace,
+  carClosedFace,
+  carDayRole,
+  frenchVehicleName,
+  airportPlaceLabel,
+  hotelNightFace,
   clientVisibleItems,
   flightCardSubtitle,
   flightCardTitle,
@@ -181,17 +187,26 @@ describe("carnet", () => {
     assert.equal(groups[1][1].some((row) => row.kind === "activity"), false);
   });
 
-  it("répète la location chaque jour, sans le jour de restitution", () => {
+  it("répète la location et montre la restitution le matin du retour", () => {
     const groups = groupByDay([
       item({
         id: "c",
         kind: "car",
         title: "Hertz",
-        start_at: "2026-08-12",
-        end_at: "2026-08-15",
+        start_at: "2026-08-12T09:30:00",
+        end_at: "2026-08-15T09:30:00",
+        sort_order: 2,
+      }),
+      item({
+        id: "f",
+        kind: "flight",
+        title: "Retour",
+        start_at: "2026-08-15T11:40:00",
+        sort_order: 0,
       }),
     ]);
-    assert.equal(groups.map(([day]) => day).join(","), "2026-08-12,2026-08-13,2026-08-14");
+    assert.equal(groups.map(([day]) => day).join(","), "2026-08-12,2026-08-13,2026-08-14,2026-08-15");
+    assert.equal(groups[3][1].map((row) => row.id).join(","), "c,f");
   });
 
   it("affiche le prix vendu seulement le premier jour", () => {
@@ -315,6 +330,60 @@ describe("carnet", () => {
   it("affiche l’heure locale imprimée sans conversion", () => {
     assert.equal(itemClock("2026-08-12T08:40:00"), "08h40");
     assert.equal(itemClock("2026-08-12T00:00:00"), "");
+  });
+
+  it("donne trois visages à une location de plusieurs jours", () => {
+    const car = item({
+      kind: "car",
+      title: "PEUGEOT 3008 AUTOMATICO ou similaire",
+      supplier: "Expedia TAAP",
+      confirmation_ref: "1209347615",
+      start_at: "2026-12-20T09:30:00",
+      end_at: "2026-12-27T09:30:00",
+      details: {
+        vehicle: "PEUGEOT 3008 AUTOMATICO ou similaire",
+        pickup: "Palma de Majorque (PMI)",
+        dropoff: "Palma de Majorque (PMI)",
+      },
+    });
+    assert.equal(frenchVehicleName("PEUGEOT 3008 AUTOMATICO ou similaire"), "Peugeot 3008 automatique ou similaire");
+    assert.equal(airportPlaceLabel("Palma de Majorque (PMI)"), "Aéroport de Palma (PMI)");
+    assert.equal(carDayRole(car, "2026-12-20"), "pickup");
+    assert.equal(carDayRole(car, "2026-12-22"), "during");
+    assert.equal(carDayRole(car, "2026-12-27"), "return");
+    const pickup = carClosedFace(car, "2026-12-20");
+    assert.equal(pickup.kicker, "Voiture · prise en charge 09h30");
+    assert.equal(pickup.subtitle, "Aéroport de Palma (PMI)");
+    assert.equal(pickup.quiet, false);
+    assert.doesNotMatch(pickup.kicker, /→/);
+    const middle = carClosedFace(car, "2026-12-22");
+    assert.equal(middle.quiet, true);
+    assert.match(middle.title, /avec vous jusqu’au 27 décembre/);
+    assert.equal(middle.subtitle, "");
+    const back = carClosedFace(car, "2026-12-27");
+    assert.equal(back.kicker, "Voiture · restitution 09h30");
+    const sameDay = carClosedFace(
+      item({
+        kind: "car",
+        title: "Fiat",
+        start_at: "2026-08-12T09:30:00",
+        end_at: "2026-08-12T18:00:00",
+      }),
+      "2026-08-12"
+    );
+    assert.equal(sameDay.kicker, "Voiture · 09h30 → 18h00");
+    const hotel = item({
+      kind: "hotel",
+      title: "Can Verí",
+      start_at: "2026-12-21",
+      end_at: "2026-12-28",
+      details: { city: "Sóller", hotel_name: "Can Verí Suites" },
+    });
+    assert.equal(hotelNightFace(hotel, "2026-12-21").first, true);
+    assert.equal(hotelNightFace(hotel, "2026-12-21").total, 7);
+    assert.equal(hotelNightFace(hotel, "2026-12-23").index, 3);
+    assert.equal(stayHeroPlace("Majorque", "Majorque", [hotel]), "Sóller");
+    assert.equal(stayHeroPlace("Sóller", "Sóller", [hotel]), null);
   });
 
   it("sépare IATA et villes sur le vol", () => {

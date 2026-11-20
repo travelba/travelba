@@ -8,7 +8,7 @@ import { isClientUpcomingStay } from "@/lib/crm/client-stays";
 import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
 import { clientTripOwnerIds, clientTwinIds } from "@/lib/crm/company-peers";
-import { tripPlaceLine } from "@/lib/crm/carnet";
+import { stayHeroPlace } from "@/lib/crm/carnet";
 import { applyClientStayFace } from "@/lib/crm/client-stay-face";
 import { loadClientStayFaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { stayTransitionName } from "@/lib/crm/account-motion";
@@ -184,7 +184,7 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
   const countdown = jMinusLabel(nextTrip.start_date);
   const tripHref = `/mon-compte/reservations/${nextTrip.reference}`;
   const tripName = face?.title || nextTrip.title || "Prochain séjour";
-  const tripPlace = tripPlaceLine(tripName, face?.destination || nextTrip.destination);
+  const tripPlace = stayHeroPlace(tripName, face?.destination || nextTrip.destination, face?.items);
 
   return (
     <>
