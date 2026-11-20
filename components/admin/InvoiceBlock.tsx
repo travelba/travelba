@@ -11,6 +11,7 @@ import {
   mb3mAmadeusSuggestionSentence,
   mb3mInvoiceActionLabel,
   mb3mInvoiceChip,
+  mb3mLettrageHoldNotice,
   mb3mReglementNote,
   type Mb3mPreparationView,
 } from "@/lib/crm/mb3m-prep";
@@ -88,7 +89,15 @@ export function InvoiceBlock({
         reglements?: { montant: number; numero_mb3m: string | null; statut: "envoye" | "deja_dans_mb3m" | "erreur"; erreur?: string | null }[];
         amadeus?: { label: string; invoiceNumber: string; placement: "move" | "here" | "other" }[];
         suggestionsAmadeus?: { label: string; invoiceNumber: string }[];
+        statut?: string | null;
+        avertissement?: string | null;
       } | null;
+      const held = mb3mLettrageHoldNotice(json);
+      if (res.ok && held) {
+        onNote(held);
+        router.refresh();
+        return;
+      }
       if (!res.ok || !json?.number) {
         setError(json?.error || "La facture MB3M n’a pas abouti.");
         router.refresh();
@@ -122,7 +131,19 @@ export function InvoiceBlock({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "reissue" }),
       });
-      const json = (await res.json().catch(() => null)) as { error?: string; creditNote?: string; number?: string } | null;
+      const json = (await res.json().catch(() => null)) as {
+        error?: string;
+        creditNote?: string;
+        number?: string;
+        statut?: string | null;
+        avertissement?: string | null;
+      } | null;
+      const held = mb3mLettrageHoldNotice(json);
+      if (res.ok && held) {
+        onNote(held);
+        router.refresh();
+        return;
+      }
       if (!res.ok || !json?.number) {
         setError(json?.error || "L’avoir n’a pas abouti.");
         return;

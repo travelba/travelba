@@ -1246,6 +1246,146 @@ function firstAmount(block: string, names: string[]) {
   return null;
 }
 
+const LETTRAGE_CENT = 0.005;
+
+export type Mb3mLettrageSnapshot = {
+  /** Un règlement est lettré sur la facture, ou un règlement du dossier a un reste inférieur à son montant. */
+  lettered: boolean;
+  /** Montant TTC de la facture visée, quand la liste le porte. */
+  amount: number | null;
+  /** Solde de la facture visée. */
+  balance: number | null;
+  /** La facture visée était dans la réponse. */
+  seen: boolean;
+};
+
+function lettrageCents(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+/** Reste strictement inférieur au montant : une partie est lettrée. */
+function balanceIsLettered(balance: number, amount: number) {
+  return balance < amount - LETTRAGE_CENT;
+}
+
+/**
+ * Lettrage lu dans une réponse FindAllPieces.
+ * La facture est lettrée si son solde (Balance) est inférieur à son TTC.
+ * Un règlement du dossier l’est aussi si son reste est inférieur à son montant.
+ */
+export function mb3mLettrageFromXml(
+  xml: string,
+  invoiceNumber: string,
+  options?: { folderId?: string | null; folderScoped?: boolean }
+): Mb3mLettrageSnapshot {
+  const wanted = invoiceNumber.trim();
+  const folderId = (options?.folderId || "").trim();
+  const folderScoped = Boolean(options?.folderScoped);
+  let lettered = false;
+  let amount: number | null = null;
+  let balance: number | null = null;
+  let seen = false;
+  for (const block of topLevelBlocks(mb3mLocalNames(xml), PAYMENT_BLOCK_TAGS)) {
+    if (isPaymentBlock(block)) {
+      const payment = paymentFromBlock(block);
+      if (!payment) continue;
+      const actual = (payment.folderId || "").trim();
+      if (folderId && actual && actual !== folderId) continue;
+      if (folderId && !actual && !folderScoped) continue;
+      if (balanceIsLettered(payment.unmatched, payment.amount)) lettered = true;
+      continue;
+    }
+    if (paymentNumber(block) !== wanted) continue;
+    seen = true;
+    const head = paymentHead(block).split(/<Lines>/)[0] || paymentHead(block);
+    const total = firstAmount(head, ["Amount", "Total", "TotalPrice"]);
+    const left = firstAmount(head, ["Balance", "Solde"]);
+    if (total != null && total > 0) amount = lettrageCents(total);
+    if (left != null) balance = lettrageCents(Math.max(0, left));
+    if (amount != null && balance != null && balanceIsLettered(balance, amount)) lettered = true;
+  }
+  return { lettered, amount, balance, seen };
+}
+
+function mergeLettrage(left: Mb3mLettrageSnapshot, right: Mb3mLettrageSnapshot): Mb3mLettrageSnapshot {
+  return {
+    lettered: left.lettered || right.lettered,
+    amount: left.amount ?? right.amount,
+    balance: left.balance ?? right.balance,
+    seen: left.seen || right.seen,
+  };
+}
+
+function lettrageKnown(snap: Mb3mLettrageSnapshot) {
+  return snap.lettered || (snap.seen && snap.amount != null && snap.balance != null);
+}
+
+function mb3mLettragePieceQuery(number: string) {
+  return `<FolderFindPiecesQuery xmlns="http://schemas.mb3m.fr/Partners"><IncludeInvoices>true</IncludeInvoices><IncludePayments>true</IncludePayments><Number>${escapeMb3mXml(number)}</Number><PageIndex>0</PageIndex><PageSize>20</PageSize></FolderFindPiecesQuery>`;
+}
+
+/**
+ * Solde de la facture et règlements du dossier, via FindAllPieces
+ * (Balance, IsPayment, Identity/Number). Ne crée ni n’annule rien.
+ */
+export async function mb3mReadLettrage(
+  input: { number: string; folderId?: string | null; customerUid?: string | null },
+  fetchImpl?: FetchImpl
+): Promise<Mb3mLettrageSnapshot> {
+  const number = input.number.trim();
+  if (!/^[1-9]\d*$/.test(number)) throw new Mb3mError("Numéro de facture MB3M invalide.", -1);
+  const folderId = (input.folderId || "").trim() || null;
+  const customerUid = (input.customerUid || "").trim();
+  let snap: Mb3mLettrageSnapshot = { lettered: false, amount: null, balance: null, seen: false };
+  let folderError: Error | null = null;
+  if (customerUid && folderId) {
+    try {
+      for (let page = 0; page < 40 && !lettrageKnown(snap); page += 1) {
+        const xml = await mb3mSoap(
+          "FolderService",
+          "IFolderService",
+          "FindAllPieces",
+          mb3mFindPaymentsQuery(customerUid, page, PIECE_PAGE_SIZE, folderId),
+          fetchImpl
+        );
+        assertOperation(xml);
+        snap = mergeLettrage(snap, mb3mLettrageFromXml(xml, number, { folderId, folderScoped: true }));
+        const local = mb3mLocalNames(xml);
+        const pageItems = topLevelBlocks(local, PAYMENT_BLOCK_TAGS);
+        const reported = Number(mb3mXmlText(local, "TotalCount"));
+        const done =
+          !pageItems.length ||
+          pageItems.length < PIECE_PAGE_SIZE ||
+          (Number.isFinite(reported) && reported >= 0 && (page + 1) * PIECE_PAGE_SIZE >= reported);
+        if (done || snap.lettered) break;
+      }
+    } catch (err) {
+      folderError = err instanceof Error ? err : new Error("lecture");
+    }
+  }
+  if (!lettrageKnown(snap)) {
+    try {
+      const xml = await mb3mSoap(
+        "FolderService",
+        "IFolderService",
+        "FindAllPieces",
+        mb3mLettragePieceQuery(number),
+        fetchImpl
+      );
+      assertOperation(xml);
+      snap = mergeLettrage(snap, mb3mLettrageFromXml(xml, number, { folderId, folderScoped: false }));
+    } catch (err) {
+      if (!snap.lettered) throw folderError || err;
+    }
+  }
+  if (folderError && !snap.lettered) throw folderError;
+  if (!lettrageKnown(snap)) throw new Mb3mError("Le lettrage de la pro forma n’a pas pu être lu.", -1);
+  console.info(
+    `[mb3m] lettrage ${number} ${snap.lettered ? "lettré" : "ouvert"} solde ${snap.balance ?? "?"} sur ${snap.amount ?? "?"}`
+  );
+  return snap;
+}
+
 export type Mb3mRemotePiece = {
   number: string;
   refCommand: string;

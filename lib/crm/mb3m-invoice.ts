@@ -3,6 +3,7 @@ import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings
 import { resolveCountryCode, resolveNationality } from "@/lib/crm/countries";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
+import { formatMoney } from "@/lib/crm/money";
 import { stayCurrency } from "@/lib/crm/stay-currency";
 import { staffStayFacts } from "@/lib/crm/staff-stay";
 import { chargeableTicketingFee } from "@/lib/crm/ticketing-fee";
@@ -77,6 +78,8 @@ import {
   type Mb3mLine,
   mb3mConfigured,
   mb3mFindPiece,
+  mb3mReadLettrage,
+  type Mb3mLettrageSnapshot,
   mb3mPartnerCode,
   mb3mPrestationActivityId,
   mb3mRealm,
@@ -209,6 +212,11 @@ export type Mb3mInvoiceResult = {
   }[];
   suggestionsAmadeus?: { label: string; invoiceNumber: string }[];
   avertissement?: string | null;
+  /**
+   * bloque_lettrage : un règlement est lettré, rien n’est écrit.
+   * avertissement : la lecture du lettrage a échoué, rien n’est écrit.
+   */
+  statut?: "bloque_lettrage" | "avertissement" | null;
 };
 
 type PiecePatch = {
@@ -293,6 +301,15 @@ export type Mb3mInvoiceDeps = {
   saveFolder: typeof mb3mSaveFolder;
   addInvoice: typeof mb3mAddInvoice;
   findPiece: typeof mb3mFindPiece;
+  /**
+   * Solde et règlements de la pièce à remplacer. Absent : la lecture MB3M.
+   * Un échec ou un lettrage empêche AddPieces et CancelInvoice.
+   */
+  readLettrage?: (input: {
+    number: string;
+    folderId: string | null;
+    customerUid: string | null;
+  }) => Promise<Mb3mLettrageSnapshot>;
   /**
    * Dernière facture imprimée, non créditée, du dossier. `claim` ne la renvoie jamais : l’index
    * unique ne couvre que les pièces ouvertes, donc claim crée une ligne vide à la place.
@@ -680,6 +697,98 @@ function withNotice(ctx: Mb3mInvoiceContext, result: Mb3mInvoiceResult): Mb3mInv
   return { ...result, avertissement };
 }
 
+const LETTRAGE_CENT = 0.005;
+
+/** Écart entre le montant qui aurait été envoyé et le montant déjà sur la pièce. */
+function mb3mLettrageGap(nextAmount: number, currentAmount: number | null) {
+  if (currentAmount == null || !Number.isFinite(currentAmount) || !Number.isFinite(nextAmount)) return "";
+  const gap = Math.round((nextAmount - currentAmount) * 100) / 100;
+  if (Math.abs(gap) < LETTRAGE_CENT) return "";
+  return ` Écart non reporté : ${formatMoney(gap, "EUR")}.`;
+}
+
+export function mb3mLettrageWarning(input: {
+  number: string;
+  kind: "lettered" | "unread";
+  nextAmount: number;
+  currentAmount: number | null;
+}) {
+  const number = input.number.trim();
+  const base =
+    input.kind === "lettered"
+      ? `La pro forma n° ${number} a déjà un règlement lettré dans MB3M. Elle n’est pas remplacée. Délettrez le règlement dans MB3M si vous voulez la refaire.`
+      : `La vérification du lettrage est impossible. La pro forma n° ${number} n’est pas remplacée.`;
+  return `${base}${mb3mLettrageGap(input.nextAmount, input.currentAmount)}`;
+}
+
+/** Rien à écrire si la pièce est lettrée, ou si le solde n’a pas pu être lu. */
+export async function mb3mReplacementHold(
+  read: NonNullable<Mb3mInvoiceDeps["readLettrage"]>,
+  input: {
+    number: string;
+    folderId: string | null;
+    customerUid: string | null;
+    nextAmount: number;
+    currentAmount: number | null;
+  }
+): Promise<{ statut: "bloque_lettrage" | "avertissement"; avertissement: string } | null> {
+  try {
+    const snap = await read({
+      number: input.number,
+      folderId: input.folderId,
+      customerUid: input.customerUid,
+    });
+    if (!snap.lettered) return null;
+    return {
+      statut: "bloque_lettrage",
+      avertissement: mb3mLettrageWarning({
+        number: input.number,
+        kind: "lettered",
+        nextAmount: input.nextAmount,
+        currentAmount: snap.amount ?? input.currentAmount,
+      }),
+    };
+  } catch {
+    return {
+      statut: "avertissement",
+      avertissement: mb3mLettrageWarning({
+        number: input.number,
+        kind: "unread",
+        nextAmount: input.nextAmount,
+        currentAmount: input.currentAmount,
+      }),
+    };
+  }
+}
+
+async function releasePreparing(deps: Mb3mInvoiceDeps, piece: Mb3mStoredPiece) {
+  if (piece.attemptStatus !== "preparing") return;
+  try {
+    await deps.save(piece.id, { attemptStatus: null, attemptError: null });
+  } catch (error) {
+    console.error("[mb3m] lettrage", error instanceof Error ? error.message : error);
+  }
+}
+
+function lettrageStop(
+  ctx: Mb3mInvoiceContext,
+  piece: Mb3mStoredPiece,
+  number: string,
+  hold: { statut: "bloque_lettrage" | "avertissement"; avertissement: string }
+): Mb3mInvoiceResult {
+  return {
+    number,
+    documentId: piece.documentId,
+    created: false,
+    replaced: false,
+    printed: Boolean(piece.printedAt),
+    visibleToClient: ctx.visibleToClient,
+    reglements: [],
+    avertissement: hold.avertissement,
+    statut: hold.statut,
+  };
+}
+
 export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps): Promise<Mb3mInvoiceResult> {
   if (!ctx.lines.length && deps.recordPayments && deps.printedInvoice) {
     // Tout est déjà sur une facture imprimée : pas de nouvelle pièce, seulement les règlements en attente.
@@ -708,6 +817,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
   }
   const sendable = mb3mSendableLines(ctx.lines);
   const signature = mb3mLineSignature(sendable);
+  const invoiceAmount = Math.round(sendable.reduce((sum, line) => sum + line.amount, 0) * 100) / 100;
   const claimed = await deps.claim(ctx.bookingId, ctx.amount);
   let piece = claimed.piece;
   const created = Boolean(claimed.created);
@@ -786,6 +896,8 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
             piece.customerUid
           ));
         }
+        // Nouvelle pièce pour les dépenses encore hors facture. La facture imprimée n’est pas annulée.
+        // L’avoir, lui, vérifie le lettrage avant d’écrire (reissueMb3mInvoice).
         return await runMb3mInvoice(
           { ...ctx, lines: fresh, amount: Math.round(fresh.reduce((sum, line) => sum + line.amount, 0) * 100) / 100, hadExpenses: true },
           deps
@@ -808,8 +920,22 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
           piece.customerUid
         ));
       }
-      // L’ancienne pro forma s’annule après la nouvelle : un refus de MB3M ne laisse pas le dossier sans pièce.
-      if (state === "open" && piece.folderId) previous = { folderId: piece.folderId, number: piece.pieceNumber };
+      // L’ancienne pro forma s’annule après la nouvelle, sauf si un règlement est déjà lettré.
+      if (state === "open" && piece.signature !== signature) {
+        const hold = await mb3mReplacementHold(deps.readLettrage ?? mb3mReadLettrage, {
+          number: piece.pieceNumber,
+          folderId: piece.folderId,
+          customerUid: piece.customerUid,
+          nextAmount: invoiceAmount,
+          currentAmount: piece.amount,
+        });
+        if (hold) {
+          rememberFailure = false;
+          await releasePreparing(deps, piece);
+          return withNotice(ctx, lettrageStop(ctx, piece, piece.pieceNumber, hold));
+        }
+        if (piece.folderId) previous = { folderId: piece.folderId, number: piece.pieceNumber };
+      }
     }
     const blocker = mb3mInvoiceBlocker(ctx);
     if (blocker && !piece.customerUid) {
@@ -847,10 +973,21 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
     const savedPiece = await ensureFolder(ctx, deps, piece);
     const replaced = Boolean(piece.pieceNumber);
     const soapLines = mb3mSoapLines(sendable, MB3M_MIN_NET);
-    const invoiceAmount = Math.round(sendable.reduce((sum, line) => sum + line.amount, 0) * 100) / 100;
     if (previous) {
       const again = await deps.findPiece(previous.number);
       if (again === "printed") {
+        const hold = await mb3mReplacementHold(deps.readLettrage ?? mb3mReadLettrage, {
+          number: previous.number,
+          folderId: previous.folderId,
+          customerUid: savedPiece.customerUid,
+          nextAmount: invoiceAmount,
+          currentAmount: piece.amount,
+        });
+        if (hold) {
+          rememberFailure = false;
+          await releasePreparing(deps, piece);
+          return withNotice(ctx, lettrageStop(ctx, { ...piece, printedAt: piece.printedAt || new Date().toISOString() }, previous.number, hold));
+        }
         throw new Mb3mError(
           `La pièce MB3M n° ${previous.number} est imprimée. Le CRM n’ajoute pas de pièce à la place.`,
           -1
@@ -1279,6 +1416,22 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
   });
   const stale = mb3mStalePieces(inputs.printed, ctx.lines);
   if (!stale.length) throw new Mb3mError("Aucune facture imprimée à corriger.", 0);
+  for (const piece of stale) {
+    if (!piece.pieceNumber) continue;
+    const hold = await mb3mReplacementHold(mb3mReadLettrage, {
+      number: piece.pieceNumber,
+      folderId: piece.folderId,
+      customerUid: piece.customerUid,
+      nextAmount: piece.amount ?? ctx.amount,
+      currentAmount: piece.amount,
+    });
+    if (!hold) continue;
+    return {
+      creditNote: "",
+      ...lettrageStop(ctx, { ...piece, printedAt: piece.printedAt || new Date().toISOString() }, piece.pieceNumber, hold),
+      printed: true,
+    };
+  }
   const agencyUid = await mb3mSingleAgencyUid().catch(() => null);
   const creditNotes: string[] = [];
   for (const piece of stale) {
@@ -1441,6 +1594,7 @@ function supabaseInvoiceDeps(supabase: SupabaseClient, actorName?: string | null
     recordPayments: (input) => recordMb3mInvoicePayments(supabase, input),
     agencyUid: mb3mSingleAgencyUid,
     findPiece: mb3mFindPiece,
+    readLettrage: mb3mReadLettrage,
     printedInvoice: async (bookingId) => {
       const { data, error } = await supabase
         .from("crm_mb3m_pieces")

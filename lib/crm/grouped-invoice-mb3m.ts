@@ -4,6 +4,7 @@ import type { DbErrorLike } from "@/lib/crm/db-error";
 import { formatDateFr } from "@/lib/crm/dates";
 import {
   mb3mInvoiceBlocker,
+  mb3mReplacementHold,
   MB3M_MIN_NET,
   type Mb3mInvoiceContext,
 } from "@/lib/crm/mb3m-invoice";
@@ -15,6 +16,7 @@ import {
   mb3mCollectCompanies,
   mb3mConfigured,
   mb3mFindPiece,
+  mb3mReadLettrage,
   mb3mPartnerCode,
   mb3mSaveCompany,
   mb3mSaveFolder,
@@ -22,6 +24,7 @@ import {
   mb3mSingleAgencyUid,
   selectMb3mCompany,
   Mb3mError,
+  type Mb3mLettrageSnapshot,
   type Mb3mCompanyDraft,
   type Mb3mCustomerHit,
   type Mb3mLine,
@@ -82,6 +85,12 @@ export type GroupedMb3mDeps = {
   saveFolder: typeof mb3mSaveFolder;
   addInvoice: typeof mb3mAddInvoice;
   findPiece: typeof mb3mFindPiece;
+  /** Solde et règlements avant de remplacer. Absent : la lecture MB3M. */
+  readLettrage?: (input: {
+    number: string;
+    folderId: string | null;
+    customerUid: string | null;
+  }) => Promise<Mb3mLettrageSnapshot>;
   cancelInvoice: typeof mb3mCancelInvoice;
   agencyUid?: () => Promise<string | null>;
 };
@@ -93,6 +102,8 @@ export type GroupedMb3mPush = {
   customerUid: string;
   replaced: boolean;
   avertissement: string | null;
+  /** bloque_lettrage ou avertissement : la pro forma n’est pas remplacée, rien n’est écrit. */
+  statut?: "bloque_lettrage" | "avertissement" | null;
   lignes: { dossier: string; libelle: string; activite: number | null; net: number; marge: number | null }[];
 };
 
@@ -415,6 +426,31 @@ export async function emitGroupedMb3mPiece(
   }
   if (!built.dateStart || !built.dateEnd) throw new Mb3mError("Les dates des séjours manquent.", 0);
 
+  if (openPrevious) {
+    const nextAmount = Math.round(
+      built.lines.reduce((sum, line) => sum + (Number(line.netPriceTotal) || 0) + (Number(line.marginUnit) || 0), 0) * 100
+    ) / 100;
+    const hold = await mb3mReplacementHold(deps.readLettrage ?? mb3mReadLettrage, {
+      number: openPrevious.number,
+      folderId: openPrevious.folderId,
+      customerUid: clean(input.previous.customerUid) || null,
+      nextAmount,
+      currentAmount: null,
+    });
+    if (hold) {
+      return {
+        number: openPrevious.number,
+        uid: "",
+        folderId: openPrevious.folderId || "",
+        customerUid: clean(input.previous.customerUid),
+        replaced: false,
+        avertissement: hold.avertissement,
+        statut: hold.statut,
+        lignes: publicLines(built.lines, built.dossiers),
+      };
+    }
+  }
+
   const customerUid = await resolveCustomer(
     input.contexts[0],
     input.customerId,
@@ -490,6 +526,7 @@ export function groupedMb3mDeps(admin: SupabaseClient): GroupedMb3mDeps {
     saveFolder: mb3mSaveFolder,
     addInvoice: mb3mAddInvoice,
     findPiece: mb3mFindPiece,
+    readLettrage: mb3mReadLettrage,
     cancelInvoice: mb3mCancelInvoice,
     agencyUid: mb3mSingleAgencyUid,
   };

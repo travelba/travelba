@@ -35,6 +35,8 @@ import {
   mb3mChangeFolder,
   mb3mFindCustomerPayments,
   mb3mFindCustomerPieces,
+  mb3mLettrageFromXml,
+  mb3mReadLettrage,
   mb3mGetInvoice,
   MB3M_PAYMENT_MODES,
   mb3mPaymentAccount,
@@ -1285,6 +1287,55 @@ describe("règlements MB3M", () => {
     assert.equal(rows[0]?.amount, 2767.61);
     assert.equal(rows[0]?.unmatched, 2767.61);
     assert.equal(rows[0]?.date, "2026-11-17");
+  });
+
+  it("reconnaît un lettrage au solde de la facture ou au reste d’un règlement du dossier", () => {
+    const invoice = (balance: string) =>
+      `<Piece><Amount>5404.15</Amount><Balance>${balance}</Balance><Folder><Id>01-0002217</Id></Folder><Identity><Number>2217</Number></Identity><IsPayment>false</IsPayment></Piece>`;
+    const payment = (balance: string, folder = "01-0002217") =>
+      `<Piece><Amount>5404.15</Amount><Balance>${balance}</Balance><Folder><Id>${folder}</Id></Folder><Identity><Number>2216</Number></Identity><IsPayment>true</IsPayment></Piece>`;
+    const read = (inner: string) =>
+      mb3mLettrageFromXml(`<FindAllPiecesResponse><ResultCode>1</ResultCode>${inner}</FindAllPiecesResponse>`, "2217", {
+        folderId: "01-0002217",
+        folderScoped: true,
+      });
+    const lettered = read(`${invoice("0.00")}${payment("0.00")}`);
+    assert.equal(lettered.lettered, true);
+    assert.equal(lettered.seen, true);
+    assert.equal(lettered.amount, 5404.15);
+    assert.equal(lettered.balance, 0);
+    const open = read(`${invoice("5404.15")}${payment("5404.15")}`);
+    assert.equal(open.lettered, false);
+    assert.equal(open.balance, 5404.15);
+    const byPayment = read(`${invoice("5404.15")}${payment("0.00")}`);
+    assert.equal(byPayment.lettered, true);
+    const otherFolder = read(`${invoice("5404.15")}${payment("0.00", "01-9999999")}`);
+    assert.equal(otherFolder.lettered, false);
+    const byInvoice = read(invoice("5391.65"));
+    assert.equal(byInvoice.lettered, true);
+    assert.equal(byInvoice.balance, 5391.65);
+  });
+
+  it("lit le lettrage par FindAllPieces, sans écriture", async () => {
+    arm();
+    const actions: string[] = [];
+    const snap = await mb3mReadLettrage(
+      { number: "2217", folderId: "01-0002217", customerUid: "customer-uid" },
+      async (_url, init) => {
+        const action = String(new Headers(init?.headers).get("SOAPAction"));
+        actions.push(action);
+        const body = String(init?.body || "");
+        assert.equal(body.includes("IncludePayments"), true);
+        assert.equal(body.includes("AddPieces"), false);
+        assert.equal(body.includes("CancelInvoice"), false);
+        return new Response(
+          `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>1</TotalCount><Piece><Amount>5404.15</Amount><Balance>0</Balance><Folder><Id>01-0002217</Id></Folder><Identity><Number>2217</Number></Identity><IsPayment>false</IsPayment></Piece></FindAllPiecesResponse>`
+        );
+      }
+    );
+    assert.equal(snap.lettered, true);
+    assert.equal(actions.every((action) => action.includes("FindAllPieces")), true);
+    assert.equal(actions.some((action) => action.includes("AddPieces") || action.includes("CancelInvoice")), false);
   });
 
   it("cherche d’abord le dossier de la facture, puis les autres dossiers du client", async () => {
