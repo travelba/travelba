@@ -93,13 +93,14 @@ test("plusieurs remises : montant, pourcentage de la même vente, plafond", () =
   assert.equal(parseDiscountDraft({ label: "X", kind: "pourcentage", percent: 120 }).ok, false);
 });
 
-test("la marge après remise passe sous 12 % du net sans bloquer", () => {
+test("la remise réduit la marge, sans plancher", () => {
   const comfortable = marginAfterCommercialDiscount({ margin: 200, net: 800, discountEuros: 20 });
   assert.equal(comfortable.margin, 180);
+  assert.equal(comfortable.floor, null);
   assert.equal(comfortable.belowFloor, false);
   const tight = marginAfterCommercialDiscount({ margin: 200, net: 800, discountEuros: 120 });
   assert.equal(tight.margin, 80);
-  assert.equal(tight.floor, 96);
-  assert.equal(tight.belowFloor, true);
+  assert.equal(tight.floor, null);
+  assert.equal(tight.belowFloor, false);
   assert.equal(marginAfterCommercialDiscount({ margin: 50, net: 0, discountEuros: 40 }).belowFloor, false);
 });

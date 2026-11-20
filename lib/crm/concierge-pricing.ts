@@ -1,8 +1,4 @@
-/** Marge d’hébergement du Concierge. Rien n’est envoyé au client depuis ici. */
-
-export const MIN_MARGIN_OF_NET = 0.12;
-/** Points déjà comptés sur un tarif commissionnable, en plus de la commission hôtel. */
-export const PLATFORM_POINTS = 0.02;
+/** Prix d’hébergement du Concierge. Rien n’est envoyé au client depuis ici. Aucun plancher de marge. */
 
 export type AccommodationRate = {
   net: number;
@@ -19,7 +15,7 @@ export type PricedAccommodation = {
   /** Ce que l’agence garde, en devise, rapporté au net. */
   margin: number;
   marginOfNet: number;
-  /** Majoration ajoutée au prix client. 0 si la commission couvre déjà 12 %. */
+  /** Majoration ajoutée au prix client. Zéro : le prix affiché reste le net. */
   addedRate: number;
   coveredByCommission: number;
 };
@@ -29,40 +25,22 @@ function cents(amount: number) {
 }
 
 /**
- * Hébergement : la marge vaut au moins 12 % du net.
- * Tarif net : le prix client est le net majoré de 12 %.
- * Tarif commissionnable : commission hôtel + 2 %. S’il manque pour atteindre 12 %,
- * ce manque est ajouté au prix client. On ne rabote pas une commission déjà supérieure.
+ * Le prix client est le net. Aucune majoration n’est ajoutée.
+ * Tarif commissionnable : la commission hôtel est le gain, elle ne change pas le prix affiché.
  */
 export function priceAccommodation(rate: AccommodationRate): PricedAccommodation | null {
   const net = cents(rate.net);
   if (!(net > 0)) return null;
   const currency = (rate.currency || "EUR").trim().toUpperCase() || "EUR";
-  if (!rate.commissionable) {
-    const sell = cents(net * (1 + MIN_MARGIN_OF_NET));
-    const margin = cents(sell - net);
-    return {
-      net,
-      sell,
-      currency,
-      margin,
-      marginOfNet: margin / net,
-      addedRate: MIN_MARGIN_OF_NET,
-      coveredByCommission: 0,
-    };
-  }
-  const hotel = Math.max(0, Number(rate.hotelCommission) || 0);
-  const covered = hotel + PLATFORM_POINTS;
-  const addedRate = Math.max(0, MIN_MARGIN_OF_NET - covered);
-  const sell = cents(net * (1 + addedRate));
-  const margin = cents(sell - net + net * covered);
+  const covered = rate.commissionable ? Math.max(0, Number(rate.hotelCommission) || 0) : 0;
+  const margin = cents(net * covered);
   return {
     net,
-    sell,
+    sell: net,
     currency,
     margin,
     marginOfNet: margin / net,
-    addedRate,
+    addedRate: 0,
     coveredByCommission: covered,
   };
 }

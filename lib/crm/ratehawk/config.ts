@@ -91,7 +91,7 @@ export function loadRatehawkConfig(env: Record<string, string | undefined> = pro
   }
 
   const marginRaw = Number(env.RATEHAWK_MARGIN_PERCENT);
-  const marginPercent = Number.isFinite(marginRaw) ? Math.max(12, marginRaw) : 12;
+  const marginPercent = Number.isFinite(marginRaw) ? Math.min(100, Math.max(0, marginRaw)) : 0;
   const priceIncreasePercent = clampInt(env.RATEHAWK_PRICE_INCREASE_PERCENT, 10, 0, 100);
 
   return {

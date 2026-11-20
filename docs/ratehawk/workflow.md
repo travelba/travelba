@@ -45,7 +45,7 @@ Limits: 9 rooms, 6 adults per room, 4 children per room, child age 0–17, 30 ni
 
 Payment type is always `deposit`. A `hotel` option is hidden and, if it is the only one on the form, the booking stops. Finish sends that deposit entry’s `amount` and `currency_code` unchanged.
 
-The screen shows `show_amount` (requested currency, default EUR) and `amount` (contract currency, USD) from the same payment option. It does not convert between them. The confirmation repeats the `amount` that finish logged. Taxes with `included_by_supplier: false` stay separate and are not added. Agency sell price is `round(show_amount × (1 + margin/100), 2)` with margin at least 12 (`RATEHAWK_MARGIN_PERCENT`). `amount_sell_b2b2c` is sent only when that sell currency equals the form charge currency.
+The screen shows `show_amount` (requested currency, default EUR) and `amount` (contract currency, USD) from the same payment option. It does not convert between them. The confirmation repeats the `amount` that finish logged. Taxes with `included_by_supplier: false` stay separate and are not added. Agency sell price is `round(show_amount × (1 + margin/100), 2)` where margin is `RATEHAWK_MARGIN_PERCENT` (empty means 0). `amount_sell_b2b2c` is sent only when that sell currency equals the form charge currency.
 
 `now`, or a form that sets `is_need_credit_card_data` / `is_need_cvc`, fails closed. No card number is collected or stored.
 

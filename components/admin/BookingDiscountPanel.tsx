@@ -7,7 +7,6 @@ import { LedgerWarningNotice } from "@/components/crm/LedgerWarningNotice";
 import { Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import {
   discountLineEuros,
-  marginAfterCommercialDiscount,
   priceDiscountLines,
   type CommercialDiscountType,
   type DiscountLine,
@@ -27,8 +26,6 @@ export function BookingDiscountPanel({
   bookingId,
   currency = "EUR",
   gross,
-  net,
-  margin,
   lines,
   tableReady = false,
   onLines,
@@ -70,12 +67,6 @@ export function BookingDiscountPanel({
   const priced = priceDiscountLines(gross, lines);
   const cut = priced.total;
   const total = Math.round((gross - cut) * 100) / 100;
-  const inEuros = (currency || "EUR").toUpperCase() === "EUR";
-  const marginNow = margin == null ? null : margin;
-  const alert =
-    inEuros && net != null && marginNow != null && cut > 0
-      ? marginAfterCommercialDiscount({ margin: marginNow + cut, net, discountEuros: cut })
-      : null;
 
   function beginNew() {
     setEditingId("new");
@@ -352,12 +343,6 @@ export function BookingDiscountPanel({
           ? `Remises de ${formatMoney(cut, currency)} sur ${formatMoney(gross, currency)}. Total après remises : ${formatMoney(total, currency)}.`
           : `Total sans remise : ${formatMoney(gross, currency)}.`}
       </p>
-      {alert?.belowFloor ? (
-        <p role="status" className="mt-3 rounded-xl border border-[#e7c98a] bg-[#fbf6ee] px-3 py-2 text-sm text-[#6f552c]">
-          La marge après remise passe sous 12 % du net ({formatMoney(alert.margin, "EUR")} pour un plancher de{" "}
-          {formatMoney(alert.floor || 0, "EUR")}). Ce n’est qu’un avertissement.
-        </p>
-      ) : null}
       {error ? <p className="mt-2 text-sm text-accent">{error}</p> : null}
       <LedgerWarningNotice message={ledgerNote} onDismiss={() => setLedgerNote(null)} className="mt-2" />
     </section>

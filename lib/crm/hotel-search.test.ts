@@ -68,10 +68,10 @@ test("Little Emperors : le prix proposé, jamais le net majoré", () => {
   );
 });
 
-test("compte net : 12 % si le tarif n’est pas commissionnable, commission sinon", () => {
+test("compte net : le prix client est le net, avec ou sans commission hôtel", () => {
   assert.equal(
     priced({ account: "net", hotelName: "Ritz", city: "Paris", net: 100, currency: "EUR" }).sellCents,
-    11200
+    10000
   );
   assert.equal(
     priced({
@@ -95,7 +95,7 @@ test("compte net : 12 % si le tarif n’est pas commissionnable, commission sino
       commissionable: true,
       hotelCommission: 0.05,
     }).sellCents,
-    10500
+    10000
   );
 });
 
