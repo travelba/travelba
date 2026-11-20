@@ -1,7 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadResolvedAgencyFees } from "@/lib/crm/agency-fee-rate";
 import { bookingTotalFromItems, itemIncludedInLedger, itemSellingAmount } from "@/lib/crm/bookings";
-import { commercialDiscountAmount, readCommercialDiscount } from "@/lib/crm/commercial-discount";
+import {
+  COMMERCIAL_DISCOUNT_LABEL,
+  COMMERCIAL_DISCOUNT_LINE_ID,
+  commercialDiscountAmount,
+  priceDiscountLines,
+  readCommercialDiscount,
+  type DiscountLine,
+  type PricedDiscountLine,
+} from "@/lib/crm/commercial-discount";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee } from "@/lib/crm/ticketing-fee";
 import { expenseCountsForClient } from "@/lib/crm/expense-validation";
@@ -18,6 +26,8 @@ type StayRow = {
   billing_customer_id?: string | null;
   remise_type?: string | null;
   remise_value?: number | string | null;
+  /** Présent (même vide) : les lignes remplacent les colonnes. Absent : colonnes. */
+  discounts?: DiscountLine[];
 };
 
 type StayItemRow = {
@@ -34,7 +44,7 @@ type StayItemRow = {
  * La commission porte sur le total vendu, billeterie comprise. Une seule formule pour la liste, le détail et l’aperçu.
  */
 export function displayedStayAmount(
-  booking: Pick<StayRow, "status" | "total_amount" | "agency_commission" | "fee_mode" | "remise_type" | "remise_value">,
+  booking: Pick<StayRow, "status" | "total_amount" | "agency_commission" | "fee_mode" | "remise_type" | "remise_value" | "discounts">,
   items: StayItemRow[],
   travelerCount: number,
   agencyFeeRate?: number | null
@@ -57,17 +67,28 @@ export function displayedStayAmount(
       feeMode: booking.fee_mode,
     }),
     agencyFeeRate,
-    discount: readCommercialDiscount(booking),
+    ...(Array.isArray(booking.discounts)
+      ? { discounts: booking.discounts }
+      : { discount: readCommercialDiscount(booking) }),
   });
 }
 
 /** Euros de remise sur le même total que le carnet, avant de la retirer. */
 export function stayDiscountEuros(
-  booking: Pick<StayRow, "status" | "total_amount" | "agency_commission" | "fee_mode" | "remise_type" | "remise_value">,
+  booking: Pick<StayRow, "status" | "total_amount" | "agency_commission" | "fee_mode" | "remise_type" | "remise_value" | "discounts">,
   items: StayItemRow[],
   travelerCount: number,
   agencyFeeRate?: number | null
 ) {
+  if (Array.isArray(booking.discounts)) {
+    const gross = displayedStayAmount(
+      { ...booking, discounts: [], remise_type: null, remise_value: null },
+      items,
+      travelerCount,
+      agencyFeeRate
+    );
+    return priceDiscountLines(gross, booking.discounts).total;
+  }
   const spec = readCommercialDiscount(booking);
   if (!spec.type) return 0;
   const gross = displayedStayAmount(
@@ -77,6 +98,38 @@ export function stayDiscountEuros(
     agencyFeeRate
   );
   return commercialDiscountAmount(gross, spec);
+}
+
+/** Lignes chiffrées. Tableau `discounts` : la table. Sinon la remise unique des colonnes. */
+export function stayPricedDiscounts(
+  booking: Pick<StayRow, "status" | "total_amount" | "agency_commission" | "fee_mode" | "remise_type" | "remise_value" | "discounts">,
+  items: StayItemRow[],
+  travelerCount: number,
+  agencyFeeRate?: number | null
+): PricedDiscountLine[] {
+  if (Array.isArray(booking.discounts)) {
+    const gross = displayedStayAmount(
+      { ...booking, discounts: [], remise_type: null, remise_value: null },
+      items,
+      travelerCount,
+      agencyFeeRate
+    );
+    return priceDiscountLines(gross, booking.discounts).lines;
+  }
+  const spec = readCommercialDiscount(booking);
+  const euros = stayDiscountEuros(booking, items, travelerCount, agencyFeeRate);
+  if (!spec.type || spec.value == null || !(euros > 0)) return [];
+  return [
+    {
+      id: COMMERCIAL_DISCOUNT_LINE_ID,
+      label: COMMERCIAL_DISCOUNT_LABEL,
+      kind: spec.type,
+      quantity: 1,
+      unitPrice: spec.type === "amount" ? spec.value : null,
+      percent: spec.type === "percent" ? spec.value : null,
+      euros,
+    },
+  ];
 }
 
 /**
@@ -239,31 +292,57 @@ export async function loadLedgerCountedStayAmounts(
   return amounts;
 }
 
-function withStoredDiscount<T extends StayRow>(booking: T, discounts: Map<string, CommercialDiscountRow> | null): T {
+type StoredDiscount =
+  | { mode: "lines"; lines: DiscountLine[] }
+  | { mode: "columns"; remise_type: string | null; remise_value: number | string | null };
+
+function withStoredDiscount<T extends StayRow>(booking: T, discounts: Map<string, StoredDiscount> | null): T {
   if (!discounts || !discounts.has(booking.id)) return booking;
   const stored = discounts.get(booking.id);
-  return { ...booking, remise_type: stored?.remise_type ?? null, remise_value: stored?.remise_value ?? null };
+  if (!stored) return booking;
+  if (stored.mode === "lines") {
+    return { ...booking, discounts: stored.lines, remise_type: null, remise_value: null };
+  }
+  return { ...booking, remise_type: stored.remise_type, remise_value: stored.remise_value };
 }
 
-type CommercialDiscountRow = { remise_type: string | null; remise_value: number | string | null };
-
-/** Colonnes absentes tant que la migration n’est pas jouée : aucune remise, la lecture continue. */
+/**
+ * Table lisible : les lignes sont la source, même vides (les colonnes ne comptent plus).
+ * Table absente : les colonnes. Colonnes absentes aussi : aucune remise, la lecture continue.
+ */
 async function loadStoredDiscounts(supabase: SupabaseClient, ids: string[]) {
-  const map = new Map<string, CommercialDiscountRow>();
+  const map = new Map<string, StoredDiscount>();
   if (!ids.length) return map;
+  const { loadDiscountLines } = await import("@/lib/crm/booking-discounts-db");
+  const lines = await loadDiscountLines(ids).catch((error: { code?: string; message?: string }) => {
+    if (error?.code === "42P01" || error?.code === "PGRST205") return null;
+    throw error;
+  });
+  if (lines) {
+    for (const id of ids) map.set(id, { mode: "lines", lines: lines.get(id) || [] });
+    return map;
+  }
   const { data, error } = await supabase.from("crm_bookings").select("id, remise_type, remise_value").in("id", ids);
   if (error) {
     if (error.code === "42703" || error.code === "PGRST204") return null;
     throw error;
   }
   for (const row of (data || []) as { id: string; remise_type: string | null; remise_value: number | string | null }[]) {
-    map.set(row.id, { remise_type: row.remise_type, remise_value: row.remise_value });
+    map.set(row.id, { mode: "columns", remise_type: row.remise_type, remise_value: row.remise_value });
   }
   return map;
 }
 
-/** Même remise que le carnet, lue en base. 0 si les colonnes ne sont pas encore là. */
-export async function loadStayDiscountEuros(supabase: SupabaseClient, bookingId: string) {
+export type StayDiscountLoad =
+  | { source: "columns"; lines: PricedDiscountLine[] }
+  | { source: "lines"; lines: PricedDiscountLine[] };
+
+/**
+ * Lignes chiffrées sur la même vente que le carnet.
+ * `columns` : la table n’est pas là, une seule ligne reprend la remise déjà saisie.
+ * `lines` : la table est la source, y compris quand elle est vide.
+ */
+export async function loadStayPricedDiscounts(supabase: SupabaseClient, bookingId: string): Promise<StayDiscountLoad> {
   const { data, error } = await supabase
     .from("crm_bookings")
     .select(
@@ -272,17 +351,41 @@ export async function loadStayDiscountEuros(supabase: SupabaseClient, bookingId:
     .eq("id", bookingId)
     .limit(1);
   if (error) {
-    if (error.code === "42703" || error.code === "PGRST204") return 0;
+    if (error.code === "42703" || error.code === "PGRST204") return { source: "columns", lines: [] };
     throw error;
   }
   const booking = (Array.isArray(data) ? data[0] : data) as StayRow | null;
-  if (!booking || !readCommercialDiscount(booking).type) return 0;
+  if (!booking) return { source: "columns", lines: [] };
   const loaded = await loadStayItemRows(supabase, [bookingId], "booking_id, kind, amount, lifecycle, details, start_at");
   const fees = await loadResolvedAgencyFees(supabase, [booking]);
-  return stayDiscountEuros(
-    { ...booking, total_amount: bookingTotalFromItems(stayAmountItems(loaded.items)) },
-    loaded.items,
-    loaded.travelers.length,
-    fees.get(bookingId)?.rate
-  );
+  const rate = fees.get(bookingId)?.rate;
+  const items = loaded.items;
+  const travelers = loaded.travelers.length;
+  const pricedBooking = { ...booking, total_amount: bookingTotalFromItems(stayAmountItems(items)) };
+  const { loadDiscountLines } = await import("@/lib/crm/booking-discounts-db");
+  let table: Map<string, DiscountLine[]> | null = null;
+  try {
+    table = await loadDiscountLines([bookingId]);
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code !== "42P01" && code !== "PGRST205") throw err;
+  }
+  if (table) {
+    return {
+      source: "lines",
+      lines: stayPricedDiscounts(
+        { ...pricedBooking, discounts: table.get(bookingId) || [], remise_type: null, remise_value: null },
+        items,
+        travelers,
+        rate
+      ),
+    };
+  }
+  return { source: "columns", lines: stayPricedDiscounts(pricedBooking, items, travelers, rate) };
+}
+
+/** Même remise que le carnet, lue en base. 0 si rien n’est en place. */
+export async function loadStayDiscountEuros(supabase: SupabaseClient, bookingId: string) {
+  const loaded = await loadStayPricedDiscounts(supabase, bookingId);
+  return loaded.lines.reduce((sum, line) => sum + line.euros, 0);
 }

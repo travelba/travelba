@@ -10,7 +10,7 @@ import type { InvoiceWire } from "@/lib/crm/invoice-document";
 import { formatDateFr } from "@/lib/crm/money";
 import { missingDbColumn, queryWithOptionalColumn } from "@/lib/crm/optional-column";
 import { staffStayFacts } from "@/lib/crm/staff-stay";
-import { stayDiscountEuros } from "@/lib/crm/displayed-stay";
+import { stayDiscountEuros, stayPricedDiscounts } from "@/lib/crm/displayed-stay";
 import { isActiveItem } from "@/lib/crm/types";
 import type { SaleLedgerRow } from "@/lib/crm/trip-costs";
 import { renderGroupedInvoicePdf } from "@/lib/crm/grouped-invoice-pdf";
@@ -410,6 +410,9 @@ export async function previewGroupedInvoice(
   const payer = payerRefOf(bundle.bookings[0]);
   const company = payer.companyId ? bundle.companies.find((row) => row.id === payer.companyId) || null : null;
   const bill = billToOf(payer.kind, company, bundle.person);
+  const discountRows = await import("@/lib/crm/booking-discounts-db")
+    .then(({ loadDiscountLines }) => loadDiscountLines(bundle.bookings.map((booking) => booking.id)))
+    .catch(() => null);
   const stays = bundle.bookings.map((booking) => {
     const items = bundle.items.filter((item) => item.booking_id === booking.id && isActiveItem(item));
     const travelers = bundle.travelers.filter((row) => row.booking_id === booking.id);
@@ -437,11 +440,30 @@ export async function previewGroupedInvoice(
           fee_mode: booking.fee_mode,
           remise_type: booking.remise_type,
           remise_value: booking.remise_value,
+          ...(discountRows ? { discounts: discountRows.get(booking.id) || [] } : {}),
         },
         items,
         travelers.length,
         rate
       ),
+      discountCuts: discountRows
+        ? stayPricedDiscounts(
+            {
+              status: booking.status || "confirmed",
+              total_amount: booking.total_amount,
+              agency_commission: booking.agency_commission,
+              fee_mode: booking.fee_mode,
+              remise_type: null,
+              remise_value: null,
+              discounts: discountRows.get(booking.id) || [],
+            },
+            items,
+            travelers.length,
+            rate
+          )
+            .filter((line) => line.euros > 0)
+            .map((line) => ({ id: line.id, label: line.label, euros: line.euros }))
+        : undefined,
     };
   });
   const composed = composeGroupedSections(stays);

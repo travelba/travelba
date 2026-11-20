@@ -395,4 +395,22 @@ test("le carnet porte la remise une seule fois, masquée si les prix sont caché
     }),
     HIDDEN_PRICE_LABEL
   );
+  const several = clientStayExpenseLines({
+    expenses: [],
+    agencyCommission: false,
+    stayTotal: 1000,
+    currency: "EUR",
+    pricesVisible: true,
+    discounts: [
+      { id: "a", label: "Groupe", kind: "amount", quantity: 2, unitPrice: 25, percent: null },
+      { id: "b", label: "Fidélité", kind: "percent", quantity: 1, unitPrice: null, percent: 10 },
+    ],
+  });
+  assert.deepEqual(
+    several.map((line) => [line.title, line.amountLabel]),
+    [
+      ["Groupe", formatMoney(-50, "EUR")],
+      ["Fidélité", formatMoney(-100, "EUR")],
+    ]
+  );
 });

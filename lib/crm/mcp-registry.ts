@@ -381,7 +381,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_dossier",
     description:
-      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), statut non_visible, visible ou annule (statut_libelle : Non visible, Visible, Annulé). Un dossier archivé a etat Archivée. Société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee), qui s’en occupe (en_charge, null = à prendre ; cree_par ; intervenants). Chaque vol porte terminal, porte et enregistrement (statut, ouverture, par, alerte). carte_id sert à modifier_vol, à modifier_hotel et à enregistrement_en_ligne. voyageur_id sert à modifier_voyageur, modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel. Pas de passeport ni de MRZ.",
+      "Un dossier : cartes (carte_id, villes puis code aéroport), voyageurs (voyageur_id et nom), statut non_visible, visible ou annule (statut_libelle : Non visible, Visible, Annulé). Un dossier archivé a etat Archivée. Société facturée (societe, paye_par), commission d’agence (commission_agence, commission_source, commission_appliquee), remises (id, libellé, type, quantité, prix ou pourcentage, montant en euros). qui s’en occupe (en_charge, null = à prendre ; cree_par ; intervenants). Chaque vol porte terminal, porte et enregistrement (statut, ouverture, par, alerte). carte_id sert à modifier_vol, à modifier_hotel et à enregistrement_en_ligne. voyageur_id sert à modifier_voyageur, modifier_vol, ajouter_voyageur et retirer_voyageur. id ou reference. Pas les contacts d’hôtel. Pas de passeport ni de MRZ.",
     input: {
       id,
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -846,7 +846,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "mettre_a_jour_dossier",
     write: true,
     description:
-      "Met à jour les notes, les dates, le titre, la couverture, le statut, la commission d’agence, la remise commerciale, la société de facturation ou une dépense (depense : carte_id, libelle, quantite, prix_unitaire, montant, valider ; le montant vaut quantité × prix unitaire, le montant seul recalcule le prix unitaire ; valider affiche au client une dépense automatique « à valider ») d’un dossier, puis le grand livre. titre est le nom du séjour. statut : non_visible, visible ou annule. Les anciens mots restent acceptés : brouillon et devis deviennent non_visible, confirme devient visible. visible montre le séjour et le confirme, sans prévenir le client : publier_carnet envoie le message. Un séjour visible peut recevoir la carte hôtel. non_visible le cache. annule l’annule ; non_visible le rouvre, caché. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. remise : { type: montant ou pourcentage, valeur } retire des euros du total TTC après commissions et frais, ou null pour l’effacer. Un pourcentage est entre 0 et 100. Le total ne devient pas négatif. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. La réponse renvoie statut non_visible, visible ou annule.",
+      "Met à jour les notes, les dates, le titre, la couverture, le statut, la commission d’agence, les remises commerciales, la société de facturation ou une dépense (depense : carte_id, libelle, quantite, prix_unitaire, montant, valider ; le montant vaut quantité × prix unitaire, le montant seul recalcule le prix unitaire ; valider affiche au client une dépense automatique « à valider ») d’un dossier, puis le grand livre. titre est le nom du séjour. statut : non_visible, visible ou annule. Les anciens mots restent acceptés : brouillon et devis deviennent non_visible, confirme devient visible. visible montre le séjour et le confirme, sans prévenir le client : publier_carnet envoie le message. Un séjour visible peut recevoir la carte hôtel. non_visible le cache. annule l’annule ; non_visible le rouvre, caché. couverture : « catalogue », un lieu, ou un identifiant photo-… retire la photo importée et affiche la photo du catalogue de ce séjour. Une URL https, ou une image JPEG, PNG ou WebP en base64 (5 Mo maximum), dépose cette image. credit est la mention affichée, « Image générée par IA » par défaut. commission_agence : 10, 7,5, 5, ou compte pour suivre le compte. remise : { type: montant ou pourcentage, valeur } retire des euros du total TTC après commissions et frais, ou null pour l’effacer. Un pourcentage est entre 0 et 100. Le total ne devient pas négatif. societe_id facture une société déjà sur la fiche. particulier : true retire la société du dossier. La réponse renvoie statut non_visible, visible ou annule.",
     input: {
       id: z.string().trim().optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -893,12 +893,19 @@ export const MCP_TOOLS: ToolDef[] = [
         .describe("Mention de la couverture importée. Défaut : Image générée par IA"),
       remise: z
         .object({
-          type: z.enum(["montant", "pourcentage"]).describe("montant en euros, ou pourcentage"),
-          valeur: z.number().describe("Euros, ou pourcentage entre 0 et 100"),
+          id: z.string().trim().optional().describe("Ligne à modifier ou à retirer. Absent : une ligne de plus"),
+          libelle: z.string().trim().max(120).optional().describe("Libellé de la remise"),
+          quantite: z.union([z.number(), z.string()]).optional().describe("Quantité, 1 par défaut"),
+          type: z.enum(["montant", "pourcentage"]).optional().describe("montant en euros, ou pourcentage de la vente"),
+          prix_unitaire: z.union([z.number(), z.string()]).optional().describe("Prix unitaire, si la remise est un montant"),
+          pourcentage: z.union([z.number(), z.string()]).optional().describe("Pourcentage de la vente globale, à la place du prix unitaire"),
+          montant: z.union([z.number(), z.string()]).optional().describe("Montant en euros : recalcule le prix unitaire"),
+          valeur: z.number().optional().describe("Ancienne saisie, sans id : euros ou pourcentage, quantité 1, libellé Remise commerciale"),
+          retirer: z.boolean().optional().describe("true retire la ligne id"),
         })
         .nullable()
         .optional()
-        .describe("Remise commerciale sur le total TTC, après commissions et frais. null retire la remise."),
+        .describe("Une remise de plus si id est absent. id modifie cette ligne. retirer retire la ligne. null retire toutes les remises. Le pourcentage porte sur la vente TTC avant remise, les lignes ne se composent pas, la somme ne dépasse pas cette vente."),
       depense: z
         .object({
           carte_id: z.string().trim().describe("Identifiant de la dépense (carte_id d’une ligne kind « expense » de fiche_dossier)"),
@@ -2920,7 +2927,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     selfJournal: true,
     description:
-      "Prépare une facture pro forma groupée pour plusieurs dossiers d’un même payeur, et une seule pièce pro forma MB3M à son nom. client_id, dossiers (identifiants ou références TB-…). Une section par dossier : référence, destination, dates, voyageurs, lignes de vente, remise commerciale négative, sous-total, paiements déjà reçus. Total général, total payé, reste à payer. Un dossier en commission garde sa ligne déjà au livre, sans pourcentage. Le PDF est déposé sur chaque dossier, masqué au client. confirmer true crée aussi la pièce MB3M (AddPieces), sans l’imprimer. facture_id met à jour cette facture et remplace la pro forma MB3M si elle n’est pas imprimée ; une pièce imprimée est refusée. Un règlement lettré, ou une lecture du lettrage impossible, bloque ce remplacement : rien n’est écrit, statut bloque_lettrage ou avertissement, sans erreur. action mb3m, avec facture_id ou numero FG-AAAA-NNNN, pousse une facture déjà générée vers MB3M sans refaire le PDF. action retirer retire les justificatifs sans effacer le fichier ; restaurer les remet, toujours masqués. Sans confirmer, aperçu seulement : MB3M n’est pas appelé en écriture. Aucun e-mail, aucun WhatsApp, aucun avoir.",
+      "Prépare une facture pro forma groupée pour plusieurs dossiers d’un même payeur, et une seule pièce pro forma MB3M à son nom. client_id, dossiers (identifiants ou références TB-…). Une section par dossier : référence, destination, dates, voyageurs, lignes de vente, chaque remise commerciale en négatif à son libellé, sous-total, paiements déjà reçus. Total général, total payé, reste à payer. Un dossier en commission garde sa ligne déjà au livre, sans pourcentage. Le PDF est déposé sur chaque dossier, masqué au client. confirmer true crée aussi la pièce MB3M (AddPieces), sans l’imprimer. facture_id met à jour cette facture et remplace la pro forma MB3M si elle n’est pas imprimée ; une pièce imprimée est refusée. Un règlement lettré, ou une lecture du lettrage impossible, bloque ce remplacement : rien n’est écrit, statut bloque_lettrage ou avertissement, sans erreur. action mb3m, avec facture_id ou numero FG-AAAA-NNNN, pousse une facture déjà générée vers MB3M sans refaire le PDF. action retirer retire les justificatifs sans effacer le fichier ; restaurer les remet, toujours masqués. Sans confirmer, aperçu seulement : MB3M n’est pas appelé en écriture. Aucun e-mail, aucun WhatsApp, aucun avoir.",
     input: {
       client_id: z.string().trim().max(80).describe("Identifiant de la fiche"),
       dossiers: z.array(z.string().trim().max(80)).max(30).optional().describe("Identifiants ou références TB-…, au moins deux"),

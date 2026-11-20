@@ -40,8 +40,10 @@ import { agencyFeeForBooking, agencyFeeRateColumn, agencyFeeRateField } from "@/
 import { bookingFeesAreLocked, ownerHasZeroFees } from "@/lib/crm/zero-fees";
 import {
   COMMERCIAL_DISCOUNT_LABEL,
+  capPricedDiscounts,
   commercialDiscountExternalId,
-  commercialDiscountPatch,
+  discountLineExternalId,
+  type PricedDiscountLine,
 } from "@/lib/crm/commercial-discount";
 import { agencyFeeBaseAmount, agencyFeeFromGross } from "@/lib/crm/money";
 import { must } from "@/lib/crm/must";
@@ -169,13 +171,6 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
     if (key === "remise_type" || key === "remise_value") continue;
     patch[key] = body[key];
   }
-  if ("remise_type" in body || "remise_value" in body) {
-    const parsed = commercialDiscountPatch(body.remise_type, body.remise_value);
-    if (!("error" in parsed)) {
-      patch.remise_type = parsed.remise_type;
-      patch.remise_value = parsed.remise_value;
-    }
-  }
   return patch;
 }
 
@@ -183,10 +178,6 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
 export function bookingMetaError(body: Record<string, unknown>) {
   if ("agency_fee_rate" in body) {
     const parsed = agencyFeeRateField(body.agency_fee_rate);
-    if ("error" in parsed) return parsed.error;
-  }
-  if ("remise_type" in body || "remise_value" in body) {
-    const parsed = commercialDiscountPatch(body.remise_type, body.remise_value);
     if ("error" in parsed) return parsed.error;
   }
   return null;
@@ -923,33 +914,29 @@ export async function dropCoveredStayRollup(supabase: SupabaseClient, bookingId:
   return true;
 }
 
-/**
- * Crédit « Remise commerciale » : le client doit le total après remise.
- * Le montant est celui du carnet. Il ne dépasse pas les débits du dossier, pour ne pas créer d’avoir au-delà.
- * Séjour caché, annulé ou archivé : la ligne est annulée.
- */
-export async function syncCommercialDiscount(supabase: SupabaseClient, booking: CrmBooking) {
-  const { loadStayDiscountEuros } = await import("@/lib/crm/displayed-stay");
-  const externalId = commercialDiscountExternalId(booking.id);
-  const shown = !booking.archived_at && booking.visible_to_client !== false && booking.status !== "cancelled";
-  let amount = 0;
-  if (shown) {
-    amount = await loadStayDiscountEuros(supabase, booking.id);
-    if (amount > 0) {
-      const debits = must(
-        await supabase
-          .from("crm_transactions")
-          .select("amount")
-          .eq("booking_id", booking.id)
-          .eq("direction", "debit")
-          .eq("status", "posted"),
-        "Remise commerciale"
-      );
-      const billed = (debits || []).reduce((sum, row) => sum + Number((row as { amount: number | string }).amount || 0), 0);
-      amount = Math.min(amount, Math.round(billed * 100) / 100);
-      amount = Math.round(amount * 100) / 100;
-    }
-  }
+async function postedDebitTotal(supabase: SupabaseClient, bookingId: string) {
+  const debits = must(
+    await supabase
+      .from("crm_transactions")
+      .select("amount")
+      .eq("booking_id", bookingId)
+      .eq("direction", "debit")
+      .eq("status", "posted"),
+    "Remise commerciale"
+  );
+  const billed = (debits || []).reduce((sum, row) => sum + Number((row as { amount: number | string }).amount || 0), 0);
+  return Math.round(billed * 100) / 100;
+}
+
+async function upsertDiscountCredit(
+  supabase: SupabaseClient,
+  booking: CrmBooking,
+  externalId: string,
+  amount: number,
+  label: string
+) {
+  const payerId = booking.billing_customer_id || booking.customer_id;
+  const companyId = debitBillingCompanyId(booking);
   const { data: existing } = await supabase
     .from("crm_transactions")
     .select("*")
@@ -957,49 +944,84 @@ export async function syncCommercialDiscount(supabase: SupabaseClient, booking: 
     .eq("external_id", externalId)
     .maybeSingle();
   const credit = existing as CrmTransaction | null;
-  const payerId = booking.billing_customer_id || booking.customer_id;
-  const companyId = debitBillingCompanyId(booking);
   if (amount <= 0) {
     if (credit && credit.status !== "void") {
       must(await supabase.from("crm_transactions").update({ status: "void" }).eq("id", credit.id), "Remise commerciale");
     }
     return;
   }
+  const fields = {
+    customer_id: payerId,
+    ...debitParty(booking, companyId),
+    direction: "credit" as const,
+    kind: "adjustment" as const,
+    amount,
+    currency: booking.currency || "EUR",
+    label: visibleServiceCopy(label.trim()) || COMMERCIAL_DISCOUNT_LABEL,
+    status: "posted" as const,
+  };
   if (!credit) {
     must(
       await supabase.from("crm_transactions").insert({
-        customer_id: payerId,
+        ...fields,
         booking_id: booking.id,
-        ...debitParty(booking, companyId),
-        direction: "credit",
-        kind: "adjustment",
-        amount,
-        currency: booking.currency || "EUR",
-        label: COMMERCIAL_DISCOUNT_LABEL,
         source: "manual",
         external_id: externalId,
-        status: "posted",
       }),
       "Remise commerciale"
     );
     return;
   }
-  must(
-    await supabase
-      .from("crm_transactions")
-      .update({
-        customer_id: payerId,
-        ...debitParty(booking, companyId),
-        direction: "credit",
-        kind: "adjustment",
-        amount,
-        currency: booking.currency || "EUR",
-        label: COMMERCIAL_DISCOUNT_LABEL,
-        status: "posted",
-      })
-      .eq("id", credit.id),
-    "Remise commerciale"
-  );
+  must(await supabase.from("crm_transactions").update(fields).eq("id", credit.id), "Remise commerciale");
+}
+
+/**
+ * Un crédit par remise : le client doit le total après remise.
+ * Le montant est celui du carnet. La somme ne dépasse pas les débits du dossier.
+ * Séjour caché, annulé ou archivé : les lignes sont annulées.
+ * Tant que la table n’est pas là, le crédit unique des colonnes reste.
+ */
+export async function syncCommercialDiscount(supabase: SupabaseClient, booking: CrmBooking) {
+  const { loadStayPricedDiscounts } = await import("@/lib/crm/displayed-stay");
+  const shown = !booking.archived_at && booking.visible_to_client !== false && booking.status !== "cancelled";
+  const priced = await loadStayPricedDiscounts(supabase, booking.id);
+  if (priced.source === "columns") {
+    let amount = shown ? priced.lines.reduce((sum, line) => sum + line.euros, 0) : 0;
+    if (amount > 0) amount = Math.min(amount, await postedDebitTotal(supabase, booking.id));
+    await upsertDiscountCredit(
+      supabase,
+      booking,
+      commercialDiscountExternalId(booking.id),
+      Math.round(amount * 100) / 100,
+      COMMERCIAL_DISCOUNT_LABEL
+    );
+    return;
+  }
+  await upsertDiscountCredit(supabase, booking, commercialDiscountExternalId(booking.id), 0, COMMERCIAL_DISCOUNT_LABEL);
+  let lines: PricedDiscountLine[] = shown ? priced.lines : priced.lines.map((line) => ({ ...line, euros: 0 }));
+  if (shown && lines.some((line) => line.euros > 0)) {
+    lines = capPricedDiscounts(lines, await postedDebitTotal(supabase, booking.id));
+  }
+  const wanted = new Set(lines.map((line) => discountLineExternalId(booking.id, line.id)));
+  for (const line of lines) {
+    await upsertDiscountCredit(
+      supabase,
+      booking,
+      discountLineExternalId(booking.id, line.id),
+      line.euros,
+      line.label
+    );
+  }
+  const { data: existing } = await supabase
+    .from("crm_transactions")
+    .select("id, external_id, status")
+    .eq("booking_id", booking.id)
+    .eq("source", "manual")
+    .like("external_id", `${discountLineExternalId(booking.id, "")}%`);
+  for (const row of (existing || []) as { id: string; external_id: string | null; status: string }[]) {
+    if (!row.external_id || wanted.has(row.external_id) || row.status === "void") continue;
+    must(await supabase.from("crm_transactions").update({ status: "void" }).eq("id", row.id), "Remise commerciale");
+  }
 }
 
 export async function syncBookingLedger(

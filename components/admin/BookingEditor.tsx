@@ -55,7 +55,7 @@ import {
   type AgencyFeeSource,
 } from "@/lib/crm/agency-fee-rate";
 import { AgencyFeeRateField } from "@/components/admin/AgencyFeeRateField";
-import { readCommercialDiscount } from "@/lib/crm/commercial-discount";
+import { COMMERCIAL_DISCOUNT_LABEL, readCommercialDiscount, type DiscountLine } from "@/lib/crm/commercial-discount";
 import { BookingDiscountPanel } from "@/components/admin/BookingDiscountPanel";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee } from "@/lib/crm/ticketing-fee";
@@ -389,6 +389,7 @@ export function BookingEditor({
   checkins = [],
   ownership = null,
   twinNames = [],
+  discounts = null,
 }: {
   booking: CrmBooking;
   /** Taux appliqué et taux hérité du compte. Le sélecteur reste à l’agence. */
@@ -508,9 +509,32 @@ export function BookingEditor({
   } | null;
   /** Fiches jumelées qui voient aussi ce dossier. */
   twinNames?: string[];
+  /** null : la table n’est pas là, les colonnes restent. Tableau : les lignes, même vides. */
+  discounts?: DiscountLine[] | null;
   /** E-mails, activité, WhatsApp, formalités, Pliant et compta, après le premier affichage. */
   panels?: DossierPanels | null;
 }) {
+  const discountSignature = (discounts || []).map((line) => `${line.id}:${line.label}:${line.quantity}:${line.unitPrice}:${line.percent}`).join("|");
+  const [discountSynced, setDiscountSynced] = useState(discountSignature);
+  const [discountOverride, setDiscountOverride] = useState<DiscountLine[] | null>(null);
+  if (discountSynced !== discountSignature) {
+    setDiscountSynced(discountSignature);
+    setDiscountOverride(null);
+  }
+  const discountLines = discountOverride ?? discounts;
+  const columnDiscount = readCommercialDiscount(booking);
+  const columnLine: DiscountLine | null =
+    discounts == null && columnDiscount.type && columnDiscount.value
+      ? {
+          id: "remise-commerciale",
+          label: COMMERCIAL_DISCOUNT_LABEL,
+          kind: columnDiscount.type,
+          quantity: 1,
+          unitPrice: columnDiscount.type === "amount" ? columnDiscount.value : null,
+          percent: columnDiscount.type === "percent" ? columnDiscount.value : null,
+        }
+      : null;
+  const panelLines = discountLines ?? (columnLine ? [columnLine] : []);
   const [mailRows, setMailRows] = useState<typeof attachedEmailsIn | null>(null);
   const [hotelRows, setHotelRows] = useState<{
     arrivals: typeof arrivalsIn;
@@ -1353,7 +1377,7 @@ export function BookingEditor({
   const grossStay = stayPriceWithExpenses(stayPriceInput);
   const stayAmount = stayPriceWithExpenses({
     ...stayPriceInput,
-    discount: readCommercialDiscount(booking),
+    ...(discountLines ? { discounts: discountLines } : { discount: readCommercialDiscount(booking) }),
   });
   const statementCustomer = billingCustomer || customer;
   // Cartes qui composent le montant : un aller-retour compte une fois, comme dans le total stocké.
@@ -2663,12 +2687,12 @@ export function BookingEditor({
             <BookingDiscountPanel
               bookingId={booking.id}
               currency={booking.currency}
-              remiseType={booking.remise_type}
-              remiseValue={booking.remise_value}
               gross={grossStay}
               net={accounting?.totals.cost ?? null}
               margin={accounting?.totals.margin ?? null}
-              remiseApplied={accounting?.totals.remise ?? 0}
+              lines={panelLines}
+              tableReady={discounts != null}
+              onLines={setDiscountOverride}
               onArgentRefresh={refreshArgent}
             />
           </section>

@@ -12,7 +12,7 @@ import {
   type CostTargetBooking,
   type CostTargetItem,
 } from "./cost-match";
-import { COMMERCIAL_DISCOUNT_LABEL, COMMERCIAL_DISCOUNT_LINE_ID } from "./commercial-discount";
+import { COMMERCIAL_DISCOUNT_LABEL, COMMERCIAL_DISCOUNT_LINE_ID, type DiscountCut } from "./commercial-discount";
 import { isStayRollupDebit } from "./ledger-display";
 import { matchTokens, normalizeMatchText } from "./revolut-match";
 
@@ -256,26 +256,41 @@ export function isCommercialDiscountSale(line: Pick<SaleLine, "nature" | "transa
   return line.nature === "discount" || line.transactionId === COMMERCIAL_DISCOUNT_LINE_ID;
 }
 
+function discountSaleId(id: string) {
+  return id === COMMERCIAL_DISCOUNT_LINE_ID ? id : `discount:${id}`;
+}
+
 /**
- * Ligne de vente de l’onglet Argent. Montant négatif, sans coût, plafonné à la vente.
+ * Une ligne de vente négative par remise, sans coût, plafonnée à la vente.
  * Ce n’est pas une écriture du grand livre : le crédit y est déjà.
  * La pro forma MB3M, le relevé et le carnet gardent leur ligne, on n’en ajoute pas une seconde.
+ * Les lignes de tête gardent leur montant ; les suivantes rétrécissent si la somme dépasse la vente.
  */
-export function withCommercialDiscountSale(lines: SaleLine[], euros: number): SaleLine[] {
+export function withCommercialDiscountSales(lines: SaleLine[], cuts: DiscountCut[]): SaleLine[] {
   const rest = lines.filter((line) => !isCommercialDiscountSale(line));
-  const sale = round(rest.reduce((sum, line) => sum + line.sale, 0));
-  const cut = Math.min(Math.max(0, round(euros)), Math.max(0, sale));
-  if (!(cut > 0)) return rest;
-  return [
-    ...rest,
-    {
-      transactionId: COMMERCIAL_DISCOUNT_LINE_ID,
+  let room = Math.max(0, round(rest.reduce((sum, line) => sum + line.sale, 0)));
+  const added: SaleLine[] = [];
+  for (const cut of cuts) {
+    const take = Math.min(Math.max(0, round(cut.euros)), room);
+    room = round(room - take);
+    if (!(take > 0)) continue;
+    added.push({
+      transactionId: discountSaleId(cut.id),
       itemId: null,
       nature: "discount",
-      label: COMMERCIAL_DISCOUNT_LABEL,
-      sale: round(-cut),
-    },
-  ];
+      label: (cut.label || "").trim() || COMMERCIAL_DISCOUNT_LABEL,
+      sale: round(-take),
+    });
+  }
+  return [...rest, ...added];
+}
+
+/** Une seule remise, le libellé historique. Les tests et l’ancienne colonne passent par ici. */
+export function withCommercialDiscountSale(lines: SaleLine[], euros: number): SaleLine[] {
+  if (!(Number(euros) > 0)) return lines.filter((line) => !isCommercialDiscountSale(line));
+  return withCommercialDiscountSales(lines, [
+    { id: COMMERCIAL_DISCOUNT_LINE_ID, label: COMMERCIAL_DISCOUNT_LABEL, euros },
+  ]);
 }
 
 const ITEM_ID = /:(?:item|expense):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;

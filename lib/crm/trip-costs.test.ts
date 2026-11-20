@@ -24,6 +24,7 @@ import {
   tripCostFromRevolut,
   tripTotals,
   withCommercialDiscountSale,
+  withCommercialDiscountSales,
   type CostSuggestion,
   type TripCost,
 } from "./trip-costs";
@@ -205,6 +206,17 @@ describe("coûts du voyage", () => {
     assert.equal(tripTotals(accountLines(capped, []).lines, []).sale, 0);
     assert.equal(withCommercialDiscountSale(sales, 0).some((line) => line.nature === "discount"), false);
     assert.equal(withCommercialDiscountSale(sales, -12.5).some((line) => line.nature === "discount"), false);
+    const several = withCommercialDiscountSales(sales, [
+      { id: "a", label: "Groupe", euros: 40 },
+      { id: "b", label: "Fidélité", euros: 10 },
+    ]);
+    assert.deepEqual(
+      several.filter((line) => line.nature === "discount").map((line) => [line.label, line.sale]),
+      [
+        ["Groupe", -40],
+        ["Fidélité", -10],
+      ]
+    );
     const stay = saleLines(
       [
         {

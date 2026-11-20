@@ -31,12 +31,14 @@ import {
   mb3mDossierLines,
   mb3mFactureHref,
   withCommercialDiscountLine,
+  withCommercialDiscountLines,
   mb3mLedgerMention,
   mb3mLineSignature,
   mb3mPieceStale,
   type Mb3mAccountLine,
   type Mb3mLedgerRow,
 } from "@/lib/crm/mb3m-account";
+import type { DiscountCut } from "@/lib/crm/commercial-discount";
 import { chargesWithoutGdsFlights, finishMb3mGds, readMb3mGdsPlan, type Mb3mGdsPlan } from "@/lib/crm/mb3m-gds";
 import { mb3mIsPaymentGap, recordMb3mInvoicePayments, type Mb3mReglement } from "@/lib/crm/mb3m-payments";
 import {
@@ -66,7 +68,7 @@ import {
   mb3mSupplierAlertMail,
   mb3mSupplierBlock,
 } from "@/lib/crm/mb3m-conform";
-import { loadStayDiscountEuros, stayDiscountEuros } from "@/lib/crm/displayed-stay";
+import { loadStayPricedDiscounts, stayDiscountEuros } from "@/lib/crm/displayed-stay";
 import { deliverServiceRequestMail } from "@/lib/crm/service-request-mail";
 import {
   assertMb3mCreditNoteAllowed,
@@ -473,6 +475,8 @@ export function buildMb3mInvoiceContext(input: {
   costs?: TripCost[];
   /** Euros de remise déjà calculés sur le total du carnet. Absent : recalcul sur les cartes. */
   discountEuros?: number;
+  /** Une ligne par remise. Présent : remplace le montant unique. */
+  discountCuts?: DiscountCut[];
 }): Mb3mInvoiceContext {
   const facts = staffStayFacts({
     items: input.items,
@@ -530,13 +534,13 @@ export function buildMb3mInvoiceContext(input: {
             ? undefined
             : Number(input.booking.agency_fee_rate)
         );
-  const lines = withCommercialDiscountLine(
-    conformMb3mAccountLines(
-      posted.filter((line) => !covered.has(line.transactionId)),
-      input.items
-    ),
-    discountEuros
+  const conformed = conformMb3mAccountLines(
+    posted.filter((line) => !covered.has(line.transactionId)),
+    input.items
   );
+  const lines = input.discountCuts
+    ? withCommercialDiscountLines(conformed, input.discountCuts)
+    : withCommercialDiscountLine(conformed, discountEuros);
   const sendable = mb3mSendableLines(lines);
   return {
     bookingId: input.booking.id,
@@ -1292,7 +1296,11 @@ export async function loadMb3mInvoiceContext(supabase: SupabaseClient, bookingId
     .limit(1)
     .maybeSingle();
   const folderId = (openFolder.data as { folder_id?: string } | null)?.folder_id || null;
-  const discountEuros = await loadStayDiscountEuros(supabase, bookingId).catch(() => 0);
+  const pricedDiscounts = await loadStayPricedDiscounts(supabase, bookingId).catch(() => null);
+  const discountCuts = pricedDiscounts?.lines
+    .filter((line) => line.euros > 0)
+    .map((line) => ({ id: line.id, label: line.label, euros: line.euros }));
+  const discountEuros = pricedDiscounts ? pricedDiscounts.lines.reduce((sum, line) => sum + line.euros, 0) : 0;
   const gdsPlan = await readMb3mGdsPlan(supabase, {
     bookingId,
     payerId,
@@ -1312,6 +1320,7 @@ export async function loadMb3mInvoiceContext(supabase: SupabaseClient, bookingId
       coveredIds: inputs.coveredIds,
       costs: inputs.costs,
       discountEuros,
+      ...(discountCuts ? { discountCuts } : {}),
     }),
     gdsPlan,
   };
@@ -1404,7 +1413,11 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
     supabase.from("crm_booking_items").select("*").eq("booking_id", bookingId),
     dossierInvoiceInputs(supabase, bookingId),
   ]);
-  const discountEuros = await loadStayDiscountEuros(supabase, bookingId).catch(() => 0);
+  const pricedDiscounts = await loadStayPricedDiscounts(supabase, bookingId).catch(() => null);
+  const discountCuts = pricedDiscounts?.lines
+    .filter((line) => line.euros > 0)
+    .map((line) => ({ id: line.id, label: line.label, euros: line.euros }));
+  const discountEuros = pricedDiscounts ? pricedDiscounts.lines.reduce((sum, line) => sum + line.euros, 0) : 0;
   const ctx = buildMb3mInvoiceContext({
     booking: stay,
     items: (items || []) as StayItem[],
@@ -1414,6 +1427,7 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
     charges: inputs.charges,
     costs: inputs.costs,
     discountEuros,
+    ...(discountCuts ? { discountCuts } : {}),
   });
   const stale = mb3mStalePieces(inputs.printed, ctx.lines);
   if (!stale.length) throw new Mb3mError("Aucune facture imprimée à corriger.", 0);

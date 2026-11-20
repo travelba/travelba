@@ -29,7 +29,7 @@ import {
 import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { findVisaExtra, visaProposed, type ServiceRefusal } from "@/lib/crm/extras";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
-import { readCommercialDiscount } from "@/lib/crm/commercial-discount";
+import { readCommercialDiscount, type DiscountLine } from "@/lib/crm/commercial-discount";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { shownClientNote } from "@/lib/crm/public-booking";
@@ -101,10 +101,13 @@ export function ClientInterfacePreview({
   initialScreen = "stay",
   settled = [],
   agencyFeeRate,
+  discounts = null,
 }: {
   booking: CrmBooking;
   /** Montant seulement. Le pourcentage n’est pas affiché. */
   agencyFeeRate?: number;
+  /** null : remise des colonnes. Tableau : les lignes. */
+  discounts?: DiscountLine[] | null;
   items: CrmBookingItem[];
   documents: CrmBookingDocument[];
   travelers: CrmBookingTraveler[];
@@ -189,6 +192,7 @@ export function ClientInterfacePreview({
           showStay={hasCarnet}
           settled={settled}
           agencyFeeRate={agencyFeeRate}
+          discounts={discounts}
         />
       )}
     </section>
@@ -256,6 +260,7 @@ function ClientScreen({
   settled = [],
   agencyFeeRate,
   hidePrices = false,
+  discounts = null,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -284,6 +289,7 @@ function ClientScreen({
   settled?: string[];
   agencyFeeRate?: number;
   hidePrices?: boolean;
+  discounts?: DiscountLine[] | null;
 }) {
   const insurances = items.filter((item) => item.kind === "insurance");
   const holder = {
@@ -338,6 +344,7 @@ function ClientScreen({
   });
   const pricesVisible = !hidePrices && booking.prices_visible !== false;
   const discount = readCommercialDiscount(booking);
+  const discountInput = discounts ? { discounts } : { discount };
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: booking.agency_commission === true,
@@ -348,7 +355,7 @@ function ClientScreen({
     extras: feeExtras,
     ticketingFee,
     ticketCount,
-    discount,
+    ...discountInput,
   });
   const passportRows = passportVaultRows(travelers, identityDocs, todayIsoDate(), holder, booking, companions);
   const encoursPay =
@@ -520,7 +527,7 @@ function ClientScreen({
                     expenses: expenseChoices,
                     extras: feeExtras,
                     ticketingFee,
-                    discount,
+                    ...discountInput,
                   })}
                 </p>
                 {insurances.map((item) => {
