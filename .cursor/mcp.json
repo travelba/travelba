@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "tba-crm": {
+      "url": "https://travelba.fr/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:TRAVELBA_MCP_TOKEN}"
+      }
+    },
+    "pliant": {
+      "url": "https://partner.getpliant.com/mcp"
+    },
+    "supabase": {
+      "url": "https://mcp.supabase.com/mcp?project_ref=fsmfozxgujskluxakeoq&read_only=true"
+    },
+    "vercel": {
+      "url": "https://mcp.vercel.com"
+    }
+  }
+}
