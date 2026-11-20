@@ -160,7 +160,7 @@ export async function searchExpediaRates(input: {
   if (!region || !region.propertyIds.length) return [];
   const prefer = (input.preferNames || []).map((name) => name.trim()).filter(Boolean);
   let selected = region.propertyIds.slice(0, EXPEDIA_PROPERTY_BATCH);
-  let content = new Map<string, ExpediaPropertyContent>();
+  const content = new Map<string, ExpediaPropertyContent>();
   if (prefer.length) {
     const matched: string[] = [];
     for (const batch of chunkPropertyIds(region.propertyIds).slice(0, 6)) {
