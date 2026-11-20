@@ -97,10 +97,10 @@ export function ledgerPlace(
   booking: { title?: string | null; destination?: string | null; reference: string } | null | undefined
 ) {
   if (!booking) return null;
-  const destination = (booking.destination || "").trim();
-  if (destination) return destination;
   const title = (booking.title || "").trim();
   if (title && title !== booking.reference) return title;
+  const destination = (booking.destination || "").trim();
+  if (destination && destination !== booking.reference) return destination;
   return null;
 }
 

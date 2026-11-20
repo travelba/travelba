@@ -9,6 +9,7 @@ import { isUuid } from "@/lib/crm/ids";
 import type { InvoiceWire } from "@/lib/crm/invoice-document";
 import { formatDateFr } from "@/lib/crm/money";
 import { missingDbColumn, queryWithOptionalColumn } from "@/lib/crm/optional-column";
+import { dossierShownName } from "@/lib/crm/client-stay-face";
 import { staffStayFacts } from "@/lib/crm/staff-stay";
 import { stayDiscountEuros, stayPricedDiscounts } from "@/lib/crm/displayed-stay";
 import { isActiveItem } from "@/lib/crm/types";
@@ -426,7 +427,7 @@ export async function previewGroupedInvoice(
     return {
       bookingId: booking.id,
       reference: booking.reference,
-      destination: facts.placeLine.trim() || (booking.title || "").trim() || booking.reference,
+      destination: dossierShownName({ title: booking.title, items, fallback: booking.reference }),
       dates: facts.dates || datesOf(booking),
       travelers: travelers.map(travelerName).filter(Boolean),
       commission: booking.agency_commission === true,
