@@ -17,6 +17,23 @@ import {
 
 const STAMP = "2026-09-01T12:00:00.000Z";
 
+/** Jour du séjour d’exemple, toujours devant aujourd’hui. Date seule : pas d’horaire inventé. */
+export function exampleDate(plusDays: number) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + plusDays);
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${date.getUTCFullYear()}-${month}-${day}`;
+}
+
+export function exampleStayStart() {
+  return exampleDate(21);
+}
+
+export function exampleStayEnd() {
+  return exampleDate(23);
+}
+
 export const EXAMPLE_BASE = "/exemple";
 export const EXAMPLE_REFERENCE = "TB-EXEMPLE-0001";
 
@@ -92,8 +109,8 @@ function booking(): CrmBooking {
     title: "New York",
     destination: "New York",
     status: "confirmed",
-    start_date: "2026-11-12",
-    end_date: "2026-11-14",
+    start_date: exampleStayStart(),
+    end_date: exampleStayEnd(),
     currency: "EUR",
     total_amount: 0,
     include_in_ledger: false,
@@ -143,8 +160,8 @@ function items(): CrmBookingItem[] {
       title: "CDG → JFK",
       supplier: "Exemple Air",
       sort_order: 0,
-      start_at: "2026-11-12",
-      end_at: "2026-11-12",
+      start_at: exampleStayStart(),
+      end_at: exampleStayStart(),
       details: {
         airline: "Exemple Air",
         flight_number: "EX 100",
@@ -161,7 +178,7 @@ function items(): CrmBookingItem[] {
       kind: "transfer",
       title: "Transfert",
       sort_order: 1,
-      start_at: "2026-11-12",
+      start_at: exampleStayStart(),
       details: { pickup: "JFK", dropoff: "Maison Horizon" },
     }),
     item({
@@ -169,8 +186,8 @@ function items(): CrmBookingItem[] {
       kind: "hotel",
       title: "Maison Horizon",
       sort_order: 2,
-      start_at: "2026-11-12",
-      end_at: "2026-11-14",
+      start_at: exampleStayStart(),
+      end_at: exampleStayEnd(),
       details: { hotel_name: "Maison Horizon", city: "New York" },
     }),
     item({
@@ -178,15 +195,15 @@ function items(): CrmBookingItem[] {
       kind: "car",
       title: "Voiture",
       sort_order: 3,
-      start_at: "2026-11-12",
-      end_at: "2026-11-14",
+      start_at: exampleStayStart(),
+      end_at: exampleStayEnd(),
     }),
     item({
       id: "exemple-activite",
       kind: "activity",
       title: "Visite",
       sort_order: 4,
-      start_at: "2026-11-13",
+      start_at: exampleDate(22),
       details: { city: "New York" },
     }),
     item({
@@ -194,7 +211,7 @@ function items(): CrmBookingItem[] {
       kind: "rail",
       title: "New York → Washington",
       sort_order: 5,
-      start_at: "2026-11-13",
+      start_at: exampleDate(22),
       details: { city_from: "New York", city_to: "Washington" },
     }),
     item({
@@ -202,7 +219,7 @@ function items(): CrmBookingItem[] {
       kind: "cruise",
       title: "Bateau",
       sort_order: 6,
-      start_at: "2026-11-13",
+      start_at: exampleDate(22),
       details: { city: "New York" },
     }),
     item({
@@ -210,8 +227,8 @@ function items(): CrmBookingItem[] {
       kind: "flight",
       title: "JFK → CDG",
       sort_order: 7,
-      start_at: "2026-11-14",
-      end_at: "2026-11-14",
+      start_at: exampleStayEnd(),
+      end_at: exampleStayEnd(),
       details: { from: "JFK", to: "CDG", city_from: "New York", city_to: "Paris" },
     }),
     item({

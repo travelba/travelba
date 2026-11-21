@@ -12,7 +12,8 @@ import { clientVisibleItems, nextTimelineFlight, stayHeroPlace } from "@/lib/crm
 import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { buildLiveFlight } from "@/lib/crm/next-flight-model";
 import { destinationWeather } from "@/lib/crm/destination-weather";
-import { EXAMPLE_BASE } from "@/lib/crm/example-session";
+import { EXAMPLE_BASE, exampleStayStart } from "@/lib/crm/example-session";
+import { formatDateFr } from "@/lib/crm/money";
 import { readExample } from "@/lib/crm/example-store";
 
 const examplePasses: ClientBoardingCard[] = [
@@ -23,7 +24,7 @@ const examplePasses: ClientBoardingCard[] = [
     firstName: "Camille",
     flight: "EX 100",
     route: "Paris → New York",
-    when: "12 nov. 2026 à 13h50",
+    when: `${formatDateFr(exampleStayStart())} à 13h50`,
     seat: "12A",
     terminal: "2E",
     gate: "K42",
@@ -38,7 +39,7 @@ const examplePasses: ClientBoardingCard[] = [
     firstName: "Inès",
     flight: "EX 100",
     route: "Paris → New York",
-    when: "12 nov. 2026 à 13h50",
+    when: `${formatDateFr(exampleStayStart())} à 13h50`,
     seat: "12B",
     terminal: "2E",
     gate: "K42",

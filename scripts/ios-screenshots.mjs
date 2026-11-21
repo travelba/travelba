@@ -28,17 +28,18 @@ const SCREENS = [
   },
   {
     slug: "03-reservations",
-    path: "/exemple/reservations?tab=passes",
+    path: "/exemple/reservations",
     kicker: "Les voyages",
     title: "Tous vos séjours,\nau même endroit.",
-    text: "Les séjours à venir, et ceux qui sont déjà rentrés.",
+    text: "Le prochain départ, avec la photo du lieu.",
   },
   {
-    slug: "04-transactions",
-    path: "/exemple/transactions",
-    kicker: "Les règlements",
-    title: "Ce qui est réglé,\nce qui reste.",
-    text: "L’encours du compte, sans mélanger le net du fournisseur.",
+    slug: "04-hotel",
+    path: "/exemple/reservations/TB-EXEMPLE-0001",
+    scrollText: "Maison Horizon",
+    kicker: "L’hôtel",
+    title: "La nuit,\net ce qui suit.",
+    text: "L’hôtel du dossier, le transfert, puis la suite du voyage.",
   },
   {
     slug: "05-pieces",
@@ -141,21 +142,55 @@ try {
     await page.setViewport({ width: frame.cssWidth, height: frame.cssHeight, deviceScaleFactor: 3 });
     for (const screen of SCREENS) {
       await page.goto(base + screen.path, { waitUntil: "domcontentloaded", timeout: 60000 });
-      await page.evaluate(() => {
+      await page.evaluate((scrollText) => {
         const style = document.createElement("style");
         style.textContent = "nextjs-portal{display:none !important}";
         document.head.appendChild(style);
         document.querySelectorAll("p").forEach((node) => {
           if ((node.textContent || "").includes("Aperçu local")) node.style.display = "none";
         });
-      });
+        if (!scrollText) return;
+        const node = [...document.querySelectorAll("h2, h3, p, article, li")].find((item) => {
+          const text = (item.textContent || "").replace(/\s+/g, " ");
+          return text.includes(scrollText) && text.length < 80;
+        });
+        if (!node) return;
+        const top = node.getBoundingClientRect().top + window.scrollY - 96;
+        window.scrollTo(0, Math.max(0, top));
+      }, screen.scrollText || "");
       await page
         .waitForFunction(() => {
           const images = [...document.querySelectorAll("img")];
           return images.length === 0 || images.every((img) => img.complete && img.naturalWidth > 0);
         }, { timeout: 8000 })
         .catch(() => {});
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      await page.evaluate(() => {
+        const tab = document.querySelector(".account-tabbar");
+        const main = document.querySelector("main");
+        if (!tab || !main) return;
+        const gap = () => tab.getBoundingClientRect().top - bottomOf(main);
+        function bottomOf(root) {
+          let bottom = 0;
+          for (const node of root.querySelectorAll("article, section, a, li, form")) {
+            const rect = node.getBoundingClientRect();
+            if (rect.width < 160 || rect.height < 28) continue;
+            if (rect.bottom > bottom) bottom = rect.bottom;
+          }
+          return bottom;
+        }
+        const missing = gap();
+        if (missing < 120) return;
+        const blocks = [...main.querySelectorAll("article, section")].filter(
+          (node) => node.getBoundingClientRect().height > 48
+        );
+        const last = blocks.at(-1);
+        if (!last) return;
+        const frame = last.querySelector("[class*='h-']") || last;
+        const rect = frame.getBoundingClientRect();
+        frame.style.height = `${Math.round(rect.height + missing - 16)}px`;
+        frame.style.minHeight = frame.style.height;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 250));
       const shot = await page.screenshot({ type: "png" });
       const layout = await compose(shot, frame, screen, faces);
       const poster = await browser.newPage();
