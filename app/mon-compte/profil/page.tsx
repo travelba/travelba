@@ -6,6 +6,7 @@ import { readVerifiedUser } from "@/lib/crm/verified-user";
 import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
 import type { CrmTravelDocument } from "@/lib/crm/types";
 import { PasswordChangeForm } from "@/components/account/PasswordChangeForm";
+import { PushPreferences } from "@/components/account/PushPreferences";
 import { ProfileForm } from "@/components/account/ProfileForm";
 import { PhoneWallBanner } from "@/components/crm/ui";
 import { SignOutButton } from "@/components/account/SignOutButton";
@@ -33,6 +34,8 @@ export default async function ProfilPage() {
       {!customer.phone && !desk ? <PhoneWallBanner /> : null}
 
       <ProfileForm key={customer.updated_at} customer={customer} documents={(documents || []) as CrmTravelDocument[]} />
+
+      <PushPreferences />
 
       <PasswordChangeForm />
 

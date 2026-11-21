@@ -4,6 +4,7 @@ import { routing } from "./i18n/routing";
 import { gateAgencyApi } from "./lib/crm/agency-gate";
 import { IN_APP_STAY_COOKIE, IN_APP_STAY_MAX_AGE, IN_APP_STAY_PARAM, inAppHandoffDecision, inAppHandoffHtml } from "./lib/crm/in-app-browser";
 import { catalogueCrawlerDecision } from "./lib/crm/public-catalogue";
+import { isNativeAppUserAgent, isNativeBlockedPath } from "./lib/crm/native-portal";
 import { updateSession } from "./lib/supabase/middleware";
 
 const intlMiddleware = createMiddleware(routing);
@@ -81,10 +82,22 @@ export default async function proxy(request: NextRequest) {
 }
 
 async function route(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  if (isNativeAppUserAgent(request.headers.get("user-agent")) && isNativeBlockedPath(path)) {
+    if (path.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Cette application est réservée à l’espace client." },
+        { status: 404, headers: { "Cache-Control": "private, no-store" } }
+      );
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = "/connexion";
+    url.search = "?error=application";
+    return NextResponse.redirect(url);
+  }
+
   const forwarded = forwardAuthCode(request);
   if (forwarded) return forwarded;
-
-  const path = request.nextUrl.pathname;
   const crawler = catalogueCrawlerDecision({
     path,
     userAgent: request.headers.get("user-agent"),
@@ -119,6 +132,10 @@ async function route(request: NextRequest) {
     url.pathname = "/connexion";
     url.search = "";
     return NextResponse.redirect(url);
+  }
+
+  if (path === "/.well-known/apple-app-site-association") {
+    return NextResponse.next();
   }
 
   if (path === "/e" || path.startsWith("/e/")) {

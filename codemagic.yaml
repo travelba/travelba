@@ -1,0 +1,64 @@
+# Build TestFlight sans Mac. Aucun secret dans ce fichier.
+# Groupe Codemagic `travelba_ios` :
+#   APP_STORE_CONNECT_KEY_IDENTIFIER
+#   APP_STORE_CONNECT_ISSUER_ID
+#   APP_STORE_CONNECT_PRIVATE_KEY   (contenu du .p8, retours à la ligne conservés)
+#   CERTIFICATE_PRIVATE_KEY         (clé privée RSA du certificat de distribution, si Codemagic doit le créer)
+# Lancer à la main dans Codemagic, ou pousser un tag ios-* (ios-1, ios-1.0.1).
+workflows:
+  tba-ios-testflight:
+    name: TBA iOS TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: "ios-*"
+          include: true
+    environment:
+      groups:
+        - travelba_ios
+      vars:
+        BUNDLE_ID: fr.travelba.client
+        XCODE_SCHEME: App
+      xcode: latest
+      node: 22
+    scripts:
+      - name: Dépendances de l’application
+        script: |
+          cd "$CM_BUILD_DIR/mobile"
+          npm ci
+      - name: Synchroniser Capacitor
+        script: |
+          cd "$CM_BUILD_DIR/mobile"
+          npx cap sync ios
+      - name: Trousseau
+        script: keychain initialize
+      - name: Certificats App Store
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+      - name: Installer les certificats
+        script: keychain add-certificates
+      - name: Profils de signature
+        script: xcode-project use-profiles
+      - name: Numéro de build
+        script: |
+          cd "$CM_BUILD_DIR/mobile/ios/App"
+          agvtool new-version -all "$BUILD_NUMBER"
+      - name: Archive IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/mobile/ios/App/App.xcodeproj" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true

@@ -7,6 +7,13 @@ import { browserAuthCookieNames, browserCookieDeletion, signOutRedirectPath } fr
  * pour qu’un rafraîchissement du navigateur ne le repose pas.
  */
 export async function signOutAccount(scope: "local" | "global" = "local", next?: string) {
+  if (typeof window !== "undefined") {
+    const cap = (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+    if (cap?.isNativePlatform?.()) {
+      const mod = await import("@/lib/native/push-client");
+      await mod.unregisterNativePush(scope === "global").catch(() => {});
+    }
+  }
   const response = await fetch("/api/auth/sign-out", {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
