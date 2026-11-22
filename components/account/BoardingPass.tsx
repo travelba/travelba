@@ -5,9 +5,11 @@ import { AddToPhoneCalendar } from "@/components/account/AddToPhoneCalendar";
 import { BoardingPassActions } from "@/components/account/BoardingPassActions";
 import type { BoardingFileLink, ClientBoardingCard } from "@/lib/crm/client-boarding-pass";
 import {
+  countdownSpeech,
   liveFlightCaption,
   liveFlightPlace,
   liveFlightProgress,
+  type CountdownPart,
   type LiveCaption,
   type LiveClock,
   type LiveFlight,
@@ -39,28 +41,60 @@ function ClockPair({ clock, align }: { clock: LiveClock; align: "start" | "end" 
   );
 }
 
+function unitDigits(part: CountdownPart) {
+  return part.unit === "j" ? String(part.value) : String(part.value).padStart(2, "0");
+}
+
+function CountdownReadout({ title, parts, speech }: { title: string; parts: CountdownPart[]; speech: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="sr-only">{speech}</p>
+      <p className="text-[12px] font-semibold leading-none text-white" aria-hidden>
+        {title}
+      </p>
+      <div className="mt-1.5 flex items-stretch gap-1" aria-hidden>
+        {parts.map((part) => (
+          <span
+            key={part.unit}
+            className="flex min-w-11 flex-col items-center justify-center rounded-lg border border-[#C5A880]/40 bg-[#C5A880]/10 px-1 py-1"
+          >
+            <span className="font-display text-[1.15rem] font-bold tabular-nums leading-none tracking-tight text-[#C5A880]">
+              {unitDigits(part)}
+            </span>
+            <span className="mt-1 whitespace-nowrap text-[10px] font-medium leading-none text-white/60">{part.unit}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Caption({ caption }: { caption: LiveCaption }) {
-  const gold = "tabular-nums text-[#C5A880]";
   const line = "text-[14px] font-semibold leading-snug text-white";
   if (caption.kind === "countdown") {
     return (
-      <p className={line}>
-        <span className="whitespace-nowrap">
-          Décollage dans <span className={gold}>{caption.clock}</span>
-        </span>
-      </p>
+      <CountdownReadout
+        title="Décollage dans"
+        parts={caption.parts}
+        speech={`Décollage dans ${countdownSpeech(caption.parts)}`}
+      />
     );
   }
   if (caption.kind === "airborne") {
+    if (!caption.parts) return <p className={line}>Vol en cours</p>;
     return (
-      <p className={line}>
-        <span className="block">Vol en cours ·</span>
-        {caption.minutes != null ? (
-          <span className="block">
-            Arrivée dans <span className={gold}>{caption.minutes} min</span>
-          </span>
-        ) : null}
-      </p>
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#C5A880]" aria-hidden>
+          Vol en cours
+        </p>
+        <div className="mt-1.5">
+          <CountdownReadout
+            title="Arrivée dans"
+            parts={caption.parts}
+            speech={`Vol en cours, arrivée dans ${countdownSpeech(caption.parts)}`}
+          />
+        </div>
+      </div>
     );
   }
   if (caption.kind === "landed") {
@@ -68,7 +102,7 @@ function Caption({ caption }: { caption: LiveCaption }) {
       <p className={line}>
         {caption.clock ? (
           <span className="whitespace-nowrap">
-            Atterri à <span className={gold}>{caption.clock}</span>
+            Atterri à <span className="tabular-nums text-[#C5A880]">{caption.clock}</span>
           </span>
         ) : (
           "Atterri"
@@ -135,24 +169,19 @@ export function BoardingPass({
   const calendarLink =
     "text-[12px] font-semibold text-white/75 underline decoration-white/30 underline-offset-2";
 
-  const calendar = (className: string, fallbackClassName: string) => (
-    <AddToPhoneCalendar
-      href={calendarHref}
-      googleHref={googleHref}
-      className={className}
-      fallbackClassName={fallbackClassName}
-    >
+  const calendar = (className: string) => (
+    <AddToPhoneCalendar href={calendarHref} googleHref={googleHref} className={className}>
       Ajouter au calendrier
     </AddToPhoneCalendar>
   );
 
   const actions = (button: ReactNode, sheet: ReactNode) => (
     <>
-      <div className="min-w-0">
+      <div className="shrink-0">
         <Caption caption={caption} />
-        <div className="mt-1">{calendar(calendarLink, "mt-1 block text-[11px] text-white/60 underline")}</div>
+        <div className="mt-2">{calendar(calendarLink)}</div>
       </div>
-      <div className="shrink-0">{button}</div>
+      <div className="ml-auto shrink-0">{button}</div>
       {sheet}
     </>
   );
@@ -188,7 +217,7 @@ export function BoardingPass({
           </div>
         ) : null}
       </div>
-      <div className="flex items-center justify-between gap-3 border-t border-white/15 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2.5 border-t border-white/15 px-4 py-3">
         {boarding ? (
           <BoardingPassActions
             variant="home"
@@ -201,12 +230,10 @@ export function BoardingPass({
           </BoardingPassActions>
         ) : (
           <>
-            <div className="min-w-0">
+            <div className="shrink-0">
               <Caption caption={caption} />
             </div>
-            <div className="shrink-0 text-right">
-              {calendar(calendarClass, "mt-1 block text-right text-[11px] font-semibold text-white/70 underline")}
-            </div>
+            <div className="ml-auto shrink-0">{calendar(calendarClass)}</div>
           </>
         )}
       </div>
