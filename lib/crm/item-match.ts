@@ -779,16 +779,51 @@ export function mergeFlightPassengers(
   return rows;
 }
 
+function listedSourceFiles(details?: Record<string, unknown> | null) {
+  const names: string[] = [];
+  const raw = details?.source_file_name;
+  const one = typeof raw === "string" ? raw.trim() : "";
+  if (one) names.push(one);
+  const many = details?.source_files;
+  if (Array.isArray(many)) {
+    for (const name of many) {
+      if (typeof name === "string" && name.trim()) names.push(name.trim());
+    }
+  }
+  return names;
+}
+
+function unionSourceFiles(...groups: (Record<string, unknown> | null | undefined)[]) {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const details of groups) {
+    for (const name of listedSourceFiles(details)) {
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+    }
+  }
+  return out;
+}
+
+function withFlightSourceFiles<T extends MatchableItem>(item: T): T {
+  if ((item.kind || "") !== "flight" || !item.details) return item;
+  const files = unionSourceFiles(item.details);
+  if (!files.length) return item;
+  return { ...item, details: { ...item.details, source_files: files } };
+}
+
 /** Un e-ticket par passager → une carte vol. Deux réf. hôtel → une carte. */
 export function mergeExtractItems<T extends MatchableItem>(items: T[]): T[] {
   const out: T[] = [];
   for (const item of items) {
     const hit = findMatchingItem(out, item) || foldHollowHotel(out, item);
     if (!hit) {
-      out.push({
+      out.push(withFlightSourceFiles({
         ...item,
         details: item.details ? { ...item.details } : item.details,
-      });
+      }));
       continue;
     }
     hit.supplier = fillEmpty(hit.supplier, item.supplier);
@@ -805,12 +840,14 @@ export function mergeExtractItems<T extends MatchableItem>(items: T[]): T[] {
     }
     const currentCount = itemTicketCount(hit);
     const incomingCount = itemTicketCount(item);
+    const sourceFiles = (hit.kind || "") === "flight" ? unionSourceFiles(hit.details, item.details) : [];
     hit.details = mergeDetails(hit.details, item.details);
     if ((hit.kind || "") === "flight") {
       const passengers = mergeFlightPassengers(hit.details, item.details);
       hit.details = {
         ...(hit.details || {}),
         ...(passengers.length ? { passengers, ticket_count: passengers.length } : { ticket_count: currentCount + incomingCount }),
+        ...(sourceFiles.length ? { source_files: sourceFiles } : {}),
       };
     }
   }

@@ -1,6 +1,8 @@
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { McpWriteError } from "@/lib/crm/mcp-write";
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
+import { missingDbColumn } from "@/lib/crm/optional-column";
+import { billetStamp, mergeBilletExtract } from "@/lib/crm/ticket-share";
 import { parseTicketMail, ticketRowsFromRead, type TicketMailRead, type TicketRowDraft } from "@/lib/crm/ticket-mail";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -406,6 +408,14 @@ async function liveApplyTicket(input: Record<string, unknown>): Promise<TicketPl
     file: { name: file.name, type: file.type, size: file.bytes.byteLength, bytes: Buffer.from(file.bytes) },
   });
   if ("error" in attached) throw new McpWriteError(attached.error);
+  const documentId = typeof attached.document.id === "string" ? attached.document.id : "";
+  const stamp = mergeBilletExtract(attached.document.extracted, billetStamp(loaded.read));
+  if (documentId && stamp) {
+    const { error } = await admin.from("crm_booking_documents").update({ extracted: stamp }).eq("id", documentId);
+    if (error && !missingDbColumn(error, "extracted")) {
+      console.warn("[billet]", error.message || "couverture non écrite");
+    }
+  }
   return { ...decided, carte_id: carteId };
 }
 

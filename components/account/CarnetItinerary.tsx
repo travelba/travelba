@@ -294,7 +294,7 @@ function CardBody({
         />
       ) : null}
       <div className="flex flex-wrap items-end gap-3">
-        {documentsForItems(returnLeg ? [item, returnLeg] : [item], docs).map((doc) => (
+        {documentsForItems(returnLeg ? [item, returnLeg] : [item], docs, stayItems || undefined).map((doc) => (
           <FilePreviewTile
             key={doc.id}
             file={{

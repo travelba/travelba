@@ -248,6 +248,40 @@ describe("itemMatchKey", () => {
     assert.equal(kept.details.hotel_name, "Four Seasons Hotel Milan");
   });
 
+  it("retient chaque fichier sur les deux segments du même PNR", () => {
+    const merged = mergeExtractItems([
+      {
+        kind: "flight",
+        confirmation_ref: "ZU5TCO",
+        start_at: "2027-04-13T10:00:00",
+        details: { flight_number: "EK 78", source_file_name: "a.pdf" },
+      },
+      {
+        kind: "flight",
+        confirmation_ref: "ZU5TCO",
+        start_at: "2027-04-20T10:00:00",
+        details: { flight_number: "EK 209", source_file_name: "a.pdf" },
+      },
+      {
+        kind: "flight",
+        confirmation_ref: "ZU5TCO",
+        start_at: "2027-04-13T10:00:00",
+        details: { flight_number: "EK 78", source_file_name: "b.pdf" },
+      },
+      {
+        kind: "flight",
+        confirmation_ref: "ZU5TCO",
+        start_at: "2027-04-20T10:00:00",
+        details: { flight_number: "EK 209", source_file_name: "b.pdf" },
+      },
+    ]);
+    assert.equal(merged.length, 2);
+    for (const card of merged) {
+      const files = ((card.details as { source_files?: string[] }).source_files || []).slice().sort();
+      assert.deepEqual(files, ["a.pdf", "b.pdf"]);
+    }
+  });
+
   it("fusionne cinq e-tickets du même segment", () => {
     const merged = mergeExtractItems(
       Array.from({ length: 5 }, () => ({

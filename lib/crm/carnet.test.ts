@@ -34,6 +34,7 @@ import {
   nextTimelineFlight,
   pendingPublishCards,
   publishRevealIds,
+  documentsForItems,
   unlinkedDocuments,
   whatsappModifyHref,
 } from "./carnet";
@@ -598,6 +599,73 @@ describe("insuranceLineLabel", () => {
     assert.equal(insuranceLineLabel("Multirisque Allianz"), "Assurance Multirisque Allianz");
     assert.equal(insuranceLineLabel("  "), "Assurance");
     assert.equal(insuranceLineLabel(null), "Assurance");
+  });
+});
+
+describe("billets sur plusieurs vols", () => {
+  function doc(partial: Partial<CrmBookingDocument> & { id: string }): CrmBookingDocument {
+    return {
+      booking_id: "b1",
+      kind: "pdf",
+      file_name: `${partial.id}.pdf`,
+      mime_type: "application/pdf",
+      storage_path: `bookings/b1/${partial.id}.pdf`,
+      visible_to_client: true,
+      created_at: "2026-04-01",
+      ...partial,
+    };
+  }
+  const ek78 = item({
+    id: "ek78",
+    title: "Nice → Dubaï",
+    confirmation_ref: "ZU5TCO",
+    start_at: "2027-04-13T15:50:00",
+    details: { pnr: "KDP4AS", flight_number: "EK 78", from: "NCE", to: "DXB" },
+  });
+  const ek209 = item({
+    id: "ek209",
+    title: "Dubaï → Athènes",
+    confirmation_ref: "ZU5TCO",
+    start_at: "2027-04-20T10:50:00",
+    details: { pnr: "KDP4AS", flight_number: "EK 209", from: "DXB", to: "ATH" },
+  });
+  const aegean = item({
+    id: "a3690",
+    title: "Athènes → Nice",
+    confirmation_ref: "YFFRS8",
+    start_at: "2027-05-02T09:00:00",
+    details: { pnr: "YFFRS8", flight_number: "A3 690", from: "ATH", to: "NCE" },
+  });
+  const hotel = item({
+    id: "hotel",
+    kind: "hotel",
+    title: "Hôtel",
+    confirmation_ref: "H1",
+    details: { hotel_name: "Hôtel" },
+  });
+
+  it("montre les cinq e-tickets sur chaque vol du PNR, pas sur l’autre réservation", () => {
+    const emirates = ["p1", "p2", "p3", "p4"].map((id) => doc({ id, booking_item_id: "ek78", visible_to_client: true }));
+    const imported = doc({ id: "p5", booking_item_id: "ek209", kind: "pdf", visible_to_client: false });
+    const returns = ["r1", "r2", "r3", "r4", "r5"].map((id) => doc({ id, booking_item_id: "a3690" }));
+    const voucher = doc({ id: "hotel-pdf", booking_item_id: "hotel", file_name: "voucher-hotel.pdf" });
+    const pass = doc({ id: "pass", booking_item_id: "ek78", kind: "carte d'embarquement", file_name: "carte.pdf" });
+    const docs = [...emirates, imported, ...returns, voucher, pass];
+    const dossier = [ek78, ek209, aegean, hotel];
+    const on78 = documentsForItems([ek78], docs, dossier).map((row) => row.id);
+    const on209 = documentsForItems([ek209], docs, dossier).map((row) => row.id);
+    const onReturn = documentsForItems([aegean], docs, dossier).map((row) => row.id);
+    const onHotel = documentsForItems([hotel], docs, dossier).map((row) => row.id);
+    assert.deepEqual(on78.filter((id) => /^p\d$/.test(id)).sort(), ["p1", "p2", "p3", "p4", "p5"]);
+    assert.deepEqual(on209.filter((id) => /^p\d$/.test(id)).sort(), ["p1", "p2", "p3", "p4", "p5"]);
+    assert.equal(on78.includes("pass"), true);
+    assert.equal(on209.includes("pass"), false);
+    assert.deepEqual(onReturn.sort(), ["r1", "r2", "r3", "r4", "r5"]);
+    assert.deepEqual(onHotel, ["hotel-pdf"]);
+    assert.equal(imported.visible_to_client, false);
+    const loose = unlinkedDocuments(docs, dossier).map((row) => row.id);
+    assert.equal(loose.includes("p1"), false);
+    assert.equal(loose.includes("hotel-pdf"), false);
   });
 });
 

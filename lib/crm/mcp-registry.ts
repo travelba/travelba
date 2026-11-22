@@ -2308,7 +2308,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "rattacher_piece_carte",
     write: true,
     description:
-      "Rattache une pièce à une carte du même dossier (document_id, carte_id, dossier_id ou reference). detacher true retire le lien. La visibilité ne change pas. Aucun message. Une pièce ou une carte d’un autre dossier est refusée. Une pièce retirée est refusée.",
+      "Rattache une pièce à une carte du même dossier (document_id, carte_id, dossier_id ou reference). detacher true retire le lien. La visibilité ne change pas. Aucun message. Un billet rattaché à un vol apparaît aussi sur les autres vols du même PNR ou du même numéro de billet, sans copie du fichier. Une carte d’embarquement, une facture ou un voucher d’hôtel reste sur sa carte. Une pièce ou une carte d’un autre dossier est refusée. Une pièce retirée est refusée.",
     input: {
       dossier_id: z.string().trim().max(80).optional(),
       reference: z.string().trim().max(80).optional(),
@@ -2720,7 +2720,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "importer_pieces",
     write: true,
     description:
-      "Lit des PDF ou des photos (nom, type_mime, contenu en base64) comme la dropzone. Sans confirmer, aperçu seulement : titre, dates, voyageurs, cartes, avertissements. Rien n’est écrit. confirmer true avec client_id crée un dossier caché. confirmer true avec dossier_id complète ce séjour et y dépose les fichiers. Une annulation ne crée pas de dossier. Aucune invitation, aucun message.",
+      "Lit des PDF ou des photos (nom, type_mime, contenu en base64) comme la dropzone. Sans confirmer, aperçu seulement : titre, dates, voyageurs, cartes, avertissements. Rien n’est écrit. confirmer true avec client_id crée un dossier caché. confirmer true avec dossier_id complète ce séjour et y dépose les fichiers. Un e-ticket qui couvre plusieurs vols du même PNR apparaît sur chaque carte, sans recopier le fichier. Une annulation ne crée pas de dossier. Aucune invitation, aucun message.",
     input: {
       fichiers: z
         .array(
@@ -2742,7 +2742,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "deposer_billet",
     write: true,
     description:
-      "Lit un billet déposé (PDF ou e-mail) et prépare la carte vol : PNR, prix, création ou mise à jour. Sans confirmer, aperçu seulement. confirmer true crée la carte s’il n’y en a pas, ou met à jour celle du PNR ou de carte_id, puis dépose le fichier. Sans PNR et sans carte, refus. Aucun message.",
+      "Lit un billet déposé (PDF ou e-mail) et prépare la carte vol : PNR, prix, création ou mise à jour. Sans confirmer, aperçu seulement. confirmer true crée la carte s’il n’y en a pas, ou met à jour celle du PNR ou de carte_id, puis dépose le fichier une seule fois. Il apparaît sur chaque vol du même PNR et sur les segments lus. Sans PNR et sans carte, refus. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence TB-…"),

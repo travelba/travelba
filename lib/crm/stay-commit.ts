@@ -114,7 +114,8 @@ export async function applyStayCommit(supabase: SupabaseClient, payload: StayCom
   return applyStayCommitDirect(supabase, payload);
 }
 
-const DOCUMENT_COLUMNS = "id, booking_item_id, content_sha256, extracted, visible_to_client, created_at";
+const DOCUMENT_COLUMNS =
+  "id, booking_item_id, kind, file_name, storage_path, content_sha256, extracted, visible_to_client, created_at";
 
 /** Justificatifs à retirer ou à reporter quand ces cartes quittent le dossier. */
 export async function planDeletedCardDocuments(
@@ -128,7 +129,10 @@ export async function planDeletedCardDocuments(
     .select(DOCUMENT_COLUMNS)
     .eq("booking_id", bookingId);
   if (docs.error) return { ok: false, error: docs.error };
-  const items = await supabase.from("crm_booking_items").select("id, source_document_id").eq("booking_id", bookingId);
+  const items = await supabase
+    .from("crm_booking_items")
+    .select("id, source_document_id, kind, lifecycle, confirmation_ref, start_at, details")
+    .eq("booking_id", bookingId);
   if (items.error) return { ok: false, error: items.error };
   const plan = planDocumentRelease({
     documents: (docs.data || []) as StayDocumentRow[],
