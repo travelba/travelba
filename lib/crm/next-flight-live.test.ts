@@ -4,7 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { airportLocalIso, applyAeroFlight, type AeroFlight, type FlightCard } from "./flight-watch";
 import { arrivalPlaceLine, buildLiveFlight, flightHm, livePlaceLine } from "./next-flight-model";
-import { formatCountdown, liveFlightCaption, liveFlightPhase, liveFlightPlace, liveFlightProgress } from "./next-flight-live";
+import { countdownParts, countdownSpeech, liveFlightCaption, liveFlightPhase, liveFlightPlace, liveFlightProgress } from "./next-flight-live";
 
 const NOW = Date.parse("2026-11-11T11:35:20Z");
 
@@ -63,7 +63,14 @@ test("avant le départ, le compte à rebours part de l’heure locale de l’aé
   assert.equal(flight.departureAt, Date.parse("2026-11-11T12:48:00Z"));
   assert.equal(liveFlightPhase(flight, NOW), "before");
   assert.equal(liveFlightProgress(flight, NOW), 0);
-  assert.deepEqual(liveFlightCaption(flight, NOW), { kind: "countdown", clock: "1:12:40" });
+  assert.deepEqual(liveFlightCaption(flight, NOW), {
+    kind: "countdown",
+    parts: [
+      { value: 1, unit: "h" },
+      { value: 12, unit: "min" },
+      { value: 40, unit: "s" },
+    ],
+  });
 });
 
 test("en vol, l’avion avance selon le temps écoulé et l’arrivée estimée", () => {
@@ -87,7 +94,14 @@ test("en vol, l’avion avance selon le temps écoulé et l’arrivée estimée"
   assert.equal(flight.arrivalAt, Date.parse("2026-11-11T14:25:00Z"));
   assert.equal(liveFlightPhase(flight, now), "airborne");
   assert.ok(Math.abs(liveFlightProgress(flight, now) - 54 / 95) < 0.001);
-  assert.deepEqual(liveFlightCaption(flight, now), { kind: "airborne", minutes: 41 });
+  assert.deepEqual(liveFlightCaption(flight, now), {
+    kind: "airborne",
+    parts: [
+      { value: 0, unit: "h" },
+      { value: 41, unit: "min" },
+      { value: 0, unit: "s" },
+    ],
+  });
 });
 
 test("un statut en vol prime sur une heure de départ encore devant", () => {
@@ -240,9 +254,53 @@ test("atterri sans heure réelle ne cite pas l’heure prévue", () => {
   assert.deepEqual(liveFlightCaption(flight, NOW), { kind: "landed", clock: "" });
 });
 
-test("le format du compte à rebours est h:mm:ss", () => {
-  assert.equal(formatCountdown((1 * 3600 + 12 * 60 + 40) * 1000), "1:12:40");
-  assert.equal(formatCountdown(5 * 1000), "0:00:05");
+test("le compte à rebours se lit en jours, puis en heures quand le départ est proche", () => {
+  assert.deepEqual(countdownParts((550 * 3600 + 10 * 60 + 10) * 1000), [
+    { value: 22, unit: "j" },
+    { value: 22, unit: "h" },
+    { value: 10, unit: "min" },
+  ]);
+  assert.equal(
+    countdownSpeech(countdownParts((550 * 3600 + 10 * 60 + 10) * 1000)),
+    "22 jours, 22 heures et 10 minutes"
+  );
+  assert.deepEqual(countdownParts((1 * 3600 + 12 * 60 + 40) * 1000), [
+    { value: 1, unit: "h" },
+    { value: 12, unit: "min" },
+    { value: 40, unit: "s" },
+  ]);
+  assert.deepEqual(countdownParts(5 * 1000), [
+    { value: 0, unit: "h" },
+    { value: 0, unit: "min" },
+    { value: 5, unit: "s" },
+  ]);
+  assert.equal(countdownSpeech(countdownParts(5 * 1000)), "5 secondes");
+  assert.deepEqual(countdownParts(24 * 3600 * 1000), [
+    { value: 1, unit: "j" },
+    { value: 0, unit: "h" },
+    { value: 0, unit: "min" },
+  ]);
+  assert.equal(
+    countdownSpeech([
+      { value: 1, unit: "j" },
+      { value: 0, unit: "h" },
+      { value: 1, unit: "min" },
+    ]),
+    "1 jour et 1 minute"
+  );
+  assert.deepEqual(countdownParts(24 * 3600 * 1000 - 1000), [
+    { value: 23, unit: "h" },
+    { value: 59, unit: "min" },
+    { value: 59, unit: "s" },
+  ]);
+});
+
+test("après le décollage, le compte à rebours laisse place au vol", () => {
+  const flight = buildLiveFlight(item());
+  const departed = (flight.departureAt || 0) + 1000;
+  const caption = liveFlightCaption(flight, departed);
+  assert.equal(caption.kind, "airborne");
+  assert.equal(caption.kind === "airborne" && caption.parts != null, true);
 });
 
 /** AF7309, 15 nov. 2026 16:20 heure de Nice, tel que la base le renvoie (+00 sur les chiffres locaux). */
@@ -264,9 +322,30 @@ test("AF7309 : 16:20 à Nice est 15:20 UTC, le décompte suit cet instant", () =
   const morning = Date.parse("2026-11-13T08:52:30Z");
   const afternoon = Date.parse("2026-11-13T15:52:30Z");
   const israel = Date.parse("2026-11-13T07:52:30Z");
-  assert.deepEqual(liveFlightCaption(flight, morning), { kind: "countdown", clock: "54:27:30" });
-  assert.deepEqual(liveFlightCaption(flight, afternoon), { kind: "countdown", clock: "47:27:30" });
-  assert.deepEqual(liveFlightCaption(flight, israel), { kind: "countdown", clock: "55:27:30" });
+  assert.deepEqual(liveFlightCaption(flight, morning), {
+    kind: "countdown",
+    parts: [
+      { value: 2, unit: "j" },
+      { value: 6, unit: "h" },
+      { value: 27, unit: "min" },
+    ],
+  });
+  assert.deepEqual(liveFlightCaption(flight, afternoon), {
+    kind: "countdown",
+    parts: [
+      { value: 1, unit: "j" },
+      { value: 23, unit: "h" },
+      { value: 27, unit: "min" },
+    ],
+  });
+  assert.deepEqual(liveFlightCaption(flight, israel), {
+    kind: "countdown",
+    parts: [
+      { value: 2, unit: "j" },
+      { value: 7, unit: "h" },
+      { value: 27, unit: "min" },
+    ],
+  });
   for (const start of ["2026-11-15T16:20:00.000Z", "2026-11-15T16:20:00"]) {
     assert.equal(af7309(start).departureAt, flight.departureAt);
   }

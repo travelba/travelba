@@ -1,28 +1,20 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
-import { calendarClickPlan, calendarDownloadCookie, showGoogleCalendarFallback } from "@/lib/crm/calendar-open";
+import type { MouseEvent, ReactNode } from "react";
+import { calendarClickPlan, calendarDownloadCookie } from "@/lib/crm/calendar-open";
 
 export function AddToPhoneCalendar({
   href,
   googleHref = null,
   className,
-  fallbackClassName = "text-xs font-semibold underline underline-offset-2",
   children,
 }: {
   href: string;
   googleHref?: string | null;
   className?: string;
-  fallbackClassName?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
-  const googleFallback = useSyncExternalStore(
-    () => () => {},
-    () => showGoogleCalendarFallback({ href, googleHref, ua: navigator.userAgent }),
-    () => false
-  );
-
-  function onClick(event: React.MouseEvent<HTMLAnchorElement>) {
+  function onClick(event: MouseEvent<HTMLAnchorElement>) {
     const nav = navigator as Navigator & { standalone?: boolean };
     const plan = calendarClickPlan({
       href,
@@ -36,22 +28,15 @@ export function AddToPhoneCalendar({
       window.location.assign(plan.url);
       return;
     }
-    // Navigation du lien (pas de nouvelle fenêtre) : iOS ouvre Calendrier. Le cookie demande le téléchargement sur l’écran d’accueil.
+    // Navigation du lien (pas de nouvelle fenêtre) : iOS ouvre Calendrier. Le cookie demande le téléchargement sur l’écran d’accueil et dans l’application.
     if (plan.forceDownload) {
       document.cookie = calendarDownloadCookie(window.location.protocol === "https:");
     }
   }
 
   return (
-    <>
-      <a href={href} onClick={onClick} className={className}>
-        {children}
-      </a>
-      {googleFallback && googleHref ? (
-        <a href={googleHref} target="_blank" rel="noopener noreferrer" className={fallbackClassName}>
-          Google Agenda
-        </a>
-      ) : null}
-    </>
+    <a href={href} onClick={onClick} className={className}>
+      {children}
+    </a>
   );
 }

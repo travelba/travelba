@@ -10,7 +10,7 @@ import {
 } from "@/lib/crm/calendar-ics";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 
-/** Android (une carte) : Google Agenda crée l’événement. iPhone et bureau : fichier .ics, un ou plusieurs événements, sans flux. Le nom de fichier est toujours là : sans lui, iOS affiche le texte brut. L’écran d’accueil iOS pose `tb_ics_dl` pour recevoir le fichier en pièce jointe. */
+/** Android (une carte) : Google Agenda crée l’événement. iPhone Safari, la webview iOS et le bureau : fichier .ics, un ou plusieurs événements, sans flux. Le nom de fichier est toujours là : sans lui, iOS affiche le texte brut. L’écran d’accueil et l’application iOS posent `tb_ics_dl` pour recevoir le fichier en pièce jointe. */
 export function calendarHttpResponse(opts: {
   request: Request;
   booking: CrmBooking;

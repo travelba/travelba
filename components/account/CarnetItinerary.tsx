@@ -102,7 +102,6 @@ function AgendaLink({
       href={href}
       googleHref={phone?.google}
       className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
-      fallbackClassName="inline-flex items-center text-xs font-semibold text-[var(--admin-navy)]/70 underline-offset-2 hover:underline"
     >
       <Icon name="event" className="h-4 w-4" />
       {children}

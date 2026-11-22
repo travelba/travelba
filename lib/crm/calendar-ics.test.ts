@@ -12,9 +12,9 @@ import {
   googleCalendarHref,
   icsHttpHeaders,
   isAppleMobileBrowser,
+  isIosWebView,
   calendarItemIdFromSegment,
   itemCalendarHref,
-  showGoogleCalendarFallback,
   veventFromItem,
   veventFromStay,
 } from "./calendar-ics";
@@ -134,7 +134,8 @@ test("une carte : un seul événement, le vol", () => {
 });
 
 test("iPhone reçoit l’événement, Android ouvre Google Agenda", () => {
-  const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15";
+  const iphone =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
   const android = "Mozilla/5.0 (Linux; Android 14; Pixel) AppleWebKit/537.36";
   const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
   assert.equal(isAppleMobileBrowser(iphone), true);
@@ -319,8 +320,28 @@ test("écran d’accueil iOS : navigation vers le .ics, sans nouvelle fenêtre",
     action: "google",
     url: google,
   });
-  assert.equal(showGoogleCalendarFallback({ href, googleHref: google, ua: iphone }), true);
-  assert.equal(showGoogleCalendarFallback({ href, googleHref: google, ua: android }), false);
+  const webview = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";
+  const capacitor = `${webview} Capacitor`;
+  assert.equal(isIosWebView(webview), true);
+  assert.equal(isIosWebView(capacitor), true);
+  assert.equal(isIosWebView(iphone), false);
+  assert.deepEqual(calendarClickPlan({ href, googleHref: google, ua: webview }), {
+    action: "navigate",
+    url: href,
+    forceDownload: true,
+  });
+  assert.deepEqual(calendarResponsePlan({ ua: webview, googleHref: google }), {
+    kind: "file",
+    disposition: "attachment",
+  });
+  const safariIphone =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+  const chromeIos =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/131.0.6778.73 Mobile/15E148 Safari/604.1";
+  assert.equal(isIosWebView(safariIphone), false);
+  assert.equal(isIosWebView(chromeIos), false);
+  const safariFile = calendarResponsePlan({ ua: safariIphone, googleHref: google });
+  assert.deepEqual(safariFile, { kind: "file", disposition: "inline" });
   assert.equal(JSON.stringify(home).includes("webcal"), false);
   assert.equal(calendarDownloadRequested("theme=light; tb_ics_dl=1"), true);
   assert.equal(calendarDownloadRequested("tb_ics_dl=0"), false);
