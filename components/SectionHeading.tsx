@@ -1,33 +1,40 @@
-import { Reveal } from "./Reveal";
-
 type SectionHeadingProps = {
   eyebrow: string;
   title: string;
   subtitle?: string;
   align?: "center" | "left";
+  tone?: "default" | "inverse";
 };
 
 export function SectionHeading({
   eyebrow,
   title,
   subtitle,
-  align = "center",
+  align = "left",
+  tone = "default",
 }: SectionHeadingProps) {
-  const alignment =
-    align === "center" ? "mx-auto text-center items-center" : "text-left items-start";
+  const inverse = tone === "inverse";
+  const alignment = align === "center" ? "mx-auto items-center text-center" : "items-start text-left";
 
   return (
-    <Reveal className={`flex max-w-2xl flex-col ${alignment}`}>
-      <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-accent-2">
-        <span className="h-px w-6 bg-accent-2" />
-        {eyebrow}
-      </span>
-      <h2 className="mt-4 font-display text-3xl font-bold tracking-tight sm:text-4xl">
+    <div className={`flex max-w-3xl flex-col ${alignment}`}>
+      <span className={`lux-kicker ${inverse ? "lux-kicker-inverse" : ""}`}>{eyebrow}</span>
+      <h2
+        className={`mt-5 font-display text-[clamp(2.15rem,4vw,3.5rem)] leading-[1.05] ${
+          inverse ? "text-[#F7F3EB]" : "text-[#1A1714]"
+        }`}
+      >
         {title}
       </h2>
       {subtitle && (
-        <p className="mt-4 text-base leading-relaxed text-muted">{subtitle}</p>
+        <p
+          className={`mt-5 max-w-xl text-[15px] leading-[1.75] ${
+            inverse ? "text-[#F7F3EB]/78" : "text-muted"
+          }`}
+        >
+          {subtitle}
+        </p>
       )}
-    </Reveal>
+    </div>
   );
 }

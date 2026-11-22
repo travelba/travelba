@@ -1,48 +1,28 @@
 import { useTranslations } from "next-intl";
-import { Plane, ShieldCheck } from "lucide-react";
-import { Reveal } from "./Reveal";
 
 export function Credentials() {
   const t = useTranslations("Credentials");
 
   const badges = [
-    { icon: Plane, title: t("iataTitle"), desc: t("iataDesc") },
-    { icon: ShieldCheck, title: t("apstTitle"), desc: t("apstDesc") },
+    { title: t("iataTitle"), desc: t("iataDesc") },
+    { title: t("apstTitle"), desc: t("apstDesc") },
   ];
 
   return (
-    <section id="accreditations" className="px-5 py-10 sm:px-8">
-      <div className="mx-auto max-w-7xl">
-        <Reveal className="glass rounded-2xl p-6 sm:p-8">
-          <div className="flex flex-col items-center gap-7 lg:flex-row lg:justify-between lg:gap-10">
-            <div className="text-center lg:text-left">
-              <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-accent-2">
-                <span className="h-px w-6 bg-accent-2" />
-                {t("eyebrow")}
-              </span>
-              <p className="mt-2 max-w-sm text-sm text-muted">
-                {t("reassurance")}
-              </p>
-            </div>
-
-            <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:w-auto">
-              {badges.map(({ icon: Icon, title, desc }) => (
-                <div
-                  key={title}
-                  className="flex items-center gap-4 rounded-xl border border-border bg-surface/60 px-5 py-4"
-                >
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#C5A880]/40 bg-[#C5A880]/10 text-[#C5A880]">
-                    <Icon className="h-6 w-6" />
-                  </span>
-                  <div>
-                    <div className="font-display font-semibold">{title}</div>
-                    <div className="mt-0.5 text-xs text-muted">{desc}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Reveal>
+    <section id="accreditations" className="border-b border-[#1A1714]/10 px-5 py-14 sm:px-8 sm:py-16">
+      <div className="mx-auto grid max-w-7xl items-start gap-10 lg:grid-cols-12 lg:gap-16">
+        <div className="lg:col-span-4">
+          <span className="lux-kicker">{t("eyebrow")}</span>
+          <p className="mt-5 max-w-sm text-[15px] leading-[1.7] text-muted">{t("reassurance")}</p>
+        </div>
+        <ul className="grid gap-8 sm:grid-cols-2 lg:col-span-8">
+          {badges.map(({ title, desc }) => (
+            <li key={title} className="border-t border-[#C5A880] pt-5">
+              <h2 className="font-display text-[1.7rem] leading-none text-[#1A1714]">{title}</h2>
+              <p className="mt-3 max-w-sm text-sm leading-relaxed text-muted">{desc}</p>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );

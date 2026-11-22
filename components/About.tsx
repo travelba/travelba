@@ -1,53 +1,45 @@
 import { useTranslations } from "next-intl";
-import { MapPin, Clock, Sparkles } from "lucide-react";
-import { Reveal } from "./Reveal";
 
 export function About() {
   const t = useTranslations("About");
 
   const facts = [
-    { icon: MapPin, label: t("fact1Label"), value: t("fact1Value") },
-    { icon: Clock, label: t("fact2Label"), value: t("fact2Value") },
-    { icon: Sparkles, label: t("fact3Label"), value: t("fact3Value") },
+    { label: t("fact1Label"), value: t("fact1Value") },
+    { label: t("fact2Label"), value: t("fact2Value") },
+    { label: t("fact3Label"), value: t("fact3Value") },
   ];
 
   return (
-    <section id="about" className="relative bg-[#07111c] px-5 py-24 sm:px-8">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 lg:grid-cols-2">
-        <Reveal>
-          <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-accent-2">
-            <span className="h-px w-6 bg-accent-2" />
-            {t("eyebrow")}
-          </span>
-          <h2 className="mt-4 font-display text-3xl font-bold tracking-tight sm:text-4xl">
-            {t("title")}
-          </h2>
-          <p className="mt-5 text-base leading-relaxed text-muted">{t("p1")}</p>
-          <p className="mt-4 text-base leading-relaxed text-muted">{t("p2")}</p>
-        </Reveal>
-
-        <Reveal delay={0.12}>
-          <div className="glass rounded-2xl p-7">
-            <h3 className="font-display text-sm font-semibold uppercase tracking-wide text-muted">
-              {t("factsTitle")}
-            </h3>
-            <ul className="mt-5 space-y-5">
-              {facts.map(({ icon: Icon, label, value }) => (
-                <li key={label} className="flex items-start gap-4">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-2 text-accent">
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-muted">
-                      {label}
-                    </div>
-                    <div className="mt-0.5 font-medium">{value}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+    <section id="about" className="px-5 py-24 sm:px-8 sm:py-32 lg:py-40">
+      <div className="mx-auto max-w-7xl">
+        <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-16">
+          <div className="lg:col-span-5">
+            <span className="lux-kicker">{t("eyebrow")}</span>
+            <h2 className="mt-5 font-display text-[clamp(2.15rem,4vw,3.5rem)] leading-[1.05] text-[#1A1714]">
+              {t("title")}
+            </h2>
           </div>
-        </Reveal>
+          <div className="lg:col-span-6 lg:col-start-7 lg:pt-14">
+            <p className="text-[16px] leading-[1.8] text-[#3C3833]">{t("p1")}</p>
+            <p className="mt-5 text-[16px] leading-[1.8] text-[#3C3833]">{t("p2")}</p>
+          </div>
+        </div>
+
+        <div className="mt-16 border-t border-[#1A1714]/12 pt-8 lg:mt-24">
+          <h3 className="lux-kicker">{t("factsTitle")}</h3>
+          <dl className="mt-8 grid gap-8 sm:grid-cols-3">
+            {facts.map(({ label, value }) => (
+              <div key={label}>
+                <dt className="text-[11px] font-medium uppercase tracking-[0.22em] text-[#5C4824]">
+                  {label}
+                </dt>
+                <dd className="mt-3 font-display text-[1.65rem] leading-tight text-[#1A1714]">
+                  {value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       </div>
     </section>
   );

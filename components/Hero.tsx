@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { useTranslations } from "next-intl";
-import { ArrowRight, MessageCircle } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { siteConfig } from "@/lib/site";
 import { HERO_POSTER } from "@/lib/site-hero";
 import { HeroVideo } from "./HeroVideo";
@@ -17,84 +17,74 @@ export function Hero() {
   return (
     <section
       id="top"
-      className="relative flex min-h-[92vh] items-center overflow-hidden px-5 pb-20 pt-28 sm:px-8"
+      className="relative flex min-h-[calc(100svh-4.5rem)] items-end overflow-hidden"
     >
       <Image
         src={HERO_POSTER}
         alt=""
         fill
-        loading="eager"
+        priority
         sizes="100vw"
         className="pointer-events-none object-cover"
       />
       <HeroVideo />
 
-      <div className="pointer-events-none absolute inset-0 bg-background/25" />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/35 via-transparent to-background" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-background via-background/40 to-transparent" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0B192C] via-[#0B192C]/55 to-[#0B192C]/25" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#0B192C]/70 via-[#0B192C]/25 to-transparent" />
 
-      <div className="relative z-10 mx-auto max-w-4xl text-center">
-        <div className="hero-rise flex justify-center">
-          <span className="inline-flex items-center gap-2 rounded-full border border-[#C5A880]/40 bg-[#0B192C]/55 px-4 py-1.5 text-xs font-medium tracking-wide text-[#E8D7BC]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#C5A880]" />
-            {t("badge")}
-          </span>
-        </div>
+      <div className="relative z-10 mx-auto w-full max-w-7xl px-5 pb-28 pt-16 sm:px-8 sm:pb-20 sm:pt-24">
+        <p className="hero-rise text-[0.68rem] font-medium uppercase tracking-[0.32em] text-[#E8D7BC]">
+          {t("badge")}
+        </p>
 
         <h1
-          className="hero-rise mt-6 font-display text-3xl font-semibold leading-[1.1] tracking-tight [text-shadow:_0_2px_24px_rgba(0,0,0,0.55)] sm:text-5xl"
-          style={{ animationDelay: "80ms" }}
+          className="hero-rise mt-6 max-w-4xl font-display text-[clamp(2.7rem,6.2vw,5.6rem)] font-medium leading-[0.96] text-[#F7F3EB] [text-shadow:0_2px_28px_rgba(11,25,44,0.45)]"
+          style={{ animationDelay: "90ms" }}
         >
-          {t("title")} <span className="text-gradient">{t("titleAccent")}</span>
+          {t("title")}{" "}
+          <span className="italic text-[#E4D2B4]">{t("titleAccent")}</span>
         </h1>
 
         <p
-          className="hero-rise mx-auto mt-5 max-w-xl text-sm leading-relaxed text-foreground/80 [text-shadow:_0_1px_16px_rgba(0,0,0,0.6)] sm:text-base"
-          style={{ animationDelay: "160ms" }}
+          className="hero-rise mt-6 max-w-xl text-[15px] leading-[1.7] text-[#F7F3EB]/88 sm:text-base [text-shadow:0_1px_16px_rgba(11,25,44,0.55)]"
+          style={{ animationDelay: "180ms" }}
         >
           {t("subtitle")}
         </p>
 
         <div
-          className="hero-rise mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row"
-          style={{ animationDelay: "220ms" }}
+          className="hero-rise mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center"
+          style={{ animationDelay: "270ms" }}
         >
-          <a
-            href="#contact"
-            className="group inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#C5A880] px-6 py-3.5 text-sm font-semibold text-[#0B192C] transition-colors hover:bg-[#d4bc9a] sm:w-auto"
-          >
+          <a href="#contact" className="lux-btn lux-btn-gold">
             {t("ctaPrimary")}
-            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            <ArrowRight className="h-4 w-4" aria-hidden />
           </a>
           <a
             href={`https://wa.me/${siteConfig.whatsappNumber}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#C5A880]/50 bg-[#0B192C]/40 px-6 py-3.5 text-sm font-semibold text-[#FAF9F6] transition-colors hover:bg-[#0B192C]/70 sm:w-auto"
+            className="lux-btn lux-btn-ghost"
           >
-            <MessageCircle className="h-4 w-4" />
             {t("ctaSecondary")}
           </a>
         </div>
 
-        <div
-          className="hero-rise mx-auto mt-14 flex max-w-lg divide-x divide-[#C5A880]/35"
-          style={{ animationDelay: "280ms" }}
+        <dl
+          className="hero-rise mt-14 grid max-w-xl grid-cols-3 gap-4 border-t border-[#F7F3EB]/30 pt-6 sm:gap-8"
+          style={{ animationDelay: "360ms" }}
         >
           {stats.map((s) => (
-            <div
-              key={s.label}
-              className="flex-1 px-3 text-center [text-shadow:_0_1px_16px_rgba(0,0,0,0.6)]"
-            >
-              <div className="font-display text-xl font-medium text-[#C5A880] sm:text-2xl">
-                {s.value}
-              </div>
-              <div className="mt-1 text-[11px] uppercase tracking-[0.12em] text-[#E8D7BC]/80 sm:text-xs">
+            <div key={s.label}>
+              <dt className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#F7F3EB]/75 sm:text-[11px]">
                 {s.label}
-              </div>
+              </dt>
+              <dd className="mt-2 font-display text-[1.8rem] leading-none text-[#F7F3EB] sm:text-4xl">
+                {s.value}
+              </dd>
             </div>
           ))}
-        </div>
+        </dl>
       </div>
     </section>
   );

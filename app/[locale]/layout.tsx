@@ -1,10 +1,22 @@
 import type { Metadata } from "next";
+import { Cormorant_Garamond } from "next/font/google";
 import { notFound } from "next/navigation";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { routing } from "@/i18n/routing";
 import { brandShareImages, siteConfig } from "@/lib/site";
 import { HtmlLang } from "@/components/HtmlLang";
+
+/** Serif de la vitrine seulement. Le CRM garde Plus Jakarta. */
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: "500",
+  style: ["normal", "italic"],
+  variable: "--font-cormorant",
+  display: "swap",
+  adjustFontFallback: true,
+  preload: true,
+});
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -62,11 +74,17 @@ export default async function LocaleLayout({
   }
 
   setRequestLocale(locale);
+  const t = await getTranslations("Common");
 
   return (
     <NextIntlClientProvider>
       <HtmlLang locale={locale} />
-      <div lang={locale}>{children}</div>
+      <div lang={locale} className={`vitrine ${cormorant.variable}`}>
+        <a href="#contenu" className="vitrine-skip">
+          {t("skip")}
+        </a>
+        {children}
+      </div>
     </NextIntlClientProvider>
   );
 }

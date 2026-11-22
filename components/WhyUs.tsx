@@ -1,7 +1,6 @@
 import { useTranslations } from "next-intl";
 import { Zap, Globe2, Gem, ShieldCheck, type LucideIcon } from "lucide-react";
 import { SectionHeading } from "./SectionHeading";
-import { Reveal } from "./Reveal";
 
 const ITEMS: { key: string; icon: LucideIcon }[] = [
   { key: "agile", icon: Zap },
@@ -14,31 +13,28 @@ export function WhyUs() {
   const t = useTranslations("WhyUs");
 
   return (
-    <section id="why" className="relative bg-[#07111c] px-5 py-24 sm:px-8">
+    <section id="why" className="border-t border-[#C5A880] bg-[#0B192C] px-5 py-24 text-[#F7F3EB] sm:px-8 sm:py-32">
       <div className="mx-auto max-w-7xl">
         <SectionHeading
           eyebrow={t("eyebrow")}
           title={t("title")}
           subtitle={t("subtitle")}
+          tone="inverse"
         />
 
-        <div className="mt-14 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
-          {ITEMS.map(({ key, icon: Icon }, i) => (
-            <Reveal
-              key={key}
-              delay={i * 0.08}
-              className="bg-surface/60 p-7 transition-colors hover:bg-surface"
-            >
-              <Icon className="h-7 w-7 text-accent" />
-              <h3 className="mt-5 font-display text-lg font-semibold">
+        <ul className="mt-16 grid gap-12 sm:grid-cols-2 lg:mt-20 lg:grid-cols-4 lg:gap-10">
+          {ITEMS.map(({ key, icon: Icon }) => (
+            <li key={key} className="border-t border-[#F7F3EB]/20 pt-6">
+              <Icon className="h-5 w-5 text-[#C5A880]" strokeWidth={1.25} aria-hidden />
+              <h3 className="mt-6 font-display text-[1.75rem] leading-none text-[#F7F3EB]">
                 {t(`items.${key}.title`)}
               </h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted">
+              <p className="mt-4 text-sm leading-[1.7] text-[#F7F3EB]/78">
                 {t(`items.${key}.description`)}
               </p>
-            </Reveal>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
     </section>
   );

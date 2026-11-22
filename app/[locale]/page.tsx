@@ -22,7 +22,7 @@ export default async function HomePage({
   return (
     <>
       <Header />
-      <main>
+      <main id="contenu" tabIndex={-1} className="outline-none">
         <Hero />
         <Credentials />
         <About />

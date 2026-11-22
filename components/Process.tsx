@@ -1,6 +1,5 @@
 import { useTranslations } from "next-intl";
 import { SectionHeading } from "./SectionHeading";
-import { Reveal } from "./Reveal";
 
 const STEPS = ["brief", "proposal", "organization", "experience"] as const;
 
@@ -8,42 +7,27 @@ export function Process() {
   const t = useTranslations("Process");
 
   return (
-    <section
-      id="process"
-      className="relative overflow-hidden px-5 py-24 sm:px-8"
-    >
-      <div className="pointer-events-none absolute left-1/2 top-0 h-72 w-72 -translate-x-1/2 rounded-full bg-accent-3/10 blur-[120px]" />
+    <section id="process" className="px-5 py-24 sm:px-8 sm:py-32">
       <div className="mx-auto max-w-7xl">
-        <SectionHeading
-          eyebrow={t("eyebrow")}
-          title={t("title")}
-          subtitle={t("subtitle")}
-        />
+        <SectionHeading eyebrow={t("eyebrow")} title={t("title")} subtitle={t("subtitle")} />
 
-        <div className="relative mt-14 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <ol className="relative mt-14 grid grid-cols-1 lg:mt-20 lg:grid-cols-4 lg:gap-10">
+          <span
+            className="pointer-events-none absolute left-0 right-0 top-0 hidden h-px bg-[#1A1714]/15 lg:block"
+            aria-hidden
+          />
           {STEPS.map((step, i) => (
-            <Reveal
-              key={step}
-              delay={i * 0.1}
-              className="relative rounded-2xl border border-border bg-surface/40 p-6"
-            >
-              <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full border border-accent/40 bg-accent/10 font-display text-sm font-bold text-accent">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                {i < STEPS.length - 1 && (
-                  <span className="hidden h-px flex-1 bg-gradient-to-r from-border to-transparent lg:block" />
-                )}
-              </div>
-              <h3 className="mt-5 font-display text-lg font-semibold">
+            <li key={step} className="border-t border-[#1A1714]/15 py-8 lg:border-t-0 lg:pt-10">
+              <span className="font-display text-[3.25rem] leading-none text-[#5C4824]">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <h3 className="mt-4 font-display text-[1.85rem] leading-none text-[#1A1714]">
                 {t(`steps.${step}.title`)}
               </h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted">
-                {t(`steps.${step}.description`)}
-              </p>
-            </Reveal>
+              <p className="mt-3 text-sm leading-[1.7] text-muted">{t(`steps.${step}.description`)}</p>
+            </li>
           ))}
-        </div>
+        </ol>
       </div>
     </section>
   );

@@ -47,54 +47,54 @@ function LegalContent() {
   ];
 
   return (
-    <main className="relative mx-auto min-h-screen max-w-3xl px-5 py-20 sm:px-8">
+    <main id="contenu" tabIndex={-1} className="relative mx-auto min-h-screen max-w-3xl px-5 py-16 outline-none sm:px-8 sm:py-20">
       <Link
         href="/"
-        className="inline-flex items-center gap-2 text-sm text-muted transition-colors hover:text-foreground"
+        className="lux-line inline-flex items-center gap-2 text-sm text-[#4E4942] hover:text-[#1A1714]"
       >
         <ArrowLeft className="h-4 w-4" />
         {tCommon("backHome")}
       </Link>
 
-      <h1 className="mt-8 font-display text-3xl font-bold tracking-tight sm:text-4xl">
+      <h1 className="mt-10 font-display text-[clamp(2.4rem,5vw,3.5rem)] leading-[1.05] text-[#1A1714]">
         {t("title")}
       </h1>
-      <p className="mt-4 leading-relaxed text-muted">{t("intro")}</p>
+      <p className="mt-5 leading-[1.75] text-muted">{t("intro")}</p>
 
       <section className="mt-12">
-        <h2 className="font-display text-xl font-semibold">
+        <h2 className="font-display text-[1.85rem] leading-none text-[#1A1714]">
           {t("companyTitle")}
         </h2>
-        <dl className="mt-5 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface/40">
+        <dl className="mt-6 border-t border-[#1A1714]/15">
           {rows.map((row) => (
             <div
               key={row.label}
-              className="flex flex-col gap-1 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-1 border-b border-[#1A1714]/10 py-3.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-8"
             >
-              <dt className="text-sm text-muted">{row.label}</dt>
-              <dd className="text-sm font-medium text-foreground sm:text-right">
-                {row.value}
-              </dd>
+              <dt className="text-[11px] font-medium uppercase tracking-[0.16em] text-[#5C4824]">
+                {row.label}
+              </dt>
+              <dd className="text-sm text-[#1A1714] sm:max-w-md sm:text-right">{row.value}</dd>
             </div>
           ))}
         </dl>
       </section>
 
       <section className="mt-10">
-        <h2 className="font-display text-xl font-semibold">
+        <h2 className="font-display text-[1.85rem] leading-none text-[#1A1714]">
           {t("hostingTitle")}
         </h2>
-        <p className="mt-3 leading-relaxed text-muted">{t("hostingText")}</p>
+        <p className="mt-4 leading-[1.75] text-muted">{t("hostingText")}</p>
       </section>
 
       <section className="mt-10">
-        <h2 className="font-display text-xl font-semibold">{t("ipTitle")}</h2>
-        <p className="mt-3 leading-relaxed text-muted">{t("ipText")}</p>
+        <h2 className="font-display text-[1.85rem] leading-none text-[#1A1714]">{t("ipTitle")}</h2>
+        <p className="mt-4 leading-[1.75] text-muted">{t("ipText")}</p>
       </section>
 
       <section className="mt-10">
-        <h2 className="font-display text-xl font-semibold">{t("dataTitle")}</h2>
-        <p className="mt-3 leading-relaxed text-muted">
+        <h2 className="font-display text-[1.85rem] leading-none text-[#1A1714]">{t("dataTitle")}</h2>
+        <p className="mt-4 leading-[1.75] text-muted">
           {t("dataText", { email: siteConfig.contactEmail })}
         </p>
       </section>
