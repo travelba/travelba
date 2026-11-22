@@ -5,11 +5,16 @@ import {
   withPieceArchive,
   type PieceArchive,
 } from "@/lib/crm/dossier-piece";
+import { isActiveItem } from "@/lib/crm/types";
+import { coversSharedFlight, type TicketDocumentRef, type TicketFlightRef } from "@/lib/crm/ticket-share";
 
 /** Pièce du dossier, assez pour décider ce qui devient orphelin. */
 export type StayDocumentRow = {
   id: string;
   booking_item_id?: string | null;
+  kind?: string | null;
+  file_name?: string | null;
+  storage_path?: string | null;
   content_sha256?: string | null;
   extracted?: unknown;
   visible_to_client?: boolean | null;
@@ -20,6 +25,11 @@ export type StayDocumentRow = {
 export type StayItemRef = {
   id: string;
   source_document_id?: string | null;
+  kind?: string | null;
+  lifecycle?: string | null;
+  confirmation_ref?: string | null;
+  start_at?: string | null;
+  details?: Record<string, unknown> | null;
 };
 
 /** La pièce reste sur une carte qui n’est pas supprimée : on y reporte `booking_item_id`. */
@@ -59,10 +69,30 @@ function linkedItemIds(doc: StayDocumentRow, items: StayItemRef[]) {
   const links = new Set<string>();
   if (doc.booking_item_id) links.add(doc.booking_item_id);
   if (!doc.id) return links;
+  const ticket = doc as TicketDocumentRef;
+  const flights = items as TicketFlightRef[];
   for (const item of items) {
     if (item.id && item.source_document_id === doc.id) links.add(item.id);
+    if (item.kind === "flight" && item.id && coversSharedFlight(ticket, item, flights)) links.add(item.id);
   }
   return links;
+}
+
+function sameFileAlreadyOn(doc: StayDocumentRow, itemIds: string[], documents: StayDocumentRow[]) {
+  const sha = (doc.content_sha256 || "").trim();
+  if (!sha || !itemIds.length) return false;
+  const kept = new Set(itemIds);
+  return documents.some((other) => {
+    if (other.id === doc.id || pieceEstRetiree(other.extracted)) return false;
+    if ((other.content_sha256 || "").trim() !== sha) return false;
+    return Boolean(other.booking_item_id && kept.has(other.booking_item_id));
+  });
+}
+
+function preferredRemaining(ids: string[], items: StayItemRef[]) {
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const sorted = [...ids].sort();
+  return sorted.find((id) => isActiveItem(byId.get(id) || {})) || sorted[0] || "";
 }
 
 /**
@@ -87,10 +117,15 @@ export function planDocumentRelease(input: {
     const links = linkedItemIds(doc, items);
     const onDeleted = [...links].some((id) => deleted.has(id));
     if (!onDeleted) continue;
-    const remaining = [...links].filter((id) => !deleted.has(id)).sort();
+    const remaining = [...links].filter((id) => !deleted.has(id));
     if (remaining.length) {
       if (doc.booking_item_id && deleted.has(doc.booking_item_id)) {
-        relink.push({ id: doc.id, bookingItemId: remaining[0] });
+        if (sameFileAlreadyOn(doc, remaining, active)) {
+          release.push(doc);
+          continue;
+        }
+        const bookingItemId = preferredRemaining(remaining, items);
+        if (bookingItemId) relink.push({ id: doc.id, bookingItemId });
       }
       continue;
     }

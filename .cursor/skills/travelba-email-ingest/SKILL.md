@@ -25,6 +25,7 @@ mêmes dates, même confirmation ou le même fournisseur : on complète, on ne d
 La pièce est sur la carte créée ou complétée. Le prix fournisseur va en coût, le prix
 de vente reste 0 s’il n’est pas déjà saisi. Une dépense Pliant du même montant est
 proposée, pas rattachée. `cartes` false ne dépose que les fichiers. Le PNR reste sur chaque carte.
+Un e-ticket déjà sur un seul de ces vols s’affiche aussi sur les autres vols du même PNR (ou du même numéro de billet), sans recopier le fichier. Une carte d’embarquement reste sur son segment. Aucun message.
 voyageurs ajoutés, carte nouvelle cachée, prix de vente 0, coût seulement s’il est
 imprimé. Un message nouveau d’un fil déjà vu est ingéré : on dédoublonne par identifiant de message, pas par fil ni par objet. Le cron reprend les messages manquants de ces fils. Une confirmation du même vol qui liste moins de passagers, ou qui nomme un passager retiré, retire ces voyageurs de la carte, sans la supprimer, sans changer le prix de vente, et le signale sur la carte. Un remboursement imprimé est noté, ou le coût imprimé est mis à jour. Aucun débit n’est créé. Plus aucun passager : le mail reste une annulation, la carte n’est pas retirée toute seule. **Déposer seulement** laisse les cartes. `traiter_email` `rattacher` dépose les pièces et, par défaut, crée ou complète les cartes du mail (vol compris). `cartes` false ne dépose que les fichiers. Sans fichier joint (ou seulement une image de signature), le texte
 du mail est déposé comme fichier sur la carte qui correspond, ou sur le dossier.

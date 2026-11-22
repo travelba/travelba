@@ -153,6 +153,59 @@ test("restaurer une pièce retirée remet son empreinte", () => {
   assert.equal(fields?.extracted, null);
 });
 
+test("un e-ticket du même PNR reste sur l’autre vol", () => {
+  const flights: StayItemRef[] = [
+    {
+      id: "ek78",
+      kind: "flight",
+      confirmation_ref: "ZU5TCO",
+      start_at: "2027-04-13T15:50:00",
+      details: { pnr: "KDP4AS", flight_number: "EK 78" },
+    },
+    {
+      id: "ek209",
+      kind: "flight",
+      confirmation_ref: "ZU5TCO",
+      start_at: "2027-04-20T10:50:00",
+      details: { pnr: "KDP4AS", flight_number: "EK 209" },
+    },
+  ];
+  const shared = piece({ id: "billet", booking_item_id: "ek78", kind: "pdf", file_name: "billet.pdf" });
+  const plan = planDocumentRelease({
+    now: "2026-11-18T12:00:00.000Z",
+    deletedItemIds: ["ek78"],
+    items: flights,
+    documents: [shared],
+  });
+  assert.deepEqual(plan.release, []);
+  assert.deepEqual(plan.relink, [{ id: "billet", bookingItemId: "ek209" }]);
+  assert.equal(justificatifsRetiresAvec("ek78", flights, [shared]), 0);
+});
+
+test("une carte d’embarquement ne suit pas l’autre segment", () => {
+  const flights: StayItemRef[] = [
+    { id: "ek78", kind: "flight", confirmation_ref: "ZU5TCO", details: { pnr: "ZU5TCO" } },
+    { id: "ek209", kind: "flight", confirmation_ref: "ZU5TCO", details: { pnr: "ZU5TCO" } },
+  ];
+  const pass = piece({
+    id: "pass",
+    booking_item_id: "ek78",
+    kind: "carte d'embarquement",
+    file_name: "carte.pdf",
+  });
+  const plan = planDocumentRelease({
+    now: "2026-11-18T12:00:00.000Z",
+    deletedItemIds: ["ek78"],
+    items: flights,
+    documents: [pass],
+  });
+  assert.deepEqual(
+    plan.release.map((row) => row.id),
+    ["pass"]
+  );
+  assert.deepEqual(plan.relink, []);
+});
+
 test("la confirmation nomme le nombre de justificatifs", () => {
   assert.equal(mentionRetraitJustificatifs(1), "La carte et son justificatif seront retirés.");
   assert.equal(mentionRetraitJustificatifs(2), "La carte et ses 2 justificatifs seront retirés.");

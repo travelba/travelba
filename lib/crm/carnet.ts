@@ -12,6 +12,7 @@ import { labelIncludesCity, splitPlaceLabel, tripCityPlan } from "./layover";
 import { stayDestinationLine } from "./stay-phrase";
 import { accueilVipTimelineDays, placeAccueilVipBesideFlights, withLiveAccueilVip } from "./accueil-vip";
 import { statedTicketCount } from "./item-match";
+import { coversSharedFlight, dedupeSharedTickets } from "./ticket-share";
 
 export function detailStr(item: CrmBookingItem, key: string) {
   const value = item.details?.[key];
@@ -413,29 +414,38 @@ export function documentLabel(doc: CrmBookingDocument, items: CrmBookingItem[]) 
  * visibles) ne montre déjà. Une pièce rattachée à une carte cachée au client reste listée ici.
  */
 export function unlinkedDocuments(docs: CrmBookingDocument[], items: CrmBookingItem[]) {
-  const linked = new Set(items.map((item) => item.source_document_id).filter(Boolean));
-  const shownIds = new Set(items.map((item) => item.id));
-  return docs.filter(
-    (doc) => !linked.has(doc.id) && !(doc.booking_item_id && shownIds.has(doc.booking_item_id))
-  );
+  const shown = new Set(documentsForItems(items, docs, items).map((doc) => doc.id));
+  return docs.filter((doc) => !shown.has(doc.id));
 }
 
-export function documentsForItem(item: CrmBookingItem, docs: CrmBookingDocument[]) {
-  return documentsForItems([item], docs);
+export function documentsForItem(item: CrmBookingItem, docs: CrmBookingDocument[], dossier?: CrmBookingItem[]) {
+  return documentsForItems([item], docs, dossier);
 }
 
-export function documentsForItems(items: CrmBookingItem[], docs: CrmBookingDocument[]) {
+/**
+ * Pièces de ces cartes. Un e-ticket du même PNR, du même n° de billet ou des segments
+ * lus s’affiche sur chaque vol qu’il couvre. Le fichier reste unique.
+ * `dossier` est l’ensemble des cartes : sans lui, seules les cartes demandées comptent.
+ */
+export function documentsForItems(
+  items: CrmBookingItem[],
+  docs: CrmBookingDocument[],
+  dossier?: CrmBookingItem[]
+) {
+  const universe = dossier?.length ? dossier : items;
   const seen = new Set<string>();
   const list: CrmBookingDocument[] = [];
   for (const item of items) {
     for (const doc of docs) {
-      const hit = doc.booking_item_id === item.id || doc.id === item.source_document_id;
-      if (!hit || seen.has(doc.id)) continue;
+      if (!doc.id || seen.has(doc.id)) continue;
+      const direct = doc.booking_item_id === item.id || doc.id === item.source_document_id;
+      const shared = !direct && coversSharedFlight(doc, item, universe);
+      if (!direct && !shared) continue;
       seen.add(doc.id);
       list.push(doc);
     }
   }
-  return list;
+  return dedupeSharedTickets(list, items.map((item) => item.id)).filter((doc): doc is CrmBookingDocument => Boolean(doc));
 }
 
 export function kindIcon(kind: string) {

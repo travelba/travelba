@@ -866,7 +866,7 @@ export function BookingItemsPanel({
       >
         {cardRows.map((item) => {
           const locked = editingId === item.id || busy;
-          const docs = documentsForItems([item], documents);
+          const docs = documentsForItems([item], documents, rows);
           const exclusifs = justificatifsRetiresAvec(item.id, rows, documents);
           const subtitle = stepSubtitle(item);
           const reading = readingLine(item);
