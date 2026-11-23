@@ -184,6 +184,9 @@ async function startNativeShell() {
   });
 
   await syncNativeRoute(location.pathname);
+  if ("serviceWorker" in navigator) {
+    await navigator.serviceWorker.register("/tba-sw.js").catch(() => {});
+  }
   await SplashScreen.hide().catch(() => {});
 }
 

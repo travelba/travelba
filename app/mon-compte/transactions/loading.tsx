@@ -1,10 +1,7 @@
-import { AccountPage } from "@/components/account/AccountPage";
-import { CrmSkeleton } from "@/components/crm/ui";
+"use client";
+
+import { CachedScreen } from "@/components/account/CachedScreen";
 
 export default function Loading() {
-  return (
-    <AccountPage motion="skeleton">
-      <CrmSkeleton rows={4} />
-    </AccountPage>
-  );
+  return <CachedScreen screen="transactions" />;
 }

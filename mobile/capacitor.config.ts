@@ -1,16 +1,15 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 /**
- * L’application charge l’origine https://travelba.fr.
- * Les cookies de session (SameSite=Lax, HttpOnly) restent ceux du site.
- * capacitor://localhost les casserait.
+ * L’écran local (www/index.html) s’affiche tout de suite, sans réseau.
+ * Il ouvre ensuite https://travelba.fr : les cookies de session restent ceux du site.
+ * capacitor://localhost ne devient pas l’origine de la session.
  */
 const config: CapacitorConfig = {
   appId: "fr.travelba.client",
   appName: "TBA",
   webDir: "www",
   server: {
-    url: "https://travelba.fr/mon-compte",
     cleartext: false,
     allowNavigation: ["travelba.fr", "www.travelba.fr"],
     errorPath: "offline.html",
@@ -22,10 +21,11 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: {
-      launchAutoHide: false,
+      launchAutoHide: true,
+      launchShowDuration: 0,
       backgroundColor: "#0B192C",
       showSpinner: false,
-      launchFadeOutDuration: 200,
+      launchFadeOutDuration: 120,
     },
     PushNotifications: {
       presentationOptions: ["alert", "sound"],

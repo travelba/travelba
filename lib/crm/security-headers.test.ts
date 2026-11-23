@@ -33,4 +33,6 @@ test("la vidéo et le badge se cachent un an, le HTML n’est pas figé", () => 
   const icon = rules.find((rule) => rule.source === "/apple-touch-icon.png");
   assert.equal(icon?.headers.find((header) => header.key === "Cache-Control")?.value, "public, max-age=31536000, immutable");
   assert.ok(rules.some((rule) => rule.source === "/manifest.webmanifest"));
+  const worker = rules.find((rule) => rule.source === "/tba-sw.js");
+  assert.equal(worker?.headers.find((header) => header.key === "Cache-Control")?.value, "public, max-age=0, must-revalidate");
 });

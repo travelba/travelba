@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, type CSSProperties, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
-import { Icon } from "@/components/crm/icons";
+import { AccountIcon } from "@/components/account/AccountIcon";
 import { accountTabDirection, type AccountMotion } from "@/lib/crm/account-motion";
 import { useFixedMenu } from "@/lib/crm/use-fixed-menu";
 import { SIGN_OUT_LABEL } from "@/lib/crm/user-menu";
@@ -42,7 +42,7 @@ export function AccountMenuPanel({
         onClick={onClose}
         className="account-press flex items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-[var(--surface-2)]"
       >
-        <Icon name="badge" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
+        <AccountIcon name="badge" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
         Mon compte
       </Link>
       <button
@@ -54,7 +54,7 @@ export function AccountMenuPanel({
         }}
         className="account-press flex w-full items-center gap-2 border-t border-[#e5e3dc] px-4 py-3 text-left text-sm font-medium hover:bg-[var(--surface-2)]"
       >
-        <Icon name="logout" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
+        <AccountIcon name="logout" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
         {SIGN_OUT_LABEL}
       </button>
     </div>

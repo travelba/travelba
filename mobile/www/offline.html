@@ -3,50 +3,30 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0B192C" />
+    <meta name="theme-color" content="#faf9f6" />
     <title>TBA</title>
-    <style>
-      html, body { margin: 0; min-height: 100%; background: #0b192c; color: #faf9f6; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-      main { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 32px 24px calc(32px + env(safe-area-inset-bottom)); }
-      .kicker { letter-spacing: 0.22em; font-size: 12px; color: #c5a880; margin: 0; }
-      h1 { font-size: 44px; letter-spacing: -0.03em; margin: 12px 0 8px; }
-      p { max-width: 18rem; line-height: 1.45; color: #c9bfb2; margin: 0; }
-      button { margin-top: 24px; border: 0; border-radius: 999px; background: #c5a880; color: #0b192c; font-weight: 700; padding: 12px 22px; }
-      #trip { margin-top: 28px; }
-      #trip[hidden] { display: none; }
-      #trip-title { color: #faf9f6; font-size: 18px; margin-top: 6px; }
-    </style>
+    <link rel="stylesheet" href="shell.css" />
   </head>
-  <body>
-    <main>
-      <p class="kicker">TRAVEL BUSINESS AGENCY</p>
-      <h1>TBA</h1>
-      <p>Vous êtes hors ligne. Le séjour déjà ouvert sur cet appareil réapparaît dès que le réseau revient.</p>
-      <div id="trip" hidden>
-        <p id="trip-when"></p>
-        <p id="trip-title"></p>
+  <body data-mode="offline">
+    <header>
+      <span class="mark" aria-hidden="true">TBA</span>
+      <div>
+        <p class="kicker">Travel Business Agency</p>
+        <p class="title">TBA</p>
       </div>
+    </header>
+    <main>
+      <p id="hello">Bonjour</p>
+      <div id="stays"></div>
+      <p id="offline">Vous êtes hors ligne. Le séjour déjà ouvert sur cet appareil réapparaît dès que le réseau revient.</p>
       <button type="button" id="retry">Réessayer</button>
     </main>
-    <script>
-      document.getElementById("retry").addEventListener("click", function () {
-        location.replace("https://travelba.fr/mon-compte");
-      });
-      var cap = window.Capacitor;
-      var read = cap && cap.Plugins && cap.Plugins.Preferences && cap.Plugins.Preferences.get;
-      if (!read && cap && typeof cap.nativePromise === "function") {
-        read = function (options) { return cap.nativePromise("Preferences", "get", options); };
-      }
-      if (read) {
-        Promise.resolve(read({ key: "tba.trip" })).then(function (res) {
-          if (!res || !res.value) return;
-          var trip = JSON.parse(res.value);
-          if (!trip || !trip.title) return;
-          document.getElementById("trip").hidden = false;
-          document.getElementById("trip-title").textContent = trip.title;
-          document.getElementById("trip-when").textContent = trip.when || "";
-        }).catch(function () {});
-      }
-    </script>
+    <nav aria-hidden="true">
+      <span>Accueil</span>
+      <span>Réservations</span>
+      <span>Transactions</span>
+      <span>Mon compte</span>
+    </nav>
+    <script src="shell.js"></script>
   </body>
 </html>

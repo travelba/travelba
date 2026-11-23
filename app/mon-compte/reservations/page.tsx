@@ -6,7 +6,8 @@ import { redirect } from "next/navigation";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { AccountPage } from "@/components/account/AccountPage";
-import { HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
+import { RememberEspace } from "@/components/account/RememberEspace";
+import { HIDDEN_PRICE_LABEL, stayHeroPlace } from "@/lib/crm/carnet";
 import { applyClientStayFace } from "@/lib/crm/client-stay-face";
 import { loadDisplayedStayAmounts } from "@/lib/crm/displayed-stay";
 import { isClientPastStay, isClientUpcomingStay } from "@/lib/crm/client-stays";
@@ -19,7 +20,7 @@ import {
 import { createServiceClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/crm/ui";
 import { resolveListCovers } from "@/lib/crm/cover-resolve";
-import { loadClientStayFaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
+import { loadClientCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { clientTripOwnerIds, clientTwinIds } from "@/lib/crm/company-peers";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { BoardingReadyNote } from "@/components/account/BoardingPassStack";
@@ -43,11 +44,10 @@ export default async function ReservationsPage({
   if (!customer) redirect("/connexion");
 
   console.time("[espace] reservations");
-  const loaded = await loadVisibleCarnets(supabase, customer.id, await clientTripOwnerIds(customer));
-  const faces = await loadClientStayFaces(supabase, loaded, customer.city);
+  const [ownerIds, twinIds] = await Promise.all([clientTripOwnerIds(customer), clientTwinIds(customer.id)]);
+  const { bookings: loaded, faces } = await loadClientCarnets(supabase, customer.id, ownerIds, customer.city);
   const all = loaded.map((booking) => applyClientStayFace(booking, faces[booking.id]));
   const viewerHides = clientHidesPrices(customer);
-  const twinIds = await clientTwinIds(customer.id);
   const hiddenOwners = viewerHides
     ? new Set<string>()
     : await hiddenPriceCustomerIds(foreignPriceOwnerIds(customer.id, all.map((row) => row.customer_id), twinIds));
@@ -88,9 +88,21 @@ export default async function ReservationsPage({
   after(() => {
     void resolveListCovers(coverRows).catch(() => undefined);
   });
+  const shellStays = all.map((booking) => {
+    const face = faces[booking.id];
+    const title = face?.title || booking.title || "Séjour";
+    return {
+      reference: booking.reference,
+      title,
+      when: formatDateRangeShort(booking.start_date, booking.end_date),
+      place: stayHeroPlace(title, face?.destination || booking.destination, face?.items) || "",
+      upcoming: isClientUpcomingStay(booking),
+    };
+  });
 
   return (
     <AccountPage>
+    <RememberEspace userId={customer.id} stays={shellStays} />
     <div className="space-y-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#b89768]">
@@ -107,6 +119,7 @@ export default async function ReservationsPage({
       <div className="flex rounded-full border border-[#c5c6cd]/40 bg-[#efeeeb] p-1" role="tablist">
         <Link
           href="/mon-compte/reservations"
+          prefetch
           aria-selected={!showPast}
           className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2 text-[12px] font-semibold uppercase tracking-[0.06em] transition ${
             !showPast
@@ -131,6 +144,7 @@ export default async function ReservationsPage({
         </Link>
         <Link
           href="/mon-compte/reservations?tab=passes"
+          prefetch
           aria-selected={showPast}
           className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-2 text-[12px] font-semibold uppercase tracking-[0.06em] transition ${
             showPast
@@ -229,6 +243,7 @@ export default async function ReservationsPage({
                   {boardingReady.has(b.id) ? <BoardingReadyNote /> : null}
                   <Link
                     href={`/mon-compte/reservations/${b.reference}`}
+                    prefetch
                     transitionTypes={["nav-forward"]}
                     className="account-press inline-flex h-11 w-full items-center justify-center rounded-full bg-[var(--admin-navy)] px-3 text-sm font-semibold text-white"
                   >
