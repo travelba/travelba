@@ -1,9 +1,10 @@
+import { biometricChoiceOf, shouldLockWithBiometric, shouldRestoreWithBiometric } from "@/lib/crm/biometric-lock";
 import { portalNavigation, pushTargetPath } from "@/lib/crm/native-portal";
 import { isNativeAppBridge } from "@/lib/native/detect";
 import { registerNativePush } from "@/lib/native/push-client";
 
-const LOCK_AFTER_MS = 5 * 60 * 1000;
 const TRIP_KEY = "tba.trip";
+const BIOMETRIC_KEY = "tba.biometric";
 
 function openExternal(url: string) {
   void import("@capacitor/browser").then(({ Browser }) => Browser.open({ url })).catch(() => {});
@@ -97,6 +98,31 @@ function watchTrip() {
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-tba-title"] });
 }
 
+async function biometricChoice() {
+  const { Preferences } = await import("@capacitor/preferences");
+  const stored = await Preferences.get({ key: BIOMETRIC_KEY });
+  return biometricChoiceOf(stored.value);
+}
+
+async function restoreSession(token: string) {
+  const response = await fetch("/api/client/device-unlock/session", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ token }),
+  });
+  if (response.ok) return "ok" as const;
+  if (response.status === 401) return "invalid" as const;
+  return "offline" as const;
+}
+
+async function showPasswordForm() {
+  document.getElementById("tba-lock")?.remove();
+  if (!location.pathname.startsWith("/mon-compte")) return;
+  const { signOutAccount } = await import("@/lib/crm/account-sign-out");
+  await signOutAccount("local", "/connexion", { keepUnlock: true });
+}
+
 async function lockScreen() {
   let root = document.getElementById("tba-lock");
   if (!root) {
@@ -124,11 +150,15 @@ async function lockScreen() {
       <p style="margin:0;letter-spacing:.22em;font-size:13px;color:#C5A880">TRAVEL BUSINESS AGENCY</p>
       <p style="margin:0;font-size:40px;font-weight:700;letter-spacing:-.03em">TBA</p>
       <p style="margin:0;max-width:18rem;line-height:1.4;color:#C9BFB2">Déverrouillez l’application pour retrouver votre séjour.</p>
-      <button type="button" style="margin-top:8px;border:0;border-radius:999px;background:#C5A880;color:#0B192C;font-weight:700;padding:12px 22px">Déverrouiller</button>
+      <button type="button" data-unlock style="margin-top:8px;border:0;border-radius:999px;background:#C5A880;color:#0B192C;font-weight:700;padding:12px 22px">Déverrouiller</button>
+      <button type="button" data-password style="border:0;background:transparent;color:#C5A880;font-weight:600;padding:8px 12px">Utiliser le mot de passe</button>
     `;
     document.body.appendChild(root);
-    root.querySelector("button")?.addEventListener("click", () => {
+    root.querySelector("[data-unlock]")?.addEventListener("click", () => {
       void promptUnlock();
+    });
+    root.querySelector("[data-password]")?.addEventListener("click", () => {
+      void showPasswordForm();
     });
   }
   root.hidden = false;
@@ -136,16 +166,23 @@ async function lockScreen() {
 }
 
 async function promptUnlock() {
-  const { registerPlugin } = await import("@capacitor/core");
-  const Portal = registerPlugin<{ canUnlock: () => Promise<{ available: boolean }>; unlock: () => Promise<{ ok: boolean }> }>("Portal");
+  const { readUnlockToken } = await import("@/lib/native/device-lock");
   try {
-    const ready = await Portal.canUnlock();
-    if (!ready.available) {
-      document.getElementById("tba-lock")?.remove();
+    const token = await readUnlockToken();
+    if (!token) return;
+    const restored = await restoreSession(token);
+    if (restored === "invalid") {
+      const { Preferences } = await import("@capacitor/preferences");
+      await Preferences.set({ key: BIOMETRIC_KEY, value: "off" });
+      const { clearUnlockToken } = await import("@/lib/native/device-lock");
+      await clearUnlockToken();
+      await showPasswordForm();
       return;
     }
-    const result = await Portal.unlock();
-    if (result.ok) document.getElementById("tba-lock")?.remove();
+    document.getElementById("tba-lock")?.remove();
+    if (restored === "ok" && (location.pathname === "/connexion" || location.pathname.startsWith("/connexion/"))) {
+      location.assign(new URL("/mon-compte", location.origin).href);
+    }
   } catch {
     /* l’écran reste, le bouton réessaie */
   }
@@ -172,11 +209,12 @@ async function startNativeShell() {
       hiddenAt = Date.now();
       return;
     }
-    if (hiddenAt && Date.now() - hiddenAt >= LOCK_AFTER_MS && location.pathname.startsWith("/mon-compte")) {
-      void lockScreen();
-    }
+    const elapsed = hiddenAt ? Date.now() - hiddenAt : 0;
     hiddenAt = 0;
     void import("@/lib/native/widgets").then((mod) => mod.refreshNativeWidgets({ force: true }));
+    void biometricChoice().then((choice) => {
+      if (shouldLockWithBiometric(choice, elapsed, location.pathname)) void lockScreen();
+    });
   });
   await App.addListener("appUrlOpen", ({ url }) => {
     const decision = portalNavigation({ url });
@@ -184,6 +222,8 @@ async function startNativeShell() {
     else if (decision === "external") openExternal(url);
   });
 
+  const choice = await biometricChoice();
+  if (shouldRestoreWithBiometric(choice, location.pathname)) await lockScreen();
   await syncNativeRoute(location.pathname);
   if ("serviceWorker" in navigator) {
     await navigator.serviceWorker.register("/tba-sw.js").catch(() => {});

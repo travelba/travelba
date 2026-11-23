@@ -2,6 +2,7 @@ import { toPublicBooking } from "@/lib/crm/public-booking";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { AccountPage } from "@/components/account/AccountPage";
+import { TravelNotices } from "@/components/account/TravelNotices";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/crm/calendar-ics";
@@ -96,6 +97,23 @@ export default async function ExampleHomePage() {
           Bonjour {firstName}
         </h1>
       </section>
+
+      <TravelNotices
+        preview={[
+          {
+            id: "porte",
+            title: "Porte d’embarquement",
+            message: "Votre vol EX 100 Paris → New York embarque à la porte K42.",
+            url: `${EXAMPLE_BASE}/reservations/${nextTrip.reference}`,
+          },
+          {
+            id: "depart",
+            title: "Départ demain",
+            message: "Votre départ Paris → New York est demain. Le transfert Maison est à 10h30.",
+            url: `${EXAMPLE_BASE}/reservations/${nextTrip.reference}`,
+          },
+        ]}
+      />
 
       {balance < 0 ? (
         <Link

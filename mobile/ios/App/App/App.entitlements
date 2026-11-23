@@ -12,5 +12,9 @@
 	<array>
 		<string>applinks:travelba.fr</string>
 	</array>
+	<key>com.apple.developer.in-app-payments</key>
+	<array>
+		<string>merchant.fr.travelba.client</string>
+	</array>
 </dict>
 </plist>

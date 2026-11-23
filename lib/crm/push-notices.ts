@@ -28,6 +28,10 @@ export type CustomerPushInput = {
   url: string;
   idempotencyKey: string;
   bookingId?: string | null;
+  /** La préférence a déjà été lue par l’appelant. */
+  preferenceChecked?: boolean;
+  /** Le message reste dans l’application même si Apple ne part pas. */
+  inApp?: boolean;
 };
 
 export type CustomerPushResult = { sent: number; skipped?: string };
@@ -48,10 +52,24 @@ function asDb(client: unknown) {
  * si la préférence est fermée, ou si l’appareil n’est pas enregistré.
  * N’interrompt pas l’appelant.
  */
+async function rememberNotice(
+  admin: PushDb,
+  input: { customerId: string; bookingId: string | null; title: string; body: string; url: string; key: string }
+) {
+  const inserted = await admin.from("crm_notifications").insert({
+    customer_id: input.customerId,
+    booking_id: input.bookingId,
+    kind: "push",
+    title: input.title,
+    message: input.body,
+    action_url: input.url,
+    idempotency_key: input.key,
+  });
+  if (inserted.error && inserted.error.code !== "23505") quiet(inserted.error.message);
+}
+
 export async function sendCustomerPush(input: CustomerPushInput): Promise<CustomerPushResult> {
   try {
-    const settings = currentApnsSettings();
-    if (!settings) return { sent: 0, skipped: "unconfigured" };
     const url = pushTargetPath(input.url);
     const customerId = input.customerId.trim();
     const key = input.idempotencyKey.trim().slice(0, 180);
@@ -68,22 +86,31 @@ export async function sendCustomerPush(input: CustomerPushInput): Promise<Custom
     }
     if ((existing.data || []).length) return { sent: 0, skipped: "already" };
 
-    const prefs = await queryWithOptionalColumn(
-      (columns) =>
-        admin.from("crm_notification_preferences").select(columns).eq("customer_id", customerId).maybeSingle(),
-      "push_travel, push_documents, push_payment",
-      "push_messages"
-    );
-    if (prefs.error) {
-      if (missingDbColumn(prefs.error, "push_travel") || prefs.error.code === "42703" || prefs.error.code === "PGRST204") {
-        return { sent: 0, skipped: "schema" };
+    if (!input.preferenceChecked) {
+      const prefs = await queryWithOptionalColumn(
+        (columns) =>
+          admin.from("crm_notification_preferences").select(columns).eq("customer_id", customerId).maybeSingle(),
+        "push_travel, push_documents, push_payment",
+        "push_messages"
+      );
+      if (prefs.error) {
+        if (missingDbColumn(prefs.error, "push_travel") || prefs.error.code === "42703" || prefs.error.code === "PGRST204") {
+          return { sent: 0, skipped: "schema" };
+        }
+        if (prefs.error.code === "42P01" || prefs.error.code === "PGRST205") return { sent: 0, skipped: "schema" };
+        quiet(prefs.error.message);
+        return { sent: 0, skipped: "error" };
       }
-      if (prefs.error.code === "42P01" || prefs.error.code === "PGRST205") return { sent: 0, skipped: "schema" };
-      quiet(prefs.error.message);
-      return { sent: 0, skipped: "error" };
+      if (!pushAllowed((prefs.data || null) as PushPreferenceRow | null, input.kind)) {
+        return { sent: 0, skipped: "preference" };
+      }
     }
-    if (!pushAllowed((prefs.data || null) as PushPreferenceRow | null, input.kind)) {
-      return { sent: 0, skipped: "preference" };
+
+    const bookingId = input.bookingId && UUID.test(input.bookingId) ? input.bookingId : null;
+    const settings = currentApnsSettings();
+    if (!settings) {
+      if (input.inApp) await rememberNotice(admin, { customerId, bookingId, title, body, url, key });
+      return { sent: 0, skipped: "unconfigured" };
     }
 
     const devices = await admin.from("crm_espace_devices").select("id, token").eq("customer_id", customerId).limit(20);
@@ -93,8 +120,6 @@ export async function sendCustomerPush(input: CustomerPushInput): Promise<Custom
       return { sent: 0, skipped: "error" };
     }
     const rows = (devices.data || []) as { id?: string; token?: string }[];
-    if (!rows.length) return { sent: 0, skipped: "no-device" };
-
     const payload = { aps: { alert: { title, body }, sound: "default" }, url };
     let sent = 0;
     for (const row of rows) {
@@ -110,20 +135,10 @@ export async function sendCustomerPush(input: CustomerPushInput): Promise<Custom
         quiet(error);
       }
     }
-    if (!sent) return { sent: 0, skipped: "rejected" };
+    if (!sent && !input.inApp) return { sent: 0, skipped: rows.length ? "rejected" : "no-device" };
 
-    const bookingId = input.bookingId && UUID.test(input.bookingId) ? input.bookingId : null;
-    const inserted = await admin.from("crm_notifications").insert({
-      customer_id: customerId,
-      booking_id: bookingId,
-      kind: "push",
-      title,
-      message: body,
-      action_url: url,
-      idempotency_key: key,
-    });
-    if (inserted.error && inserted.error.code !== "23505") quiet(inserted.error.message);
-    return { sent };
+    await rememberNotice(admin, { customerId, bookingId, title, body, url, key });
+    return sent ? { sent } : { sent: 0, skipped: rows.length ? "rejected" : "no-device" };
   } catch (error) {
     quiet(error);
     return { sent: 0, skipped: "error" };

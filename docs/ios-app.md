@@ -206,7 +206,7 @@ Lancer :
 - Actions → **iOS TestFlight** → Run workflow, sur la branche voulue
 - ou pousser un tag `ios-*` (`git tag ios-1 && git push origin ios-1`)
 
-Le numéro de build du projet est `2`, la version marketing `1.2`. À l’archive, le workflow remplace le numéro de build par `github.run_number`.
+Le numéro de build du projet est `2`, la version marketing `1.3`. À l’archive, le workflow remplace le numéro de build par `github.run_number`.
 
 Secrets du dépôt (Settings → Secrets and variables → Actions) :
 
@@ -232,3 +232,43 @@ La clé API doit pouvoir créer un certificat et des profils. Apple limite le no
 - Le site dans Safari ne demande pas la permission de notification.
 - Déposer une pièce ou montrer un séjour n’envoie pas la notification à la place du geste déjà prévu (WhatsApp, e-mail). La notification s’ajoute, elle ne le remplace pas.
 - Créditer un client, imprimer une pièce, ou ouvrir `/admin` ne se fait pas depuis l’application.
+
+## Version 1.3
+
+Quatre ajouts dans l’application. Le site dans Safari ne demande ni Face ID, ni le cache des pièces. La migration se joue à la main, elle n’est pas appliquée par ce dépôt.
+
+### Face ID / Touch ID
+
+Après la première entrée, l’application propose le déverrouillage. Le jeton (préfixe `tu_`, empreinte seule en base) va dans le trousseau, protégé par la biométrie. À la réouverture, Face ID ou Touch ID rouvre la session. « Utiliser le mot de passe » revient au formulaire. La case est dans Mon compte. La déconnexion efface le trousseau et révoque les jetons. Le repli mot de passe garde le trousseau pour la fois suivante.
+
+Migration : `supabase/migrations/20261123150000_ios_client_12.sql` (table `crm_device_unlocks`).
+
+### Pièces hors ligne
+
+Les billets, bons d’hôtel, assurances et autres pièces des séjours en cours ou à venir sont téléchargés, chiffrés (AES-GCM, clé dans le trousseau, sans biométrie à chaque ouverture) et rangés dans le bac de l’application, par personne. L’écran dit « Disponible hors ligne ». Passeport, visa et ETA ne sont pas gardés, et un numéro de passeport est retiré du libellé. La déconnexion vide le bac. Un autre compte sur le même téléphone ne relit pas le dossier précédent.
+
+### Rappels de voyage
+
+Cron `GET /api/cron/travel-notices`, toutes les heures à la minute 8. Même envoi APNs que les autres notifications, et la ligne reste dans l’accueil (« Pour votre voyage ») même sans appareil.
+
+- Enregistrement, entre 20 h et 28 h avant le départ.
+- Retard et changement de porte, lus dans `crm_booking_items.details.flight_watch` (AeroAPI). Le retard reprend la clé déjà utilisée par le suivi de vol.
+- Départ la veille, avec l’heure du transfert seulement si elle est déjà sur la carte.
+- Reste à payer, dans les 14 jours avant le départ.
+
+Rien ne part entre 22 h et 8 h, heure de Paris, sauf un retard ou une porte dont le vol part dans les 12 heures. Une même clé ne part pas deux fois. Les cases sont dans Mon compte : enregistrement, retard et porte, départ la veille, reste à payer. « Vols et départs » ferme les rappels de vol. Tant que la migration n’est pas jouée, ces cases nouvelles restent cachées et les trois cases déjà là continuent.
+
+### Apple Pay dans l’application
+
+Le règlement du solde est celui de Transactions : PaymentIntent Stripe, carte (`PaymentElement`) et Apple Pay (`ExpressCheckoutElement`, Payment Request). Ce sont des prestations de voyage consommées hors de l’application. Pas d’achat intégré (guidelines 3.1.3(e) et 3.1.5).
+
+Pour qu’Apple Pay s’ouvre dans la webview :
+
+1. Portail Apple → Identifiers → Merchant IDs : créer `merchant.fr.travelba.client`.
+2. Identifiant d’app `fr.travelba.client` : activer la capacité Apple Pay et cocher ce marchand. L’entitlement `com.apple.developer.in-app-payments` est déjà dans `App.entitlements`. Sans cette capacité sur l’identifiant, la signature TestFlight échoue : la faire avant le prochain build.
+3. Stripe → Payment methods → Apple Pay → ajouter le domaine `travelba.fr`. Copier le fichier de vérification.
+4. Variable Vercel Production `APPLE_PAY_DOMAIN_ASSOCIATION` : le corps de ce fichier, pas une clé privée. Puis redéployer. `https://travelba.fr/.well-known/apple-developer-merchantid-domain-association` doit le renvoyer. Sans la variable, la route répond 404.
+5. Dans Stripe, vérifier le domaine. Le marchand Stripe et le marchand Apple doivent être le même compte.
+6. Rebuild TestFlight. Safari et l’application utilisent alors le même bouton.
+
+Aucune nouvelle clé Stripe. Les variables APNs de la 1.1 restent celles du document. `APPLE_PAY_DOMAIN_ASSOCIATION` est la seule variable nouvelle.

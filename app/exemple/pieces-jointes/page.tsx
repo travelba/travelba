@@ -66,6 +66,7 @@ const confirmation: FilePreviewModel = {
   mimeType: "application/pdf",
   label: "Confirmation · Maison Horizon",
   shareText: "Bonjour, je vous transmets une pièce du dossier.",
+  offline: true,
 };
 
 export default function ExampleBoardingGroupsPage() {

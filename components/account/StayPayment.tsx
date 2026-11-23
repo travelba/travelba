@@ -478,7 +478,11 @@ function ApplePayForm({ onPaid }: { onPaid: (message: string) => void }) {
           onPaid(PAYMENT_SENT_LABEL);
         }}
       />
-      {ready === false ? <p className="text-sm text-muted">Apple Pay s’ouvre sur iPhone, iPad ou Safari.</p> : null}
+      {ready === false ? (
+        <p className="text-sm text-muted">Apple Pay s’ouvre sur iPhone, iPad, Safari et dans l’application TBA. La carte reste disponible.</p>
+      ) : (
+        <p className="text-xs text-muted">Le séjour se règle par Apple Pay, comme sur le site.</p>
+      )}
       {error ? (
         <p className="text-sm text-accent" role="alert">
           {error}

@@ -29,7 +29,7 @@ import {
   type FlightNoticeKind,
 } from "./flight-watch";
 import { pushFlightLiveActivity } from "./live-activity-run";
-import { flightPushCopy } from "./push-copy";
+import { flightNoticeKey, flightPushCopy } from "./push-copy";
 import { sendCustomerPush } from "./push-notices";
 import { siteConfig } from "../site";
 import { sendContentTemplate } from "./whatsapp";
@@ -194,7 +194,7 @@ async function pushNotice(input: {
     title: copy.title,
     body: copy.body,
     url: `/mon-compte/reservations/${input.booking.reference}`,
-    idempotencyKey: `flight:${input.itemId}:${input.kind}:${input.startAt || ""}`.slice(0, 180),
+    idempotencyKey: flightNoticeKey(input.itemId, input.kind, input.startAt),
     bookingId: input.booking.id,
   });
 }
