@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { siteConfig } from "@/lib/site";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { navAllows } from "@/lib/crm/agency-guard";
@@ -19,6 +20,8 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const headerStore = await headers();
+  if (headerStore.get("x-travelba-maquette") === "club") return children;
   const { user } = await getSessionUser();
   const staff = user ? await getStaffForUser(user.id) : null;
   const narrow = !staff || staff.role === "partner" || staff.role === "ratehawk_cert";

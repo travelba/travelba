@@ -26,6 +26,7 @@ import {
 import type { Permission } from "@/lib/crm/agency-access";
 import type { StaffRole } from "@/lib/crm/staff-team";
 
+const NO_EXTRA_GROUPS: AdminNavGroup[] = [];
 const COLLAPSED_KEY = "tba-admin-nav-collapsed";
 const collapsedListeners = new Set<() => void>();
 
@@ -72,6 +73,8 @@ export function AdminNav({
   staffRole = "",
   allows = null,
   showExample = false,
+  extraGroups = NO_EXTRA_GROUPS,
+  preview = false,
   children,
 }: {
   /** Les compteurs du menu (`adminBadges`). */
@@ -86,16 +89,21 @@ export function AdminNav({
   staffRole?: StaffRole | "";
   allows?: Partial<Record<Permission, boolean>> | null;
   showExample?: boolean;
+  /** Groupes ajoutés seulement par la maquette. Le menu réel n’en reçoit pas. */
+  extraGroups?: AdminNavGroup[];
+  /** Maquette : pas de quai WhatsApp, pas de déconnexion réelle. */
+  preview?: boolean;
   children?: React.ReactNode;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
   const counts = countsInput;
-  const groups = useMemo(
-    () => adminNavGroups({ role: staffRole, showExample, allows }),
-    [staffRole, showExample, allows]
-  );
+  const groups = useMemo(() => {
+    const base = adminNavGroups({ role: staffRole, showExample, allows });
+    if (!extraGroups.length) return base;
+    return [base[0], ...extraGroups, ...base.slice(1)].filter((group): group is AdminNavGroup => Boolean(group));
+  }, [staffRole, showExample, allows, extraGroups]);
   const partner = staffRole === "partner";
   const ratehawkCert = staffRole === "ratehawk_cert";
   const narrow = partner || ratehawkCert;
@@ -117,6 +125,10 @@ export function AdminNav({
   }
 
   async function signOut() {
+    if (preview) {
+      router.push("/maquette/club");
+      return;
+    }
     // Route serveur : le signOut du navigateur attend Auth avant de naviguer.
     // S’il ne répond pas, le clic ne fait rien et le proxy renvoie vers /admin.
     await signOutAccount("local", partner ? "/admin/login?espace=myler" : "/admin/login");
@@ -268,7 +280,7 @@ export function AdminNav({
               {children}
             </main>
           </div>
-          {narrow ? null : dockPromise ? (
+          {narrow || preview ? null : dockPromise ? (
             <Suspense fallback={null}>
               <LiveDock promise={dockPromise} />
             </Suspense>
@@ -286,7 +298,7 @@ export function AdminNav({
           )}
         </Suspense>
       )}
-      {narrow ? null : <HotelReplyToasts />}
+      {narrow || preview ? null : <HotelReplyToasts />}
     </>
   );
 }

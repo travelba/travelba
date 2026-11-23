@@ -10,6 +10,16 @@ import { siteConfig } from "@/lib/site";
 import { ONBOARDING_PATH } from "@/lib/crm/session";
 import { accountTabDirection } from "@/lib/crm/account-motion";
 import { AccountNightTabs, type NightTabIcon } from "@/components/account/AccountNightTabs";
+
+export type AccountChromeLink = {
+  href: string;
+  label: string;
+  exact?: boolean;
+  icon: string;
+  night: NightTabIcon;
+  /** Préfixes qui allument l’onglet. Sinon le lien lui-même. */
+  match?: string[];
+};
 import { AccountUserMenu } from "@/components/account/AccountUserMenu";
 import { SIGN_OUT_LABEL } from "@/lib/crm/user-menu";
 
@@ -43,6 +53,8 @@ export function AccountChrome({
   preview = false,
   desk = false,
   hotels = false,
+  links,
+  previewHome,
   children,
 }: {
   customerName: string;
@@ -56,13 +68,21 @@ export function AccountChrome({
   preview?: boolean;
   /** Barre noire et onglet Hôtels. Réservé au compte autorisé, tant que la barre n’est pas validée. */
   hotels?: boolean;
+  /** Onglets de la maquette. Absent : le menu réel de l’espace client. */
+  links?: AccountChromeLink[];
+  /** Maquette : « Se déconnecter » revient à l’index, sans toucher la session. */
+  previewHome?: string;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const tabs = tabsFor(basePath, hotels);
-  const activeIndex = tabs.findIndex((tab) =>
-    tab.exact ? pathname === tab.href : pathname === tab.href || pathname.startsWith(`${tab.href}/`)
-  );
+  const tabs = links?.length
+    ? links
+    : tabsFor(basePath, hotels);
+  const activeIndex = tabs.findIndex((tab) => {
+    const roots = "match" in tab && tab.match?.length ? tab.match : null;
+    if (roots) return roots.some((root) => pathname === root || pathname.startsWith(`${root}/`));
+    return tab.exact ? pathname === tab.href : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+  });
   const title = tabs[activeIndex]?.label ?? "Espace client";
   const phoneWall = needsPhone && !pathname.startsWith(`${basePath}/profil`);
 
@@ -82,6 +102,10 @@ export function AccountChrome({
   }
 
   async function signOut() {
+    if (previewHome) {
+      window.location.assign(previewHome);
+      return;
+    }
     if (!preview && !desk) {
       await fetch("/api/client/activity", {
         method: "POST",
