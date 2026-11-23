@@ -36,7 +36,7 @@ test("la bienvenue suit les captures de l’espace client, dans l’ordre de la 
   }
   assert.equal(
     CLIENT_ONBOARDING_STEPS[0].title,
-    "Un espace client privé, ouvert sur invitation"
+    "Bienvenue dans TBA - Travel Club"
   );
   assert.equal(
     CLIENT_ONBOARDING_STEPS.at(-1)?.title,

@@ -29,8 +29,12 @@ import {
   phonesMatch,
   readSignupToken,
   referralAttachable,
+  clubShareText,
+  referralBalance,
+  referralCountMode,
   referralShareText,
   referralUrl,
+  TRAVEL_CLUB_NAME,
   signSignupToken,
   signupLinkSecret,
   signupRateRules,
@@ -42,7 +46,10 @@ import {
   waMeHref,
   whatsappCloudConfigured,
   whatsappInvitationPayload,
+  whatsappReferralConfigured,
+  whatsappReferralPayload,
   type CustomerHit,
+  type ReferralCountMode,
   type SignupDraft,
   type SignupStatus,
 } from "./signup";
@@ -189,6 +196,8 @@ type InvitationRow = {
   customer_id: string | null;
   status: string;
   expires_at: string;
+  kind?: string | null;
+  referrer_customer_id?: string | null;
 };
 
 async function invitationFromToken(client: Db, token: string): Promise<InvitationRow | null> {
@@ -197,7 +206,7 @@ async function invitationFromToken(client: Db, token: string): Promise<Invitatio
   if (!parsed) return null;
   const { data, error } = await client
     .from("crm_signup_invitations")
-    .select("id, token_hash, first_name, last_name, phone, email, customer_id, status, expires_at")
+    .select("id, token_hash, first_name, last_name, phone, email, customer_id, status, expires_at, kind, referrer_customer_id")
     .eq("id", parsed.id)
     .maybeSingle();
   if (error) fail(error, "Cette invitation ne s’ouvre pas.");
@@ -207,21 +216,74 @@ async function invitationFromToken(client: Db, token: string): Promise<Invitatio
   return row;
 }
 
-async function bindReferral(client: Db, requestId: string, draft: SignupDraft) {
-  if (!draft.referralCode) return;
-  const { data } = await client.from("crm_referral_codes").select("customer_id, code").eq("code", draft.referralCode).maybeSingle();
-  const codeRow = data as { customer_id?: string; code?: string } | null;
-  if (!codeRow?.customer_id) return;
-  const referrer = await client.from("crm_customers").select("email").eq("id", codeRow.customer_id).maybeSingle();
+async function bindReferral(client: Db, requestId: string, draft: SignupDraft, invitation?: InvitationRow | null) {
+  const fromInvite = invitation?.kind === "parrainage" ? invitation.referrer_customer_id : null;
+  let referrerId = fromInvite || "";
+  let code = draft.referralCode || "";
+  if (!referrerId && draft.referralCode) {
+    const { data } = await client.from("crm_referral_codes").select("customer_id, code").eq("code", draft.referralCode).maybeSingle();
+    const codeRow = data as { customer_id?: string; code?: string } | null;
+    referrerId = codeRow?.customer_id || "";
+    code = codeRow?.code || draft.referralCode;
+  }
+  if (!referrerId) return;
+  const referrer = await client.from("crm_customers").select("email, first_name").eq("id", referrerId).maybeSingle();
   const referrerEmail = (referrer.data as { email?: string } | null)?.email ?? null;
-  if (!referralAttachable({ code: draft.referralCode, referrerEmail, applicantEmail: draft.email })) return;
+  if (!fromInvite && !referralAttachable({ code, referrerEmail, applicantEmail: draft.email })) return;
   const existing = await client.from("crm_referrals").select("id").eq("request_id", requestId).limit(1);
   if ((existing.data || []).length) return;
+    if (!fromInvite) {
+    const balance = await readReferralBalance(client, referrerId);
+    if (balance.blocked) return;
+    if (balance.mode === "envoi") {
+      const marked = await client.from("crm_signup_invitations").insert({
+        token_hash: hashToken(newOpaqueToken()),
+        first_name: draft.firstName,
+        last_name: draft.lastName,
+        phone: draft.phone,
+        status: "demande_deposee",
+        expires_at: new Date().toISOString(),
+        channel: "wa_me",
+        kind: "parrainage",
+        referrer_customer_id: referrerId,
+        submitted_at: new Date().toISOString(),
+        sent_at: new Date().toISOString(),
+      });
+      if (marked.error) return;
+    }
+  }
+  if (!code) {
+    const owned = await ensureReferralCode(client, referrerId);
+    code = owned || TRAVEL_CLUB_NAME;
+  }
   await client.from("crm_referrals").insert({
-    referrer_customer_id: codeRow.customer_id,
+    referrer_customer_id: referrerId,
     request_id: requestId,
-    code: draft.referralCode,
+    code,
     status: "en_attente",
+  });
+}
+
+async function readReferralBalance(client: Db, customerId: string) {
+  const settings = await client.from("crm_signup_settings").select("referral_count_mode").eq("id", 1).maybeSingle();
+  const mode = referralCountMode((settings.data as { referral_count_mode?: string } | null)?.referral_count_mode);
+  const sentQuery = await client
+    .from("crm_signup_invitations")
+    .select("id", { count: "exact", head: true })
+    .eq("referrer_customer_id", customerId)
+    .eq("kind", "parrainage");
+  const validQuery = await client
+    .from("crm_referrals")
+    .select("id", { count: "exact", head: true })
+    .eq("referrer_customer_id", customerId)
+    .eq("status", "valide");
+  if (sentQuery.error && (sentQuery.error.code === "42703" || sentQuery.error.code === "42P01")) {
+    return referralBalance({ mode, sent: 0, validated: 0 });
+  }
+  return referralBalance({
+    mode,
+    sent: sentQuery.count || 0,
+    validated: validQuery.count || 0,
   });
 }
 
@@ -298,7 +360,8 @@ export async function submitSignup(input: { draft: SignupDraft; origin: string; 
     email_token_expires_at: new Date(Date.now() + EMAIL_TOKEN_TTL_MS).toISOString(),
     view_token_hash: hashToken(viewToken),
     invitation_id: invitation?.id ?? existing?.invitation_id ?? null,
-    invited_by_staff: Boolean(invitation) || existing?.invited_by_staff === true,
+    invited_by_staff:
+      (Boolean(invitation) && invitation?.kind !== "parrainage") || existing?.invited_by_staff === true,
   };
 
   let requestId = existing?.id || "";
@@ -324,7 +387,7 @@ export async function submitSignup(input: { draft: SignupDraft; origin: string; 
     if (updated.error) fail(updated.error, "La demande n’a pas pu être enregistrée.");
     requestId = existing.id;
     if (existing.email_verified_at && status === "en_attente") {
-      await bindReferral(client, requestId, input.draft);
+      await bindReferral(client, requestId, input.draft, invitation);
       await notifyAdmins(client, `${input.draft.firstName} ${input.draft.lastName}`, requestId, input.origin);
       const received = signupEmailHtml("received", { firstName: input.draft.firstName });
       await sendMail([input.draft.email], received.subject, received.html);
@@ -333,7 +396,7 @@ export async function submitSignup(input: { draft: SignupDraft; origin: string; 
     }
   }
 
-  await bindReferral(client, requestId, input.draft);
+  await bindReferral(client, requestId, input.draft, invitation);
   if (invitation) {
     await client
       .from("crm_signup_invitations")
@@ -626,7 +689,10 @@ export async function listSignupQueue(status?: string | null) {
     if (missingRelation(error)) return { ready: false as const, rows: [] };
     throw new SignupError("La file n’a pas pu être lue.", 500);
   }
-  const settings = await client.from("crm_signup_settings").select("auto_validate_invited").eq("id", 1).maybeSingle();
+  let settings = await client.from("crm_signup_settings").select("auto_validate_invited, referral_count_mode").eq("id", 1).maybeSingle();
+  if (settings.error?.code === "42703" || settings.error?.code === "PGRST204") {
+    settings = await client.from("crm_signup_settings").select("auto_validate_invited").eq("id", 1).maybeSingle();
+  }
   const invitations = await client
     .from("crm_signup_invitations")
     .select("id, first_name, last_name, phone, status, expires_at, channel, created_at")
@@ -648,6 +714,7 @@ export async function listSignupQueue(status?: string | null) {
       submitted_at: string | null;
     }[],
     autoValidate: (settings.data as { auto_validate_invited?: boolean } | null)?.auto_validate_invited === true,
+    referralCountMode: referralCountMode((settings.data as { referral_count_mode?: string } | null)?.referral_count_mode),
     invitations: ((invitations.data || []) as { id: string; first_name: string; last_name: string; phone: string; status: string; expires_at: string; channel: string; created_at: string }[]).map(
       (row) => ({ ...row, shown: displayedInvitationStatus({ status: row.status, expiresAt: row.expires_at }) })
     ),
@@ -763,20 +830,29 @@ export async function reviewSignup(input: {
 
 export async function createSignupInvitation(input: {
   firstName: string;
-  lastName: string;
+  lastName?: string;
   phone: string;
   email?: string | null;
   customerId?: string | null;
-  staffId: string;
+  staffId?: string | null;
   origin: string;
   send: boolean;
+  kind?: "admin" | "parrainage";
+  referrerCustomerId?: string | null;
+  referrerFirstName?: string | null;
 }) {
+  const kind = input.kind === "parrainage" ? "parrainage" : "admin";
   const firstName = input.firstName.trim().replace(/\s+/g, " ");
-  const lastName = input.lastName.trim().replace(/\s+/g, " ");
+  const lastName = (input.lastName || "").trim().replace(/\s+/g, " ") || "—";
   const phone = normalizePhone(input.phone);
-  if (firstName.length < 1 || lastName.length < 1) throw new SignupError("Indiquez le nom et le prénom.", 400);
+  if (firstName.length < 1 || (kind === "admin" && lastName === "—")) throw new SignupError("Indiquez le nom et le prénom.", 400);
   if (phone.replace(/\D/g, "").length < 8) throw new SignupError("Indiquez un numéro de téléphone.", 400);
   const client = db();
+  if (kind === "parrainage") {
+    if (!input.referrerCustomerId) throw new SignupError("Le membre parrain est requis.", 400);
+    const balance = await readReferralBalance(client, input.referrerCustomerId);
+    if (balance.blocked) throw new SignupError("Le plafond de 10 invitations est atteint.", 409);
+  }
   const secret = signupLinkSecret(process.env);
   if (!secret) throw new SignupError("Le secret de signature n’est pas configuré.", 503);
   const id = crypto.randomUUID();
@@ -784,19 +860,41 @@ export async function createSignupInvitation(input: {
   const token = signSignupToken(id, exp, secret);
   const expiresAt = new Date(exp * 1000).toISOString();
   const link = invitationUrl(input.origin, token);
-  const text = invitationShareText({ firstName, link, expiresLabel: expiresLabel(new Date(exp * 1000)) });
-  const cloud = input.send && whatsappCloudConfigured(process.env);
+  const when = expiresLabel(new Date(exp * 1000));
+  const text =
+    kind === "parrainage"
+      ? referralShareText({
+          guestFirstName: firstName,
+          referrerFirstName: input.referrerFirstName || "Un membre",
+          link,
+          expiresLabel: when,
+        })
+      : invitationShareText({ firstName, link, expiresLabel: when });
+  const cloud =
+    input.send && (kind === "parrainage" ? whatsappReferralConfigured(process.env) : whatsappCloudConfigured(process.env));
   let channel: "whatsapp_cloud" | "wa_me" = "wa_me";
   let provider: string | null = null;
   if (cloud) {
-    const payload = whatsappInvitationPayload({
-      to: phone,
-      template: (process.env.WHATSAPP_TEMPLATE_INVITATION || "").trim(),
-      lang: (process.env.WHATSAPP_TEMPLATE_LANG || "fr").trim() || "fr",
-      firstName,
-      expiresLabel: expiresLabel(new Date(exp * 1000)),
-      token,
-    });
+    const lang = (process.env.WHATSAPP_TEMPLATE_LANG || "fr").trim() || "fr";
+    const payload =
+      kind === "parrainage"
+        ? whatsappReferralPayload({
+            to: phone,
+            template: (process.env.WHATSAPP_TEMPLATE_PARRAINAGE || "invitation_parrainage").trim(),
+            lang,
+            guestFirstName: firstName,
+            referrerFirstName: input.referrerFirstName || "Un membre",
+            expiresLabel: when,
+            token,
+          })
+        : whatsappInvitationPayload({
+            to: phone,
+            template: (process.env.WHATSAPP_TEMPLATE_INVITATION || "").trim(),
+            lang,
+            firstName,
+            expiresLabel: when,
+            token,
+          });
     const sent = await sendWhatsappCloud(payload);
     if (sent.ok) {
       channel = "whatsapp_cloud";
@@ -813,23 +911,27 @@ export async function createSignupInvitation(input: {
     customer_id: input.customerId || null,
     status: "envoyee",
     expires_at: expiresAt,
-    created_by: input.staffId,
+    created_by: input.staffId || null,
     channel,
+    kind,
+    referrer_customer_id: kind === "parrainage" ? input.referrerCustomerId : null,
     sent_at: new Date().toISOString(),
     provider_message_id: provider,
   });
   if (inserted.error) fail(inserted.error, "L’invitation n’a pas été créée.");
+  const balance = kind === "parrainage" && input.referrerCustomerId ? await readReferralBalance(client, input.referrerCustomerId) : null;
   return {
     id,
     canal: channel,
     lien: link,
     partage: waMeHref(phone, text),
-    expireLe: expiresLabel(new Date(exp * 1000)),
+    expireLe: when,
     envoye: channel === "whatsapp_cloud",
+    restantes: balance?.remaining ?? null,
   };
 }
 
-async function sendWhatsappCloud(payload: ReturnType<typeof whatsappInvitationPayload>) {
+async function sendWhatsappCloud(payload: ReturnType<typeof whatsappInvitationPayload> | ReturnType<typeof whatsappReferralPayload>) {
   const token = productionOnlySecret(process.env.WHATSAPP_TOKEN);
   const phoneId = (process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
   const version = (process.env.WHATSAPP_GRAPH_VERSION || "v21.0").replace(/[^\w.]/g, "") || "v21.0";
@@ -898,7 +1000,8 @@ export async function setSignupAutoValidate(enabled: boolean) {
   const client = db();
   const { error } = await client
     .from("crm_signup_settings")
-    .upsert({ id: 1, auto_validate_invited: enabled, updated_at: new Date().toISOString() });
+    .update({ auto_validate_invited: enabled, updated_at: new Date().toISOString() })
+    .eq("id", 1);
   if (error) fail(error, "Le réglage n’a pas été enregistré.");
 }
 
@@ -974,12 +1077,44 @@ export async function referralShareForCustomer(customerId: string, origin: strin
     const client = db();
     const code = await ensureReferralCode(client, customerId);
     if (!code) return null;
+    const person = await client.from("crm_customers").select("first_name").eq("id", customerId).maybeSingle();
+    const firstName = (person.data as { first_name?: string } | null)?.first_name || "";
+    const balance = await readReferralBalance(client, customerId);
     const link = referralUrl(origin, code);
-    return { code, link, text: referralShareText(link), whatsapp: signupShareWhatsapp(referralShareText(link)) };
+    const text = clubShareText({ referrerFirstName: firstName, link });
+    return {
+      code,
+      link,
+      text,
+      whatsapp: signupShareWhatsapp(text),
+      remaining: balance.remaining,
+      cap: balance.cap,
+      used: balance.used,
+      mode: balance.mode,
+      firstName,
+    };
   } catch (error) {
     if (error instanceof SignupError && error.status === 503) return null;
     return null;
   }
+}
+
+export async function referralAccountFor(customerId: string) {
+  try {
+    const balance = await readReferralBalance(db(), customerId);
+    return balance;
+  } catch {
+    return null;
+  }
+}
+
+export async function setReferralCountMode(mode: ReferralCountMode) {
+  const client = db();
+  const { error } = await client
+    .from("crm_signup_settings")
+    .update({ referral_count_mode: mode, updated_at: new Date().toISOString() })
+    .eq("id", 1);
+  if (error) fail(error, "Le réglage n’a pas été enregistré.");
 }
 
 export function signupShareWhatsapp(text: string) {

@@ -496,6 +496,15 @@ export const CLIENT_SPACE_ACTIONS: ClientSpaceAction[] = [
     rule: "Aucune suppression immédiate. Les séjours restent. Le concierge n’efface pas le compte.",
   },
   {
+    id: "inviter_proche",
+    page: "/mon-compte/profil",
+    route: "/api/client/parrainage",
+    method: "POST",
+    client: "Prépare ou envoie une invitation TBA - Travel Club, dans la limite de 10.",
+    concierge: "inviter_proche",
+    rule: "Le membre confirme le prénom et le téléphone. Le plafond est appliqué. Le concierge ne choisit pas le destinataire.",
+  },
+  {
     id: "lire_messages",
     page: "/mon-compte/messages",
     route: "/api/client/messages",

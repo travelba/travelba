@@ -12,6 +12,8 @@ import {
   invitationCanOpen,
   invitationShareText,
   matchingCustomers,
+  referralBalance,
+  referralShareText,
   planAutoValidation,
   planComplement,
   planRefusal,
@@ -29,6 +31,7 @@ import {
   waMeHref,
   whatsappCloudConfigured,
   whatsappInvitationPayload,
+  whatsappReferralPayload,
 } from "./signup";
 
 const NOW = new Date("2026-11-23T12:00:00Z");
@@ -212,7 +215,26 @@ test("l’invitation expire, le SMS reste éteint sans flag, WhatsApp retombe su
     true
   );
   const text = invitationShareText({ firstName: "Camille", link: "https://travelba.fr/inscription/i/abc", expiresLabel: "7 décembre 2026" });
-  assert.match(text, /personnel/);
+  assert.match(text, /TBA - Travel Club/);
+  assert.match(text, /Benjamin Boukris/);
+  assert.match(text, /offerte/);
+  const parrain = referralShareText({
+    guestFirstName: "Léa",
+    referrerFirstName: "Camille",
+    link: "https://travelba.fr/inscription/i/abc",
+    expiresLabel: "7 décembre 2026",
+  });
+  assert.match(parrain, /Camille vous invite/);
+  assert.deepEqual(referralBalance({ mode: "envoi", sent: 3, validated: 1 }), {
+    cap: 10,
+    used: 3,
+    remaining: 7,
+    blocked: false,
+    mode: "envoi",
+  });
+  assert.equal(referralBalance({ mode: "envoi", sent: 10, validated: 0 }).blocked, true);
+  assert.equal(referralBalance({ mode: "validee", sent: 10, validated: 2 }).remaining, 8);
+  assert.equal(referralBalance({ mode: "validee", sent: 1, validated: 10 }).blocked, true);
   assert.match(waMeHref("+33612345678", text), /^https:\/\/wa\.me\/33612345678\?text=/);
   const payload = whatsappInvitationPayload({
     to: "+33612345678",
@@ -224,6 +246,17 @@ test("l’invitation expire, le SMS reste éteint sans flag, WhatsApp retombe su
   });
   assert.equal(payload.template.name, "invitation_inscription");
   assert.equal(payload.template.components[1].parameters[0].text, "abc");
+  const referralPayload = whatsappReferralPayload({
+    to: "+33612345678",
+    template: "invitation_parrainage",
+    lang: "fr",
+    guestFirstName: "Léa",
+    referrerFirstName: "Camille",
+    expiresLabel: "7 décembre 2026",
+    token: "abc",
+  });
+  assert.equal(referralPayload.template.components[0].parameters[1].text, "Camille");
+  assert.equal(referralPayload.template.components[0].parameters.length, 3);
 });
 
 test("le parrain n’est pas le demandeur, et le téléphone se compare sur les neuf derniers chiffres", () => {
@@ -249,8 +282,10 @@ test("le parrain n’est pas le demandeur, et le téléphone se compare sur les 
 
 test("les e-mails sont en français et le refus sans case n’a pas de motif à envoyer", () => {
   const received = signupMailCopy("received", { firstName: "Camille" });
-  assert.match(received.subject, /bien reçue/);
-  assert.match(received.paragraphs.join(" "), /n’avez pas encore accès/);
+  assert.match(received.paragraphs.join(" "), /TBA - Travel Club/);
+  assert.match(received.paragraphs.join(" "), /Benjamin Boukris/);
+  const accepted = signupMailCopy("validated", { firstName: "Camille" });
+  assert.match(accepted.paragraphs.join(" "), /offerte/);
   const refused = signupMailCopy("refused", { firstName: "Camille", message: "Hors zone" });
   assert.match(refused.paragraphs.join(" "), /Hors zone/);
   const rules = signupRateRules("203.0.113.5", "camille@exemple.fr");

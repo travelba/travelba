@@ -181,12 +181,18 @@ export async function completerInscription(args: Record<string, unknown>) {
 }
 
 export async function creerInvitationInscription(args: Record<string, unknown>) {
+  const parrainId = typeof args.parrain_id === "string" ? args.parrain_id.trim() : "";
   const clientId = typeof args.client_id === "string" ? args.client_id.trim() : "";
   let firstName = typeof args.prenom === "string" ? args.prenom : "";
   let lastName = typeof args.nom === "string" ? args.nom : "";
   let phone = typeof args.telephone === "string" ? args.telephone : "";
   let email = typeof args.email === "string" ? args.email : "";
-  if (clientId) {
+  let referrerFirstName = "";
+  if (parrainId) {
+    const parrain = await customerForInvitation(parrainId);
+    if (!parrain) throw new McpWriteError("Membre introuvable.");
+    referrerFirstName = parrain.first_name;
+  } else if (clientId) {
     const fiche = await customerForInvitation(clientId);
     if (!fiche) throw new McpWriteError("Fiche introuvable.");
     firstName = firstName || fiche.first_name;
@@ -195,8 +201,8 @@ export async function creerInvitationInscription(args: Record<string, unknown>) 
     email = email || fiche.email || "";
   }
   if (args.confirmer !== true) {
-    const preview = await previewSignupInvitation({ firstName, phone, origin: origin() });
-    return { ...preview, prenom: firstName, nom: lastName };
+    const preview = await previewSignupInvitation({ firstName: referrerFirstName || firstName, phone, origin: origin() });
+    return { ...preview, prenom: firstName, nom: lastName, parrain: referrerFirstName || null };
   }
   const staff = staffId();
   if (!staff) throw new McpWriteError("Cette invitation est au nom d’un membre de l’agence.");
@@ -206,10 +212,13 @@ export async function creerInvitationInscription(args: Record<string, unknown>) 
       lastName,
       phone,
       email,
-      customerId: clientId || null,
+      customerId: parrainId ? null : clientId || null,
       staffId: staff,
       origin: origin(),
       send: args.envoyer === true,
+      kind: parrainId ? "parrainage" : "admin",
+      referrerCustomerId: parrainId || null,
+      referrerFirstName,
     });
   } catch (error) {
     fail(error);

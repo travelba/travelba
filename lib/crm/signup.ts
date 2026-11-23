@@ -5,9 +5,25 @@
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { rateLimitKey, type RateLimitRule } from "./rate-limit";
-import { HEARD_ABOUT, SIGNUP_COOKIE } from "./signup-options";
+import {
+  HEARD_ABOUT,
+  REFERRAL_CAP,
+  SIGNUP_COOKIE,
+  TRAVEL_CLUB_FEE_EUROS,
+  TRAVEL_CLUB_FEE_LABEL,
+  TRAVEL_CLUB_MANAGER,
+  TRAVEL_CLUB_NAME,
+} from "./signup-options";
 
-export { HEARD_ABOUT, SIGNUP_COOKIE };
+export {
+  HEARD_ABOUT,
+  REFERRAL_CAP,
+  SIGNUP_COOKIE,
+  TRAVEL_CLUB_FEE_EUROS,
+  TRAVEL_CLUB_FEE_LABEL,
+  TRAVEL_CLUB_MANAGER,
+  TRAVEL_CLUB_NAME,
+};
 
 export const SIGNUP_STATUSES = ["brouillon", "en_attente", "a_completer", "validee", "refusee"] as const;
 export type SignupStatus = (typeof SIGNUP_STATUSES)[number];
@@ -17,6 +33,9 @@ export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
 
 export const REFERRAL_STATUSES = ["en_attente", "valide"] as const;
 export type ReferralStatus = (typeof REFERRAL_STATUSES)[number];
+
+export const REFERRAL_COUNT_MODES = ["envoi", "validee"] as const;
+export type ReferralCountMode = (typeof REFERRAL_COUNT_MODES)[number];
 
 export const INVITATION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 export const EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
@@ -54,12 +73,16 @@ export function signupSmsRequired(env: Record<string, string | undefined>) {
   );
 }
 
+export function whatsappCloudReady(env: Record<string, string | undefined>, template: string | undefined) {
+  return Boolean((env.WHATSAPP_TOKEN || "").trim() && (env.WHATSAPP_PHONE_NUMBER_ID || "").trim() && (template || "").trim());
+}
+
 export function whatsappCloudConfigured(env: Record<string, string | undefined>) {
-  return Boolean(
-    (env.WHATSAPP_TOKEN || "").trim() &&
-      (env.WHATSAPP_PHONE_NUMBER_ID || "").trim() &&
-      (env.WHATSAPP_TEMPLATE_INVITATION || "").trim()
-  );
+  return whatsappCloudReady(env, env.WHATSAPP_TEMPLATE_INVITATION);
+}
+
+export function whatsappReferralConfigured(env: Record<string, string | undefined>) {
+  return whatsappCloudReady(env, env.WHATSAPP_TEMPLATE_PARRAINAGE || "invitation_parrainage");
 }
 
 export function honeypotTripped(value: unknown) {
@@ -256,7 +279,31 @@ export function expiresLabel(date: Date) {
 
 export function invitationShareText(input: { firstName: string; link: string; expiresLabel: string }) {
   const name = input.firstName.trim() || "Bonjour";
-  return `Bonjour ${name}, l’agence vous invite à demander votre inscription. Ce lien est personnel, à usage unique, et expire le ${input.expiresLabel} : ${input.link}`;
+  return `${name}, ${TRAVEL_CLUB_MANAGER} vous propose de rejoindre ${TRAVEL_CLUB_NAME}. L’adhésion, d’une valeur de ${TRAVEL_CLUB_FEE_LABEL.replace(", offerte", "")}, vous est offerte. Ce lien personnel expire le ${input.expiresLabel} : ${input.link}`;
+}
+
+export function clubShareText(input: { referrerFirstName: string; link: string }) {
+  const referrer = input.referrerFirstName.trim() || "Un membre";
+  return `${referrer} vous invite à rejoindre ${TRAVEL_CLUB_NAME}. ${TRAVEL_CLUB_MANAGER} en est le gestionnaire. L’adhésion, d’une valeur de ${TRAVEL_CLUB_FEE_LABEL}, vous est offerte. ${input.link}`;
+}
+
+export function referralShareText(input: { guestFirstName: string; referrerFirstName: string; link: string; expiresLabel: string }) {
+  const guest = input.guestFirstName.trim() || "Bonjour";
+  const referrer = input.referrerFirstName.trim() || "Un membre";
+  return `${guest}, ${referrer} vous invite à rejoindre ${TRAVEL_CLUB_NAME}. ${TRAVEL_CLUB_MANAGER} en est le gestionnaire. L’adhésion, d’une valeur de ${TRAVEL_CLUB_FEE_LABEL.replace(", offerte", "")}, vous est offerte. Ce lien personnel expire le ${input.expiresLabel} : ${input.link}`;
+}
+
+/** Invitations restantes. `envoi` compte les envois. `validee` compte les filleuls validés. */
+export function referralBalance(input: { mode: ReferralCountMode; sent: number; validated: number; cap?: number }) {
+  const cap = input.cap ?? REFERRAL_CAP;
+  const used = input.mode === "validee" ? input.validated : input.sent;
+  const safeUsed = Math.max(0, used);
+  const remaining = Math.max(0, cap - safeUsed);
+  return { cap, used: safeUsed, remaining, blocked: remaining <= 0, mode: input.mode };
+}
+
+export function referralCountMode(value: unknown): ReferralCountMode {
+  return value === "validee" ? "validee" : "envoi";
 }
 
 export function waMeHref(phone: string, text: string) {
@@ -264,11 +311,7 @@ export function waMeHref(phone: string, text: string) {
   return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
 }
 
-export function referralShareText(link: string) {
-  return `Je voyage avec Travel Business Agency. Si vous souhaitez leur confier un séjour, vous pouvez demander votre inscription avec mon lien : ${link}`;
-}
-
-/** Modèle Meta : corps {{1}} prénom, {{2}} date, bouton URL https://travelba.fr/inscription/i/{{1}}. */
+/** Modèle Meta invitation_inscription : {{1}} prénom, {{2}} date, bouton URL …/inscription/i/{{1}}. */
 export function whatsappInvitationPayload(input: {
   to: string;
   template: string;
@@ -289,6 +332,43 @@ export function whatsappInvitationPayload(input: {
           type: "body",
           parameters: [
             { type: "text", text: input.firstName.slice(0, 80) },
+            { type: "text", text: input.expiresLabel.slice(0, 40) },
+          ],
+        },
+        {
+          type: "button",
+          sub_type: "url",
+          index: "0",
+          parameters: [{ type: "text", text: input.token }],
+        },
+      ],
+    },
+  };
+}
+
+/** Modèle invitation_parrainage : {{1}} filleul, {{2}} parrain, {{3}} date, bouton URL …/inscription/i/{{1}}. */
+export function whatsappReferralPayload(input: {
+  to: string;
+  template: string;
+  lang: string;
+  guestFirstName: string;
+  referrerFirstName: string;
+  expiresLabel: string;
+  token: string;
+}) {
+  return {
+    messaging_product: "whatsapp",
+    to: input.to.replace(/\D/g, ""),
+    type: "template",
+    template: {
+      name: input.template,
+      language: { code: input.lang || "fr" },
+      components: [
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: input.guestFirstName.slice(0, 80) },
+            { type: "text", text: input.referrerFirstName.slice(0, 80) },
             { type: "text", text: input.expiresLabel.slice(0, 40) },
           ],
         },
@@ -450,8 +530,8 @@ export function signupMailCopy(kind: "verify" | "received" | "complement" | "ref
       title: "Confirmez votre adresse",
       paragraphs: [
         `Bonjour ${name},`,
-        "Pour déposer votre demande d’inscription, confirmez cette adresse. Le lien est valable 24 heures.",
-        "Tant que l’agence n’a pas validé la demande, vous n’avez pas accès à vos séjours.",
+        `${TRAVEL_CLUB_MANAGER} vous écrit. Confirmez cette adresse pour demander votre entrée dans ${TRAVEL_CLUB_NAME}. Le lien est valable 24 heures.`,
+        "Tant que votre demande n’est pas validée, l’espace reste fermé.",
       ],
       cta: "Confirmer mon adresse",
       href: input.link || "",
@@ -459,12 +539,13 @@ export function signupMailCopy(kind: "verify" | "received" | "complement" | "ref
   }
   if (kind === "received") {
     return {
-      subject: "Votre demande d’inscription est bien reçue",
+      subject: `Votre demande pour ${TRAVEL_CLUB_NAME}`,
       title: "Demande bien reçue",
       paragraphs: [
         `Bonjour ${name},`,
-        "L’agence a reçu votre demande. Elle la relit avant d’ouvrir l’accès.",
-        "Vous n’avez pas encore accès à vos séjours. Nous vous écrivons dès que c’est relu.",
+        `${TRAVEL_CLUB_MANAGER} a reçu votre demande pour ${TRAVEL_CLUB_NAME}. Il la relit avant d’ouvrir l’accès.`,
+        `L’adhésion, d’une valeur de ${TRAVEL_CLUB_FEE_LABEL}, est réservée aux membres.`,
+        "Vous n’avez pas encore accès à vos séjours.",
       ],
       cta: "",
       href: "",
@@ -476,7 +557,7 @@ export function signupMailCopy(kind: "verify" | "received" | "complement" | "ref
       title: "Un complément est demandé",
       paragraphs: [
         `Bonjour ${name},`,
-        "L’agence a besoin d’une précision avant de relire votre demande :",
+        `${TRAVEL_CLUB_MANAGER} a besoin d’une précision avant de relire votre demande pour ${TRAVEL_CLUB_NAME} :`,
         input.message || "",
         "Vous pouvez compléter la demande depuis le lien. Rien n’est ouvert tant qu’elle n’est pas validée.",
       ],
@@ -490,7 +571,7 @@ export function signupMailCopy(kind: "verify" | "received" | "complement" | "ref
       title: "Demande non retenue",
       paragraphs: [
         `Bonjour ${name},`,
-        "L’agence ne peut pas ouvrir l’accès pour le moment.",
+        `${TRAVEL_CLUB_MANAGER} ne peut pas retenir votre demande pour ${TRAVEL_CLUB_NAME} pour le moment.`,
         input.message ? input.message : "Vous pouvez écrire à l’agence si vous souhaitez en parler.",
       ],
       cta: "",
@@ -498,12 +579,13 @@ export function signupMailCopy(kind: "verify" | "received" | "complement" | "ref
     };
   }
   return {
-    subject: "Votre demande est acceptée",
+    subject: `Bienvenue dans ${TRAVEL_CLUB_NAME}`,
     title: "Votre accès va s’ouvrir",
     paragraphs: [
       `Bonjour ${name},`,
-      "L’agence a validé votre demande. Vous allez recevoir l’accès à votre espace, par e-mail et par WhatsApp si le message part.",
-      "Le lien sert à choisir votre mot de passe, ou à ouvrir l’espace.",
+      `${TRAVEL_CLUB_MANAGER} a le plaisir de vous accueillir dans ${TRAVEL_CLUB_NAME}.`,
+      `Votre adhésion, d’une valeur de ${TRAVEL_CLUB_FEE_LABEL}, vous est offerte.`,
+      "Vous allez recevoir l’accès à votre espace, par e-mail et par WhatsApp si le message part.",
     ],
     cta: "",
     href: "",

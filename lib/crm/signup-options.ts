@@ -10,3 +10,9 @@ export const HEARD_ABOUT = [
 ] as const;
 
 export const SIGNUP_COOKIE = "tb_signup";
+
+export const TRAVEL_CLUB_NAME = "TBA - Travel Club";
+export const TRAVEL_CLUB_MANAGER = "Benjamin Boukris";
+export const TRAVEL_CLUB_FEE_EUROS = 1600;
+export const TRAVEL_CLUB_FEE_LABEL = "1 600 € par an, offerte";
+export const REFERRAL_CAP = 10;

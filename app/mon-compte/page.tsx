@@ -73,12 +73,9 @@ export default async function AccountHomePage({ searchParams }: { searchParams: 
       <div className="space-y-3">
         {confirme === "1" ? <StayConfirmedNote /> : null}
         <section className="flex flex-col gap-1 pt-1">
-          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
-            Travel Business Agency · Espace membre
-          </p>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">
-            Bonjour {firstName}
-          </h1>
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">TBA - Travel Club</p>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Bonjour {firstName}</h1>
+          <p className="text-sm text-muted">Adhésion offerte · 1 600 € par an · Benjamin Boukris</p>
         </section>
 
         <TravelNotices />

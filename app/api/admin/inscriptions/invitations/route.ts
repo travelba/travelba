@@ -17,12 +17,20 @@ export async function POST(request: Request) {
     email?: string;
     customerId?: string;
     send?: boolean;
+    kind?: "admin" | "parrainage";
+    referrerCustomerId?: string;
   } | null;
   let firstName = body?.firstName || "";
   let lastName = body?.lastName || "";
   let phone = body?.phone || "";
   let email = body?.email || "";
-  if (body?.customerId) {
+  let referrerFirstName = "";
+  if (body?.kind === "parrainage" && body.referrerCustomerId) {
+    const parrain = await customerForInvitation(body.referrerCustomerId);
+    if (!parrain) return jsonError("Membre introuvable.", 404);
+    referrerFirstName = parrain.first_name;
+  }
+  if (body?.customerId && body.kind !== "parrainage") {
     const fiche = await customerForInvitation(body.customerId);
     if (!fiche) return jsonError("Fiche introuvable.", 404);
     firstName = firstName || fiche.first_name;
@@ -36,10 +44,13 @@ export async function POST(request: Request) {
       lastName,
       phone,
       email,
-      customerId: body?.customerId || null,
+      customerId: body?.kind === "parrainage" ? null : body?.customerId || null,
       staffId: auth.staff.id,
       origin: appOrigin(request),
       send: body?.send === true,
+      kind: body?.kind === "parrainage" ? "parrainage" : "admin",
+      referrerCustomerId: body?.referrerCustomerId || null,
+      referrerFirstName,
     });
     return NextResponse.json(created);
   } catch (error) {

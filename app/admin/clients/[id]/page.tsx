@@ -21,6 +21,9 @@ import { ClientPaymentsSlot } from "@/components/admin/ClientPaymentsSlot";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { MergeCustomersButton } from "@/components/admin/MergeCustomersButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
+import { TravelClubInvite } from "@/components/admin/TravelClubInvite";
+import { referralAccountFor } from "@/lib/crm/signup-run";
+import { REFERRAL_CAP } from "@/lib/crm/signup-options";
 import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
 import { StatementRequest } from "@/components/account/StatementRequest";
 import { ClientPayFollowUp } from "@/components/admin/ClientPayFollowUp";
@@ -472,6 +475,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
 
         <aside className="space-y-3">
       <InviteCustomerPanel customerId={c.id} initial={portal} stacked />
+      <TravelClubSlot customerId={c.id} firstName={c.first_name} />
       <details className="admin-af-card group rounded-3xl">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden [&::marker]:content-none">
           <span className="min-w-0">
@@ -611,4 +615,16 @@ async function loadDirectStays(customerId: string): Promise<DirectDeskStay[]> {
   } catch {
     return [];
   }
+}
+
+async function TravelClubSlot({ customerId, firstName }: { customerId: string; firstName: string }) {
+  const balance = await referralAccountFor(customerId);
+  return (
+    <TravelClubInvite
+      customerId={customerId}
+      firstName={firstName}
+      remaining={balance?.remaining ?? null}
+      cap={balance?.cap ?? REFERRAL_CAP}
+    />
+  );
 }

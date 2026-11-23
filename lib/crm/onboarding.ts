@@ -11,9 +11,9 @@ export const CLIENT_ONBOARDING_STEPS = [
   {
     id: "connexion",
     image: "/onboarding/04-connexion.webp",
-    title: "Un espace client privé, ouvert sur invitation",
+    title: "Bienvenue dans TBA - Travel Club",
     legend:
-      "Chaque voyageur reçoit son accès par e-mail ou sur WhatsApp. Il retrouve ses voyages sur son téléphone comme sur son ordinateur, sans application à installer.",
+      "Votre adhésion, d’une valeur de 1 600 € par an, vous est offerte. Benjamin Boukris est votre gestionnaire. L’espace reste privé : chaque membre y entre sur invitation.",
   },
   {
     id: "accueil",
