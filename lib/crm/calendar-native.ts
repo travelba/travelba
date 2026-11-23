@@ -107,6 +107,14 @@ export function calendarActivation(opts: {
   return calendarClickPlan(opts);
 }
 
+/**
+ * Un événement, comme le prochain vol de l’accueil : feuille système.
+ * Plusieurs, comme tout le séjour : écriture groupée. CalendarBridge suit la même règle.
+ */
+export function nativeCalendarSurface(count: number): "sheet" | "batch" {
+  return count === 1 ? "sheet" : "batch";
+}
+
 /** Texte sous le bouton. `null` : la feuille système suffit, ou l’ajout a été annulé. */
 export function nativeCalendarFeedback(result: NativeCalendarOutcome | null): NativeCalendarFeedback | null {
   if (!result) return { text: "Impossible d’ajouter au calendrier.", settings: false };

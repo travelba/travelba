@@ -1,15 +1,22 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import { bookingCalendarEvents } from "./calendar-ics";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { BoardingPass } from "@/components/account/BoardingPass";
+import { calendarHttpResponse } from "./calendar-http";
+import { bookingCalendarEvents, chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "./calendar-ics";
 import {
   calendarActivation,
   nativeCalendarFeedback,
+  nativeCalendarSurface,
   parseNativeCalendarEvents,
 } from "./calendar-native";
 import { calendarClickPlan } from "./calendar-open";
+import type { LiveFlight } from "./next-flight-live";
 import type { CrmBooking, CrmBookingItem } from "./types";
 
-function booking(): CrmBooking {
+function booking(partial: Partial<CrmBooking> = {}): CrmBooking {
   return {
     id: "b1",
     customer_id: "c1",
@@ -30,6 +37,7 @@ function booking(): CrmBooking {
     visible_to_client: true,
     created_at: "",
     updated_at: "",
+    ...partial,
   };
 }
 
@@ -177,6 +185,84 @@ test("accueil aller-retour : un événement par passage", () => {
   assert.equal(events[1]?.end, "2026-08-15T19:00:00");
   assert.equal(events[1]?.timeZone, "Europe/Paris");
   assert.equal(events[1]?.location, "Paris (CDG)");
+});
+
+test("accueil : Ajouter au calendrier du prochain vol ouvre la feuille, pour ce vol seul", async () => {
+  const flightId = "af650-cdg-cun";
+  const stay = booking({ reference: "TB-2026-1201", start_date: "2026-12-15", end_date: "2026-12-20", title: "Mayakoba", destination: "Mayakoba" });
+  const flight = item({
+    id: flightId,
+    title: "Paris → Cancún",
+    confirmation_ref: "AF650",
+    start_at: "2026-12-15T13:10:00",
+    end_at: "2026-12-15T18:25:00",
+    details: { from: "CDG", to: "CUN", airline: "Air France", flight_number: "AF650" },
+  });
+  const hotel = item({
+    id: "hotel-maya",
+    kind: "hotel",
+    title: "Mayakoba",
+    start_at: "2026-12-15",
+    end_at: "2026-12-20",
+    details: { hotel_name: "Mayakoba", city: "Mayakoba" },
+  });
+  const ua =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Capacitor TBA-iOS";
+  const single = itemCalendarHref(`/mon-compte/reservations/${stay.reference}/agenda.ics`, flightId);
+  assert.equal(single, `/mon-compte/reservations/${stay.reference}/agenda/${flightId}.ics`);
+  const google = googleCalendarHref(flight, stay);
+  const href = chosenCalendarHref(single, { google }, ua);
+  assert.equal(href, single);
+
+  const now = Date.parse("2026-11-23T15:45:00Z");
+  const live: LiveFlight = {
+    airline: "AIR FRANCE",
+    number: "AF650",
+    origin: "CDG",
+    destination: "CUN",
+    departure: { scheduled: "13:10", revised: "" },
+    arrival: { scheduled: "18:25", revised: "" },
+    departureAt: Date.parse("2026-12-15T12:10:00Z"),
+    arrivalAt: Date.parse("2026-12-15T23:25:00Z"),
+    status: "",
+    place: "Terminal 2E",
+    arrivalPlace: "",
+    arrivalPrevue: "18:25",
+    landedClock: "",
+  };
+  const html = renderToStaticMarkup(
+    createElement(BoardingPass, { live, nowMs: now, calendarHref: href, googleHref: google })
+  );
+  assert.match(html, /Décollage dans/);
+  assert.match(html, /Ajouter au calendrier/);
+  assert.match(html, new RegExp(`href="${single}"`));
+  assert.equal(html.includes("calendar.google.com"), false);
+  assert.equal(html.includes(`/agenda.ics"`), false);
+
+  const plan = calendarActivation({ nativeIos: true, href, googleHref: google, ua });
+  assert.deepEqual(plan, { kind: "native", href: single });
+  const response = calendarHttpResponse({
+    request: new Request(`https://travelba.fr${single}`, { headers: { "user-agent": ua, accept: "application/json" } }),
+    booking: stay,
+    items: [flight, hotel],
+    itemId: flightId,
+  });
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as { events: { title: string; start: string; end: string; timeZone: string; endTimeZone: string }[] };
+  assert.equal(body.events.length, 1);
+  assert.equal(body.events[0]?.title, "Vol CDG → CUN");
+  assert.equal(body.events[0]?.start, "2026-12-15T13:10:00");
+  assert.equal(body.events[0]?.end, "2026-12-15T18:25:00");
+  assert.equal(body.events[0]?.timeZone, "Europe/Paris");
+  assert.equal(body.events[0]?.endTimeZone, "America/Cancun");
+  assert.equal(nativeCalendarSurface(body.events.length), "sheet");
+  assert.equal(nativeCalendarSurface(bookingCalendarEvents({ booking: stay, items: [flight, hotel] }).length), "batch");
+
+  const swift = readFileSync(new URL("../../mobile/ios/App/App/CalendarBridge.swift", import.meta.url), "utf8");
+  const sheetAt = swift.indexOf("EKEventEditViewController");
+  const batchAt = swift.indexOf("for draft in drafts");
+  assert.equal(sheetAt > 0 && batchAt > sheetAt, true);
+  assert.match(swift, /drafts\.count == 1/);
 });
 
 test("une ligne illisible est écartée, le message reste en français", () => {

@@ -132,6 +132,7 @@ final class CalendarBridge: NSObject, EKEventEditViewDelegate {
             }
             return
         }
+        // Un seul événement (prochain vol de l’accueil) : feuille système. nativeCalendarSurface.
         let fresh = drafts.count == 1 && !alreadySaved(drafts[0], store: store)
         if fresh, let only = drafts.first, let presenter, let event = makeEvent(only, calendar: calendar, store: store) {
             let visible = presenter.viewIfLoaded?.window != nil || presenter.presentedViewController != nil
