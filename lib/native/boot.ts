@@ -176,6 +176,7 @@ async function startNativeShell() {
       void lockScreen();
     }
     hiddenAt = 0;
+    void import("@/lib/native/widgets").then((mod) => mod.refreshNativeWidgets({ force: true }));
   });
   await App.addListener("appUrlOpen", ({ url }) => {
     const decision = portalNavigation({ url });
@@ -206,4 +207,7 @@ export async function syncNativeRoute(pathname: string) {
   if (!isNativeAppBridge()) return;
   if (!pathname.startsWith("/mon-compte")) return;
   await registerNativePush().catch(() => {});
+  const widgets = await import("@/lib/native/widgets");
+  await widgets.armNativeWidgets().catch(() => {});
+  await widgets.refreshNativeWidgets().catch(() => {});
 }
