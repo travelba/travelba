@@ -9,9 +9,10 @@ import { amountToCents } from "./money";
 /**
  * Recherche hôtel de l’espace client.
  * Un seul prix par hôtel : le moins cher, puis le plus d’avantages.
- * Little Emperors : le montant qu’ils demandent pour réserver (`total_to_book`),
- * jamais un net majoré. Les autres comptes : marge d’au moins 12 % du net
- * (`priceAccommodation`). Le client ne reçoit ni net, ni compte, ni commission.
+ * Little Emperors : le montant qu’ils demandent pour réserver (`total_to_book`).
+ * Expedia : le total TTC renvoyé par l’API, sans majoration.
+ * Un compte net : le prix client est le net, la commission hôtel ne s’y ajoute pas.
+ * Le client ne reçoit ni net, ni compte, ni commission.
  */
 
 export const HOTEL_SEARCH_BENJAMIN_USER_ID = "c4d75f7e-c79f-438c-b797-7b234e37b6d0";
@@ -41,7 +42,7 @@ const CREDIT = /cr[eé]dit|hotel credit/i;
 const EARLY = /enregistrement anticip[eé]|arriv[eé]e anticip[eé]e|early check-?\s?in/i;
 const LATE = /d[eé]part tardif|late check-?\s?out/i;
 
-export type HotelAccountId = "little_emperors" | "net";
+export type HotelAccountId = "little_emperors" | "expedia" | "net";
 
 export type HotelPerks = {
   breakfast: boolean;
@@ -88,6 +89,20 @@ export type HotelOffer = {
   paymentDescription?: string | null;
   /** 1 à 5 quand le fournisseur l’envoie. Jamais inventé. */
   stars?: number | null;
+};
+
+/** Tarif montré à côté d’un autre, sans nom de fournisseur ni jeton de réservation. */
+export type ClientCompareRate = {
+  kind: "membre" | "autre";
+  label: string;
+  sellCents: number;
+  perNightCents: number;
+  currency: string;
+  taxesCents: number | null;
+  dueAtPropertyCents: number | null;
+  cancellation: string;
+  refundable: boolean;
+  legalLines: string[];
 };
 
 export type PricedStay = {
@@ -144,6 +159,8 @@ export type ClientHotel = {
   coords: { lat: number; lng: number } | null;
   footnotes: string[];
   stars: number | null;
+  /** Présent quand deux tarifs du même hôtel sont montrés ensemble. */
+  compares?: ClientCompareRate[];
 };
 
 export type HotelChild = { age: number };
@@ -578,7 +595,7 @@ export function clientBenefits(lines: string[], rooms: string[] = []) {
 
 function sellCentsFor(offer: HotelOffer): { sellCents: number; currency: string } | null {
   const currency = currencyOf(offer.currency);
-  if (offer.account === "little_emperors") {
+  if (offer.account === "little_emperors" || offer.account === "expedia") {
     const proposed = Number(offer.proposed);
     if (!(proposed > 0) || !Number.isFinite(proposed)) return null;
     const sellCents = amountToCents(proposed);

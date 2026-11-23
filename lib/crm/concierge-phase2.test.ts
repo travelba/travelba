@@ -11,17 +11,18 @@ import { qualityMarks, weeklyReview } from "./concierge-quality";
 import { runConciergeEval } from "./concierge-eval";
 import { planPhase2 } from "./concierge-phase2";
 
-test("marge d’hébergement : 12 % du net, commission + 2 %", () => {
+test("hébergement : le prix client est le net, la commission ne le majore pas", () => {
   const net = priceAccommodation({ net: 1000, commissionable: false });
-  assert.equal(net?.sell, 1120);
-  assert.ok((net?.marginOfNet || 0) >= 0.12 - 0.001);
+  assert.equal(net?.sell, 1000);
+  assert.equal(net?.addedRate, 0);
+  assert.equal(net?.margin, 0);
   const covered = priceAccommodation({ net: 1000, commissionable: true, hotelCommission: 0.1 });
   assert.equal(covered?.sell, 1000);
   assert.equal(covered?.addedRate, 0);
-  assert.ok((covered?.marginOfNet || 0) >= 0.12 - 0.001);
+  assert.equal(covered?.margin, 100);
   const short = priceAccommodation({ net: 1000, commissionable: true, hotelCommission: 0.08 });
-  assert.equal(short?.sell, 1020);
-  assert.ok((short?.marginOfNet || 0) >= 0.12 - 0.001);
+  assert.equal(short?.sell, 1000);
+  assert.equal(short?.marginOfNet, 0.08);
   const rich = priceAccommodation({ net: 1000, commissionable: true, hotelCommission: 0.15 });
   assert.equal(rich?.sell, 1000);
   assert.equal(priceAccommodation({ net: 0, commissionable: false }), null);

@@ -23,7 +23,7 @@ Hotel search results are cached in memory for about ten minutes. Empty results e
 - Without live access (`hotel_direct_live`), or when the offer is not a partner rate, or when the API key is absent: `direct_email`. The agency emails the hotel. Nothing is created upstream.
 - With live access, `hotel_le_api_booking` on that client, a partner rate and a configured key: `book()` returns `place`. The orchestrator then runs the create call. The port itself does not invent a confirmation number. The flag defaults to false. A client who only has live access stays on the email path.
 
-The price shown is `total_to_book` (requested currency, then the supplier total). This path does not add the 12% margin used for net accounts. The agency does not add a Stripe charge on top.
+The price shown is `total_to_book` (requested currency, then the supplier total). This path does not add a markup. The agency does not add a Stripe charge on top.
 
 Two ways to pay, chosen on each stay:
 

@@ -120,9 +120,9 @@ Yes. Images and amenities are shown when the rate `rg_ext` equals the static roo
 - `show_amount` + `show_currency_code` — display currency (request `currency`, default EUR).
 - `amount` + `currency_code` — the deposit debit in the contract currency (USD on this contract).
 
-We do not convert one into the other. ETG’s `show_amount` is not a market-rate conversion of `amount` (`commission_info.show` vs `commission_info.charge`), which is why a converted euro figure did not match the logged dollar amount. The confirmation shows the `amount` that finish sends and that the log records. The agency price is `show_amount` plus at least 12%, labeled apart, and is not the deposit. Excluded taxes stay separate and are not added. Tax codes are shown in French (`city_tax` → Taxe de séjour). Each rate also shows nights, rooms, and guests.
+We do not convert one into the other. ETG’s `show_amount` is not a market-rate conversion of `amount` (`commission_info.show` vs `commission_info.charge`), which is why a converted euro figure did not match the logged dollar amount. The confirmation shows the `amount` that finish sends and that the log records. The agency price is `show_amount` plus the configured margin (`RATEHAWK_MARGIN_PERCENT`, empty means no markup), labeled apart, and is not the deposit. Excluded taxes stay separate and are not added. Tax codes are shown in French (`city_tax` → Taxe de séjour). Each rate also shows nights, rooms, and guests.
 
-**Commission.** On the **partner’s** side. At least 12% of the net `show_amount` on every accommodation. `RATEHAWK_MARGIN_PERCENT` below 12 is raised to 12.
+**Commission.** On the **partner’s** side. `RATEHAWK_MARGIN_PERCENT` is applied as given. A value below any historical floor stays as configured. Empty means the sell price is the net `show_amount`.
 
 **Rate name.** **`room_name`** from the hotel search step (hotelpage and SERP). Shown as returned.
 

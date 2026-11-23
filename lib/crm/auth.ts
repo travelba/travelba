@@ -225,7 +225,19 @@ export const ensureCustomerForUser = cache(async (user: User): Promise<CrmCustom
 
     return null;
   } catch {
-    return null;
+    // Preview : le service role de production est vidé. La fiche déjà liée
+    // se lit avec la session (RLS : auth_user_id = auth.uid()).
+    try {
+      const supabase = await createClient();
+      const { data } = await supabase
+        .from("crm_customers")
+        .select("*")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+      return (data as CrmCustomer | null) ?? null;
+    } catch {
+      return null;
+    }
   }
 });
 

@@ -141,6 +141,16 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
     });
   }
 
+  if (path === "/api/admin/hotels/search") {
+    return classify({
+      permission: null,
+      action: "view",
+      entity: "dossier",
+      journal: true,
+      summary: "Recherche hôtels.",
+    });
+  }
+
   if (path.startsWith("/api/admin/ratehawk")) {
     return classify({
       audience: "ratehawk",

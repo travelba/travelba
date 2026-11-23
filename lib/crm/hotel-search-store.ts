@@ -101,6 +101,9 @@ export async function createHotelRequest(customerId: string, offerId: string, gu
     account: string;
     expires_at: string;
   };
+  if (row.account === "expedia" || row.account === "ratehawk") {
+    return { ok: false as const, message: "Cette offre est affichée pour comparaison. La réservation n’est pas ouverte." };
+  }
   if (Date.parse(row.expires_at) <= Date.now()) {
     return { ok: false as const, message: "Cette recherche a expiré. Relancez-la." };
   }

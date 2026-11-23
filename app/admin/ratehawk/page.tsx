@@ -44,7 +44,7 @@ export default async function AdminRatehawkPage() {
           environment={config?.environment || "sandbox"}
           paymentType={config?.paymentType || "deposit"}
           priceIncreasePercent={config?.priceIncreasePercent ?? 10}
-          marginPercent={config?.marginPercent ?? 12}
+          marginPercent={config?.marginPercent ?? 0}
           orders={orders}
           mappedHotels={mapped}
           linkDossier={!cert}
