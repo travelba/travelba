@@ -9,15 +9,11 @@ export default async function InvitationSignupPage({ params }: { params: Promise
   if (!opened.ok) {
     return (
       <>
-        <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">Invitation</h1>
-        <p className="mt-3 text-sm text-[var(--admin-navy)]">{opened.error}</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
+        <h1 className="mt-2 font-display text-3xl font-extrabold text-[#0B192C]">Invitation</h1>
+        <p className="mt-3 text-sm text-[#0B192C]">{opened.error}</p>
       </>
     );
   }
-  return (
-    <>
-      <h1 className="mb-4 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">Votre invitation</h1>
-      <SignupWizard prefill={{ ...opened.prefill, invitationToken: token }} />
-    </>
-  );
+  return <SignupWizard prefill={{ ...opened.prefill, invitationToken: token }} />;
 }

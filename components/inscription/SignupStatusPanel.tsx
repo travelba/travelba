@@ -56,8 +56,9 @@ export function SignupStatusPanel({ status }: { status: Status }) {
   if (!status) {
     return (
       <>
-        <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">Demande en attente</h1>
-        <p className="mt-3 text-sm leading-relaxed text-[var(--admin-navy)]">
+        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
+        <h1 className="mt-2 font-display text-3xl font-extrabold text-[#0B192C]">Demande en attente</h1>
+        <p className="mt-3 text-sm leading-relaxed text-[#0B192C]">
           Confirmez l’adresse reçue par e-mail pour suivre la demande. Tant que l’agence n’a pas validé, l’espace reste fermé.
         </p>
       </>
@@ -79,8 +80,9 @@ export function SignupStatusPanel({ status }: { status: Status }) {
 
   return (
     <div className="space-y-3">
-      <h1 className="font-display text-3xl font-extrabold text-[var(--admin-navy)]">{title}</h1>
-      <p className="text-sm leading-relaxed text-[var(--admin-navy)]">
+      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
+      <h1 className="font-display text-3xl font-extrabold text-[#0B192C]">{title}</h1>
+      <p className="text-sm leading-relaxed text-[#0B192C]">
         {status.status === "validee"
           ? `${status.firstName}, l’agence a validé la demande. L’accès arrive par e-mail, et par WhatsApp si le message part.`
           : status.status === "refusee"
@@ -101,7 +103,7 @@ export function SignupStatusPanel({ status }: { status: Status }) {
           <button type="button" onClick={() => void sendCode()} className="text-sm font-semibold underline" disabled={loading}>
             Recevoir le code
           </button>
-          <label className="block text-sm font-semibold text-[var(--admin-navy)]">
+          <label className="block text-sm font-semibold text-[#0B192C]">
             Code
             <input
               className="mt-1 w-full rounded-xl border border-[var(--border)] px-3.5 py-3"
@@ -112,7 +114,7 @@ export function SignupStatusPanel({ status }: { status: Status }) {
               required
             />
           </label>
-          <button type="submit" disabled={loading} className="w-full rounded-full bg-[var(--admin-navy)] px-4 py-3 text-sm font-bold text-white">
+          <button type="submit" disabled={loading} className="w-full rounded-full bg-[#0B192C] px-4 py-3 text-sm font-bold text-[#C5A880]">
             Confirmer le téléphone
           </button>
         </form>

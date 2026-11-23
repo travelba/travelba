@@ -7,11 +7,15 @@ export function AccountBrand({
   href = "/",
   subtitle,
   compact = false,
+  onDark = false,
 }: {
   href?: string;
   subtitle?: string;
   compact?: boolean;
+  onDark?: boolean;
 }) {
+  const ink = onDark ? "text-[#f7f4ee]" : "text-[var(--admin-navy)]";
+  const lead = onDark ? "leading-snug" : "leading-none";
   return (
     <Link href={href} className="flex items-center gap-2.5">
       <AgencyLogo className="h-9 w-9" />
@@ -21,14 +25,14 @@ export function AccountBrand({
         </span>
         {subtitle ? (
           <span
-            className={`account-title truncate font-display font-semibold leading-none text-[var(--admin-navy)] ${
+            className={`account-title truncate font-display font-semibold ${lead} ${ink} ${
               compact ? "text-[15px]" : "text-lg"
             }`}
           >
             {subtitle}
           </span>
         ) : (
-          <span className="account-title font-display text-lg font-extrabold tracking-tight text-[var(--admin-navy)]">
+          <span className={`account-title font-display text-lg font-extrabold tracking-tight ${ink}`}>
             {siteConfig.shortName}
           </span>
         )}

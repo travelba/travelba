@@ -6,7 +6,7 @@ import { BusyBar } from "@/components/crm/BusyBar";
 import { TRAVEL_CLUB_OFFER } from "@/lib/crm/signup-options";
 
 const fieldClass =
-  "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-gold)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30";
+  "mt-1 w-full rounded-xl border border-[#0B192C]/10 bg-white px-3.5 py-2.5 text-[#0B192C] outline-none focus:border-[#C5A880] focus:ring-2 focus:ring-[#C5A880]/40";
 
 export type SignupPrefill = {
   firstName?: string;
@@ -73,8 +73,9 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
   if (done) {
     return (
       <div className="space-y-3">
-        <h1 className="font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">Vérifiez votre e-mail</h1>
-        <p className="text-sm leading-relaxed text-[var(--admin-navy)]">
+        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
+        <h1 className="font-display text-3xl font-extrabold tracking-tight text-[#0B192C]">Vérifiez votre e-mail</h1>
+        <p className="text-sm leading-relaxed text-[#0B192C]">
           Un message part pour confirmer l’adresse. Le Travel Club TBA relit ensuite la demande. L’accès reste fermé jusque-là.
         </p>
       </div>
@@ -82,46 +83,50 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
   }
 
   return (
-    <form noValidate onSubmit={step === 0 ? next : submit} className="space-y-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[#8A7349]">Étape {step + 1} sur 2</p>
+    <form noValidate onSubmit={step === 0 ? next : submit} className="space-y-3">
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
+        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-[#0B192C]">Vous êtes invité</h1>
+        <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8A7349]">Étape {step + 1} sur 2</p>
+      </div>
       {step === 0 ? (
         <>
-          <p className="text-sm leading-relaxed text-[var(--admin-navy)]">{TRAVEL_CLUB_OFFER}</p>
-          <label className="block text-sm font-semibold text-[var(--admin-navy)]">
+          <p className="text-sm leading-relaxed text-[#0B192C]">{TRAVEL_CLUB_OFFER}</p>
+          <label className="block text-[13px] font-semibold text-[#0B192C]">
             Prénom
-            <input className={`${fieldClass} mt-1`} value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" />
+            <input className={fieldClass} value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" />
           </label>
-          <label className="block text-sm font-semibold text-[var(--admin-navy)]">
+          <label className="block text-[13px] font-semibold text-[#0B192C]">
             Nom
-            <input className={`${fieldClass} mt-1`} value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" />
+            <input className={fieldClass} value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" />
           </label>
-          <label className="block text-sm font-semibold text-[var(--admin-navy)]">
+          <label className="block text-[13px] font-semibold text-[#0B192C]">
             E-mail
-            <input className={`${fieldClass} mt-1`} type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
+            <input className={fieldClass} type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
           </label>
-          <label className="block text-sm font-semibold text-[var(--admin-navy)]">
+          <label className="block text-[13px] font-semibold text-[#0B192C]">
             Téléphone
-            <input className={`${fieldClass} mt-1`} type="tel" value={phone} readOnly aria-readonly="true" />
+            <input className={`${fieldClass} cursor-default bg-[#ebe6dc]`} type="tel" value={phone} readOnly aria-readonly="true" />
           </label>
-          <p className="text-xs text-muted">Ce numéro est celui de l’invitation.</p>
-          <label className="block text-sm font-semibold text-[var(--admin-navy)]">
+          <p className="-mt-2 text-xs text-[#5c6570]">Ce numéro est celui de l’invitation.</p>
+          <label className="block text-[13px] font-semibold text-[#0B192C]">
             Date de naissance
-            <input className={`${fieldClass} mt-1`} type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} />
+            <input className={fieldClass} type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} />
           </label>
         </>
       ) : (
         <>
-          <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)]">
-            <input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-1" />
+          <label className="flex items-start gap-2 text-sm text-[#0B192C]">
+            <input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-1 accent-[#0B192C]" />
             <span>
-              J’accepte les <Link className="underline" href="/fr/legal">conditions générales</Link>.
+              J’accepte les <Link className="underline decoration-[#C5A880]" href="/fr/legal">conditions générales</Link>.
             </span>
           </label>
-          <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)]">
-            <input type="checkbox" checked={privacy} onChange={(event) => setPrivacy(event.target.checked)} className="mt-1" />
+          <label className="flex items-start gap-2 text-sm text-[#0B192C]">
+            <input type="checkbox" checked={privacy} onChange={(event) => setPrivacy(event.target.checked)} className="mt-1 accent-[#0B192C]" />
             <span>
               J’accepte que le Travel Club TBA utilise ces informations pour traiter ma demande, comme indiqué dans la{" "}
-              <Link className="underline" href="/fr/confidentialite">politique de confidentialité</Link>.
+              <Link className="underline decoration-[#C5A880]" href="/fr/confidentialite">politique de confidentialité</Link>.
             </span>
           </label>
           <div className="absolute -left-[9999px] h-0 w-0 overflow-hidden" aria-hidden="true">
@@ -136,11 +141,11 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
       <BusyBar active={loading} label="Envoi…" />
       <div className="flex gap-2">
         {step > 0 ? (
-          <button type="button" className="rounded-full border border-[var(--border)] px-4 py-3 text-sm font-semibold" onClick={() => setStep(0)}>
+          <button type="button" className="rounded-full border border-[#0B192C]/35 px-4 py-3 text-sm font-semibold text-[#0B192C]" onClick={() => setStep(0)}>
             Retour
           </button>
         ) : null}
-        <button type="submit" disabled={loading} className="flex-1 rounded-full bg-[var(--admin-navy)] px-4 py-3.5 text-sm font-bold text-white disabled:opacity-60">
+        <button type="submit" disabled={loading} className="flex-1 rounded-full bg-[#0B192C] px-4 py-3.5 text-sm font-bold text-[#C5A880] disabled:opacity-60">
           {step === 0 ? "Continuer" : loading ? "Envoi…" : "Déposer ma demande"}
         </button>
       </div>
