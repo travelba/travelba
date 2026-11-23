@@ -92,6 +92,11 @@ export function ContactForm({ defaultService = "" }: { defaultService?: string }
             <option value="" disabled>
               {t("servicePlaceholder")}
             </option>
+            {defaultService &&
+            !SERVICE_KEYS.some((key) => tServices(`${key}.title`) === defaultService) &&
+            defaultService !== t("serviceOther") ? (
+              <option value={defaultService}>{defaultService}</option>
+            ) : null}
             {SERVICE_KEYS.map((key) => (
               <option key={key} value={tServices(`${key}.title`)}>
                 {tServices(`${key}.title`)}

@@ -1,16 +1,22 @@
 import { siteConfig } from "@/lib/site";
 import { SIGNATURE_SLOTS, signatureSlug } from "@/lib/site-offers";
+import { DESTINATIONS, THEMES } from "@/lib/voyages/content";
 import { routing } from "@/i18n/routing";
 
 const PATHS = [
   "",
   "/legal",
   "/voyages",
-  ...SIGNATURE_SLOTS.map((slot) => `/voyages/${signatureSlug(slot)}`),
+  "/voyages/destinations",
+  ...DESTINATIONS.map((item) => `/voyages/destinations/${item.slug}`),
+  "/voyages/envies",
+  ...THEMES.map((item) => `/voyages/envies/${item.id}`),
+  "/voyages/signature",
+  ...SIGNATURE_SLOTS.map((slot) => `/voyages/signature/${signatureSlug(slot)}`),
   "/application",
   "/evenements",
   "/famille",
-] as const;
+];
 
 export default function sitemap() {
   const lastModified = new Date();

@@ -235,7 +235,7 @@
     "open": "View",
     "voyages": {
       "title": "Signature journeys",
-      "text": "Itineraries the agency keeps, then adjusts to your pace. The catalogue is still to be written."
+      "text": "Tailor-made travel, the destinations, and the frames the agency will fill in later."
     },
     "app": {
       "title": "The TBA app",
@@ -254,6 +254,70 @@
     "eyebrow": "Quote",
     "title": "Describe the project",
     "text": "The same form as the homepage. We come back to you within an hour during business hours."
+  },
+  "VoyageNav": {
+    "label": "Tailor-made travel",
+    "home": "Tailor-made",
+    "destinations": "Destinations",
+    "themes": "Moods",
+    "signature": "Signature"
+  },
+  "SurMesure": {
+    "metaTitle": "Tailor-made travel and destinations — Travel Business Agency",
+    "metaDescription": "Tailor-made travel with Travel Business Agency: how it works, destinations, moods, and a quote. The agency's own signature itineraries are still to be written.",
+    "eyebrow": "Tailor-made travel",
+    "title": "A destination, a pace, then the journey.",
+    "lede": "Tailor-made travel starts with you: the season, the number of nights, what must stay free. The pages that follow give the facts of a destination. They are not a catalogue of dated departures.",
+    "howTitle": "How it works",
+    "whyEyebrow": "Why the agency",
+    "whyTitle": "The same guarantees as the rest of the house",
+    "why": {
+      "one": { "title": "One person", "text": "One contact follows the project, from the first request to the return." },
+      "two": { "title": "IATA and APST", "text": "The agency is IATA-accredited. Deposits are covered by the APST guarantee." },
+      "three": { "title": "The pace", "text": "Nothing is stacked to fill a week. A departure city or a layover is not a destination." }
+    },
+    "featuredTitle": "Destinations",
+    "allDestinations": "All destinations",
+    "themesTitle": "By mood",
+    "signatureTitle": "Signature journeys",
+    "signatureText": "The itineraries the agency will want to sign. The places are ready. The facts are not, yet.",
+    "signatureLink": "See the places"
+  },
+  "DestinationsHub": {
+    "metaTitle": "Destinations — Travel Business Agency",
+    "metaDescription": "Tailor-made destinations, grouped by continent: the Indian Ocean, Asia, Europe, Africa, the Americas, the Pacific.",
+    "eyebrow": "Destinations",
+    "title": "Choose the place first, then the pace",
+    "lede": "Sixteen destinations, set by continent. Each page says when to go, what one comes for, a travel idea, and the practical facts from Paris."
+  },
+  "DestinationPage": {
+    "metaTitle": "Tailor-made {name} — Travel Business Agency",
+    "metaDescription": "Tailor-made travel in {name}: season, ways to stay, a sense of the flight from Paris, time difference and entry rules. No invented price.",
+    "crumbVoyages": "Tailor-made travel",
+    "crumbDestinations": "Destinations",
+    "when": "When to go",
+    "highlights": "What people come for",
+    "stays": "Ways to stay",
+    "ideaEyebrow": "Travel idea",
+    "practical": "From Paris",
+    "practicalNote": "Orders of magnitude and entry rules for a French passport, at the time of writing. Rules change. The agency checks them again before departure.",
+    "flight": "Flight",
+    "time": "Time",
+    "formalities": "Entry",
+    "nearby": "Elsewhere in {continent}"
+  },
+  "ThemesPage": {
+    "metaTitle": "Travel moods — Travel Business Agency",
+    "metaDescription": "Honeymoon, safari, islands, road trip, culture, the far north: ways into the destinations.",
+    "eyebrow": "Moods",
+    "title": "Enter by the mood, arrive at a destination",
+    "lede": "Six moods. Each one leads to destinations in the catalogue, and nothing else.",
+    "count": "{count} destinations"
+  },
+  "ThemePage": {
+    "metaTitle": "{name} — Travel Business Agency",
+    "metaDescription": "Destinations for {name}, in the Travel Business Agency tailor-made catalogue.",
+    "back": "All moods"
   },
   "Voyages": {
     "metaTitle": "Signature journeys — Travel Business Agency",

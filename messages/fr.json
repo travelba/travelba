@@ -235,7 +235,7 @@
     "open": "Voir",
     "voyages": {
       "title": "Voyages signature",
-      "text": "Des itinéraires tenus par l'agence, puis ajustés à votre rythme. Le catalogue est à compléter."
+      "text": "Le voyage sur mesure, les destinations, et les trames que l'agence remplira ensuite."
     },
     "app": {
       "title": "L'application TBA",
@@ -254,6 +254,70 @@
     "eyebrow": "Devis",
     "title": "Décrivez le projet",
     "text": "Le même formulaire que l'accueil. Nous revenons vers vous en moins d'une heure pendant les heures ouvrées."
+  },
+  "VoyageNav": {
+    "label": "Voyage sur mesure",
+    "home": "Sur mesure",
+    "destinations": "Destinations",
+    "themes": "Envies",
+    "signature": "Signature"
+  },
+  "SurMesure": {
+    "metaTitle": "Voyage sur mesure et destinations — Travel Business Agency",
+    "metaDescription": "Voyages sur mesure de Travel Business Agency : comment cela se passe, destinations, envies, et devis. Les itinéraires signature de l'agence restent à rédiger.",
+    "eyebrow": "Voyage sur mesure",
+    "title": "Une destination, un rythme, puis le voyage.",
+    "lede": "Le sur-mesure part de vous : la saison, le nombre de nuits, ce qui doit rester libre. Les pages qui suivent donnent les faits d'une destination. Elles ne sont pas un catalogue de départs datés.",
+    "howTitle": "Comment cela se passe",
+    "whyEyebrow": "Pourquoi l'agence",
+    "whyTitle": "Les mêmes garanties que pour le reste de la maison",
+    "why": {
+      "one": { "title": "Une personne", "text": "Un interlocuteur suit le projet, de la première demande au retour." },
+      "two": { "title": "IATA et APST", "text": "L'agence est accréditée IATA. Les acomptes sont couverts par la garantie APST." },
+      "three": { "title": "Le rythme", "text": "Rien n'est empilé pour remplir une semaine. Une ville de départ ou une escale n'est pas une destination." }
+    },
+    "featuredTitle": "Destinations",
+    "allDestinations": "Toutes les destinations",
+    "themesTitle": "Par envie",
+    "signatureTitle": "Voyages signature",
+    "signatureText": "Les itinéraires que l'agence voudra signer de son nom. Les emplacements sont prêts. Les faits ne le sont pas encore.",
+    "signatureLink": "Voir les emplacements"
+  },
+  "DestinationsHub": {
+    "metaTitle": "Destinations — Travel Business Agency",
+    "metaDescription": "Destinations de voyage sur mesure, classées par continent : océan Indien, Asie, Europe, Afrique, Amériques, Pacifique.",
+    "eyebrow": "Destinations",
+    "title": "Choisir d'abord le lieu, ensuite le rythme",
+    "lede": "Seize destinations, rangées par continent. Chaque page dit quand partir, ce que l'on peut y faire, une idée de voyage, et les faits pratiques depuis Paris."
+  },
+  "DestinationPage": {
+    "metaTitle": "{name} sur mesure — Travel Business Agency",
+    "metaDescription": "Voyage sur mesure en {name} : saison, idées de séjour, ordre de grandeur du vol depuis Paris, décalage et formalités. Sans prix inventé.",
+    "crumbVoyages": "Voyage sur mesure",
+    "crumbDestinations": "Destinations",
+    "when": "Quand partir",
+    "highlights": "Ce que l'on vient y chercher",
+    "stays": "Façons de séjourner",
+    "ideaEyebrow": "Idée de voyage",
+    "practical": "Depuis Paris",
+    "practicalNote": "Ordres de grandeur et formalités pour un passeport français, à la date de rédaction. Les règles changent. L'agence les revérifie avant le départ.",
+    "flight": "Vol",
+    "time": "Heure",
+    "formalities": "Formalités",
+    "nearby": "Ailleurs en {continent}"
+  },
+  "ThemesPage": {
+    "metaTitle": "Envies de voyage — Travel Business Agency",
+    "metaDescription": "Lune de miel, safari, îles, road trip, culture, grand nord : des façons d'entrer dans les destinations.",
+    "eyebrow": "Envies",
+    "title": "Entrer par l'envie, arriver sur une destination",
+    "lede": "Six thèmes. Chacun mène aux destinations du catalogue, rien d'autre.",
+    "count": "{count} destinations"
+  },
+  "ThemePage": {
+    "metaTitle": "{name} — Travel Business Agency",
+    "metaDescription": "Destinations pour un voyage {name}, dans le catalogue sur mesure de Travel Business Agency.",
+    "back": "Toutes les envies"
   },
   "Voyages": {
     "metaTitle": "Voyages signature — Travel Business Agency",
