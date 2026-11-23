@@ -5,7 +5,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
-const FIELDS = ["push_travel", "push_documents", "push_payment"] as const;
+const FIELDS = ["push_travel", "push_documents", "push_payment", "push_messages"] as const;
 
 type PrefRow = Partial<Record<(typeof FIELDS)[number], boolean | null>>;
 
@@ -25,24 +25,37 @@ function flags(row: PrefRow | null) {
     push_travel: row?.push_travel !== false,
     push_documents: row?.push_documents !== false,
     push_payment: row?.push_payment !== false,
+    push_messages: row?.push_messages !== false,
   };
 }
 
-/** Préférences de notification de l’application. Sans ligne, les trois sont ouvertes. */
+/** Préférences de notification de l’application. Sans ligne, les canaux sont ouverts. */
 export async function GET() {
   const auth = await requireCustomer();
   if (auth instanceof NextResponse) return auth;
   const admin = createServiceClient();
-  const { data, error } = await admin
+  const full = await admin
     .from("crm_notification_preferences")
-    .select("push_travel, push_documents, push_payment")
+    .select("push_travel, push_documents, push_payment, push_messages")
     .eq("customer_id", auth.customer.id)
     .maybeSingle();
-  if (error) {
-    if (closed(error)) return NextResponse.json({ available: false, ...flags(null) });
-    return dbError(error);
+  if (full.error && missingDbColumn(full.error, "push_messages")) {
+    const legacy = await admin
+      .from("crm_notification_preferences")
+      .select("push_travel, push_documents, push_payment")
+      .eq("customer_id", auth.customer.id)
+      .maybeSingle();
+    if (legacy.error) {
+      if (closed(legacy.error)) return NextResponse.json({ available: false, ...flags(null), messages: false });
+      return dbError(legacy.error);
+    }
+    return NextResponse.json({ available: true, ...flags(legacy.data as PrefRow | null), messages: false });
   }
-  return NextResponse.json({ available: true, ...flags(data as PrefRow | null) });
+  if (full.error) {
+    if (closed(full.error)) return NextResponse.json({ available: false, ...flags(null), messages: false });
+    return dbError(full.error);
+  }
+  return NextResponse.json({ available: true, ...flags(full.data as PrefRow | null), messages: true });
 }
 
 export async function PATCH(request: Request) {

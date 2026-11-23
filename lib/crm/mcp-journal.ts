@@ -10,6 +10,7 @@ const SEND = new Set([
   "inviter_client",
   "renvoyer_acces_whatsapp",
   "annoncer_option_hotel",
+  "messages_app",
 ]);
 
 const CREATE = new Set([
@@ -74,6 +75,7 @@ const PHRASES: Record<string, string> = {
   inviter_client: "Invitation envoyée",
   renvoyer_acces_whatsapp: "Accès renvoyés par WhatsApp",
   annoncer_option_hotel: "Accès Hôtels annoncé",
+  messages_app: "Message application envoyé",
   ajouter_piece: "Pièce déposée",
   requalifier_piece: "Pièce requalifiée",
   notifier_piece: "Pièce notifiée",

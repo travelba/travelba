@@ -4,15 +4,18 @@ import { useEffect, useState } from "react";
 
 type Prefs = {
   available: boolean;
+  messages?: boolean;
   push_travel: boolean;
   push_documents: boolean;
   push_payment: boolean;
+  push_messages: boolean;
 };
 
 const ROWS = [
   ["push_travel", "Vols et départs"],
   ["push_documents", "Documents"],
   ["push_payment", "Règlements"],
+  ["push_messages", "Messages de l’agence"],
 ] as const;
 
 /** Réglages de l’application TBA. Caché tant que la migration n’est pas en place. */
@@ -58,9 +61,9 @@ export function PushPreferences() {
   return (
     <section className="rounded-xl border border-[#e3e2e0]/70 bg-white px-4 py-3">
       <h2 className="text-sm font-semibold text-[var(--admin-navy)]">Notifications de l’application</h2>
-      <p className="mt-1 text-xs text-muted">Vols, documents et règlements, sur l’application TBA.</p>
+      <p className="mt-1 text-xs text-muted">Vols, documents, règlements et messages, sur l’application TBA.</p>
       <ul className="mt-2">
-        {ROWS.map(([field, label]) => (
+        {ROWS.filter(([field]) => field !== "push_messages" || prefs.messages !== false).map(([field, label]) => (
           <li key={field} className="flex items-center justify-between gap-3 border-t border-[#e3e2e0]/70 py-2.5 first:border-t-0">
             <span className="text-sm text-[var(--admin-navy)]">{label}</span>
             <input

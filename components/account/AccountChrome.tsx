@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { signOutAccount } from "@/lib/crm/account-sign-out";
 import { AccountBrand } from "@/components/account/AccountBrand";
 import { AccountIcon } from "@/components/account/AccountIcon";
-import { siteConfig } from "@/lib/site";
 import { ONBOARDING_PATH } from "@/lib/crm/session";
 import { accountTabDirection } from "@/lib/crm/account-motion";
 import { AccountNightTabs, type NightTabIcon } from "@/components/account/AccountNightTabs";
@@ -26,6 +25,30 @@ function tabLabel(label: string) {
   if (label === "Réservations") return "Réserva\u00adtions";
   if (label === "Transactions") return "Transac\u00adtions";
   return label;
+}
+
+function MessageMark({ preview, active }: { preview: boolean; active: boolean }) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (preview || active) return;
+    let cancel = false;
+    void fetch("/api/client/messages?compte=1", { credentials: "same-origin" })
+      .then(async (response) => (response.ok ? ((await response.json()) as { unread?: number }) : null))
+      .then((data) => {
+        if (!cancel) setCount(Math.max(0, Number(data?.unread) || 0));
+      })
+      .catch(() => {});
+    return () => {
+      cancel = true;
+    };
+  }, [preview, active]);
+  const shown = preview || active ? 0 : count;
+  if (!shown) return null;
+  return (
+    <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--admin-gold)] px-1 text-[10px] font-bold text-[var(--admin-navy)]">
+      {shown > 9 ? "9+" : shown}
+    </span>
+  );
 }
 
 function tabsFor(basePath: string, hotels: boolean) {
@@ -64,7 +87,9 @@ export function AccountChrome({
   const activeIndex = tabs.findIndex((tab) =>
     tab.exact ? pathname === tab.href : pathname === tab.href || pathname.startsWith(`${tab.href}/`)
   );
-  const title = tabs[activeIndex]?.label ?? "Espace client";
+  const messagesHref = `${basePath}/messages`;
+  const messagesActive = pathname === messagesHref || pathname.startsWith(`${messagesHref}/`);
+  const title = messagesActive ? "Messages" : tabs[activeIndex]?.label ?? "Espace client";
   const phoneWall = needsPhone && !pathname.startsWith(`${basePath}/profil`);
 
   useEffect(() => {
@@ -117,16 +142,15 @@ export function AccountChrome({
           <div className="mx-auto flex h-16 max-w-[480px] items-center justify-between gap-3 px-4 sm:px-5">
             <AccountBrand href={basePath} subtitle={title} compact />
             <div className="flex items-center gap-0.5">
-              <a
-                href={`https://wa.me/${siteConfig.whatsappNumber}`}
-                target="_blank"
-                rel="noreferrer"
-                className="account-press inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--admin-navy)] hover:bg-[var(--surface-2)]"
-                aria-label="Écrire à l’agence sur WhatsApp"
-                title="Écrire à l’agence"
+              <Link
+                href={messagesHref}
+                className="account-press relative inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--admin-navy)] hover:bg-[var(--surface-2)]"
+                aria-label="Messages"
+                title="Messages"
               >
                 <AccountIcon name="chat" className="h-[22px] w-[22px]" />
-              </a>
+                <MessageMark preview={preview} active={messagesActive} />
+              </Link>
               <AccountUserMenu
                 customerName={customerName}
                 initials={initials}
@@ -173,6 +197,17 @@ export function AccountChrome({
                 </Link>
               );
             })}
+            <Link
+              href={messagesHref}
+              className={`account-press relative pb-1 text-sm tracking-wide ${
+                messagesActive ? "font-bold text-[var(--admin-navy)]" : "font-medium text-[#5a5c60] hover:text-[var(--admin-navy)]"
+              }`}
+            >
+              Messages
+              {messagesActive ? (
+                <span aria-hidden className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--admin-gold)]" />
+              ) : null}
+            </Link>
           </nav>
           {preview ? null : (
             <button
@@ -212,7 +247,7 @@ export function AccountChrome({
             >
               Vous
             </Link>{" "}
-            pour écrire à l’agence.
+            pour que l’agence puisse vous joindre.
           </p>
         ) : null}
         {children}

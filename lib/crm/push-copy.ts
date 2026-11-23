@@ -7,18 +7,20 @@ export type FlightPushKind =
   | "envol"
   | "arrivee";
 
-export type PushPreference = "travel" | "documents" | "payment";
+export type PushPreference = "travel" | "documents" | "payment" | "messages";
 
 export type PushPreferenceRow = {
   push_travel?: boolean | null;
   push_documents?: boolean | null;
   push_payment?: boolean | null;
+  push_messages?: boolean | null;
 };
 
 const COLUMN: Record<PushPreference, keyof PushPreferenceRow> = {
   travel: "push_travel",
   documents: "push_documents",
   payment: "push_payment",
+  messages: "push_messages",
 };
 
 /** Pas de ligne : les trois canaux sont ouverts, comme les e-mails. `false` ferme. */

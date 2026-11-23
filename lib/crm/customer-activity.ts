@@ -63,6 +63,7 @@ export function clientPathSummary(path: string): string | null {
   if (clean === "/mon-compte/profil/facturation") return "A ouvert sa facturation";
   if (clean === "/mon-compte/bienvenue") return "A ouvert la bienvenue";
   if (clean === "/mon-compte/carnet") return "A ouvert son carnet";
+  if (clean === "/mon-compte/messages") return "A ouvert ses messages";
   return null;
 }
 

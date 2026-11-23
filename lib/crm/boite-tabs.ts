@@ -1,12 +1,13 @@
 /** Onglets de la Boîte de réception (`/admin/boite?onglet=`) et alias des anciennes pages. */
 
-export const BOITE_TAB_IDS = ["fournisseurs", "hotels", "whatsapp"] as const;
+export const BOITE_TAB_IDS = ["fournisseurs", "hotels", "whatsapp", "messages"] as const;
 export type BoiteTab = (typeof BOITE_TAB_IDS)[number];
 
 export const BOITE_TAB_LABELS: Record<BoiteTab, string> = {
   fournisseurs: "Fournisseurs",
   hotels: "Hôtels",
   whatsapp: "WhatsApp",
+  messages: "Messages",
 };
 
 export const BOITE_TAB_HELP: Record<BoiteTab, string> = {
@@ -15,6 +16,7 @@ export const BOITE_TAB_HELP: Record<BoiteTab, string> = {
   hotels:
     "Courriers hôtel, une ligne par séjour : paiement à faire, réponses, envois sans réponse. Rien ne part sans confirmation.",
   whatsapp: "Conversations WhatsApp, reprise du Concierge et messages à approuver. Rien ne part sans votre clic.",
+  messages: "Messages de l’application TBA. Vous répondez ici. Le client est prévenu sur son téléphone.",
 };
 
 const TAB_ALIASES: Record<string, BoiteTab> = {
@@ -24,6 +26,8 @@ const TAB_ALIASES: Record<string, BoiteTab> = {
   hotel: "hotels",
   reponses: "hotels",
   wa: "whatsapp",
+  message: "messages",
+  app: "messages",
 };
 
 export function boiteTabFromParam(raw: string | string[] | undefined): BoiteTab {

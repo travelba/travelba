@@ -3,7 +3,7 @@
 import type { Permission } from "@/lib/crm/agency-access";
 import type { StaffRole } from "@/lib/crm/staff-team";
 
-export type AdminBadgeKey = "revolut" | "stripe" | "emails" | "le" | "pieces" | "whatsapp" | "hotels" | "costs";
+export type AdminBadgeKey = "revolut" | "stripe" | "emails" | "le" | "pieces" | "whatsapp" | "hotels" | "costs" | "messages";
 
 export type AdminNavCounts = Record<AdminBadgeKey, number>;
 
@@ -16,6 +16,7 @@ export const EMPTY_NAV_COUNTS: AdminNavCounts = {
   whatsapp: 0,
   hotels: 0,
   costs: 0,
+  messages: 0,
 };
 
 export type AdminNavItem = {
@@ -113,6 +114,7 @@ export function adminNavGroups(input: {
         { href: `${ADMIN_ROUTES.boite}?onglet=fournisseurs`, label: "Fournisseurs", icon: "inbox", badge: ["emails", "le"] },
         { href: `${ADMIN_ROUTES.boite}?onglet=hotels`, label: "Hôtels", icon: "hotel", badge: "hotels" },
         { href: `${ADMIN_ROUTES.boite}?onglet=whatsapp`, label: "WhatsApp", icon: "forum", badge: "whatsapp" },
+        { href: `${ADMIN_ROUTES.boite}?onglet=messages`, label: "Messages", icon: "chat", badge: "messages" },
       ],
     },
     {
@@ -257,7 +259,7 @@ export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
     icon: "inbox",
     href: ADMIN_ROUTES.boite,
     paths: ["/admin/boite", "/admin/emails", "/admin/whatsapp", "/admin/little-emperors", "/admin/hotels-demandes"],
-    badges: ["emails", "le", "whatsapp", "hotels"],
+    badges: ["emails", "le", "whatsapp", "hotels", "messages"],
   },
   {
     id: "argent",

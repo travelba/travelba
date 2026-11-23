@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import type {
   CrmBookingDocument,
   CrmBookingItem,
@@ -10,7 +11,9 @@ import type { PublicBooking } from "@/lib/crm/public-booking";
 import { BOOKING_ITEM_LABELS, isActiveItem, visibleServiceCopy, type BookingItemKind } from "@/lib/crm/types";
 import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
+import { AddToAppleWallet } from "@/components/account/AddToAppleWallet";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
+import { walletPassHref } from "@/lib/crm/wallet-pass";
 import { HotelContactButton } from "@/components/crm/HotelContact";
 import { HotelReservationCard } from "@/components/crm/HotelReservationCard";
 import { HotelStayFacts } from "@/components/crm/HotelStayFacts";
@@ -128,6 +131,8 @@ function CardBody({
   checkinStatus = null,
   returnCheckinStatus = null,
   boarding = null,
+  walletReady = false,
+  guestLabel = null,
 }: {
   item: CrmBookingItem;
   currency: string;
@@ -147,6 +152,8 @@ function CardBody({
   checkinStatus?: string | null;
   returnCheckinStatus?: string | null;
   boarding?: ReactNode;
+  walletReady?: boolean;
+  guestLabel?: string | null;
 }) {
   const price = returnLeg && stayItems
     ? roundTripPriceLabel(item, returnLeg, stayItems, currency, pricesVisible)
@@ -317,6 +324,9 @@ function CardBody({
             Ajouter le retour à l’agenda
           </AgendaLink>
         ) : null}
+        {walletReady && reference && (item.kind !== "hotel" || !night || night.first) ? (
+          <WalletMark reference={reference} item={item} docs={docs} guest={guestLabel || null} />
+        ) : null}
       </div>
     </div>
   );
@@ -457,6 +467,22 @@ function CardBody({
   );
 }
 
+function WalletMark({
+  reference,
+  item,
+  docs,
+  guest,
+}: {
+  reference: string;
+  item: CrmBookingItem;
+  docs: CrmBookingDocument[];
+  guest: string | null;
+}) {
+  const href = walletPassHref({ ready: true, reference, item, docs, guest });
+  if (!href) return null;
+  return <AddToAppleWallet href={href} />;
+}
+
 export function CarnetItinerary({
   booking,
   items,
@@ -471,6 +497,9 @@ export function CarnetItinerary({
   checkinByItem = {},
   passes = [],
   renderPasses,
+  walletReady = false,
+  guestLabel = null,
+  messagesHref = null,
 }: {
   booking: PublicBooking;
   items: CrmBookingItem[];
@@ -490,6 +519,11 @@ export function CarnetItinerary({
   /** Cartes déjà lues (aperçu). L’espace client passe plutôt renderPasses, sans lire le PDF au chargement. */
   passes?: ClientBoardingCard[];
   renderPasses?: (itemIds: string[], showBadge: boolean) => ReactNode;
+  /** Bouton Apple Wallet, seulement si le certificat est posé. */
+  walletReady?: boolean;
+  guestLabel?: string | null;
+  /** Lien vers la messagerie, sur la page du séjour. */
+  messagesHref?: string | null;
   services?: {
     variant: "admin" | "client";
     travelers: CrmBookingTraveler[];
@@ -617,11 +651,18 @@ export function CarnetItinerary({
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">Itinéraire</h2>
-          {calendarBase ? (
-            <AgendaLink href={calendarBase} phone={phones?.stay}>
-              Ajouter tout le séjour
-            </AgendaLink>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-3">
+            {messagesHref ? (
+              <Link href={messagesHref} className="text-sm font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline">
+                Écrire à l’agence
+              </Link>
+            ) : null}
+            {calendarBase ? (
+              <AgendaLink href={calendarBase} phone={phones?.stay}>
+                Ajouter tout le séjour
+              </AgendaLink>
+            ) : null}
+          </div>
         </div>
         {bookedOffers.length ? (
           <div className="space-y-2">{bookedOffers.map((offer) => offerCard(offer))}</div>
@@ -656,6 +697,8 @@ export function CarnetItinerary({
                     stayItems={liveItems}
                     checkinStatus={checkinByItem[row.item.id] || null}
                     boarding={boardingFor(row.item, null)}
+                    walletReady={walletReady}
+                    guestLabel={guestLabel}
                   />
               );
             })}
@@ -682,6 +725,8 @@ export function CarnetItinerary({
                 stayItems={liveItems}
                 checkinStatus={checkinByItem[item.id] || null}
                 boarding={boardingFor(item, null)}
+                walletReady={walletReady}
+                guestLabel={guestLabel}
               />
             ))}
           </div>
