@@ -11,6 +11,13 @@ import {
   pliantRefusal,
   pliantStayCaption,
 } from "./eta-il-fee";
+import {
+  PLIANT_SINGLE_USE,
+  PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300,
+  PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D,
+  PLIANT_VIRTUAL,
+  PLIANT_VIRTUAL_TRAVEL,
+} from "./pliant-controls";
 import { corridorCeilingCents, ECB_SNAPSHOT, centsToEur } from "./visa-fees";
 import type { Db } from "../supabase/db";
 
@@ -399,4 +406,66 @@ test("un identifiant Pliant absent est remplacé seulement s’il n’y en a qu�
     ]),
     "ORG_SINGLE_USE"
   );
+});
+
+const catalogue = [
+  { cardConfig: "PLIANT_VIRTUAL_TRAVEL_CC", type: "VIRTUAL", canBeIssued: true },
+  { cardConfig: "PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_CC", type: "VIRTUAL", canBeIssued: true },
+  { cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300, type: "VIRTUAL", canBeIssued: true },
+  { cardConfig: PLIANT_VIRTUAL_TRAVEL, type: "VIRTUAL", canBeIssued: true },
+  { cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D, type: "VIRTUAL", canBeIssued: true },
+  { cardConfig: PLIANT_SINGLE_USE, type: "SINGLE_USE", canBeIssued: true },
+  { cardConfig: PLIANT_VIRTUAL, type: "VIRTUAL", canBeIssued: true },
+];
+
+test("le défaut est Visa Travel sans 3DS, le 3DS se demande, aucune config _CC", () => {
+  assert.equal(pickTravelConfig(PLIANT_SINGLE_USE, catalogue), PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D);
+  assert.equal(pickTravelConfig(PLIANT_VIRTUAL, catalogue), PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D);
+  assert.equal(pickTravelConfig(PLIANT_VIRTUAL_TRAVEL, catalogue), PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D);
+  assert.equal(
+    pickTravelConfig(PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300, catalogue),
+    PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300
+  );
+  assert.equal(
+    pickTravelConfig(PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300, [
+      { cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D, type: "VIRTUAL", canBeIssued: true },
+      { cardConfig: PLIANT_VIRTUAL_TRAVEL, type: "VIRTUAL", canBeIssued: true },
+      { cardConfig: PLIANT_SINGLE_USE, type: "SINGLE_USE", canBeIssued: true },
+    ]),
+    null
+  );
+  assert.equal(
+    pickTravelConfig(PLIANT_SINGLE_USE, [
+      { cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D, type: "VIRTUAL", canBeIssued: false },
+      { cardConfig: PLIANT_VIRTUAL_TRAVEL, type: "VIRTUAL", canBeIssued: true },
+      { cardConfig: "PLIANT_VIRTUAL_TRAVEL_CC", type: "VIRTUAL", canBeIssued: true },
+      { cardConfig: PLIANT_SINGLE_USE, type: "SINGLE_USE", canBeIssued: true },
+    ]),
+    PLIANT_VIRTUAL_TRAVEL
+  );
+  assert.equal(
+    pickTravelConfig(PLIANT_VIRTUAL, [
+      { cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300, type: "VIRTUAL", canBeIssued: true },
+      { cardConfig: PLIANT_VIRTUAL, type: "VIRTUAL", canBeIssued: true },
+    ]),
+    PLIANT_VIRTUAL
+  );
+  assert.equal(
+    pickTravelConfig(PLIANT_SINGLE_USE, [
+      { cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D, type: "VIRTUAL", canBeIssued: false },
+      { cardConfig: PLIANT_SINGLE_USE, type: "SINGLE_USE", canBeIssued: true },
+    ]),
+    PLIANT_SINGLE_USE
+  );
+  const eta = etaIlPliantCard({
+    firstName: "Camille",
+    lastName: "Martin",
+    travelerCount: 2,
+    bookingReference: "TB-2026-0001",
+    organizationId: "org",
+    today: "2026-11-23",
+  });
+  assert.equal(eta.body.cardConfig, PLIANT_VIRTUAL);
+  assert.equal(eta.body.maxTransactionCount >= 2, true);
+  assert.equal(pickTravelConfig(eta.body.cardConfig, catalogue), PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D);
 });

@@ -323,6 +323,11 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(MCP_TOOLS.find((tool) => tool.name === "pliant_debits")?.description || "", /client_nom/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "pliant_debits")?.description || "", /refusé/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /card_config/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /Ryanair/);
+  assert.match(
+    MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "",
+    /3DS seulement pour un commerçant qui l’exige/
+  );
   assert.match(MCP_TOOLS.find((tool) => tool.name === "comptabilite_sortie")?.description || "", /sortie_id seul/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /effacer_avertissement/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /effacer_avertissement/);

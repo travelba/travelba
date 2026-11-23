@@ -1,7 +1,7 @@
 import "server-only";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
-import { issuableTravelConfig, pickListedId, pickTravelConfig, pliantRefusal } from "./eta-il-fee";
+import { pickListedId, pickTravelConfig, pliantRefusal } from "./eta-il-fee";
 import {
   acquirePliantToken,
   emptyPliantTokenMemory,
@@ -18,6 +18,7 @@ import {
   PLIANT_TRAVEL_WARNING,
   pliantConfigIsSingleUse,
   pliantConfigIsTravel,
+  pliantConfigIsTravel3ds,
   pliantControlsAreOpen,
   pliantIssuePayload,
 } from "./pliant-controls";
@@ -319,12 +320,14 @@ async function resolvePliantIssue(preferred: { organizationId: string; cardholde
   const cardConfig = configs ? pickTravelConfig(preferred.cardConfig, configs) : preferred.cardConfig;
   if (!cardConfig) {
     throw new Error(
-      pliantConfigIsSingleUse(preferred.cardConfig)
-        ? "Pliant : la carte à usage unique n’est pas disponible sur ce compte."
-        : "Pliant : la configuration de carte est introuvable."
+      pliantConfigIsTravel3ds(preferred.cardConfig)
+        ? "Pliant : la carte 3DS frictionless n’est pas disponible sur ce compte."
+        : pliantConfigIsSingleUse(preferred.cardConfig)
+          ? "Pliant : la carte à usage unique n’est pas disponible sur ce compte."
+          : "Pliant : la configuration de carte est introuvable."
     );
   }
-  const avertissement = configs && !issuableTravelConfig(configs) ? PLIANT_TRAVEL_WARNING : null;
+  const avertissement = configs && !pliantConfigIsTravel(cardConfig) ? PLIANT_TRAVEL_WARNING : null;
   return { organizationId, cardholderId, cardConfig, avertissement };
 }
 

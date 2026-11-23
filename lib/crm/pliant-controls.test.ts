@@ -4,9 +4,13 @@ import {
   emptyPliantCardControls,
   parsePliantTransactionCount,
   PLIANT_SINGLE_USE,
+  PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300,
+  PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D,
   PLIANT_VIRTUAL,
   PLIANT_VIRTUAL_TRAVEL,
   pliantCardForTransactionCount,
+  pliantConfigIsTravel,
+  pliantConfigIsTravel3ds,
   pliantControlsAreOpen,
   pliantIssuePayload,
 } from "./pliant-controls";
@@ -217,6 +221,51 @@ test("une carte voyage envoie le nombre, le plafond total, et aucun contrôle", 
   );
   assert.throws(
     () => pliantIssuePayload({ limit: { value: 100, currency: "EUR" } }, { organizationId: "org", cardConfig: "PLIANT_VIRTUAL_TRAVEL_CC_150" }),
+    /Commercial Choice/
+  );
+});
+
+test("Visa Travel sans 3DS est le produit voyage, le 3DS frictionless est l’autre nom", () => {
+  assert.equal(pliantConfigIsTravel(PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D), true);
+  assert.equal(pliantConfigIsTravel(PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300), true);
+  assert.equal(pliantConfigIsTravel(PLIANT_VIRTUAL_TRAVEL), true);
+  assert.equal(pliantConfigIsTravel3ds(PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300), true);
+  assert.equal(pliantConfigIsTravel3ds(PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D), false);
+  assert.equal(pliantConfigIsTravel3ds(PLIANT_VIRTUAL_TRAVEL), false);
+  assert.equal(pliantConfigIsTravel("PLIANT_VIRTUAL_TRAVEL_CC"), false);
+  assert.equal(pliantConfigIsTravel3ds("PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_CC"), false);
+
+  const issued = pliantIssuePayload(
+    {
+      label: "Hôtel",
+      type: "VIRTUAL",
+      limit: { value: 150000, currency: "EUR" },
+      transactionLimit: { value: 40000, currency: "EUR" },
+      cardControls: { merchants: { type: "MID", restriction: "ALLOWED", values: ["1"] } },
+    },
+    { organizationId: "org", cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D }
+  );
+  assert.equal(issued.cardConfig, PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D);
+  assert.equal(issued.maxTransactionCount, 1);
+  assert.equal(issued.limitRenewFrequency, "TOTAL");
+  assert.deepEqual(issued.transactionLimit, { value: 150000, currency: "EUR" });
+  assert.equal(Object.hasOwn(issued, "type"), false);
+  assert.deepEqual(issued.cardControls, emptyPliantCardControls());
+
+  const frictionless = pliantIssuePayload(
+    { label: "Ryanair", limit: { value: 80000, currency: "EUR" }, maxTransactionCount: 2 },
+    { organizationId: "org", cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300 }
+  );
+  assert.equal(frictionless.cardConfig, PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300);
+  assert.equal(frictionless.maxTransactionCount, 2);
+  assert.equal(frictionless.limitRenewFrequency, "TOTAL");
+  assert.equal(Object.hasOwn(frictionless, "type"), false);
+  assert.throws(
+    () =>
+      pliantIssuePayload(
+        { limit: { value: 100, currency: "EUR" } },
+        { organizationId: "org", cardConfig: "PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_CC" }
+      ),
     /Commercial Choice/
   );
 });

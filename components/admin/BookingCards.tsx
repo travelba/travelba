@@ -40,6 +40,7 @@ export function BookingCards({
   const router = useRouter();
   const [amount, setAmount] = useState("");
   const [transactionAmount, setTransactionAmount] = useState("");
+  const [produit, setProduit] = useState<"n3d" | "3ds">("n3d");
   const [designation, setDesignation] = useState("");
   const [first, setFirst] = useState(firstName);
   const [last, setLast] = useState(lastName);
@@ -87,6 +88,7 @@ export function BookingCards({
           lastName: last,
           designation,
           transactionAmount,
+          troisDs: produit === "3ds",
         }),
       });
       const json = (await res.json().catch(() => null)) as { error?: string; cardConfig?: string; avertissement?: string | null } | null;
@@ -117,14 +119,28 @@ export function BookingCards({
         <div>
           <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Générer une carte</h2>
           <p className="mt-1 max-w-xl text-sm leading-relaxed text-[var(--admin-navy)]/70">
-            Autant de cartes que le dossier en a besoin. Le plafond, le montant de l’achat, le nom de la carte et le
-            titulaire sont ceux saisis ici. Carte à usage unique : un seul règlement, un contrôle de passerelle ne
-            compte pas. La carte accepte tous les commerçants, toutes les catégories, toutes les devises et tous les
-            pays, jusqu’au plafond en euros. Le produit utilisé s’affiche après la création.
-            La carte est émise sur le compte Pliant de l’agence.
+            Autant de cartes que le dossier en a besoin. Le produit par défaut est Visa Travel 3 %, sans 3DS : hôtels,
+            GDS et la plupart des commerçants voyage. Le 3DS frictionless ne sert que si le commerçant l’exige, par
+            exemple Ryanair. Le plafond, le montant de l’achat, le nom de la carte et le titulaire sont ceux saisis
+            ici. La carte accepte tous les commerçants, toutes les catégories, toutes les devises et tous les pays,
+            jusqu’au plafond en euros. Le produit utilisé s’affiche après la création. La carte est émise sur le compte
+            Pliant de l’agence.
           </p>
         </div>
         <form className="space-y-3" onSubmit={submit}>
+          <label className="block text-sm text-[var(--admin-navy)]">
+            Produit
+            <select
+              className={`${fieldClass} mt-1`}
+              value={produit}
+              disabled={busy}
+              aria-label="Produit"
+              onChange={(event) => setProduit(event.target.value === "3ds" ? "3ds" : "n3d")}
+            >
+              <option value="n3d">Visa Travel 3 % sans 3DS (défaut)</option>
+              <option value="3ds">3DS frictionless — seulement si le commerçant l’exige (ex. Ryanair)</option>
+            </select>
+          </label>
           <label className="block text-sm text-[var(--admin-navy)]">
             Nom de la carte
             <input
