@@ -56,7 +56,7 @@ Règle always-on : `.cursor/rules/travelba-core.mdc`.
 | Vous / Pièces / Voyageurs / Facturation | `/mon-compte/profil…` |
 | Transactions + demander un relevé | `/mon-compte/transactions` |
 | Connexion mot de passe + magique | `/connexion` |
-| Demande d’inscription (file admin, pas d’accès avant validation) | `/inscription`, `/admin/inscriptions` |
+| Inscription sur invitation (file admin, pas d’accès avant validation) | `/inscription/i/{jeton}`, `/admin/inscriptions` |
 | Définir mot de passe | `/connexion/mot-de-passe` |
 | Bienvenue (une fois, après le mot de passe) | `/mon-compte/bienvenue` |
 | Admin | `/admin` → clients, réservations, transactions, Revolut |

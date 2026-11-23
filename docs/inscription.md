@@ -1,6 +1,6 @@
 # Inscription des clients
 
-Demande libre sur `/inscription` (site et application). L’espace reste fermé tant qu’un administrateur n’a pas validé. La validation réutilise l’invitation déjà en place (e-mail, puis WhatsApp Twilio si le message part).
+Le Travel Club TBA est accessible sur invitation uniquement. Sans lien, `/inscription` n’affiche que cette phrase et un lien vers la connexion. Une demande se dépose depuis `/inscription/i/{jeton}`, après une invitation de l’agence ou d’un membre. L’espace reste fermé tant qu’un administrateur n’a pas validé. La validation réutilise l’invitation déjà en place (e-mail, puis WhatsApp Twilio si le message part).
 
 Migrations à jouer à la main, dans l’ordre, sans reset :
 
@@ -42,11 +42,22 @@ Bonjour {{1}}, {{2}} vous a recommandé au Travel Club TBA, qui a le plaisir de 
 
 {{1}} prénom du proche, {{2}} prénom du parrain, {{3}} date.
 
+## Parcours
+
+Sans jeton, `/inscription` affiche « Le Travel Club TBA est accessible sur invitation uniquement. » et un lien vers la connexion.
+
+Avec un jeton valable, deux écrans :
+
+1. La phrase Platinum, le prénom, le nom, l’e-mail et le téléphone repris de l’invitation (le téléphone identifie le lien), puis la date de naissance.
+2. Les deux cases (conditions, confidentialité) et le bouton « Déposer ma demande ».
+
+Les préférences de voyage ne sont pas dans ce parcours. L’origine est l’invitation : agence ou parrainage. Après le dépôt, Benjamin valide à la main.
+
 ## Réglages
 
-Auto-validation des invités : case sur `/admin/inscriptions`, administrateurs seulement, désactivée par défaut. Elle ne rattache pas une fiche ambiguë.
+La validation reste manuelle. Aucun réglage ne valide une demande tout seul.
 
-Parrainage : 10 invitations par membre, à vie. Par défaut, une invitation est décomptée à l’envoi. La même page peut passer le décompte aux seules invitations validées.
+Parrainage : 10 invitations par membre, à vie. Par défaut, une invitation est décomptée à l’envoi. La même page peut passer le décompte aux seules invitations validées. Le proche ouvre le lien personnel, pas un formulaire public.
 
 Droit « Valider les inscriptions » : administrateurs. La grille de l’équipe peut l’ouvrir au rôle manager.
 

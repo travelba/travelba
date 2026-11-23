@@ -71,6 +71,9 @@ test("le formulaire exige l’identité, la majorité, les conditions et ignore 
   const other = draft({ heardAbout: "Autre", heardAboutDetail: "Un salon" });
   assert.equal(other.ok, true);
   if (other.ok) assert.equal(other.value.heardAbout, "Autre — Un salon");
+  const invited = draft({ heardAbout: "" });
+  assert.equal(invited.ok, true);
+  if (invited.ok) assert.equal(invited.value.heardAbout, "Invitation");
 });
 
 test("un code de parrainage se lit dans le champ ou dans le lien", () => {

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { AccountBrand } from "@/components/account/AccountBrand";
 
 export const metadata: Metadata = {
-  title: "Demander mon inscription",
+  title: "Travel Club TBA",
   robots: { index: false, follow: false },
 };
 

@@ -16,10 +16,7 @@ export default async function InvitationSignupPage({ params }: { params: Promise
   }
   return (
     <>
-      <h1 className="font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">Votre invitation</h1>
-      <p className="mb-6 mt-2 text-sm leading-relaxed text-muted">
-        L’agence vous a invité. La demande reste relue avant l’ouverture de l’accès.
-      </p>
+      <h1 className="mb-4 font-display text-3xl font-extrabold tracking-tight text-[var(--admin-navy)]">Votre invitation</h1>
       <SignupWizard prefill={{ ...opened.prefill, invitationToken: token }} />
     </>
   );

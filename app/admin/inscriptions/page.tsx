@@ -95,7 +95,6 @@ export default async function InscriptionsPage({
           </ul>
           <SignupInviteForm
             admin={staff.role === "admin"}
-            autoValidate={queue.autoValidate}
             countMode={queue.referralCountMode}
             preset={
               fiche

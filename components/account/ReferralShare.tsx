@@ -4,19 +4,14 @@ import { FormEvent, useState } from "react";
 import { TRAVEL_CLUB_NAME, TRAVEL_CLUB_OFFER } from "@/lib/crm/signup-options";
 
 export function ReferralShare({
-  code,
-  link,
   remaining,
   cap,
   firstName,
 }: {
-  code: string;
-  link: string;
   remaining: number;
   cap: number;
   firstName: string;
 }) {
-  const [copied, setCopied] = useState(false);
   const [guest, setGuest] = useState("");
   const [phone, setPhone] = useState("");
   const [preview, setPreview] = useState<string | null>(null);
@@ -25,15 +20,6 @@ export function ReferralShare({
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  }
 
   async function send(event: FormEvent) {
     event.preventDefault();
@@ -81,12 +67,6 @@ export function ReferralShare({
       <p className="mt-1 text-sm leading-relaxed text-muted">
         {left} invitation{left > 1 ? "s" : ""} restante{left > 1 ? "s" : ""} sur {cap}. {TRAVEL_CLUB_OFFER}
       </p>
-      <p className="mt-2 text-sm">
-        Votre code <span className="font-semibold text-[var(--admin-navy)]">{code}</span>
-      </p>
-      <button type="button" onClick={() => void copy()} className="mt-2 text-sm font-semibold underline">
-        {copied ? "Lien copié" : "Copier le lien"}
-      </button>
       <form noValidate onSubmit={send} className="mt-4 space-y-2">
         <input
           className="w-full rounded-xl border border-[var(--border)] px-3 py-2 text-sm"

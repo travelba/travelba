@@ -12,6 +12,7 @@ import {
   displayedInvitationStatus,
   extractReferralCode,
   hashToken,
+  INVITE_ONLY_MESSAGE,
   invitationCanOpen,
   invitationShareText,
   invitationUrl,
@@ -21,7 +22,6 @@ import {
   newReferralCode,
   normalizeEmail,
   normalizePhone,
-  planAutoValidation,
   planComplement,
   planRefusal,
   planResubmit,
@@ -202,6 +202,16 @@ type InvitationRow = {
   referrer_customer_id?: string | null;
 };
 
+async function invitationById(client: Db, id: string): Promise<InvitationRow | null> {
+  const { data, error } = await client
+    .from("crm_signup_invitations")
+    .select("id, token_hash, first_name, last_name, phone, email, customer_id, status, expires_at, kind, referrer_customer_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) fail(error, "Cette invitation ne s’ouvre pas.");
+  return (data as InvitationRow | null) ?? null;
+}
+
 async function invitationFromToken(client: Db, token: string): Promise<InvitationRow | null> {
   const secret = signupLinkSecret(process.env);
   const parsed = readSignupToken(token, secret);
@@ -358,15 +368,22 @@ function draftPatch(draft: SignupDraft, now: string) {
   };
 }
 
-export async function submitSignup(input: { draft: SignupDraft; origin: string; invitationToken?: string | null; ip: string }) {
+export async function submitSignup(input: {
+  draft: SignupDraft;
+  origin: string;
+  invitationToken?: string | null;
+  viewToken?: string | null;
+  ip: string;
+}) {
   const client = db();
   const allowed = await rateLimitAllSafe(signupRateRules(input.ip, input.draft.email));
   if (!allowed) throw new SignupError("Trop de demandes. Réessayez plus tard.", 429);
 
   let invitation: InvitationRow | null = null;
+  let resumeRow: RequestRow | null = null;
   if (input.invitationToken) {
     invitation = await invitationFromToken(client, input.invitationToken);
-    if (!invitation) throw new SignupError("Ce lien d’invitation n’est pas valable.", 400);
+    if (!invitation) throw new SignupError(INVITE_ONLY_MESSAGE, 403);
     const shown = displayedInvitationStatus({ status: invitation.status, expiresAt: invitation.expires_at });
     if (!invitationCanOpen(shown)) {
       throw new SignupError(shown === "expiree" ? "Ce lien a expiré." : "Ce lien a déjà été utilisé.", 400);
@@ -374,12 +391,32 @@ export async function submitSignup(input: { draft: SignupDraft; origin: string; 
     if (!phonesMatch(invitation.phone, input.draft.phone)) {
       throw new SignupError("Ce lien ne correspond pas à ce numéro.", 400);
     }
+  } else if (input.viewToken) {
+    let open: RequestRow | null = null;
+    try {
+      open = await requestByView(client, input.viewToken);
+    } catch (error) {
+      if (!(error instanceof SignupError)) throw error;
+    }
+    if (!open?.invitation_id || (open.status !== "brouillon" && open.status !== "a_completer")) {
+      throw new SignupError(INVITE_ONLY_MESSAGE, 403);
+    }
+    invitation = await invitationById(client, open.invitation_id);
+    if (!invitation) throw new SignupError(INVITE_ONLY_MESSAGE, 403);
+    resumeRow = open;
+  } else {
+    throw new SignupError(INVITE_ONLY_MESSAGE, 403);
   }
+  const draft = {
+    ...input.draft,
+    phone: invitation.phone,
+    heardAbout: invitation.kind === "parrainage" ? "Parrainage" : "Invitation",
+  };
 
   const now = new Date().toISOString();
   const emailToken = newOpaqueToken();
   const viewToken = newOpaqueToken();
-  const existing = await latestOpen(client, input.draft.email);
+  const existing = resumeRow ?? (await latestOpen(client, draft.email));
   const plan = planResubmit(existing ? { status: existing.status, emailVerified: Boolean(existing.email_verified_at) } : null);
 
   if (plan === "silent") {
@@ -399,7 +436,7 @@ export async function submitSignup(input: { draft: SignupDraft; origin: string; 
   if (plan === "create" || !existing) {
     const inserted = await client
       .from("crm_signup_requests")
-      .insert({ ...draftPatch(input.draft, now), ...tokenPatch, status: "brouillon" })
+      .insert({ ...draftPatch(draft, now), ...tokenPatch, status: "brouillon" })
       .select("id")
       .single();
     if (inserted.error || !inserted.data) fail(inserted.error, "La demande n’a pas pu être enregistrée.");
@@ -409,7 +446,7 @@ export async function submitSignup(input: { draft: SignupDraft; origin: string; 
     const updated = await client
       .from("crm_signup_requests")
       .update({
-        ...draftPatch(input.draft, now),
+        ...draftPatch(draft, now),
         ...(existing.email_verified_at ? { view_token_hash: hashToken(viewToken) } : tokenPatch),
         status,
         submitted_at: status === "en_attente" ? now : existing.submitted_at,
@@ -418,53 +455,32 @@ export async function submitSignup(input: { draft: SignupDraft; origin: string; 
     if (updated.error) fail(updated.error, "La demande n’a pas pu être enregistrée.");
     requestId = existing.id;
     if (existing.email_verified_at && status === "en_attente") {
-      await bindReferral(client, requestId, input.draft, invitation);
-      await notifyAdmins(client, `${input.draft.firstName} ${input.draft.lastName}`, requestId, input.origin);
-      const received = signupEmailHtml("received", { firstName: input.draft.firstName });
-      await sendMail([input.draft.email], received.subject, received.html);
-      await maybeAutoValidate(client, requestId, input.origin);
+      await bindReferral(client, requestId, draft, invitation);
+      await notifyAdmins(client, `${draft.firstName} ${draft.lastName}`, requestId, input.origin);
+      const received = signupEmailHtml("received", { firstName: draft.firstName });
+      await sendMail([draft.email], received.subject, received.html);
       return { ok: true as const, viewToken };
     }
   }
 
-  await bindReferral(client, requestId, input.draft, invitation);
-  if (invitation) {
+  await bindReferral(client, requestId, draft, invitation);
+  if (invitation && !resumeRow) {
     await client
       .from("crm_signup_invitations")
       .update({ status: "demande_deposee", submitted_at: now })
       .eq("id", invitation.id);
   }
   const verify = signupEmailHtml("verify", {
-    firstName: input.draft.firstName,
+    firstName: draft.firstName,
     link: `${input.origin}/inscription/verifier?t=${emailToken}`,
   });
-  await sendMail([input.draft.email], verify.subject, verify.html);
+  await sendMail([draft.email], verify.subject, verify.html);
   return { ok: true as const, viewToken };
 }
 
 async function rateLimitAllSafe(rules: { key: string; limit: number; windowSeconds: number }[]) {
   const results = await Promise.all(rules.map((rule) => rateLimit(rule)));
   return results.every(Boolean);
-}
-
-async function maybeAutoValidate(client: Db, requestId: string, origin: string) {
-  const row = await loadRequest(client, requestId);
-  const settings = await client.from("crm_signup_settings").select("auto_validate_invited").eq("id", 1).maybeSingle();
-  const enabled = (settings.data as { auto_validate_invited?: boolean } | null)?.auto_validate_invited === true;
-  const hits = await customerHits(client, row.email, row.phone);
-  let invitationCustomerId: string | null = null;
-  if (row.invitation_id) {
-    const invitation = await client.from("crm_signup_invitations").select("customer_id").eq("id", row.invitation_id).maybeSingle();
-    invitationCustomerId = (invitation.data as { customer_id?: string | null } | null)?.customer_id ?? null;
-  }
-  const auto = planAutoValidation({
-    invitedByStaff: row.invited_by_staff,
-    enabled,
-    matches: hits,
-    invitationCustomerId,
-  });
-  if (!auto) return;
-  await applyValidation(client, row, { mode: auto.mode, customerId: auto.customerId, staffId: null, origin, hits });
 }
 
 async function applyValidation(
@@ -598,7 +614,6 @@ export async function verifySignupEmail(token: string, origin: string) {
     const received = signupEmailHtml("received", { firstName: row.first_name });
     await sendMail([row.email], received.subject, received.html);
     await notifyAdmins(client, `${row.first_name} ${row.last_name}`, row.id, origin);
-    await maybeAutoValidate(client, row.id, origin);
   }
   return { viewToken, sms };
 }
@@ -652,7 +667,6 @@ export async function confirmSignupSms(viewToken: string, code: string, origin: 
   const received = signupEmailHtml("received", { firstName: row.first_name });
   await sendMail([row.email], received.subject, received.html);
   await notifyAdmins(client, `${row.first_name} ${row.last_name}`, row.id, origin);
-  await maybeAutoValidate(client, row.id, origin);
   return { ok: true as const };
 }
 
@@ -703,6 +717,16 @@ function publicStatus(row: RequestRow) {
     emailVerified: Boolean(row.email_verified_at),
     smsPending,
     complement: row.status === "a_completer" ? row.complement_message : null,
+    prefill:
+      row.status === "a_completer"
+        ? {
+            firstName: row.first_name,
+            lastName: row.last_name,
+            email: row.email,
+            phone: row.phone,
+            birthDate: row.birth_date,
+          }
+        : null,
   };
 }
 
@@ -1026,15 +1050,6 @@ export async function previewSignupInvitation(input: { firstName: string; phone:
     message: text.replace(sample, "lien personnel"),
     partage: phone.replace(/\D/g, "").length >= 8 ? waMeHref(phone, text.replace(sample, "lien personnel")) : null,
   };
-}
-
-export async function setSignupAutoValidate(enabled: boolean) {
-  const client = db();
-  const { error } = await client
-    .from("crm_signup_settings")
-    .update({ auto_validate_invited: enabled, updated_at: new Date().toISOString() })
-    .eq("id", 1);
-  if (error) fail(error, "Le réglage n’a pas été enregistré.");
 }
 
 export async function listReferralBoard() {

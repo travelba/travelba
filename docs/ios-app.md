@@ -37,7 +37,7 @@ Sur l’iPhone, le prochain séjour, le vol et la météo de la destination peuv
 
 Photographiez un passeport depuis l’appareil. Partagez une pièce avec la feuille de partage du téléphone. Au retour dans l’application, Face ID la déverrouille.
 
-L’agence valide chaque demande. « Demander mon inscription » dépose une demande, sans ouvrir l’espace. Le back-office n’est pas dans l’application.
+L’agence valide chaque demande venue d’une invitation. Sans lien, l’écran dit que le Travel Club TBA est accessible sur invitation uniquement. Le back-office n’est pas dans l’application.
 
 ### Étiquette de confidentialité
 
@@ -59,7 +59,7 @@ Face ID reste sur l’appareil : le système répond seulement oui ou non. Le nu
 
 À coller dans App Review Information.
 
-L’application montre d’abord l’écran local (séjour déjà connu sur l’appareil), puis ouvre l’espace sur `https://travelba.fr`. Les cookies de session restent ceux du site. « Demander mon inscription » dépose une demande. L’espace reste fermé tant que l’agence n’a pas validé, puis l’invitation habituelle ouvre le compte. Le back-office `/admin` est refusé (redirection vers la connexion, et le délégué de navigation annule la page).
+L’application montre d’abord l’écran local (séjour déjà connu sur l’appareil), puis ouvre l’espace sur `https://travelba.fr`. Les cookies de session restent ceux du site. Une demande ne part que depuis un lien d’invitation. L’espace reste fermé tant que l’agence n’a pas validé, puis l’invitation habituelle ouvre le compte. Le back-office `/admin` est refusé (redirection vers la connexion, et le délégué de navigation annule la page).
 
 Connexion du client : e-mail et mot de passe, ou lien magique. Pas de connexion tierce dans l’application. Sign in with Apple n’est pas exigé dans cet état (guideline 4.8). Il le deviendrait si le client pouvait se connecter avec Google, Facebook ou un autre fournisseur. La connexion Google de l’agence n’est pas dans l’application.
 
@@ -76,7 +76,7 @@ Compte de démonstration (à créer dans l’admin avant l’envoi, puis coller 
 - E-mail : `REMPLACER@exemple.invalid`
 - Mot de passe : `REMPLACER`
 
-L’agence crée la fiche, envoie l’invitation, définit le mot de passe et publie un séjour d’exemple visible. La revue Apple ne peut pas passer par « Demander mon inscription » : cette demande n’ouvre aucun séjour tant qu’elle n’est pas validée. Ne pas utiliser un client réel.
+L’agence crée la fiche, envoie l’invitation, définit le mot de passe et publie un séjour d’exemple visible. Il n’y a pas de demande libre : sans validation, aucun séjour n’est ouvert. Ne pas utiliser un client réel.
 
 ## Ce que Benjamin fait, dans l’ordre
 

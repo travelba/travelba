@@ -1,9 +1,9 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { SignupWizard } from "@/components/inscription/SignupWizard";
 
 type Status = {
   firstName: string;
@@ -11,6 +11,7 @@ type Status = {
   emailVerified: boolean;
   smsPending: boolean;
   complement: string | null;
+  prefill: { firstName: string; lastName: string; email: string; phone: string; birthDate: string } | null;
 } | null;
 
 export function SignupStatusPanel({ status }: { status: Status }) {
@@ -85,17 +86,15 @@ export function SignupStatusPanel({ status }: { status: Status }) {
           : status.status === "refusee"
             ? "L’agence ne peut pas ouvrir l’accès pour le moment."
             : status.status === "a_completer"
-              ? status.complement || "L’agence a besoin d’une précision."
+              ? status.complement || "L’agence a besoin d’une précision. Confirmez les coordonnées de l’invitation."
               : status.smsPending
                 ? "L’adresse est confirmée. Le code SMS termine la demande. Rien n’est ouvert avant la validation."
                 : !status.emailVerified
                   ? "Un message confirme l’adresse. Ensuite, l’agence relit la demande."
                   : `${status.firstName}, la demande est en attente. Vous n’avez pas encore accès à vos séjours.`}
       </p>
-      {status.status === "a_completer" ? (
-        <Link href="/inscription" className="inline-flex rounded-full bg-[var(--admin-navy)] px-4 py-3 text-sm font-bold text-white">
-          Mettre à jour ma demande
-        </Link>
+      {status.status === "a_completer" && status.prefill ? (
+        <SignupWizard prefill={{ ...status.prefill, resume: true }} />
       ) : null}
       {status.smsPending ? (
         <form onSubmit={confirm} className="space-y-3 pt-2">

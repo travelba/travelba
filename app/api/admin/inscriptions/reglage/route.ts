@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
-import { setReferralCountMode, setSignupAutoValidate, SignupError } from "@/lib/crm/signup-run";
+import { setReferralCountMode, SignupError } from "@/lib/crm/signup-run";
 import { referralCountMode } from "@/lib/crm/signup";
 
 export async function POST(request: Request) {
@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     if (body && "referralCountMode" in body) {
       await setReferralCountMode(referralCountMode(body.referralCountMode));
     }
-    if (body && "enabled" in body) await setSignupAutoValidate(body.enabled === true);
+    if (body?.enabled === true) return jsonError("La validation par l’agence reste obligatoire.", 403);
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof SignupError) return jsonError(error.message, error.status);

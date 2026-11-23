@@ -4,6 +4,20 @@ import { honeypotTripped, validateSignupDraft } from "@/lib/crm/signup";
 import { SIGNUP_COOKIE, signupCookieOptions } from "@/lib/crm/signup-cookie";
 import { clientIp, SignupError, submitSignup } from "@/lib/crm/signup-run";
 
+function readCookie(request: Request, name: string) {
+  const raw = request.headers.get("cookie") || "";
+  const part = raw
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(`${name}=`));
+  if (!part) return null;
+  try {
+    return decodeURIComponent(part.slice(name.length + 1));
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (honeypotTripped(body?.company_website)) {
@@ -16,6 +30,7 @@ export async function POST(request: Request) {
       draft: parsed.value,
       origin: appOrigin(request),
       invitationToken: typeof body?.invitationToken === "string" ? body.invitationToken : null,
+      viewToken: readCookie(request, SIGNUP_COOKIE),
       ip: clientIp(request.headers),
     });
     const response = NextResponse.json({ ok: true, suite: "email" });

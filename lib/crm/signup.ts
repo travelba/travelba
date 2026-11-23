@@ -34,6 +34,8 @@ export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
 export const REFERRAL_STATUSES = ["en_attente", "valide"] as const;
 export type ReferralStatus = (typeof REFERRAL_STATUSES)[number];
 
+export const INVITE_ONLY_MESSAGE = "Le Travel Club TBA est accessible sur invitation uniquement.";
+
 export const REFERRAL_COUNT_MODES = ["envoi", "validee"] as const;
 export type ReferralCountMode = (typeof REFERRAL_COUNT_MODES)[number];
 
@@ -210,18 +212,22 @@ export function validateSignupDraft(
     errors.push({ field: "birthDate", message: "Vérifiez la date de naissance." });
   }
   if (travel.length > 1000) errors.push({ field: "travelPreferences", message: "Le texte est trop long." });
-  if (!(HEARD_ABOUT as readonly string[]).includes(heard)) {
-    errors.push({ field: "heardAbout", message: "Indiquez comment vous avez connu TravelBA." });
-  } else if (heard === "Autre" && detail.length < 2) {
-    errors.push({ field: "heardAboutDetail", message: "Précisez comment vous avez connu TravelBA." });
-  } else if (detail.length > 160) {
-    errors.push({ field: "heardAboutDetail", message: "Le texte est trop long." });
+  let heardAbout = "Invitation";
+  if (heard) {
+    if (!(HEARD_ABOUT as readonly string[]).includes(heard)) {
+      errors.push({ field: "heardAbout", message: "Indiquez comment vous avez connu TravelBA." });
+    } else if (heard === "Autre" && detail.length < 2) {
+      errors.push({ field: "heardAboutDetail", message: "Précisez comment vous avez connu TravelBA." });
+    } else if (detail.length > 160) {
+      errors.push({ field: "heardAboutDetail", message: "Le texte est trop long." });
+    } else {
+      heardAbout = heard === "Autre" ? `Autre — ${detail}` : heard;
+    }
   }
   if (input.terms !== true) errors.push({ field: "terms", message: "Acceptez les conditions générales." });
   if (input.privacy !== true) errors.push({ field: "privacy", message: "Acceptez l’utilisation de vos données pour cette demande." });
 
   if (errors.length) return { ok: false, errors };
-  const heardAbout = heard === "Autre" ? `Autre — ${detail}` : heard;
   return {
     ok: true,
     value: {

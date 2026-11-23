@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signOutAccount } from "@/lib/crm/account-sign-out";
 import { loginEmailFromSearch } from "@/lib/crm/login-email";
@@ -377,12 +376,7 @@ export default function ConnexionPage() {
           <LoginForm />
         </div>
 
-        <p className="mt-6 text-center text-sm text-[var(--admin-navy)]">
-          <Link href="/inscription" className="font-semibold underline">
-            Demander mon inscription
-          </Link>
-        </p>
-        <p className="mt-3 text-center text-xs text-muted">
+        <p className="mt-6 text-center text-xs text-muted">
           Besoin d&apos;aide ? {siteConfig.phoneDisplay} · {siteConfig.contactEmail}
         </p>
       </div>

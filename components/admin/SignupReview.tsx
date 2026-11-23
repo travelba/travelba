@@ -66,7 +66,7 @@ export function SignupReview({
     <div className="space-y-8">
       {invited ? (
         <p className="rounded-2xl bg-[var(--admin-peach)] px-4 py-3 text-sm font-semibold text-[var(--admin-navy)]">
-          Invitée par l’admin. La validation reste un clic, sauf si le réglage d’auto-validation est ouvert.
+          Invitée par l’agence. La validation reste un clic.
         </p>
       ) : null}
       <form onSubmit={validate} className="space-y-3 rounded-2xl border border-[var(--border)] p-4">

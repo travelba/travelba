@@ -41,13 +41,7 @@ export default async function ProfilPage() {
       <ProfileForm key={customer.updated_at} customer={customer} documents={(documents || []) as CrmTravelDocument[]} />
 
       {share ? (
-        <ReferralShare
-          code={share.code}
-          link={share.link}
-          remaining={share.remaining}
-          cap={share.cap}
-          firstName={share.firstName}
-        />
+        <ReferralShare remaining={share.remaining} cap={share.cap} firstName={share.firstName} />
       ) : null}
 
       <PushPreferences />
