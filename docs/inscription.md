@@ -6,6 +6,7 @@ Migrations à jouer à la main, dans l’ordre, sans reset :
 
 1. `supabase/migrations/20261123200000_signup_requests.sql`
 2. `supabase/migrations/20261123220000_travel_club_referrals.sql`
+3. `supabase/migrations/20261123233000_club_platinum.sql`
 
 ## Variables
 
@@ -29,15 +30,15 @@ Les e-mails passent par Resend (`RESEND_API_KEY`, `CONTACT_FROM_EMAIL`), comme l
 
 Catégorie Utility, langue `fr`. Bouton « Rejoindre le club », adresse `https://travelba.fr/inscription/i/{{1}}` (le jeton seulement). Le domaine `travelba.fr` doit être autorisé.
 
-`invitation_inscription` :
+`invitation_inscription` — catégorie Meta probable : **Utility** (lien personnel d’ouverture de compte, à usage unique). L’offre d’adhésion peut faire pencher Meta vers Marketing.
 
-{{1}}, Benjamin Boukris vous propose de rejoindre TBA - Travel Club. L’adhésion, d’une valeur de 1 600 € par an, vous est offerte. Ce lien personnel expire le {{2}}.
+Bonjour {{1}}, le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum pour une durée d’un an. Cette adhésion est nominative et réservée à vos propres réservations. Ce lien personnel expire le {{2}}.
 
 {{1}} prénom, {{2}} date.
 
-`invitation_parrainage` :
+`invitation_parrainage` — catégorie Meta probable : **Marketing** (recommandation et offre d’adhésion ; le destinataire n’a pas demandé le message).
 
-{{1}}, {{2}} vous invite à rejoindre TBA - Travel Club. Benjamin Boukris en est le gestionnaire. L’adhésion, d’une valeur de 1 600 € par an, vous est offerte. Ce lien personnel expire le {{3}}.
+Bonjour {{1}}, {{2}} vous a recommandé au Travel Club TBA, qui a le plaisir de vous offrir l’adhésion Platinum pour une durée d’un an. Cette adhésion est nominative et réservée à vos propres réservations. Ce lien personnel expire le {{3}}.
 
 {{1}} prénom du proche, {{2}} prénom du parrain, {{3}} date.
 

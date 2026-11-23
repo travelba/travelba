@@ -81,6 +81,11 @@ function LegalContent() {
       </section>
 
       <section className="mt-10">
+        <h2 className="font-display text-xl font-semibold">{t("clubTitle")}</h2>
+        <p className="mt-3 leading-relaxed text-muted">{t("clubText")}</p>
+      </section>
+
+      <section className="mt-10">
         <h2 className="font-display text-xl font-semibold">
           {t("hostingTitle")}
         </h2>

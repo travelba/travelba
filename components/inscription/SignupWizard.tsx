@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { HEARD_ABOUT } from "@/lib/crm/signup-options";
+import { HEARD_ABOUT, TRAVEL_CLUB_OFFER } from "@/lib/crm/signup-options";
 
 const fieldClass =
   "w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-[var(--admin-navy)] outline-none focus:border-[var(--admin-gold)] focus:bg-white focus:ring-2 focus:ring-[var(--admin-gold)]/30";
@@ -155,6 +155,7 @@ export function SignupWizard({ prefill }: { prefill?: SignupPrefill }) {
             Code de parrainage <span className="font-normal text-muted">(facultatif)</span>
             <input className={`${fieldClass} mt-1`} value={referralCode} onChange={(event) => setReferralCode(event.target.value)} autoComplete="off" />
           </label>
+          <p className="text-sm leading-relaxed text-muted">{TRAVEL_CLUB_OFFER}</p>
           <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)]">
             <input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-1" />
             <span>

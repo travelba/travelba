@@ -30,6 +30,8 @@ import {
   readSignupToken,
   referralAttachable,
   clubShareText,
+  clubRenewalTerm,
+  clubTerm,
   referralBalance,
   referralCountMode,
   referralShareText,
@@ -287,6 +289,35 @@ async function readReferralBalance(client: Db, customerId: string) {
   });
 }
 
+async function grantClubMembership(client: Db, customerId: string) {
+  const current = await client.from("crm_customers").select("club_started_on").eq("id", customerId).maybeSingle();
+  if (current.error) return;
+  if ((current.data as { club_started_on?: string | null } | null)?.club_started_on) return;
+  const term = clubTerm(new Date());
+  await client
+    .from("crm_customers")
+    .update({ club_rank: term.rank, club_started_on: term.startedOn, club_ends_on: term.endsOn })
+    .eq("id", customerId);
+}
+
+export async function renewClubMembership(customerId: string) {
+  const client = db();
+  const current = await client.from("crm_customers").select("club_ends_on, club_started_on").eq("id", customerId).maybeSingle();
+  if (current.error) fail(current.error, "L’adhésion n’a pas pu être lue.");
+  const row = current.data as { club_ends_on?: string | null; club_started_on?: string | null } | null;
+  const next = clubRenewalTerm(row?.club_ends_on);
+  const { error } = await client
+    .from("crm_customers")
+    .update({
+      club_rank: "platinum",
+      club_started_on: next.startedOn || row?.club_started_on || next.endsOn,
+      club_ends_on: next.endsOn,
+    })
+    .eq("id", customerId);
+  if (error) fail(error, "Le renouvellement n’a pas été enregistré.");
+  return { endsOn: next.endsOn, startedOn: next.startedOn || row?.club_started_on || null };
+}
+
 async function ensureReferralCode(client: Db, customerId: string) {
   const current = await client.from("crm_referral_codes").select("code").eq("customer_id", customerId).maybeSingle();
   const existing = (current.data as { code?: string } | null)?.code;
@@ -485,6 +516,7 @@ async function applyValidation(
       .eq("id", customerId);
   }
   if (!customerId) throw new SignupError("La fiche n’a pas pu être ouverte.", 500);
+  await grantClubMembership(client, customerId);
 
   const now = new Date().toISOString();
   const updated = await client

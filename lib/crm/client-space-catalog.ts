@@ -500,7 +500,7 @@ export const CLIENT_SPACE_ACTIONS: ClientSpaceAction[] = [
     page: "/mon-compte/profil",
     route: "/api/client/parrainage",
     method: "POST",
-    client: "Prépare ou envoie une invitation TBA - Travel Club, dans la limite de 10.",
+    client: "Prépare ou envoie une invitation au Travel Club TBA, dans la limite de 10.",
     concierge: "inviter_proche",
     rule: "Le membre confirme le prénom et le téléphone. Le plafond est appliqué. Le concierge ne choisit pas le destinataire.",
   },

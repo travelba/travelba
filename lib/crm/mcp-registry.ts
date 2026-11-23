@@ -3075,7 +3075,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Crée une invitation TBA - Travel Club : lien signé, à usage unique, avec une date d’expiration. prenom, nom, telephone, ou client_id pour une invitation de l’agence. parrain_id envoie au nom de ce membre, vers le téléphone du proche, dans la limite de 10 invitations. envoyer true tente le modèle WhatsApp Business. Sans identifiants, le lien wa.me est renvoyé. Sans confirmer, aperçu, rien n’est créé et rien ne part. Réservé aux administrateurs. Le droit peut être ouvert au rôle manager.",
+      "Crée une invitation au Travel Club TBA : lien signé, à usage unique, avec une date d’expiration. prenom, nom, telephone, ou client_id pour une invitation de l’agence. parrain_id envoie au nom de ce membre, vers le téléphone du proche, dans la limite de 10 invitations. envoyer true tente le modèle WhatsApp Business. Sans identifiants, le lien wa.me est renvoyé. Sans confirmer, aperçu, rien n’est créé et rien ne part. Réservé aux administrateurs. Le droit peut être ouvert au rôle manager.",
     input: {
       prenom: z.string().trim().max(80).optional(),
       nom: z.string().trim().max(80).optional(),

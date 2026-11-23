@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { TRAVEL_CLUB_FEE_LABEL, TRAVEL_CLUB_MANAGER, TRAVEL_CLUB_NAME } from "@/lib/crm/signup-options";
+import { TRAVEL_CLUB_NAME, TRAVEL_CLUB_OFFER } from "@/lib/crm/signup-options";
 
 export function ReferralShare({
   code,
@@ -79,7 +79,7 @@ export function ReferralShare({
       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{TRAVEL_CLUB_NAME}</p>
       <h2 className="mt-1 text-sm font-semibold text-[var(--admin-navy)]">Inviter un proche</h2>
       <p className="mt-1 text-sm leading-relaxed text-muted">
-        {left} invitation{left > 1 ? "s" : ""} restante{left > 1 ? "s" : ""} sur {cap}. L’adhésion, {TRAVEL_CLUB_FEE_LABEL}, est présentée par {TRAVEL_CLUB_MANAGER}.
+        {left} invitation{left > 1 ? "s" : ""} restante{left > 1 ? "s" : ""} sur {cap}. {TRAVEL_CLUB_OFFER}
       </p>
       <p className="mt-2 text-sm">
         Votre code <span className="font-semibold text-[var(--admin-navy)]">{code}</span>

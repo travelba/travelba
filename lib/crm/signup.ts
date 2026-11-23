@@ -9,20 +9,20 @@ import {
   HEARD_ABOUT,
   REFERRAL_CAP,
   SIGNUP_COOKIE,
-  TRAVEL_CLUB_FEE_EUROS,
-  TRAVEL_CLUB_FEE_LABEL,
-  TRAVEL_CLUB_MANAGER,
+  CLUB_RENEWAL_NOTICE_DAYS,
   TRAVEL_CLUB_NAME,
+  TRAVEL_CLUB_OFFER,
+  TRAVEL_CLUB_RANK,
 } from "./signup-options";
 
 export {
+  CLUB_RENEWAL_NOTICE_DAYS,
   HEARD_ABOUT,
   REFERRAL_CAP,
   SIGNUP_COOKIE,
-  TRAVEL_CLUB_FEE_EUROS,
-  TRAVEL_CLUB_FEE_LABEL,
-  TRAVEL_CLUB_MANAGER,
   TRAVEL_CLUB_NAME,
+  TRAVEL_CLUB_OFFER,
+  TRAVEL_CLUB_RANK,
 };
 
 export const SIGNUP_STATUSES = ["brouillon", "en_attente", "a_completer", "validee", "refusee"] as const;
@@ -121,6 +121,39 @@ export function phoneLookupVariants(phone: string) {
 
 function parisDate(now: Date) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(now);
+}
+
+function addYears(isoDate: string, years: number) {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year + years, month - 1, day));
+  return shifted.toISOString().slice(0, 10);
+}
+
+/** Platinum, du jour (Paris) à la même date un an plus tard. */
+export function clubTerm(now = new Date()) {
+  const startedOn = parisDate(now);
+  return { rank: "platinum" as const, startedOn, endsOn: addYears(startedOn, 1) };
+}
+
+/** Prolonge d’un an à partir de la fin en cours, ou d’aujourd’hui si l’échéance est passée. */
+export function clubRenewalTerm(endsOn: string | null | undefined, now = new Date()) {
+  const today = parisDate(now);
+  const base = endsOn && endsOn >= today ? endsOn : today;
+  return { startedOn: endsOn && endsOn >= today ? null : today, endsOn: addYears(base, 1) };
+}
+
+export function clubRenewalDue(endsOn: string | null | undefined, now = new Date(), withinDays = CLUB_RENEWAL_NOTICE_DAYS) {
+  if (!endsOn || !/^\d{4}-\d{2}-\d{2}$/.test(endsOn)) return false;
+  const end = Date.parse(`${endsOn}T00:00:00Z`);
+  const today = Date.parse(`${parisDate(now)}T00:00:00Z`);
+  return end - today <= withinDays * 24 * 60 * 60 * 1000;
+}
+
+export function formatClubDate(isoDate: string) {
+  const [year, month, day] = isoDate.slice(0, 10).split("-").map(Number);
+  return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(
+    new Date(Date.UTC(year, month - 1, day))
+  );
 }
 
 export function ageYears(birthDate: string, now: Date) {
@@ -279,18 +312,18 @@ export function expiresLabel(date: Date) {
 
 export function invitationShareText(input: { firstName: string; link: string; expiresLabel: string }) {
   const name = input.firstName.trim() || "Bonjour";
-  return `${name}, ${TRAVEL_CLUB_MANAGER} vous propose de rejoindre ${TRAVEL_CLUB_NAME}. L’adhésion, d’une valeur de ${TRAVEL_CLUB_FEE_LABEL.replace(", offerte", "")}, vous est offerte. Ce lien personnel expire le ${input.expiresLabel} : ${input.link}`;
+  return `Bonjour ${name}, le ${TRAVEL_CLUB_NAME} a le plaisir de vous offrir l’adhésion ${TRAVEL_CLUB_RANK} pour une durée d’un an. Cette adhésion est nominative et réservée à vos propres réservations. Ce lien personnel expire le ${input.expiresLabel} : ${input.link}`;
 }
 
 export function clubShareText(input: { referrerFirstName: string; link: string }) {
   const referrer = input.referrerFirstName.trim() || "Un membre";
-  return `${referrer} vous invite à rejoindre ${TRAVEL_CLUB_NAME}. ${TRAVEL_CLUB_MANAGER} en est le gestionnaire. L’adhésion, d’une valeur de ${TRAVEL_CLUB_FEE_LABEL}, vous est offerte. ${input.link}`;
+  return `${referrer} vous a recommandé au ${TRAVEL_CLUB_NAME}, qui a le plaisir de vous offrir l’adhésion ${TRAVEL_CLUB_RANK} pour une durée d’un an. Cette adhésion est nominative et réservée à vos propres réservations. ${input.link}`;
 }
 
 export function referralShareText(input: { guestFirstName: string; referrerFirstName: string; link: string; expiresLabel: string }) {
   const guest = input.guestFirstName.trim() || "Bonjour";
   const referrer = input.referrerFirstName.trim() || "Un membre";
-  return `${guest}, ${referrer} vous invite à rejoindre ${TRAVEL_CLUB_NAME}. ${TRAVEL_CLUB_MANAGER} en est le gestionnaire. L’adhésion, d’une valeur de ${TRAVEL_CLUB_FEE_LABEL.replace(", offerte", "")}, vous est offerte. Ce lien personnel expire le ${input.expiresLabel} : ${input.link}`;
+  return `Bonjour ${guest}, ${referrer} vous a recommandé au ${TRAVEL_CLUB_NAME}, qui a le plaisir de vous offrir l’adhésion ${TRAVEL_CLUB_RANK} pour une durée d’un an. Cette adhésion est nominative et réservée à vos propres réservations. Ce lien personnel expire le ${input.expiresLabel} : ${input.link}`;
 }
 
 /** Invitations restantes. `envoi` compte les envois. `validee` compte les filleuls validés. */
@@ -530,7 +563,7 @@ export function signupMailCopy(kind: "verify" | "received" | "complement" | "ref
       title: "Confirmez votre adresse",
       paragraphs: [
         `Bonjour ${name},`,
-        `${TRAVEL_CLUB_MANAGER} vous écrit. Confirmez cette adresse pour demander votre entrée dans ${TRAVEL_CLUB_NAME}. Le lien est valable 24 heures.`,
+        `Confirmez cette adresse pour demander votre entrée au ${TRAVEL_CLUB_NAME}. Le lien est valable 24 heures.`,
         "Tant que votre demande n’est pas validée, l’espace reste fermé.",
       ],
       cta: "Confirmer mon adresse",
@@ -543,8 +576,8 @@ export function signupMailCopy(kind: "verify" | "received" | "complement" | "ref
       title: "Demande bien reçue",
       paragraphs: [
         `Bonjour ${name},`,
-        `${TRAVEL_CLUB_MANAGER} a reçu votre demande pour ${TRAVEL_CLUB_NAME}. Il la relit avant d’ouvrir l’accès.`,
-        `L’adhésion, d’une valeur de ${TRAVEL_CLUB_FEE_LABEL}, est réservée aux membres.`,
+        `${TRAVEL_CLUB_OFFER}`,
+        "Votre demande est relue avant l’ouverture de l’accès.",
         "Vous n’avez pas encore accès à vos séjours.",
       ],
       cta: "",
@@ -557,7 +590,7 @@ export function signupMailCopy(kind: "verify" | "received" | "complement" | "ref
       title: "Un complément est demandé",
       paragraphs: [
         `Bonjour ${name},`,
-        `${TRAVEL_CLUB_MANAGER} a besoin d’une précision avant de relire votre demande pour ${TRAVEL_CLUB_NAME} :`,
+        `Une précision est nécessaire avant de relire votre demande pour le ${TRAVEL_CLUB_NAME} :`,
         input.message || "",
         "Vous pouvez compléter la demande depuis le lien. Rien n’est ouvert tant qu’elle n’est pas validée.",
       ],
@@ -571,7 +604,7 @@ export function signupMailCopy(kind: "verify" | "received" | "complement" | "ref
       title: "Demande non retenue",
       paragraphs: [
         `Bonjour ${name},`,
-        `${TRAVEL_CLUB_MANAGER} ne peut pas retenir votre demande pour ${TRAVEL_CLUB_NAME} pour le moment.`,
+        `Le ${TRAVEL_CLUB_NAME} ne peut pas retenir votre demande pour le moment.`,
         input.message ? input.message : "Vous pouvez écrire à l’agence si vous souhaitez en parler.",
       ],
       cta: "",
@@ -579,12 +612,11 @@ export function signupMailCopy(kind: "verify" | "received" | "complement" | "ref
     };
   }
   return {
-    subject: `Bienvenue dans ${TRAVEL_CLUB_NAME}`,
+    subject: `Bienvenue au ${TRAVEL_CLUB_NAME}`,
     title: "Votre accès va s’ouvrir",
     paragraphs: [
       `Bonjour ${name},`,
-      `${TRAVEL_CLUB_MANAGER} a le plaisir de vous accueillir dans ${TRAVEL_CLUB_NAME}.`,
-      `Votre adhésion, d’une valeur de ${TRAVEL_CLUB_FEE_LABEL}, vous est offerte.`,
+      TRAVEL_CLUB_OFFER,
       "Vous allez recevoir l’accès à votre espace, par e-mail et par WhatsApp si le message part.",
     ],
     cta: "",

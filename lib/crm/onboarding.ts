@@ -11,9 +11,9 @@ export const CLIENT_ONBOARDING_STEPS = [
   {
     id: "connexion",
     image: "/onboarding/04-connexion.webp",
-    title: "Bienvenue dans TBA - Travel Club",
+    title: "Bienvenue au Travel Club TBA",
     legend:
-      "Votre adhésion, d’une valeur de 1 600 € par an, vous est offerte. Benjamin Boukris est votre gestionnaire. L’espace reste privé : chaque membre y entre sur invitation.",
+      "Le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum pour une durée d’un an. Cette adhésion est nominative et réservée à vos propres réservations.",
   },
   {
     id: "accueil",

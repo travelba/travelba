@@ -69,7 +69,7 @@ export function ClientOnboarding({ previewHref = null }: { previewHref?: string 
       data-onboarding-step={current.id}
     >
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e8e4dc] px-4 py-3 lg:px-10">
-        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#9e7e51]">TBA - Travel Club</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#9e7e51]">Travel Club TBA</p>
         <p className="text-[12px] font-semibold tracking-[0.2em] text-[#c5a880]" aria-hidden>
           {String(step + 1).padStart(2, "0")}
         </p>

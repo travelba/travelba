@@ -5,6 +5,8 @@ import test from "node:test";
 import { roleAllows } from "./agency-access";
 import { classifyAgencyRoute } from "./agency-routes";
 import {
+  clubRenewalDue,
+  clubTerm,
   displayedInvitationStatus,
   extractReferralCode,
   hashToken,
@@ -215,16 +217,24 @@ test("l’invitation expire, le SMS reste éteint sans flag, WhatsApp retombe su
     true
   );
   const text = invitationShareText({ firstName: "Camille", link: "https://travelba.fr/inscription/i/abc", expiresLabel: "7 décembre 2026" });
-  assert.match(text, /TBA - Travel Club/);
-  assert.match(text, /Benjamin Boukris/);
-  assert.match(text, /offerte/);
+  assert.match(text, /Travel Club TBA/);
+  assert.match(text, /Platinum/);
+  assert.match(text, /nominative/);
+  assert.doesNotMatch(text, /1 600|gestionnaire|Benjamin/);
   const parrain = referralShareText({
     guestFirstName: "Léa",
     referrerFirstName: "Camille",
     link: "https://travelba.fr/inscription/i/abc",
     expiresLabel: "7 décembre 2026",
   });
-  assert.match(parrain, /Camille vous invite/);
+  assert.match(parrain, /Camille vous a recommandé/);
+  assert.doesNotMatch(parrain, /1 600|gestionnaire|Benjamin/);
+  const term = clubTerm(NOW);
+  assert.equal(term.rank, "platinum");
+  assert.equal(term.startedOn, "2026-11-23");
+  assert.equal(term.endsOn, "2027-11-23");
+  assert.equal(clubRenewalDue("2026-12-01", NOW), true);
+  assert.equal(clubRenewalDue("2027-11-23", NOW), false);
   assert.deepEqual(referralBalance({ mode: "envoi", sent: 3, validated: 1 }), {
     cap: 10,
     used: 3,
@@ -282,10 +292,12 @@ test("le parrain n’est pas le demandeur, et le téléphone se compare sur les 
 
 test("les e-mails sont en français et le refus sans case n’a pas de motif à envoyer", () => {
   const received = signupMailCopy("received", { firstName: "Camille" });
-  assert.match(received.paragraphs.join(" "), /TBA - Travel Club/);
-  assert.match(received.paragraphs.join(" "), /Benjamin Boukris/);
+  assert.match(received.paragraphs.join(" "), /Travel Club TBA/);
+  assert.match(received.paragraphs.join(" "), /nominative/);
+  assert.doesNotMatch(received.paragraphs.join(" "), /1 600|gestionnaire/);
   const accepted = signupMailCopy("validated", { firstName: "Camille" });
-  assert.match(accepted.paragraphs.join(" "), /offerte/);
+  assert.match(accepted.paragraphs.join(" "), /Platinum/);
+  assert.doesNotMatch(accepted.paragraphs.join(" "), /1 600|gestionnaire/);
   const refused = signupMailCopy("refused", { firstName: "Camille", message: "Hors zone" });
   assert.match(refused.paragraphs.join(" "), /Hors zone/);
   const rules = signupRateRules("203.0.113.5", "camille@exemple.fr");
