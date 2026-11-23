@@ -2,8 +2,8 @@
 # Secrets du dépôt : APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_ISSUER_ID,
 # APP_STORE_CONNECT_PRIVATE_KEY (PEM .p8), APPLE_TEAM_ID, CERTIFICATE_PRIVATE_KEY
 # (PEM RSA 2048). Même certificat à chaque run, comme codemagic.yaml.
-# Les identifiants de bundle viennent du projet : fr.travelba.client aujourd’hui,
-# et fr.travelba.client.Widgets dès que la cible est dans le .xcodeproj.
+# Les identifiants de bundle viennent du projet. Les deux sont exigés :
+# fr.travelba.client et fr.travelba.client.Widgets (groupe group.fr.travelba.client).
 name: iOS TestFlight
 
 on:
@@ -82,7 +82,12 @@ jobs:
 
       - name: Synchroniser Capacitor
         working-directory: mobile
-        run: npx cap sync ios
+        run: |
+          set -euo pipefail
+          npx cap sync ios
+          grep -q 'fr.travelba.client.Widgets' ios/App/App.xcodeproj/project.pbxproj
+          grep -q 'group.fr.travelba.client' ios/App/App/App.entitlements
+          grep -q 'group.fr.travelba.client' ios/App/Widgets/Widgets.entitlements
 
       - name: Outils de signature
         run: |
@@ -202,6 +207,12 @@ jobs:
           unset APP_STORE_CONNECT_ISSUER_ID
           unset APPLE_TEAM_ID
           keychain initialize
+          for required in fr.travelba.client fr.travelba.client.Widgets; do
+            grep -qx "$required" "$RUNNER_TEMP/bundle-ids.txt" || {
+              echo "Identifiant manquant dans le projet : $required"
+              exit 1
+            }
+          done
           while IFS= read -r bundle_id; do
             [[ -z "$bundle_id" ]] && continue
             echo "Profil App Store : $bundle_id"

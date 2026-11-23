@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createPrivateKey, generateKeyPairSync, verify } from "node:crypto";
 import test from "node:test";
-import { apnsHost, apnsPrivateKeyPem, isApnsDeviceToken, readApnsSettings, signApnsJwt } from "./apns-token";
+import { apnsHost, apnsPrivateKeyPem, apnsRequestHeaders, isApnsDeviceToken, readApnsSettings, signApnsJwt } from "./apns-token";
 
 test("les variables manquantes ou une preview n’arment pas APNs", () => {
   assert.equal(readApnsSettings({}), null);
@@ -62,4 +62,14 @@ test("un jeton appareil est hexadécimal", () => {
   assert.equal(isApnsDeviceToken("a".repeat(64)), true);
   assert.equal(isApnsDeviceToken("zzzz"), false);
   assert.equal(isApnsDeviceToken(`${"ab".repeat(32)} `), false);
+  const live = apnsRequestHeaders({
+    bundleId: "fr.travelba.client",
+    pushType: "liveactivity",
+    authorization: "jwt",
+  });
+  assert.equal(live["apns-topic"], "fr.travelba.client.push-type.liveactivity");
+  assert.equal(live["apns-push-type"], "liveactivity");
+  const alert = apnsRequestHeaders({ bundleId: "fr.travelba.client", authorization: "jwt" });
+  assert.equal(alert["apns-topic"], "fr.travelba.client");
+  assert.equal(alert["apns-push-type"], "alert");
 });

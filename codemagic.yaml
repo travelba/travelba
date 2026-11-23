@@ -21,6 +21,7 @@ workflows:
         - travelba_ios
       vars:
         BUNDLE_ID: fr.travelba.client
+        WIDGET_BUNDLE_ID: fr.travelba.client.Widgets
         XCODE_SCHEME: App
       xcode: latest
       node: 22
@@ -37,7 +38,7 @@ workflows:
         script: keychain initialize
       - name: Certificats App Store
         script: |
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+          app-store-connect fetch-signing-files "$BUNDLE_ID" "$WIDGET_BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
       - name: Installer les certificats

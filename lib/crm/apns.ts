@@ -1,7 +1,14 @@
 import "server-only";
 
 import http2 from "node:http2";
-import { apnsHost, readApnsSettings, signApnsJwt, type ApnsSettings } from "@/lib/crm/apns-token";
+import {
+  apnsHost,
+  apnsRequestHeaders,
+  readApnsSettings,
+  signApnsJwt,
+  type ApnsPushType,
+  type ApnsSettings,
+} from "@/lib/crm/apns-token";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
 
 export type ApnsSendResult = { status: number; reason: string };
@@ -25,9 +32,27 @@ function bearer(settings: ApnsSettings) {
   return token;
 }
 
+export type ApnsPushOptions = {
+  pushType?: ApnsPushType;
+  topic?: string;
+  priority?: "5" | "10";
+};
+
 /** Envoi HTTP/2. N’écrit pas le jeton appareil. */
-export function postApns(settings: ApnsSettings, deviceToken: string, payload: unknown): Promise<ApnsSendResult> {
+export function postApns(
+  settings: ApnsSettings,
+  deviceToken: string,
+  payload: unknown,
+  options?: ApnsPushOptions
+): Promise<ApnsSendResult> {
   const body = JSON.stringify(payload);
+  const headers = apnsRequestHeaders({
+    bundleId: settings.bundleId,
+    pushType: options?.pushType,
+    topic: options?.topic,
+    priority: options?.priority,
+    authorization: bearer(settings),
+  });
   return new Promise((resolve, reject) => {
     const client = http2.connect(`https://${apnsHost(settings.production)}`);
     const timer = setTimeout(() => {
@@ -43,10 +68,7 @@ export function postApns(settings: ApnsSettings, deviceToken: string, payload: u
     const req = client.request({
       ":method": "POST",
       ":path": `/3/device/${deviceToken}`,
-      authorization: `bearer ${bearer(settings)}`,
-      "apns-topic": settings.bundleId,
-      "apns-push-type": "alert",
-      "apns-priority": "10",
+      ...headers,
     });
     const chunks: Buffer[] = [];
     req.on("response", (headers) => {

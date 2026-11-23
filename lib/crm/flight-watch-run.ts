@@ -28,6 +28,7 @@ import {
   type FlightCard,
   type FlightNoticeKind,
 } from "./flight-watch";
+import { pushFlightLiveActivity } from "./live-activity-run";
 import { flightPushCopy } from "./push-copy";
 import { sendCustomerPush } from "./push-notices";
 import { siteConfig } from "../site";
@@ -424,7 +425,20 @@ export async function runFlightWatch(
         .update({ start_at: patch.start_at, end_at: patch.end_at, details, updated_at: now.toISOString() })
         .eq("id", item.id);
       if (writeError) quiet(writeError);
-      else updated += 1;
+      else {
+        updated += 1;
+        if (booking.visible_to_client) {
+          await pushFlightLiveActivity({
+            admin,
+            customerId: booking.customer_id,
+            bookingId: booking.id,
+            itemId: item.id,
+            visible: true,
+            item: { start_at: patch.start_at, end_at: patch.end_at, details },
+            now,
+          });
+        }
+      }
       item.start_at = patch.start_at;
       item.end_at = patch.end_at;
       item.details = details;

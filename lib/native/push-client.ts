@@ -2,12 +2,16 @@ import { isApnsDeviceToken } from "@/lib/crm/apns-token";
 
 const TOKEN_KEY = "tba.apns.token";
 
-function rememberedToken() {
+export function nativeDeviceToken() {
   try {
     return sessionStorage.getItem(TOKEN_KEY) || "";
   } catch {
     return "";
   }
+}
+
+function rememberedToken() {
+  return nativeDeviceToken();
 }
 
 function rememberToken(token: string) {
@@ -39,6 +43,7 @@ async function attachNativePush() {
     const value = token.value.replace(/\s+/g, "");
     if (!isApnsDeviceToken(value)) return;
     rememberToken(value);
+    void import("@/lib/native/widgets").then((mod) => mod.flushLiveActivityTokens());
     void fetch("/api/client/devices", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -46,9 +51,13 @@ async function attachNativePush() {
       body: JSON.stringify({ token: value, platform: "ios" }),
     }).catch(() => {});
   });
+  await PushNotifications.addListener("pushNotificationReceived", () => {
+    void import("@/lib/native/widgets").then((mod) => mod.refreshNativeWidgets({ force: true }));
+  });
   await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
     const url = action.notification?.data?.url;
     if (typeof url === "string" && url.startsWith("/mon-compte")) location.assign(url);
+    void import("@/lib/native/widgets").then((mod) => mod.refreshNativeWidgets({ force: true }));
   });
   const current = await PushNotifications.checkPermissions();
   const perm = current.receive === "granted" ? current : await PushNotifications.requestPermissions();

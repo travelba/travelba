@@ -66,3 +66,29 @@ export function signApnsJwt(input: { key: KeyObject | string; keyId: string; tea
 export function isApnsDeviceToken(value: string) {
   return /^[0-9a-f]{64,200}$/i.test(value);
 }
+
+export type ApnsPushType = "alert" | "liveactivity";
+
+/**
+ * En-têtes APNs. Une alerte reste sur le bundle de l’app.
+ * Une Live Activity part sur `{bundle}.push-type.liveactivity`.
+ */
+export function apnsRequestHeaders(input: {
+  bundleId: string;
+  pushType?: ApnsPushType;
+  topic?: string;
+  priority?: "5" | "10";
+  authorization: string;
+}) {
+  const pushType: ApnsPushType = input.pushType === "liveactivity" ? "liveactivity" : "alert";
+  const bundleId = input.bundleId.trim() || "fr.travelba.client";
+  const topic = (
+    input.topic || (pushType === "liveactivity" ? `${bundleId}.push-type.liveactivity` : bundleId)
+  ).trim();
+  return {
+    authorization: `bearer ${input.authorization}`,
+    "apns-topic": topic,
+    "apns-push-type": pushType,
+    "apns-priority": input.priority === "5" ? "5" : "10",
+  };
+}

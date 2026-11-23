@@ -9,7 +9,31 @@ public class PortalPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "canUnlock", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "unlock", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "armLiveActivities", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "syncWidgets", returnType: CAPPluginReturnPromise),
     ]
+
+    @objc func armLiveActivities(_ call: CAPPluginCall) {
+        WidgetBridge.arm { [weak self] event in
+            self?.notifyListeners("liveActivityToken", data: event)
+        }
+        call.resolve(["ok": true])
+    }
+
+    @objc func syncWidgets(_ call: CAPPluginCall) {
+        guard let json = call.getString("snapshot") else {
+            call.reject("Résumé indisponible.")
+            return
+        }
+        let ok = WidgetBridge.sync(json: json) { [weak self] event in
+            self?.notifyListeners("liveActivityToken", data: event)
+        }
+        if ok {
+            call.resolve(["ok": true])
+        } else {
+            call.reject("Résumé illisible.")
+        }
+    }
 
     @objc func canUnlock(_ call: CAPPluginCall) {
         let context = LAContext()
