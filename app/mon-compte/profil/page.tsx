@@ -5,6 +5,7 @@ import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { readVerifiedUser } from "@/lib/crm/verified-user";
 import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
 import type { CrmTravelDocument } from "@/lib/crm/types";
+import { AccountDeletion } from "@/components/account/AccountDeletion";
 import { PasswordChangeForm } from "@/components/account/PasswordChangeForm";
 import { PushPreferences } from "@/components/account/PushPreferences";
 import { ProfileForm } from "@/components/account/ProfileForm";
@@ -38,6 +39,8 @@ export default async function ProfilPage() {
       <PushPreferences />
 
       <PasswordChangeForm />
+
+      <AccountDeletion />
 
       <SignOutButton />
     </div>

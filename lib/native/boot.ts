@@ -18,7 +18,7 @@ function guardClicks() {
       const href = anchor.getAttribute("href") || "";
       if (!href || href.startsWith("#")) return;
       const decision = portalNavigation({ url: href, base: location.href });
-      if (decision === "allow") return;
+      if (decision === "allow" || decision === "system") return;
       event.preventDefault();
       event.stopPropagation();
       if (decision === "external") {
@@ -152,7 +152,7 @@ async function promptUnlock() {
 }
 
 /** Pont natif. Ne fait rien hors de l’application. */
-export async function bootNativeApp() {
+async function startNativeShell() {
   if (!isNativeAppBridge()) return;
   const [{ StatusBar, Style }, { SplashScreen }, { App }] = await Promise.all([
     import("@capacitor/status-bar"),
@@ -179,12 +179,28 @@ export async function bootNativeApp() {
   });
   await App.addListener("appUrlOpen", ({ url }) => {
     const decision = portalNavigation({ url });
-    if (decision === "allow") location.assign(url);
+    if (decision === "system" || decision === "allow") location.assign(url);
     else if (decision === "external") openExternal(url);
   });
 
-  if (location.pathname.startsWith("/mon-compte")) {
-    await registerNativePush().catch(() => {});
-  }
+  await syncNativeRoute(location.pathname);
   await SplashScreen.hide().catch(() => {});
+}
+
+let booted = false;
+
+/** Une seule installation des ponts natifs. Les visites suivantes passent par `syncNativeRoute`. */
+export async function bootNativeApp() {
+  if (!isNativeAppBridge() || booted) {
+    return;
+  }
+  booted = true;
+  await startNativeShell();
+}
+
+/** Après une connexion (navigation client vers /mon-compte), demande le jeton une fois. */
+export async function syncNativeRoute(pathname: string) {
+  if (!isNativeAppBridge()) return;
+  if (!pathname.startsWith("/mon-compte")) return;
+  await registerNativePush().catch(() => {});
 }

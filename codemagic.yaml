@@ -43,7 +43,7 @@ workflows:
       - name: Installer les certificats
         script: keychain add-certificates
       - name: Profils de signature
-        script: xcode-project use-profiles
+        script: xcode-project use-profiles --project "$CM_BUILD_DIR/mobile/ios/App/App.xcodeproj"
       - name: Numéro de build
         script: |
           cd "$CM_BUILD_DIR/mobile/ios/App"

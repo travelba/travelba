@@ -14,7 +14,8 @@ Les visuels sont dans `mobile/store-assets/` (icône, splash, captures). Ils vie
 | Sous-titre | Votre carnet de voyage | 22 / 30 |
 | Texte promotionnel | Le carnet, les vols et les documents de vos séjours. Une notification quand l’horaire change ou quand une pièce est prête. | 122 / 170 |
 | Mots-clés | `voyage,carnet,séjour,vol,hôtel,billet,document,passeport,agence,règlement,eta,esta,transfert` | 92 / 100 |
-| URL d’assistance | `https://travelba.fr` | |
+| URL d’assistance | `https://travelba.fr/fr/support` | |
+| URL de confidentialité | `https://travelba.fr/fr/confidentialite` | |
 | URL marketing | `https://travelba.fr` | |
 | Nom sous l’icône | TBA | |
 
@@ -49,9 +50,13 @@ Face ID reste sur l’appareil : le système répond seulement oui ou non. Le nu
 
 ### Note pour l’équipe de revue
 
-L’application ouvre l’espace client sur `https://travelba.fr/connexion`, puis `/mon-compte`. Ce n’est pas une coque vide : notifications Apple, Face ID au retour, appareil photo pour une pièce, feuille de partage, écran hors ligne, écran de lancement.
+À coller dans App Review Information.
 
-Le back-office `/admin` est refusé : la requête est renvoyée vers la connexion, et le délégué de navigation annule la page.
+L’application ouvre l’espace client sur `https://travelba.fr/connexion`, puis `/mon-compte`. Il n’y a pas d’inscription ouverte : l’agence crée le compte et envoie l’invitation. Le back-office `/admin` est refusé (redirection vers la connexion, et le délégué de navigation annule la page).
+
+Fonctions natives : notifications Apple, Face ID au retour (résultat gardé sur l’appareil), appareil photo pour une pièce, feuille de partage, écran hors ligne, écran de lancement.
+
+Suppression du compte : Mon compte › Supprimer mon compte. La demande est enregistrée et envoyée à l’agence. Le client est déconnecté. Le traitement est fait sous 30 jours. Les séjours ne sont pas effacés sur-le-champ. Politique : `https://travelba.fr/fr/confidentialite`. Assistance : `https://travelba.fr/fr/support`.
 
 Compte de démonstration (à remplacer avant l’envoi) :
 
@@ -64,7 +69,7 @@ L’agence crée ce compte et publie un séjour d’exemple visible. Ne pas util
 
 1. **Programme Apple Developer** (99 USD / an) au nom de Travel Business Agency. Noter l’identifiant d’équipe, dix caractères (`APPLE_TEAM_ID`).
 
-2. **Identifiant d’app** `fr.travelba.client`. Activer la capacité Push Notifications. Ajouter les domaines associés `applinks:travelba.fr` si les liens d’invitation doivent ouvrir l’application plutôt que Safari.
+2. **Identifiant d’app** `fr.travelba.client`. Activer les deux capacités : **Push Notifications** et **Associated Domains**. Le fichier d’entitlements porte déjà `aps-environment` et `applinks:travelba.fr`. Sans Associated Domains, la signature du build échoue. Les liens d’invitation n’ouvrent l’application que si `APPLE_TEAM_ID` est aussi posé.
 
 3. **App Store Connect** : nouvelle app iOS, bundle `fr.travelba.client`, nom « TBA : Travel Business Agency ». SKU libre, par exemple `tba-ios`. Coller la fiche ci-dessus. Déposer l’icône `mobile/store-assets/icon-1024.png` (1024, sans transparence). Déposer les captures `mobile/store-assets/screenshots/iphone-6.9/` et `iphone-6.5/` (six écrans, dans l’ordre des noms).
 

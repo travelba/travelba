@@ -35,7 +35,9 @@ test("le portail client reste dans l’application, l’agence jamais", () => {
   assert.equal(portalNavigation({ url: "https://travelba.fr/admin/reservations" }), "block");
   assert.equal(portalNavigation({ url: "https://travelba.fr/" }), "external");
   assert.equal(portalNavigation({ url: "https://wa.me/33756841315" }), "external");
-  assert.equal(portalNavigation({ url: "mailto:contact@travelba.fr" }), "external");
+  assert.equal(portalNavigation({ url: "mailto:contact@travelba.fr" }), "system");
+  assert.equal(portalNavigation({ url: "tel:+33756841315" }), "system");
+  assert.equal(portalNavigation({ url: "sms:+33756841315" }), "system");
   assert.equal(portalNavigation({ url: "https://evil.example/mon-compte" }), "external");
 });
 

@@ -18,8 +18,21 @@ function rememberToken(token: string) {
   }
 }
 
-/** Demande la permission et enregistre le jeton. À appeler seulement dans l’application. */
+let pushRegistered = false;
+
+/** Demande la permission et enregistre le jeton. Un second appel ne redemande rien. */
 export async function registerNativePush() {
+  if (pushRegistered) return;
+  pushRegistered = true;
+  try {
+    await attachNativePush();
+  } catch (error) {
+    pushRegistered = false;
+    throw error;
+  }
+}
+
+async function attachNativePush() {
   const { PushNotifications } = await import("@capacitor/push-notifications");
   await PushNotifications.removeAllListeners();
   await PushNotifications.addListener("registration", (token) => {

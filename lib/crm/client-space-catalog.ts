@@ -459,6 +459,15 @@ export const CLIENT_SPACE_ACTIONS: ClientSpaceAction[] = [
     concierge: "regler_notifications",
     rule: "Le concierge ne change pas ces cases. Le titulaire le fait dans l’application.",
   },
+  {
+    id: "supprimer_compte",
+    page: "/mon-compte/profil",
+    route: "/api/client/account/deletion",
+    method: "POST",
+    client: "Demande la suppression du compte. L’agence la traite sous 30 jours.",
+    concierge: "supprimer_compte",
+    rule: "Aucune suppression immédiate. Les séjours restent. Le concierge n’efface pas le compte.",
+  },
 ];
 
 export type ClassifiedSpace = {

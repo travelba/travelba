@@ -201,10 +201,12 @@ try {
       const file = join(dir, `${screen.slug}.png`);
       await sharp(basePng)
         .composite([{ input: layout.rounded, left: layout.left, top: layout.top }])
+        .flatten({ background: "#0B192C" })
+        .removeAlpha()
         .png()
         .toFile(file);
       const meta = await sharp(file).metadata();
-      console.log(frame.folder, screen.slug, meta.width, meta.height);
+      console.log(frame.folder, screen.slug, meta.width, meta.height, "alpha", meta.hasAlpha);
     }
     await page.close();
   }

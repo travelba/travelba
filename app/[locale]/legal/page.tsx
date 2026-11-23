@@ -97,6 +97,11 @@ function LegalContent() {
         <p className="mt-3 leading-relaxed text-muted">
           {t("dataText", { email: siteConfig.contactEmail })}
         </p>
+        <p className="mt-3">
+          <Link href="/confidentialite" className="text-sm font-medium text-foreground underline">
+            {t("privacyLink")}
+          </Link>
+        </p>
       </section>
     </main>
   );

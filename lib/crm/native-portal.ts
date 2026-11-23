@@ -33,7 +33,12 @@ export function isNativeBlockedPath(pathname: string) {
   );
 }
 
-export type PortalNavigation = "allow" | "block" | "external";
+export type PortalNavigation = "allow" | "block" | "external" | "system";
+
+/** Téléphone, mail et SMS : l’application les laisse à iOS, sans les ouvrir dans le navigateur intégré. */
+export function isSystemScheme(url: string) {
+  return /^(tel|mailto|sms):/i.test(url.trim());
+}
 
 /** Où envoyer une navigation demandée par la webview. */
 export function portalNavigation(input: { url: string; base?: string }): PortalNavigation {
@@ -43,7 +48,7 @@ export function portalNavigation(input: { url: string; base?: string }): PortalN
   } catch {
     return "block";
   }
-  if (url.protocol === "tel:" || url.protocol === "mailto:") return "external";
+  if (url.protocol === "tel:" || url.protocol === "mailto:" || url.protocol === "sms:") return "system";
   if (url.protocol !== "https:" && url.protocol !== "http:") return "external";
   const host = url.hostname.toLowerCase();
   if (!PORTAL_HOSTS.has(host)) return "external";

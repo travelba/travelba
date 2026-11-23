@@ -194,6 +194,8 @@
     "rights": "Tous droits réservés.",
     "madeWith": "Voyages d'exception, partout dans le monde.",
     "legalLink": "Mentions légales",
+    "privacyLink": "Confidentialité",
+    "supportLink": "Assistance",
     "accreditations": "Accréditée IATA · Membre APST"
   },
   "Legal": {
@@ -207,6 +209,7 @@
     "ipText": "L'ensemble des contenus de ce site (textes, visuels, logo, identité graphique) est protégé par le droit de la propriété intellectuelle. Toute reproduction, totale ou partielle, sans autorisation préalable est interdite.",
     "dataTitle": "Données personnelles",
     "dataText": "Les informations transmises via le formulaire de contact sont utilisées uniquement pour traiter votre demande. Conformément au RGPD, vous disposez d'un droit d'accès, de rectification et de suppression de vos données en écrivant à {email}.",
+    "privacyLink": "Lire la politique de confidentialité",
     "fields": {
       "legalName": "Dénomination sociale",
       "legalForm": "Forme juridique",
