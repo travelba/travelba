@@ -25,6 +25,8 @@ import { deliverWalletNotice } from "./wallet-pass-notify";
 import { syncCheckinSent } from "./online-checkin-db";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { resolveContentSid } from "./twilio-content-sid";
+import { airportPushCopy, boardingPushCopy } from "./push-copy";
+import { sendCustomerPush } from "./push-notices";
 import { sendContentTemplate } from "./whatsapp";
 
 type CardInput = {
@@ -212,6 +214,19 @@ export async function sendBoardingPassWhatsapp(
     });
     sent += 1;
     sentCards.push({ documentId: row.documentId, flight: row.fields.flight });
+    const reference = String(booking.reference || "");
+    if (/^[A-Za-z0-9-]{4,40}$/.test(reference)) {
+      const copy = boardingPushCopy({ flight: row.fields.flight, route: row.fields.route });
+      await sendCustomerPush({
+        customerId,
+        kind: "documents",
+        title: copy.title,
+        body: copy.body,
+        url: `/mon-compte/reservations/${reference}`,
+        idempotencyKey: `boarding:${row.documentId}`,
+        bookingId: input.bookingId,
+      });
+    }
     const walletId = findWalletDocumentId(wallets, row.fields);
     if (walletId) {
       await deliverWalletNotice({ phone: customer.phone, firstName: row.fields.firstName, documentId: walletId });
@@ -263,6 +278,16 @@ async function sendAirport(
     templateKey: "enregistrement_aeroport",
     body: preview,
     twilioSid: result.sid,
+  });
+  const copy = airportPushCopy({ flight: fields.flight, route: fields.route });
+  await sendCustomerPush({
+    customerId,
+    kind: "travel",
+    title: copy.title,
+    body: copy.body,
+    url: "/mon-compte",
+    idempotencyKey: `airport:${input.bookingId}:${fields.flight}`.slice(0, 180),
+    bookingId: input.bookingId,
   });
   return { ok: true, sent: 1 };
 }

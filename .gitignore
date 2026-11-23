@@ -49,6 +49,12 @@ next-env.d.ts
 .env*
 .tmp-ingest-eval/
 
+# Application iOS (CocoaPods et le résultat de compilation)
+mobile/node_modules
+mobile/ios/App/Pods
+mobile/ios/DerivedData
+mobile/ios/App/build
+
 tmp_mtrip_extract/
 mtrip_pdf_list.json
 *.traineddata

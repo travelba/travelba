@@ -20,6 +20,8 @@ import { payerKindOf } from "@/lib/crm/payer";
 import { scoreRevolutMatches, suggestedCustomerId, type RevolutMatchCustomer } from "@/lib/crm/revolut-match";
 import { stayPayMethodOf } from "@/lib/crm/stripe-pay";
 import type { StripeIntentInput } from "@/lib/crm/stripe-inbox";
+import { paymentPushCopy } from "@/lib/crm/push-copy";
+import { sendCustomerPush } from "@/lib/crm/push-notices";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import { siteConfig } from "@/lib/site";
 
@@ -155,6 +157,22 @@ export async function notifyClientPayment(admin: NoticeDb, input: ClientPayNotic
       reference: input.reference,
       href: hrefFor(input),
       system: system ? alert : null,
+    });
+  }
+  if (input.result === "reçu") {
+    const copy = paymentPushCopy(money, input.reference);
+    const ref = (input.reference || "").trim();
+    const url = /^TB-[A-Za-z0-9-]{4,32}$/i.test(ref)
+      ? `/mon-compte/reservations/${ref}`
+      : "/mon-compte/transactions";
+    await sendCustomerPush({
+      customerId: input.customerId,
+      kind: "payment",
+      title: copy.title,
+      body: copy.body,
+      url,
+      idempotencyKey: `pay:${intentId}`,
+      bookingId: input.bookingId,
     });
   }
 }

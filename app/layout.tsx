@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Inter, Nunito_Sans, Plus_Jakarta_Sans } from "next/font/google";
+import { NativeApp } from "@/components/native/NativeApp";
 import { brandShareImages, siteConfig } from "@/lib/site";
 import "./globals.css";
 
@@ -83,7 +84,10 @@ export default function RootLayout({
       lang="fr"
       className={`${spaceGrotesk.variable} ${inter.variable} ${plusJakarta.variable} ${nunito.variable}`}
     >
-      <body className="bg-background text-foreground antialiased">{children}</body>
+      <body className="bg-background text-foreground antialiased">
+        <NativeApp />
+        {children}
+      </body>
     </html>
   );
 }

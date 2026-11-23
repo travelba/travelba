@@ -146,7 +146,10 @@ function loginPathOrNull(raw: string | null): string | null {
   } catch {
     return null;
   }
-  if (url.pathname === "/connexion") return "/connexion";
+  if (url.pathname === "/connexion") {
+    if (url.searchParams.get("error") === "application") return "/connexion?error=application";
+    return "/connexion";
+  }
   if (url.pathname !== "/admin/login") return null;
   if (url.searchParams.get("espace") === "myler") return "/admin/login?espace=myler";
   return "/admin/login";

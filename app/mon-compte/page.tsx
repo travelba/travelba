@@ -188,7 +188,13 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
 
   return (
     <>
-      <article className="account-press overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
+      <article
+        data-tba-trip=""
+        data-tba-title={tripName}
+        data-tba-when={formatDateRangeShort(nextTrip.start_date, nextTrip.end_date)}
+        data-tba-href={tripHref}
+        className="account-press overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl"
+      >
         <BookingHero
           booking={toPublicBooking(nextTrip)}
           places={face?.places}

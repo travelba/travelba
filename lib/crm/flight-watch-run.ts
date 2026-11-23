@@ -28,6 +28,8 @@ import {
   type FlightCard,
   type FlightNoticeKind,
 } from "./flight-watch";
+import { flightPushCopy } from "./push-copy";
+import { sendCustomerPush } from "./push-notices";
 import { siteConfig } from "../site";
 import { sendContentTemplate } from "./whatsapp";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
@@ -163,6 +165,37 @@ async function notify(input: {
     variables,
   });
   return result.ok;
+}
+
+async function pushNotice(input: {
+  booking: BookingRow;
+  customer: CustomerRow | undefined;
+  itemId: string;
+  startAt: string | null;
+  details: Record<string, unknown>;
+  kind: FlightNoticeKind;
+  when?: string | null;
+  place?: string | null;
+}) {
+  if (!input.booking.visible_to_client || !input.customer) return;
+  if (!REFERENCE.test(input.booking.reference)) return;
+  const copy = flightPushCopy({
+    kind: input.kind,
+    flight: flightNumberLabel(input.details),
+    route: flightRouteLabel(input.details),
+    when: input.when,
+    place: input.place,
+  });
+  if (!copy) return;
+  await sendCustomerPush({
+    customerId: input.customer.id,
+    kind: "travel",
+    title: copy.title,
+    body: copy.body,
+    url: `/mon-compte/reservations/${input.booking.reference}`,
+    idempotencyKey: `flight:${input.itemId}:${input.kind}:${input.startAt || ""}`.slice(0, 180),
+    bookingId: input.booking.id,
+  });
 }
 
 function missingTable(error: { code?: string } | null) {
@@ -360,15 +393,26 @@ export async function runFlightWatch(
           kind === "horaire" || kind === "retard" ? flightClockLabel(patch.start_at) : null;
         if ((kind === "horaire" || kind === "retard") && !when) continue;
         if (kind === "arrivee" && !place) continue;
+        const customer = customers.get(booking.customer_id);
         const sent = await notify({
           admin,
           item: { ...item, start_at: patch.start_at, details },
           booking,
-          customer: customers.get(booking.customer_id),
+          customer,
           kind,
           when,
           place,
           contentSid: noticeSids[kind],
+        });
+        await pushNotice({
+          booking,
+          customer,
+          itemId: item.id,
+          startAt: patch.start_at,
+          details,
+          kind,
+          when,
+          place,
         });
         if (sent) {
           details = markFlightNotified(details, kind, patch.start_at, now);
@@ -421,6 +465,14 @@ export async function runFlightWatch(
       customer,
       kind: "enregistrement",
       contentSid: noticeSids.enregistrement,
+    });
+    await pushNotice({
+      booking,
+      customer,
+      itemId: item.id,
+      startAt: item.start_at,
+      details: item.details,
+      kind: "enregistrement",
     });
     const details = sent
       ? markFlightNotified(item.details, "enregistrement", item.start_at, now)

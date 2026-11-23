@@ -47,6 +47,14 @@ function LoginForm() {
       setError(ack.status === 401 ? LOGIN_FAILURE_MESSAGE : json.error || "Connexion impossible.");
       return;
     }
+    if (json.staff && typeof window !== "undefined") {
+      const cap = (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+      if (cap?.isNativePlatform?.()) {
+        setLoading(false);
+        await signOutAccount("local", "/connexion?error=application");
+        return;
+      }
+    }
     setLoading(false);
     router.push(
       pathAfterKnownPassword({
@@ -308,20 +316,26 @@ function LoginForm() {
 function ConnexionQueryNotice() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
-  if (error !== "auth" && error !== "no-account") return null;
+  if (error !== "auth" && error !== "no-account" && error !== "application") return null;
   return (
     <>
+      {error === "application" ? (
+        <p className="text-sm text-[var(--admin-navy)]">
+          Cette application est réservée à l’espace client. L’agence se connecte sur le site.
+        </p>
+      ) : null}
       {error === "no-account" ? (
         <p className="text-sm text-[var(--admin-red)]">
           Aucun espace client n’est associé à ce compte. Contactez l’agence
           pour recevoir une invitation.
         </p>
-      ) : (
+      ) : null}
+      {error === "auth" ? (
         <p className="text-sm text-[var(--admin-red)]">
           Lien invalide ou expiré. Demandez une nouvelle invitation ou
           réinitialisez votre mot de passe.
         </p>
-      )}
+      ) : null}
       {error === "no-account" ? (
         <button
           type="button"
