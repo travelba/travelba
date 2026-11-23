@@ -747,7 +747,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Crée une carte Pliant sur le dossier (dossier_id ou reference), au nom indiqué (ex. Hôtel). Plafond total obligatoire, en euros par défaut. transactions : nombre d’achats, 1 par défaut. Si le compte a PLIANT_VIRTUAL_TRAVEL, c’est ce produit (sans 3DS, jamais une config _CC) : le nombre est toujours envoyé, plafond total et montant d’un achat égal au plafond. Sinon, 1 reste une carte à usage unique et un nombre plus grand une carte virtuelle. La réponse donne card_config, et avertissement si les cartes voyage ne sont pas activées. Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. La carte reste rattachée au dossier : chaque débit s’y rapproche. Ne renvoie jamais le numéro ni le CVV. lire_carte_pliant, juste après, donne le numéro au jeton général, au jeton carte, et à une clé tbk_ qui a le droit Créer une carte Pliant. Jeton général, jeton carte, ou clé tbk_ avec le droit Créer une carte Pliant. Sans confirmer, aperçu seulement : la carte n’est pas créée.",
+      "Crée une carte Pliant sur le dossier (dossier_id ou reference), au nom indiqué (ex. Hôtel). Plafond total obligatoire, en euros par défaut. transactions : nombre d’achats, 1 par défaut. Par défaut, Visa Travel 3 % sans 3DS (PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D), pour les hôtels, le GDS et la plupart des commerçants voyage. trois_ds vrai demande le 3DS frictionless (PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300) : le 3DS seulement pour un commerçant qui l’exige, comme Ryanair. Si cette variante manque, la création est refusée. Sinon, si la carte sans 3DS n’est pas émissible, PLIANT_VIRTUAL_TRAVEL, puis une carte à usage unique (1 achat) ou une carte virtuelle. Jamais une config _CC. Le nombre est toujours envoyé sur une carte voyage, plafond total et montant d’un achat égal au plafond. La réponse donne card_config, et avertissement si les cartes voyage ne sont pas activées. Aucune restriction : ni devise, ni pays, ni commerçant, ni catégorie, ni mode d’acceptation. La carte reste rattachée au dossier : chaque débit s’y rapproche. Ne renvoie jamais le numéro ni le CVV. lire_carte_pliant, juste après, donne le numéro au jeton général, au jeton carte, et à une clé tbk_ qui a le droit Créer une carte Pliant. Jeton général, jeton carte, ou clé tbk_ avec le droit Créer une carte Pliant. Sans confirmer, aperçu seulement : la carte n’est pas créée.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier, ex. TB-2026-0082"),
@@ -764,6 +764,10 @@ export const MCP_TOOLS: ToolDef[] = [
         .describe("Maximum d’un paiement. Défaut : le plafond"),
       prenom: z.string().trim().max(50).optional().describe("Prénom du titulaire. Défaut : le voyageur du dossier"),
       nom_titulaire: z.string().trim().max(50).optional().describe("Nom du titulaire"),
+      trois_ds: z
+        .boolean()
+        .optional()
+        .describe("3DS frictionless, seulement si le commerçant l’exige (ex. Ryanair). Défaut : Visa Travel 3 % sans 3DS"),
       confirmer: confirmOpt,
     },
     run: (args) =>
@@ -777,6 +781,7 @@ export const MCP_TOOLS: ToolDef[] = [
           plafond: args.plafond,
           devise: args.devise,
           transactions: args.transactions,
+          trois_ds: args.trois_ds === true,
         },
         () =>
           createPliantCard({
@@ -789,6 +794,7 @@ export const MCP_TOOLS: ToolDef[] = [
             montant_transaction: args.montant_transaction,
             prenom: str(args, "prenom"),
             nom_titulaire: str(args, "nom_titulaire"),
+            trois_ds: args.trois_ds === true,
           })
       ),
   },

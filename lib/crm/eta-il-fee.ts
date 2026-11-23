@@ -2,9 +2,12 @@ import { ETA_IL_PORTAL } from "./eta-il-draft";
 import {
   DEFAULT_PLIANT_TRANSACTIONS,
   PLIANT_SINGLE_USE,
+  PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300,
+  PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D,
   PLIANT_VIRTUAL_TRAVEL,
   pliantConfigIsCommercialChoice,
   pliantConfigIsSingleUse,
+  pliantConfigIsTravel3ds,
 } from "./pliant-controls";
 import {
   centsToEur,
@@ -360,6 +363,8 @@ export function etaIlPliantCard(input: {
     portal: ETA_IL_PORTAL,
     body: {
       organizationId: input.organizationId,
+      // Plusieurs paiements : le corps reste virtuel. À l’émission, le catalogue
+      // préfère Visa Travel sans 3DS, puis l’ancienne carte voyage. Pas d’usage unique.
       cardConfig: input.cardConfig || "PLIANT_VIRTUAL",
       label: name.label,
       customFirstName: name.customFirstName,
@@ -402,20 +407,38 @@ export function pickListedId(preferred: string, ids: string[]) {
 
 type PliantAvailableConfig = { cardConfig?: string | null; canBeIssued?: boolean | null; type?: string | null };
 
-/** `PLIANT_VIRTUAL_TRAVEL` émissible, jamais une variante `_CC`. */
-export function issuableTravelConfig(configs: PliantAvailableConfig[]) {
-  const row = configs.find(
-    (item) => item.canBeIssued !== false && item.cardConfig === PLIANT_VIRTUAL_TRAVEL && !pliantConfigIsCommercialChoice(item.cardConfig)
+function listedIssuable(configs: PliantAvailableConfig[], name: string) {
+  return configs.some(
+    (item) => item.canBeIssued !== false && item.cardConfig === name && !pliantConfigIsCommercialChoice(item.cardConfig || "")
   );
-  return row?.cardConfig || null;
 }
 
 /**
- * Préfère la carte voyage si le compte peut l’émettre.
- * Sinon, le produit demandé : une demande à usage unique ne retombe pas sur `PLIANT_VIRTUAL`.
- * Une demande virtuelle reste sur `PLIANT_VIRTUAL`. Aucune config `_CC`.
+ * Visa Travel 3 % sans 3DS, puis l’ancienne carte voyage.
+ * Jamais une variante `_CC`, jamais le 3DS frictionless (il se demande).
+ */
+export function issuableTravelConfig(configs: PliantAvailableConfig[]) {
+  if (listedIssuable(configs, PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D)) {
+    return PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D;
+  }
+  if (listedIssuable(configs, PLIANT_VIRTUAL_TRAVEL)) return PLIANT_VIRTUAL_TRAVEL;
+  return null;
+}
+
+/**
+ * Préfère Visa Travel sans 3DS, puis `PLIANT_VIRTUAL_TRAVEL`.
+ * Une demande 3DS frictionless est honorée si elle est émissible, sinon rien :
+ * l’appelant refuse, sans retomber sur le défaut. Ensuite, le produit demandé.
+ * Une demande à usage unique ne retombe pas sur `PLIANT_VIRTUAL`.
+ * Une demande virtuelle (formalité, plusieurs paiements) reste sur `PLIANT_VIRTUAL`.
+ * Aucune config `_CC`.
  */
 export function pickTravelConfig(preferred: string, configs: PliantAvailableConfig[]) {
+  if (pliantConfigIsTravel3ds(preferred)) {
+    return listedIssuable(configs, PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300)
+      ? PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300
+      : null;
+  }
   const travel = issuableTravelConfig(configs);
   if (travel) return travel;
   const open = configs.filter(
