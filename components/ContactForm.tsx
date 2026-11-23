@@ -8,7 +8,7 @@ import { BusyBar } from "@/components/crm/BusyBar";
 
 type Status = "idle" | "loading" | "success" | "undelivered" | "error";
 
-export function ContactForm() {
+export function ContactForm({ defaultService = "" }: { defaultService?: string }) {
   const t = useTranslations("Contact.form");
   const tServices = useTranslations("Services");
   const [status, setStatus] = useState<Status>("idle");
@@ -88,7 +88,7 @@ export function ContactForm() {
           <label htmlFor="service" className="mb-2 block text-[11px] font-medium uppercase tracking-[0.18em] text-[#5C4824]">
             {t("service")}
           </label>
-          <select id="service" name="service" defaultValue="" className="lux-field">
+          <select id="service" name="service" defaultValue={defaultService} className="lux-field">
             <option value="" disabled>
               {t("servicePlaceholder")}
             </option>

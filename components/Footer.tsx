@@ -61,40 +61,60 @@ export function Footer() {
             </div>
           </div>
 
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-2">
             <h2 className="text-[11px] font-medium uppercase tracking-[0.22em] text-[#E8D7BC]">
               {t("servicesTitle")}
             </h2>
             <ul className="mt-5 space-y-2.5 text-sm text-[#F7F3EB]/75">
               {SERVICE_KEYS.map((key) => (
                 <li key={key}>
-                  <a href="#services" className="lux-line transition-colors hover:text-[#F7F3EB]">
+                  <Link href="/#services" className="lux-line transition-colors hover:text-[#F7F3EB]">
                     {tServices(`${key}.title`)}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
           </div>
 
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-3">
             <h2 className="text-[11px] font-medium uppercase tracking-[0.22em] text-[#E8D7BC]">
               {t("companyTitle")}
             </h2>
             <ul className="mt-5 space-y-2.5 text-sm text-[#F7F3EB]/75">
               <li>
-                <a href="#why" className="lux-line hover:text-[#F7F3EB]">
+                <Link href="/voyages" className="lux-line hover:text-[#F7F3EB]">
+                  {tNav("voyages")}
+                </Link>
+              </li>
+              <li>
+                <Link href="/application" className="lux-line hover:text-[#F7F3EB]">
+                  {tNav("app")}
+                </Link>
+              </li>
+              <li>
+                <Link href="/evenements" className="lux-line hover:text-[#F7F3EB]">
+                  {tNav("events")}
+                </Link>
+              </li>
+              <li>
+                <Link href="/famille" className="lux-line hover:text-[#F7F3EB]">
+                  {tNav("family")}
+                </Link>
+              </li>
+              <li>
+                <Link href="/#why" className="lux-line hover:text-[#F7F3EB]">
                   {tNav("why")}
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#process" className="lux-line hover:text-[#F7F3EB]">
+                <Link href="/#process" className="lux-line hover:text-[#F7F3EB]">
                   {tNav("process")}
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#testimonials" className="lux-line hover:text-[#F7F3EB]">
+                <Link href="/#testimonials" className="lux-line hover:text-[#F7F3EB]">
                   {tNav("testimonials")}
-                </a>
+                </Link>
               </li>
               <li>
                 <NextLink href="/connexion" className="lux-line text-[#F7F3EB] hover:text-[#E8D7BC]">

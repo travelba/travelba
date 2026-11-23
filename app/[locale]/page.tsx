@@ -2,6 +2,7 @@ import { setRequestLocale } from "next-intl/server";
 import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
 import { Credentials } from "@/components/Credentials";
+import { Offers } from "@/components/site/Offers";
 import { About } from "@/components/About";
 import { Services } from "@/components/Services";
 import { WhyUs } from "@/components/WhyUs";
@@ -25,6 +26,7 @@ export default async function HomePage({
       <main id="contenu" tabIndex={-1} className="outline-none">
         <Hero />
         <Credentials />
+        <Offers />
         <About />
         <Services />
         <WhyUs />

@@ -11,7 +11,12 @@
     "testimonials": "Avis",
     "contact": "Contact",
     "account": "Mon espace",
-    "cta": "Demander un devis"
+    "cta": "Demander un devis",
+    "voyages": "Voyages",
+    "app": "L'application",
+    "events": "Événements",
+    "family": "Famille",
+    "agency": "L'agence"
   },
   "Hero": {
     "badge": "Conciergerie de voyage · International",
@@ -223,6 +228,183 @@
       "email": "E-mail",
       "phone": "Téléphone"
     }
+  },
+  "Offers": {
+    "eyebrow": "La maison",
+    "title": "Quatre façons de partir avec l'agence",
+    "open": "Voir",
+    "voyages": {
+      "title": "Voyages signature",
+      "text": "Des itinéraires tenus par l'agence, puis ajustés à votre rythme. Le catalogue est à compléter."
+    },
+    "app": {
+      "title": "L'application TBA",
+      "text": "L'espace client : hôtels aux tarifs qui vous sont réservés, carnet du séjour, pièces et transactions."
+    },
+    "events": {
+      "title": "Séminaires et célébrations",
+      "text": "Séminaires, événements privés et anniversaires, du lieu au dernier détail."
+    },
+    "family": {
+      "title": "Voyages en famille",
+      "text": "Palaces et clubs enfants, composés autour du rythme des plus jeunes."
+    }
+  },
+  "QuoteBlock": {
+    "eyebrow": "Devis",
+    "title": "Décrivez le projet",
+    "text": "Le même formulaire que l'accueil. Nous revenons vers vous en moins d'une heure pendant les heures ouvrées."
+  },
+  "Voyages": {
+    "metaTitle": "Voyages signature — Travel Business Agency",
+    "metaDescription": "Itinéraires signature de Travel Business Agency, dessinés sur mesure. Le catalogue des voyages est en cours de rédaction.",
+    "eyebrow": "Voyages signature",
+    "title": "Un itinéraire tenu par l'agence, ajusté pour vous",
+    "lede": "Un voyage signature part d'une trame : destination, durée, saison, rythme, puis le fil des jours. Rien n'est figé. Le catalogue ci-dessous attend les voyages que l'agence choisira de montrer.",
+    "methodTitle": "Comment se lit un voyage",
+    "method": {
+      "destination": { "title": "La destination", "text": "Les villes où l'on séjourne. Pas la ville de départ, pas une escale." },
+      "rhythm": { "title": "Le rythme", "text": "Le nombre de nuits, le tempo des journées, ce qui reste libre." },
+      "days": { "title": "Le fil des jours", "text": "Chaque jour a un titre et ce qui s'y passe, seulement quand c'est connu." },
+      "adjust": { "title": "L'ajustement", "text": "La trame se reprend avec vous : dates, nombre de voyageurs, envies." }
+    },
+    "catalogueTitle": "Le catalogue",
+    "catalogueText": "Quatre emplacements. Chaque champ reste vide tant que le voyage n'est pas rédigé.",
+    "cardTitle": "Voyage signature {slot}",
+    "fields": {
+      "destination": "Destination",
+      "duration": "Durée",
+      "season": "Saison",
+      "pace": "Rythme"
+    },
+    "blank": "[À compléter]",
+    "openItinerary": "Ouvrir la trame"
+  },
+  "VoyageDetail": {
+    "metaTitle": "Voyage signature {slot} — Travel Business Agency",
+    "metaDescription": "Trame d'un voyage signature Travel Business Agency. Les faits du séjour restent à rédiger.",
+    "missingTitle": "Voyage signature — Travel Business Agency",
+    "back": "Tous les voyages",
+    "eyebrow": "Voyage signature {slot}",
+    "title": "Voyage signature {slot}",
+    "lede": "Cette page est la trame d'un itinéraire. Les faits, le prix et les promesses ne sont pas encore écrits.",
+    "facts": {
+      "destination": "Destination",
+      "duration": "Durée",
+      "season": "Saison",
+      "pace": "Rythme",
+      "forWhom": "Pour qui"
+    },
+    "blank": "[À compléter]",
+    "daysTitle": "Le fil des jours",
+    "daysText": "Trois jours sont posés pour montrer la forme. Leur contenu reste à écrire, et la liste s'allonge avec le voyage.",
+    "day": "Jour {day}",
+    "includedTitle": "Ce qui est compris",
+    "bespokeTitle": "Ce qui se décide avec vous",
+    "bespokeText": "Dates, nombre de voyageurs, chambres, tables, rythme. Rien de cette trame n'est une offre ferme."
+  },
+  "AppPage": {
+    "metaTitle": "L'application TBA — Travel Business Agency",
+    "metaDescription": "L'espace client Travel Business Agency : hôtels, carnet du séjour, pièces, cartes d'embarquement et transactions. Application web, sans store pour l'instant.",
+    "eyebrow": "L'application TBA",
+    "title": "L'espace où le séjour se tient",
+    "lede": "TBA est l'espace client de l'agence, ouvert dans le navigateur. On y réserve des hôtels aux tarifs réservés aux membres, on suit le voyage, et on retrouve les pièces.",
+    "features": {
+      "hotels": {
+        "title": "Hôtels",
+        "text": "Un catalogue d'hôtels aux tarifs qui vous sont réservés, avec des avantages que l'on ne trouve pas en réservation directe. La demande part vers l'agence, la confirmation se suit au même endroit, et l'annulation est possible lorsque le tarif le permet."
+      },
+      "stay": {
+        "title": "Le carnet",
+        "text": "Les réservations du séjour : vols, hôtels, transferts et le reste de l'itinéraire, au même endroit."
+      },
+      "papers": {
+        "title": "Les pièces",
+        "text": "Les documents du voyage et les cartes d'embarquement sont dans l'espace, pas dans un autre outil."
+      },
+      "ledger": {
+        "title": "Les transactions",
+        "text": "Le compte du client et les mouvements du séjour se lisent dans l'espace."
+      }
+    },
+    "clubEyebrow": "Club Travel BA",
+    "clubTitle": "Quatre niveaux, affichés dans l'espace",
+    "clubPromise": "Un catalogue d'hôtels aux tarifs qui vous sont réservés, avec des avantages que l'on ne trouve pas en réservation directe.",
+    "levels": {
+      "silver": { "name": "Silver", "price": "300 € par an", "line": "Jusqu'à −10 % sur le catalogue, arrivée anticipée et départ tardif." },
+      "gold": { "name": "Gold", "price": "700 € par an", "line": "Jusqu'à −15 % sur le catalogue, et un surclassement si une chambre est libre." },
+      "platinum": { "name": "Platinum", "price": "1 200 € par an", "line": "Jusqu'à −20 % sur le catalogue, petit-déjeuner, crédit hôtel jusqu'à 200 $, et transfert aéroport." },
+      "titanium": { "name": "Titanium", "price": "1 600 € par an", "line": "Jusqu'à −25 % sur le catalogue, conciergerie, accueil VIP et pré-enregistrement." }
+    },
+    "clubNote": "Ces montants et ces avantages sont ceux affichés dans l'espace client. L'astérisque du produit reste : soumis à disponibilité et selon l'hôtel. L'accès Hôtels est ouvert par l'agence.",
+    "accessTitle": "Ouvrir l'espace",
+    "accessText": "L'entrée se fait par une invitation, puis le mot de passe ou le lien magique, sur travelba.fr. Sur téléphone, l'espace peut s'ajouter à l'écran d'accueil : c'est la même application, en plein écran.",
+    "stores": "Il n'y a pas d'application iOS ni Android sur l'App Store ou Google Play. Le jour où elle existe, le lien sera ici.",
+    "open": "Ouvrir mon espace",
+    "screens": {
+      "home": "Accueil",
+      "hotels": "Hôtels",
+      "stays": "Réservations",
+      "money": "Transactions",
+      "account": "Mon compte"
+    }
+  },
+  "EventsPage": {
+    "metaTitle": "Séminaires, événements privés, anniversaires — Travel Business Agency",
+    "metaDescription": "Séminaires d'entreprise, événements privés et anniversaires VIP, organisés par Travel Business Agency. Demandez un devis.",
+    "eyebrow": "Événements",
+    "title": "Séminaires, soirées privées, anniversaires",
+    "lede": "L'agence conçoit le rassemblement comme un voyage : le lieu, les personnes, le déplacement, la table. Le devis reprend le formulaire du site.",
+    "chapters": {
+      "seminars": {
+        "title": "Séminaires",
+        "text": "Organisation complète de vos séminaires d'entreprise : lieux d'exception, logistique et animation.",
+        "blank": "Formats, effectifs et lieux que l'agence met en avant : [À compléter]."
+      },
+      "private": {
+        "title": "Événements privés",
+        "text": "Conception et production d'événements privés et corporate à la hauteur de vos ambitions.",
+        "blank": "Types de soirées et de réceptions proposés : [À compléter]."
+      },
+      "birthdays": {
+        "title": "Anniversaires VIP",
+        "text": "Un anniversaire se prépare comme un événement privé : le lieu, les invités, le voyage pour y arriver, la table.",
+        "blank": "Les formes d'anniversaire que l'agence veut montrer (dîner, villa, déplacement) : [À compléter]."
+      }
+    }
+  },
+  "FamilyPage": {
+    "metaTitle": "Voyages en famille — Travel Business Agency",
+    "metaDescription": "Séjours en famille composés par Travel Business Agency : palaces et clubs enfants. Les adresses retenues par l'agence restent à préciser.",
+    "eyebrow": "En famille",
+    "title": "Le voyage suit le rythme des enfants",
+    "lede": "Un séjour en famille se dessine comme un voyage sur mesure : l'hôtel, les chambres, le club enfants, les trajets. Les maisons citées plus bas sont des exemples d'inspiration, pas des partenaires de l'agence.",
+    "imageAlt": "Piscine d'un palace au bord de l'eau",
+    "composeTitle": "Ce que l'agence compose",
+    "composeText": "Le palace ou la villa, le transfert, l'accueil à l'arrivée, et la journée des enfants. Les adresses que TBA retient pour les familles ne sont pas encore publiées.",
+    "inspirationTitle": "Trois clubs enfants, pour se faire une idée",
+    "inspirationText": "Faits publics des maisons, novembre 2026. Aucun tarif TBA, aucun accord exclusif.",
+    "source": "Source",
+    "resorts": {
+      "soneva": {
+        "name": "Soneva Fushi",
+        "place": "Maldives · The Den",
+        "fact": "The Den accueille les enfants et les adolescents de 4 à 17 ans. L'accès et le programme quotidien sont inclus dans le séjour, avec une équipe présente. En dessous de 4 ans, la garde se demande à part."
+      },
+      "reethi": {
+        "name": "One&Only Reethi Rah",
+        "place": "Maldives · KidsOnly",
+        "fact": "KidsOnly est le club des 4 à 12 ans, ouvert chaque jour. One Tribe s'adresse aux 13–17 ans. Une garde d'enfants existe, sur demande."
+      },
+      "borabora": {
+        "name": "Four Seasons Resort Bora Bora",
+        "place": "Bora Bora · Tamarii Club",
+        "fact": "Le programme Kids For All Seasons se tient au Tamarii Club, pour les 5 à 12 ans, les week-ends et les jours fériés, avec une équipe dédiée."
+      }
+    },
+    "selectionTitle": "Les adresses de l'agence",
+    "selectionText": "La liste des resorts que TBA propose aux familles, et ce qu'elle y ajoute, reste à écrire.",
+    "blank": "[À compléter]"
   },
   "Common": {
     "whatsapp": "WhatsApp",

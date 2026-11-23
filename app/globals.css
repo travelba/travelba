@@ -1699,7 +1699,9 @@ button:disabled,
 #process,
 #testimonials,
 #contact,
-#accreditations {
+#accreditations,
+#offres,
+#devis {
   scroll-margin-top: 5.75rem;
 }
 
