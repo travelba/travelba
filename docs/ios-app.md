@@ -37,7 +37,7 @@ Sur l’iPhone, le prochain séjour, le vol et la météo de la destination peuv
 
 Photographiez un passeport depuis l’appareil. Partagez une pièce avec la feuille de partage du téléphone. Au retour dans l’application, Face ID la déverrouille.
 
-L’agence invite. Il n’y a pas d’inscription ouverte, et le back-office n’est pas dans l’application.
+L’agence valide chaque demande. « Demander mon inscription » dépose une demande, sans ouvrir l’espace. Le back-office n’est pas dans l’application.
 
 ### Étiquette de confidentialité
 
@@ -59,7 +59,9 @@ Face ID reste sur l’appareil : le système répond seulement oui ou non. Le nu
 
 À coller dans App Review Information.
 
-L’application montre d’abord l’écran local (séjour déjà connu sur l’appareil), puis ouvre l’espace sur `https://travelba.fr`. Les cookies de session restent ceux du site. Il n’y a pas d’inscription ouverte : l’agence crée le compte et envoie l’invitation. Le back-office `/admin` est refusé (redirection vers la connexion, et le délégué de navigation annule la page).
+L’application montre d’abord l’écran local (séjour déjà connu sur l’appareil), puis ouvre l’espace sur `https://travelba.fr`. Les cookies de session restent ceux du site. « Demander mon inscription » dépose une demande. L’espace reste fermé tant que l’agence n’a pas validé, puis l’invitation habituelle ouvre le compte. Le back-office `/admin` est refusé (redirection vers la connexion, et le délégué de navigation annule la page).
+
+Connexion du client : e-mail et mot de passe, ou lien magique. Pas de connexion tierce dans l’application. Sign in with Apple n’est pas exigé dans cet état (guideline 4.8). Il le deviendrait si le client pouvait se connecter avec Google, Facebook ou un autre fournisseur. La connexion Google de l’agence n’est pas dans l’application.
 
 Fonctions natives : notifications Apple, widgets d’écran d’accueil (prochain séjour, prochain vol, météo de la destination), activité en direct le jour du vol (écran verrouillé et Dynamic Island : numéro, trajet, heure, porte, terminal, statut), Face ID au retour (résultat gardé sur l’appareil), appareil photo pour une pièce ou un message, feuille de partage, écran hors ligne, écran de lancement. Les widgets lisent un résumé déjà chargé par l’application. L’activité en direct ne démarre que le jour du vol, dans l’application, ou par une notification Apple si l’iPhone le permet. Un iPhone plus ancien garde la notification classique.
 
@@ -69,12 +71,12 @@ Apple Wallet : le bouton n’apparaît que si le certificat Pass Type ID est pos
 
 Suppression du compte : Mon compte › Supprimer mon compte. La demande est enregistrée et envoyée à l’agence. Le client est déconnecté. Le traitement est fait sous 30 jours. Les séjours ne sont pas effacés sur-le-champ. Politique : `https://travelba.fr/fr/confidentialite`. Assistance : `https://travelba.fr/fr/support`.
 
-Compte de démonstration (à remplacer avant l’envoi) :
+Compte de démonstration (à créer dans l’admin avant l’envoi, puis coller ici) :
 
 - E-mail : `REMPLACER@exemple.invalid`
 - Mot de passe : `REMPLACER`
 
-L’agence crée ce compte et publie un séjour d’exemple visible. Ne pas utiliser un client réel.
+L’agence crée la fiche, envoie l’invitation, définit le mot de passe et publie un séjour d’exemple visible. La revue Apple ne peut pas passer par « Demander mon inscription » : cette demande n’ouvre aucun séjour tant qu’elle n’est pas validée. Ne pas utiliser un client réel.
 
 ## Ce que Benjamin fait, dans l’ordre
 

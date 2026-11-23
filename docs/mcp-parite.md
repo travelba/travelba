@@ -20,6 +20,9 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Remplacer toute la liste | `enregistrer_societes` (`confirmer` true) — ajouté |
 | Supprimer la fiche | `supprimer_client` (`confirmer` = nom complet) — ajouté |
 | Inviter / renvoyer l’invitation | `inviter_client` — couvert. Sans `confirmer`, aperçu, rien ne part |
+| File d’inscription | `lister_inscriptions`, `voir_inscription`, `valider_inscription`, `refuser_inscription`, `completer_inscription` — ajouté. Sans `confirmer`, rien n’est écrit et rien ne part. `envoyer` true sur le refus pour écrire au demandeur |
+| Invitation d’inscription | `creer_invitation` — ajouté. Sans `confirmer`, aperçu. `envoyer` true tente WhatsApp Business. Sinon le lien se partage à la main |
+| Parrainages | `lister_parrainages` — ajouté. Compteurs et note. Aucun mouvement d’argent |
 | Montrer le carnet, relevé, pièce visa/ETA, carte d’embarquement | `publier_carnet`, `envoyer_releve`, `ajouter_piece`, `notifier_piece`, `notifier_carte_embarquement` — sans `confirmer`, aperçu, rien n’est écrit et rien ne part |
 | Renvoyer ses accès par WhatsApp | `renvoyer_acces_whatsapp` (`confirmer: true`) — ajouté. Un bouton, Ouvrir mon espace : lien personnel 30 jours (empreinte seulement), aucun mot de passe, le lien n’est pas renvoyé |
 | Annoncer l’accès Hôtels | `annoncer_option_hotel` (`confirmer: true`) — ajouté. Même lien, vers la rubrique Hôtels. Réservé aux administrateurs. L’option doit déjà être activée |

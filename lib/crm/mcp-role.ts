@@ -163,6 +163,13 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   facture_groupee: "edit_finances",
   compte_jumeau: "edit_dossiers",
   messages_app: "message_client",
+  lister_inscriptions: "review_signups",
+  voir_inscription: "review_signups",
+  valider_inscription: "review_signups",
+  refuser_inscription: "review_signups",
+  completer_inscription: "review_signups",
+  creer_invitation: "review_signups",
+  lister_parrainages: "review_signups",
 };
 
 export type McpStaffGate = {

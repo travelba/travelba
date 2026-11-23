@@ -104,6 +104,9 @@ export function adminNavGroups(input: {
       items: [
         { href: ADMIN_ROUTES.clients, label: "Clients", icon: "group" },
         { href: `${ADMIN_ROUTES.clients}?filtre=echeance`, label: "Pièces à échéance", icon: "id_card", badge: "pieces" },
+        ...(admin || input.allows?.review_signups
+          ? [{ href: "/admin/inscriptions", label: "Inscriptions", icon: "person_add" } satisfies AdminNavItem]
+          : []),
       ],
     },
     {
@@ -252,7 +255,7 @@ export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
     paths: ["/admin/reservations", "/admin/restaurants", "/admin/formalites", "/admin/services", "/admin/ratehawk"],
     badges: [],
   },
-  { id: "clients", label: "Clients", icon: "group", href: ADMIN_ROUTES.clients, paths: ["/admin/clients"], badges: [] },
+  { id: "clients", label: "Clients", icon: "group", href: ADMIN_ROUTES.clients, paths: ["/admin/clients", "/admin/inscriptions"], badges: [] },
   {
     id: "boite",
     label: "Boîte",
@@ -285,6 +288,7 @@ export function adminPageTitle(groups: AdminNavGroup[], pathname: string, search
   if (pathname === "/admin/reservations/nouveau") return "Nouveau dossier";
   if (/^\/admin\/reservations\/[^/]+/.test(pathname)) return "Dossier";
   if (/^\/admin\/clients\/[^/]+/.test(pathname)) return "Fiche client";
+  if (pathname.startsWith("/admin/inscriptions")) return "Inscriptions";
   if (pathname.startsWith("/admin/transactions/client/")) return "Transactions du client";
   if (pathname === "/admin/restaurants/catalogue") return "Catalogue";
   if (pathname === "/admin/restaurants/aujourdhui" || pathname === "/admin/restaurants") return "Restaurants";

@@ -21,6 +21,8 @@ test("l’application se reconnaît à sa marque, Safari non", () => {
 test("le portail client reste dans l’application, l’agence jamais", () => {
   assert.equal(isPortalPath("/mon-compte/reservations/TB-2026-0001"), true);
   assert.equal(isPortalPath("/connexion/mot-de-passe"), true);
+  assert.equal(isPortalPath("/inscription/i/jeton"), true);
+  assert.equal(portalNavigation({ url: "https://travelba.fr/inscription" }), "allow");
   assert.equal(isPortalPath("/e/abc"), true);
   assert.equal(isPortalPath("/acces/jeton"), true);
   assert.equal(isPortalPath("/auth/callback"), true);

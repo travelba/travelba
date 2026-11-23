@@ -156,6 +156,15 @@ async function route(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (path === "/inscription" || path.startsWith("/inscription/") || /^\/(fr|en)\/inscription(\/|$)/.test(path)) {
+    if (path.startsWith("/fr/") || path.startsWith("/en/")) {
+      const url = request.nextUrl.clone();
+      url.pathname = path.replace(/^\/(fr|en)/, "") || "/inscription";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
+  }
+
   if (path === "/anniversaire-cyril" || path.startsWith("/anniversaire-cyril/")) {
     return NextResponse.next();
   }

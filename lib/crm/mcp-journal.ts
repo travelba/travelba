@@ -11,6 +11,10 @@ const SEND = new Set([
   "renvoyer_acces_whatsapp",
   "annoncer_option_hotel",
   "messages_app",
+  "valider_inscription",
+  "refuser_inscription",
+  "completer_inscription",
+  "creer_invitation",
 ]);
 
 const CREATE = new Set([
@@ -76,6 +80,10 @@ const PHRASES: Record<string, string> = {
   renvoyer_acces_whatsapp: "Accès renvoyés par WhatsApp",
   annoncer_option_hotel: "Accès Hôtels annoncé",
   messages_app: "Message application envoyé",
+  valider_inscription: "Demande d’inscription validée",
+  refuser_inscription: "Demande d’inscription refusée",
+  completer_inscription: "Complément d’inscription demandé",
+  creer_invitation: "Invitation d’inscription créée",
   ajouter_piece: "Pièce déposée",
   requalifier_piece: "Pièce requalifiée",
   notifier_piece: "Pièce notifiée",
@@ -179,6 +187,16 @@ export function mcpWriteJournalDraft(tool: string, args: Record<string, unknown>
   } else if (!dossierId && !clientId && SETTINGS.has(tool)) {
     entityType = "setting";
     entityId = "expense-presets";
+  }
+  if (
+    tool === "valider_inscription" ||
+    tool === "refuser_inscription" ||
+    tool === "completer_inscription" ||
+    tool === "creer_invitation" ||
+    tool === "lister_parrainages"
+  ) {
+    entityType = "client";
+    entityId = firstUuid(args, ["demande_id", "client_id", "customer_id"]);
   }
   return {
     action,

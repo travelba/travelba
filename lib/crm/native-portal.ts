@@ -10,6 +10,7 @@ export function isNativeAppUserAgent(userAgent: string | null | undefined) {
 /** Chemin servi dans la webview. Le reste du site s’ouvre dehors, /admin jamais. */
 export function isPortalPath(pathname: string) {
   if (pathname === "/connexion" || pathname.startsWith("/connexion/")) return true;
+  if (pathname === "/inscription" || pathname.startsWith("/inscription/")) return true;
   if (pathname === "/mon-compte" || pathname.startsWith("/mon-compte/")) return true;
   if (pathname === "/auth" || pathname.startsWith("/auth/")) return true;
   if (pathname === "/e" || pathname.startsWith("/e/")) return true;

@@ -151,6 +151,13 @@ const EXPECTED = [
   "facture_groupee",
   "compte_jumeau",
   "messages_app",
+  "lister_inscriptions",
+  "voir_inscription",
+  "valider_inscription",
+  "refuser_inscription",
+  "completer_inscription",
+  "creer_invitation",
+  "lister_parrainages",
 ];
 
 const WRITE_TOOLS = [
@@ -266,6 +273,10 @@ const WRITE_TOOLS = [
   "facture_groupee",
   "compte_jumeau",
   "messages_app",
+  "valider_inscription",
+  "refuser_inscription",
+  "completer_inscription",
+  "creer_invitation",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {

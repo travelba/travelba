@@ -62,6 +62,9 @@ export function Header() {
           <Link href="/connexion" className="text-sm text-muted transition-colors hover:text-foreground">
             {t("account")}
           </Link>
+          <Link href="/inscription" className="text-sm font-semibold text-[#0B192C] transition-colors hover:text-foreground">
+            {t("signup")}
+          </Link>
         </nav>
 
         <div className="flex items-center gap-3">
@@ -99,6 +102,9 @@ export function Header() {
                   className="py-3 text-base font-semibold text-foreground"
                 >
                   {t("account")}
+                </Link>
+                <Link href="/inscription" onClick={closeMenu} className="py-3 text-base font-semibold text-foreground">
+                  {t("signup")}
                 </Link>
                 <a
                   href={`https://wa.me/${siteConfig.whatsappNumber}`}

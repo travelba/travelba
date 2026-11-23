@@ -131,6 +131,15 @@ import {
 import { supprimerCompagnon, supprimerPieceClient } from "@/lib/crm/remove-companion";
 import { setCustomerTwin, TwinLinkError } from "@/lib/crm/customer-twins";
 import { messagesApp } from "@/lib/crm/mcp-app-messages";
+import {
+  completerInscription,
+  creerInvitationInscription,
+  listerInscriptions,
+  listerParrainages,
+  refuserInscription,
+  validerInscription,
+  voirInscription,
+} from "@/lib/crm/mcp-signup";
 import { currentMcpAccess } from "@/lib/crm/mcp-auth";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
@@ -147,7 +156,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 148;
+export const MCP_TOOL_CAP = 155;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -3001,6 +3010,89 @@ export const MCP_TOOLS: ToolDef[] = [
         texte: typeof args.texte === "string" ? args.texte : undefined,
         confirmer: args.confirmer === true,
       }),
+  },
+  {
+    name: "lister_inscriptions",
+    description:
+      "Liste les demandes d’inscription. statut : brouillon, en_attente, a_completer, validee, refusee. Sans statut, les dernières. Réservé aux administrateurs. Le droit Valider les inscriptions peut être ouvert au rôle manager.",
+    input: {
+      statut: z.string().trim().max(40).optional().describe("Filtre de statut"),
+    },
+    run: (args: ToolArgs) => listerInscriptions(typeof args.statut === "string" ? args.statut : undefined),
+  },
+  {
+    name: "voir_inscription",
+    description:
+      "Lit une demande d’inscription : identité, statut, parrain, fiches dont l’e-mail ou le téléphone correspond. Aucun rattachement. Réservé aux administrateurs. Le droit peut être ouvert au rôle manager.",
+    input: {
+      demande_id: z.string().trim().max(80).describe("Identifiant de la demande"),
+    },
+    run: (args: ToolArgs) => voirInscription(typeof args.demande_id === "string" ? args.demande_id : ""),
+  },
+  {
+    name: "valider_inscription",
+    write: true,
+    openWorld: true,
+    description:
+      "Valide une demande et ouvre l’accès par l’invitation déjà en place (e-mail, puis WhatsApp si le message part). mode rattacher exige client_id, la fiche qui correspond. mode creer ouvre une fiche nouvelle, même si une autre correspond : le choix est explicite. Sans mode, et si une fiche correspond, rien n’est fait. Sans confirmer, aperçu : rien n’est écrit, rien ne part. Réservé aux administrateurs. Le droit peut être ouvert au rôle manager.",
+    input: {
+      demande_id: z.string().trim().max(80),
+      mode: z.enum(["rattacher", "creer"]).optional().describe("rattacher ou creer. Obligatoire si une fiche correspond déjà"),
+      client_id: z.string().trim().max(80).optional().describe("Fiche à rattacher"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => validerInscription(args),
+  },
+  {
+    name: "refuser_inscription",
+    write: true,
+    openWorld: true,
+    description:
+      "Refuse une demande. motif facultatif. envoyer true envoie le motif au demandeur, seulement avec confirmer true. Sans confirmer, aperçu, rien n’est écrit et rien ne part. Réservé aux administrateurs. Le droit peut être ouvert au rôle manager.",
+    input: {
+      demande_id: z.string().trim().max(80),
+      motif: z.string().trim().max(500).optional(),
+      envoyer: z.boolean().optional().describe("true pour écrire au demandeur. Sans true, le motif reste dans la fiche"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => refuserInscription(args),
+  },
+  {
+    name: "completer_inscription",
+    write: true,
+    openWorld: true,
+    description:
+      "Demande un complément. message est envoyé au demandeur, seulement avec confirmer true. Sans confirmer, aperçu, rien ne part. Réservé aux administrateurs. Le droit peut être ouvert au rôle manager.",
+    input: {
+      demande_id: z.string().trim().max(80),
+      message: z.string().trim().max(1000).describe("Ce qu’il faut préciser"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => completerInscription(args),
+  },
+  {
+    name: "creer_invitation",
+    write: true,
+    openWorld: true,
+    description:
+      "Crée une invitation d’inscription nominative : lien signé, à usage unique, avec une date d’expiration. prenom, nom, telephone, ou client_id pour partir d’une fiche. envoyer true tente le modèle WhatsApp Business si les identifiants sont posés. Sans identifiants, le lien wa.me est renvoyé pour un partage à la main. Sans confirmer, aperçu du message, rien n’est créé et rien ne part. Réservé aux administrateurs. Le droit peut être ouvert au rôle manager.",
+    input: {
+      prenom: z.string().trim().max(80).optional(),
+      nom: z.string().trim().max(80).optional(),
+      telephone: z.string().trim().max(40).optional(),
+      email: z.string().trim().max(180).optional(),
+      client_id: z.string().trim().max(80).optional().describe("Fiche existante"),
+      envoyer: z.boolean().optional().describe("true pour l’API WhatsApp Business. Sans true, lien à partager"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) => creerInvitationInscription(args),
+  },
+  {
+    name: "lister_parrainages",
+    description:
+      "Parrainages par parrain : code, nombre en attente, nombre validés, note de récompense. Aucun mouvement d’argent. Réservé aux administrateurs. Le droit peut être ouvert au rôle manager.",
+    input: {},
+    run: () => listerParrainages(),
   },
 ];
 

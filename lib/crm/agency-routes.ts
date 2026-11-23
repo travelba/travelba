@@ -152,6 +152,16 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
     });
   }
 
+  if (path.startsWith("/api/admin/inscriptions")) {
+    return classify({
+      permission: "review_signups",
+      action: mutation ? (path.endsWith("/invitations") ? "send" : action) : "view",
+      entity: "client",
+      journal: mutation,
+      summary: mutation ? "Demande d’inscription relue." : undefined,
+    });
+  }
+
   if (path.startsWith("/api/admin/cles")) {
     // La route écrit le préfixe et le propriétaire. La clé en clair n’entre pas au journal.
     return classify({

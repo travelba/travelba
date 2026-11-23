@@ -18,7 +18,7 @@ Deux mondes, un Supabase Auth.
 | Rôle JWT | `app_metadata.crm_role` = `admin` \| `agent` | `crm_role=client` |
 | Après login | `/admin` | mot de passe à définir → bienvenue (une fois) → profil si pas de téléphone, sinon `/mon-compte` |
 
-Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ensureCustomerForUser` **lie** un user à un customer existant par email, ne crée pas de fiche.
+Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ensureCustomerForUser` **lie** un user à un customer existant par email, ne crée pas de fiche. Une demande sur `/inscription` n’ouvre ni fiche ni session : elle reste en file (`/admin/inscriptions`) jusqu’au clic Valider, qui réutilise `inviteCustomer`.
 
 ## Créer ≠ Inviter
 
@@ -86,9 +86,9 @@ Fiche client et menu **…** du dossier › « Ouvrir l’espace client » (`com
 - Départ d’un collègue : `/admin/equipe/[id]` → « Couper l’accès » (ban + `sessions_revoked_at` + `crm_staff_sessions.revoked_at`) et réattribution de ses dossiers en charge (`lib/crm/staff-departure.ts`). Un dossier sans responsable reste « À prendre ».
 - Suppression client (`deleteCustomerById`) : ne **pas** `auth.admin.deleteUser` si le même `auth_user_id` est staff.
 
-## Client : pas de self-delete
+## Client : suppression sur demande
 
-Pas de bouton « supprimer mon compte ». L’agence peut supprimer une fiche admin (dossiers + fichiers + txs + user Auth si non staff).
+Mon compte › Vous › **Supprimer mon compte**. La demande est enregistrée, le client est déconnecté, l’agence traite sous 30 jours. Aucun séjour n’est effacé sur le clic. L’agence peut aussi supprimer une fiche admin (dossiers + fichiers + txs + user Auth si non staff).
 
 ## Fichiers
 
