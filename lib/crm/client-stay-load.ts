@@ -4,7 +4,7 @@ import { cache } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
 import { clientTripOwnerIds } from "@/lib/crm/company-peers";
-import type { CrmBooking, CrmCustomer } from "@/lib/crm/types";
+import type { CrmBooking, CrmBookingItem, CrmCustomer } from "@/lib/crm/types";
 
 export type ClientStayLoad = {
   supabase: SupabaseClient;
@@ -32,4 +32,15 @@ export const loadClientStay = cache(async (reference: string): Promise<ClientSta
     customer,
     booking: (data as CrmBooking | null) || null,
   };
+});
+
+/** Cartes du dossier, partagées par l’onglet et la page. */
+export const loadClientStayItems = cache(async (bookingId: string) => {
+  const { supabase } = await getSessionUser();
+  const { data } = await supabase
+    .from("crm_booking_items")
+    .select("*")
+    .eq("booking_id", bookingId)
+    .order("sort_order");
+  return (data || []) as CrmBookingItem[];
 });

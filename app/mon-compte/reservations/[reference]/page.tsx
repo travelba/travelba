@@ -15,12 +15,11 @@ import { StayConfirmedNote } from "@/components/account/StayConfirmedNote";
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { loadClientStay } from "@/lib/crm/client-stay-load";
+import { loadClientStay, loadClientStayItems } from "@/lib/crm/client-stay-load";
 import { ClientStayRest, StayRestSkeleton } from "@/components/account/ClientStayRest";
 import type { ClientVisaStep } from "@/lib/crm/visa-flow";
 import {
   type CrmBookingDocument,
-  type CrmBookingItem,
   type CrmBookingTraveler,
   type CrmCompanion,
   type CrmTravelDocument,
@@ -39,12 +38,9 @@ type Props = { params: Promise<{ reference: string }>; searchParams: Promise<{ c
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { reference } = await params;
   const neutral = { title: `Réservation · ${reference} — ${siteConfig.shortName}` };
-  const { supabase, user, customer, booking } = await loadClientStay(reference);
+  const { user, customer, booking } = await loadClientStay(reference);
   if (!user || !customer || !booking || !booking.visible_to_client || booking.archived_at) return neutral;
-  const { data: itemRows } = await supabase
-    .from("crm_booking_items")
-    .select("kind, title, start_at, end_at, sort_order, details, lifecycle, visible_to_client")
-    .eq("booking_id", booking.id);
+  const itemRows = await loadClientStayItems(booking.id);
   const face = clientStayFace({
     title: booking.title,
     destination: booking.destination,
@@ -88,9 +84,9 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
   }
   if (booking.archived_at) return <HiddenStayNotice reference={booking.reference} />;
 
-  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }, { data: visaRows }] =
+  const [items, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }, { data: visaRows }] =
     await Promise.all([
-      supabase.from("crm_booking_items").select("*").eq("booking_id", booking.id).order("sort_order"),
+      loadClientStayItems(booking.id),
       supabase.from("crm_booking_travelers").select("*").eq("booking_id", booking.id),
       supabase.from("crm_booking_documents").select("*").eq("booking_id", booking.id).eq("visible_to_client", true),
       supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
@@ -99,7 +95,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
       supabase.from("crm_visa_requests").select("country, step, status, accepted_at").eq("booking_id", booking.id),
     ]);
 
-  const allItems = (items || []) as CrmBookingItem[];
+  const allItems = items;
   const rawItems = clientVisibleItems(allItems);
   if (!carnetVisible(booking, rawItems)) return <HiddenStayNotice reference={booking.reference} />;
 

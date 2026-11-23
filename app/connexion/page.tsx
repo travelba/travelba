@@ -7,7 +7,7 @@ import { loginEmailFromSearch } from "@/lib/crm/login-email";
 import { LOGIN_FAILURE_MESSAGE } from "@/lib/crm/login-message";
 import { pathAfterKnownPassword } from "@/lib/crm/session";
 import { siteConfig } from "@/lib/site";
-import { BrandMark } from "@/components/crm/ui";
+import { AccountBrand } from "@/components/account/AccountBrand";
 import { BusyBar } from "@/components/crm/BusyBar";
 
 const fieldClass =
@@ -356,7 +356,7 @@ export default function ConnexionPage() {
     <div className="account-app admin-af min-h-screen">
       <div className="mx-auto flex min-h-screen max-w-[420px] flex-col justify-center px-4 py-10">
         <div className="mb-8 flex items-center justify-between">
-          <BrandMark href="/" subtitle="Espace client" />
+          <AccountBrand href="/" subtitle="Espace client" />
           <span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-muted ring-1 ring-[var(--border)]">
             Sécurisé
           </span>

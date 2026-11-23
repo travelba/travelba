@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { collaboratorTripOwnerIds } from "@/lib/crm/company-role";
 import { twinIdsOf } from "@/lib/crm/customer-twins";
@@ -26,24 +27,28 @@ export function mergeTripOwnerIds(base: string[], twins: string[]) {
   return [...new Set([...base, ...twins].filter(Boolean))];
 }
 
+const twinIdsCached = cache(async (customerId: string) => {
+  try {
+    return await twinIdsOf(createServiceClient(), customerId);
+  } catch {
+    return [] as string[];
+  }
+});
+
 /** Espace client : service role pour les collaborateurs et les jumeaux, repli sur soi. */
 export async function clientTripOwnerIds(customer: PeerCustomer) {
   try {
     const admin = createServiceClient();
     const base =
       customer.company_role === "admin" ? await loadCollaboratorTripOwnerIds(admin, customer) : [customer.id];
-    const twins = await twinIdsOf(admin, customer.id);
+    const twins = await twinIdsCached(customer.id);
     return mergeTripOwnerIds(base, twins);
   } catch {
     return [customer.id];
   }
 }
 
-/** Jumeaux directs. Vide si la table n’est pas encore en place. */
+/** Jumeaux directs. Vide si la table n’est pas encore en place. Une fois par requête. */
 export async function clientTwinIds(customerId: string) {
-  try {
-    return await twinIdsOf(createServiceClient(), customerId);
-  } catch {
-    return [] as string[];
-  }
+  return twinIdsCached(customerId);
 }

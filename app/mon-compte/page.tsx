@@ -10,11 +10,12 @@ import { isCompanyMember } from "@/lib/crm/company-role";
 import { clientTripOwnerIds, clientTwinIds } from "@/lib/crm/company-peers";
 import { stayHeroPlace } from "@/lib/crm/carnet";
 import { applyClientStayFace } from "@/lib/crm/client-stay-face";
-import { loadClientStayFaces, loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
+import { loadClientCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { AccountPage } from "@/components/account/AccountPage";
 import { StayConfirmedNote } from "@/components/account/StayConfirmedNote";
+import { RememberEspace } from "@/components/account/RememberEspace";
 import { hotelBookingEnabled, showHotelButton } from "@/lib/crm/hotel-access";
 import { readHotelButtonVisibility } from "@/lib/crm/hotel-access-run";
 import {
@@ -29,6 +30,33 @@ import { greetingGivenName } from "@/lib/crm/identity";
 import { clientHidesPrices, foreignPriceOwnerIds, stayHidesPrices, stripClientMoneyItem } from "@/lib/crm/client-price-privacy";
 import { hiddenPriceCustomerIds } from "@/lib/crm/client-price-privacy-load";
 
+async function HomeHotels({
+  customer,
+  visibility,
+}: {
+  customer: CrmCustomer;
+  visibility: ReturnType<typeof readHotelButtonVisibility>;
+}) {
+  const hotels = showHotelButton({
+    enabled: hotelBookingEnabled(customer),
+    visibility: await visibility,
+  });
+  if (!hotels) return null;
+  return (
+    <Link
+      href="/mon-compte/hotels"
+      prefetch
+      className="account-press flex items-center justify-between bg-[#f4efe6] px-4 py-4 text-[#1a1a1a]"
+    >
+      <span>
+        <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8c7352]">Hôtels</span>
+        <span className="text-[15px] font-semibold">Réserver un séjour</span>
+      </span>
+      <Icon name="arrow_forward" className="h-4 w-4 text-[#8c7352]" />
+    </Link>
+  );
+}
+
 export default async function AccountHomePage({ searchParams }: { searchParams: Promise<{ confirme?: string }> }) {
   const { confirme } = await searchParams;
   const { user } = await getSessionUser();
@@ -37,10 +65,7 @@ export default async function AccountHomePage({ searchParams }: { searchParams: 
   if (!customer) redirect("/connexion");
 
   const firstName = greetingGivenName(customer.first_name) || customer.email.split("@")[0];
-  const hotels = showHotelButton({
-    enabled: hotelBookingEnabled(customer),
-    visibility: await readHotelButtonVisibility(),
-  });
+  const hotels = readHotelButtonVisibility();
 
   return (
     <AccountPage>
@@ -55,18 +80,9 @@ export default async function AccountHomePage({ searchParams }: { searchParams: 
           </h1>
         </section>
 
-        {hotels ? (
-          <Link
-            href="/mon-compte/hotels"
-            className="account-press flex items-center justify-between bg-[#f4efe6] px-4 py-4 text-[#1a1a1a]"
-          >
-            <span>
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8c7352]">Hôtels</span>
-              <span className="text-[15px] font-semibold">Réserver un séjour</span>
-            </span>
-            <Icon name="arrow_forward" className="h-4 w-4 text-[#8c7352]" />
-          </Link>
-        ) : null}
+        <Suspense fallback={null}>
+          <HomeHotels customer={customer} visibility={hotels} />
+        </Suspense>
 
         {clientHidesPrices(customer) ? null : (
           <Suspense fallback={<HomeEncoursSkeleton />}>
@@ -75,7 +91,7 @@ export default async function AccountHomePage({ searchParams }: { searchParams: 
         )}
 
         <Suspense fallback={<HomeTripSkeleton />}>
-          <HomeNextStay customer={customer} />
+          <HomeNextStay customer={customer} greeting={firstName} />
         </Suspense>
       </div>
     </AccountPage>
@@ -153,12 +169,23 @@ async function HomeEncours({ customer }: { customer: CrmCustomer }) {
   );
 }
 
-async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
+async function HomeNextStay({ customer, greeting }: { customer: CrmCustomer; greeting: string }) {
   const { supabase } = await getSessionUser();
-  const ownerIds = await clientTripOwnerIds(customer);
-  const bookings = await loadVisibleCarnets(supabase, customer.id, ownerIds);
-  const faces = await loadClientStayFaces(supabase, bookings, customer.city);
+  const [ownerIds, twinIds] = await Promise.all([clientTripOwnerIds(customer), clientTwinIds(customer.id)]);
+  const { bookings, faces } = await loadClientCarnets(supabase, customer.id, ownerIds, customer.city);
   const shown = bookings.map((booking) => applyClientStayFace(booking, faces[booking.id]));
+  const shellStays = shown.map((booking) => {
+    const face = faces[booking.id];
+    const title = face?.title || booking.title || "Séjour";
+    return {
+      reference: booking.reference,
+      title,
+      when: formatDateRangeShort(booking.start_date, booking.end_date),
+      place: stayHeroPlace(title, face?.destination || booking.destination, face?.items) || "",
+      upcoming: isClientUpcomingStay(booking),
+    };
+  });
+  const memory = <RememberEspace userId={customer.id} greeting={greeting} stays={shellStays} />;
   const nextTrip =
     sortBookingsByStart(
       shown.filter((b) => isClientUpcomingStay(b)),
@@ -167,15 +194,17 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
 
   if (!nextTrip) {
     return (
-      <article className="rounded-2xl border border-[#e5e3dc] bg-white p-5 shadow-sm">
-        <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">Aucun voyage planifié</h2>
-        <p className="mt-1 text-sm text-muted">L’agence publiera le carnet ici dès que le dossier sera prêt.</p>
-      </article>
+      <>
+        {memory}
+        <article className="rounded-2xl border border-[#e5e3dc] bg-white p-5 shadow-sm">
+          <h2 className="font-display text-xl font-bold text-[var(--admin-navy)]">Aucun voyage planifié</h2>
+          <p className="mt-1 text-sm text-muted">L’agence publiera le carnet ici dès que le dossier sera prêt.</p>
+        </article>
+      </>
     );
   }
 
   const face = faces[nextTrip.id];
-  const twinIds = await clientTwinIds(customer.id);
   const hiddenOwners = clientHidesPrices(customer)
     ? new Set<string>()
     : await hiddenPriceCustomerIds(foreignPriceOwnerIds(customer.id, [nextTrip.customer_id], twinIds));
@@ -188,6 +217,7 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
 
   return (
     <>
+      {memory}
       <article
         data-tba-trip=""
         data-tba-title={tripName}
@@ -231,6 +261,7 @@ async function HomeNextStay({ customer }: { customer: CrmCustomer }) {
               </div>
               <Link
                 href={tripHref}
+                prefetch
                 transitionTypes={["nav-forward"]}
                 className="account-press flex h-12 w-full items-center justify-center gap-3 rounded-full bg-white px-5 text-sm font-semibold text-[var(--admin-navy)] shadow-md"
               >

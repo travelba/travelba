@@ -52,7 +52,7 @@ Face ID reste sur l’appareil : le système répond seulement oui ou non. Le nu
 
 À coller dans App Review Information.
 
-L’application ouvre l’espace client sur `https://travelba.fr/connexion`, puis `/mon-compte`. Il n’y a pas d’inscription ouverte : l’agence crée le compte et envoie l’invitation. Le back-office `/admin` est refusé (redirection vers la connexion, et le délégué de navigation annule la page).
+L’application montre d’abord l’écran local (séjour déjà connu sur l’appareil), puis ouvre l’espace sur `https://travelba.fr`. Les cookies de session restent ceux du site. Il n’y a pas d’inscription ouverte : l’agence crée le compte et envoie l’invitation. Le back-office `/admin` est refusé (redirection vers la connexion, et le délégué de navigation annule la page).
 
 Fonctions natives : notifications Apple, Face ID au retour (résultat gardé sur l’appareil), appareil photo pour une pièce, feuille de partage, écran hors ligne, écran de lancement.
 
@@ -101,7 +101,7 @@ L’agence crée ce compte et publie un séjour d’exemple visible. Ne pas util
 | Pièce | Chemin |
 | --- | --- |
 | Projet Xcode, SPM | `mobile/ios/` |
-| Configuration | `mobile/capacitor.config.ts` (`server.url` = `https://travelba.fr/mon-compte`) |
+| Configuration | `mobile/capacitor.config.ts` (écran local, puis `https://travelba.fr`) |
 | Écran hors ligne | `mobile/www/offline.html` |
 | Icône, splash, captures | `mobile/store-assets/` |
 | Enregistrement du jeton | `POST` et `DELETE /api/client/devices` |
@@ -122,7 +122,7 @@ Lancer :
 - Actions → **iOS TestFlight** → Run workflow, sur la branche voulue
 - ou pousser un tag `ios-*` (`git tag ios-1 && git push origin ios-1`)
 
-Le numéro de build est `github.run_number`. La version marketing reste celle du projet (`1.0`).
+Le numéro de build du projet est `2`, la version marketing `1.1`. À l’archive, le workflow remplace le numéro de build par `github.run_number`.
 
 Secrets du dépôt (Settings → Secrets and variables → Actions) :
 

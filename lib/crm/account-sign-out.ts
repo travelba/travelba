@@ -1,4 +1,5 @@
 import { browserAuthCookieNames, browserCookieDeletion, signOutRedirectPath } from "@/lib/crm/sign-out";
+import { clearClientShellCache } from "@/lib/client/stay-cache";
 
 /**
  * Déconnexion agence et client.
@@ -8,6 +9,7 @@ import { browserAuthCookieNames, browserCookieDeletion, signOutRedirectPath } fr
  */
 export async function signOutAccount(scope: "local" | "global" = "local", next?: string) {
   if (typeof window !== "undefined") {
+    await clearClientShellCache().catch(() => {});
     const cap = (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
     if (cap?.isNativePlatform?.()) {
       const mod = await import("@/lib/native/push-client");
