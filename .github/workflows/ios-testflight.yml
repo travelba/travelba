@@ -1,0 +1,310 @@
+# Envoi TestFlight. Aucun secret dans ce fichier.
+# Secrets du dépôt : APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_ISSUER_ID,
+# APP_STORE_CONNECT_PRIVATE_KEY (PEM .p8), APPLE_TEAM_ID, CERTIFICATE_PRIVATE_KEY
+# (PEM RSA 2048). Même certificat à chaque run, comme codemagic.yaml.
+# Les identifiants de bundle viennent du projet : fr.travelba.client aujourd’hui,
+# et fr.travelba.client.Widgets dès que la cible est dans le .xcodeproj.
+name: iOS TestFlight
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "ios-*"
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    name: Archive et TestFlight
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.APP_STORE_CONNECT_KEY_IDENTIFIER }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      CERTIFICATE_PRIVATE_KEY: ${{ secrets.CERTIFICATE_PRIVATE_KEY }}
+      BUILD_NUMBER: ${{ github.run_number }}
+      PROJECT: mobile/ios/App/App.xcodeproj
+      NPM_CONFIG_AUDIT: "false"
+      NPM_CONFIG_FUND: "false"
+    steps:
+      - name: Refuser le journal de debug
+        run: |
+          set -euo pipefail
+          if [[ "${ACTIONS_STEP_DEBUG:-false}" == "true" ]]; then
+            echo "Le journal de debug recopierait l’environnement. Il est coupé pour ce workflow."
+            exit 1
+          fi
+
+      - name: Code
+        uses: actions/checkout@v4
+
+      - name: Cache SPM
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+            ~/Library/Developer/Xcode/DerivedData/SourcePackages
+          key: ios-spm-${{ hashFiles('mobile/ios/App/CapApp-SPM/Package.swift', 'mobile/package-lock.json') }}
+          restore-keys: |
+            ios-spm-
+
+      - name: Xcode 26
+        run: |
+          set -euo pipefail
+          sudo xcodebuild -runFirstLaunch
+          xcodebuild -version
+          swift --version
+          major="$(xcodebuild -version | awk 'NR==1 { split($2, v, "."); print v[1] }')"
+          if [[ "$major" -lt 26 ]]; then
+            echo "Capacitor 8 demande Xcode 26 ou plus (vu : $major)."
+            exit 1
+          fi
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Dépendances iOS
+        working-directory: mobile
+        run: npm ci
+
+      - name: Synchroniser Capacitor
+        working-directory: mobile
+        run: npx cap sync ios
+
+      - name: Outils de signature
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/codemagic"
+          "$RUNNER_TEMP/codemagic/bin/pip" install --disable-pip-version-check codemagic-cli-tools
+          echo "$RUNNER_TEMP/codemagic/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/codemagic/bin/app-store-connect" --version
+
+      - name: Préparer les clés et les identifiants
+        run: |
+          set -euo pipefail
+          umask 077
+          "$RUNNER_TEMP/codemagic/bin/python" - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+          from cryptography.hazmat.primitives.serialization import load_pem_private_key
+
+          out = Path(os.environ["RUNNER_TEMP"])
+
+          def clean(value: str) -> str:
+              value = value.strip()
+              if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+                  value = value[1:-1]
+              return (
+                  value.replace("\\r\\n", "\n")
+                  .replace("\\n", "\n")
+                  .replace("\r\n", "\n")
+                  .replace("\r", "\n")
+                  .strip()
+              )
+
+          def normalize_pem(value: str) -> str:
+              value = clean(value)
+              if "-----BEGIN" not in value or "-----END" not in value:
+                  raise SystemExit("PEM sans en-tête")
+              if value.count("\n") < 2:
+                  match = re.fullmatch(
+                      r"(-----BEGIN [A-Z0-9 ]+-----)\s*(.+?)\s*(-----END [A-Z0-9 ]+-----)",
+                      value,
+                      re.S,
+                  )
+                  if not match:
+                      raise SystemExit("PEM illisible")
+                  body = re.sub(r"\s+", "", match.group(2))
+                  wrapped = "\n".join(body[i : i + 64] for i in range(0, len(body), 64))
+                  value = f"{match.group(1)}\n{wrapped}\n{match.group(3)}"
+              if not value.endswith("\n"):
+                  value += "\n"
+              return value
+
+          pems = {
+              "asc.p8": "APP_STORE_CONNECT_PRIVATE_KEY",
+              "certificate.key": "CERTIFICATE_PRIVATE_KEY",
+          }
+          for filename, env_name in pems.items():
+              raw = os.environ.get(env_name, "")
+              if not raw.strip():
+                  raise SystemExit(f"Secret manquant : {env_name}")
+              pem = normalize_pem(raw)
+              key = load_pem_private_key(pem.encode(), password=None)
+              if filename == "certificate.key":
+                  if not isinstance(key, RSAPrivateKey) or key.key_size != 2048:
+                      raise SystemExit(f"{env_name} : RSA 2048 attendu")
+              path = out / filename
+              path.write_text(pem)
+              path.chmod(0o600)
+              print(f"{env_name} : PEM lu ({pem.count(chr(10))} lignes)")
+
+          key_id = clean(os.environ.get("APP_STORE_CONNECT_KEY_IDENTIFIER", ""))
+          issuer = clean(os.environ.get("APP_STORE_CONNECT_ISSUER_ID", ""))
+          team = clean(os.environ.get("APPLE_TEAM_ID", ""))
+          if not re.fullmatch(r"[A-Za-z0-9]{8,32}", key_id):
+              raise SystemExit(f"APP_STORE_CONNECT_KEY_IDENTIFIER : longueur {len(key_id)}")
+          if not re.fullmatch(r"[0-9a-fA-F-]{36}", issuer):
+              raise SystemExit(f"APP_STORE_CONNECT_ISSUER_ID : longueur {len(issuer)}")
+          if not re.fullmatch(r"[A-Z0-9]{10}", team):
+              raise SystemExit(f"APPLE_TEAM_ID : longueur {len(team)}")
+          (out / "asc.keyid").write_text(key_id)
+          (out / "asc.issuer").write_text(issuer)
+          (out / "team.id").write_text(team)
+          print("Identifiants API : longueurs ok")
+
+          root = Path("mobile/ios")
+          assignment = re.compile(r"^\s*PRODUCT_BUNDLE_IDENTIFIER\s*=\s*([^;]+);\s*$", re.M)
+          files = [
+              path
+              for path in list(root.rglob("project.pbxproj")) + list(root.rglob("*.xcconfig"))
+              if "Pods" not in path.parts and "DerivedData" not in path.parts
+          ]
+          found = []
+          for path in files:
+              text = path.read_text(encoding="utf-8", errors="replace")
+              for match in assignment.finditer(text):
+                  value = match.group(1).strip().strip('"')
+                  if not value or value.startswith("$") or "$(" in value:
+                      raise SystemExit(f"Identifiant non littéral dans {path} : {value}")
+                  if value not in found:
+                      found.append(value)
+          if not found:
+              raise SystemExit("Aucun PRODUCT_BUNDLE_IDENTIFIER dans mobile/ios")
+          found.sort()
+          (out / "bundle-ids.txt").write_text("\n".join(found) + "\n")
+          print("Identifiants de bundle :")
+          print("\n".join(found))
+          PY
+
+      - name: Trousseau et profils App Store
+        run: |
+          set -euo pipefail
+          unset APP_STORE_CONNECT_PRIVATE_KEY
+          unset CERTIFICATE_PRIVATE_KEY
+          unset APP_STORE_CONNECT_KEY_IDENTIFIER
+          unset APP_STORE_CONNECT_ISSUER_ID
+          unset APPLE_TEAM_ID
+          keychain initialize
+          while IFS= read -r bundle_id; do
+            [[ -z "$bundle_id" ]] && continue
+            echo "Profil App Store : $bundle_id"
+            app-store-connect fetch-signing-files "$bundle_id" \
+              --type IOS_APP_STORE \
+              --create \
+              --strict-match-identifier \
+              --private-key "@file:${RUNNER_TEMP}/asc.p8" \
+              --key-id "@file:${RUNNER_TEMP}/asc.keyid" \
+              --issuer-id "@file:${RUNNER_TEMP}/asc.issuer" \
+              --certificate-key "@file:${RUNNER_TEMP}/certificate.key" \
+              --no-color \
+              || exit 1
+          done < "$RUNNER_TEMP/bundle-ids.txt"
+          keychain add-certificates
+
+      - name: Appliquer les profils
+        run: |
+          set -euo pipefail
+          export_plist="$RUNNER_TEMP/export_options.plist"
+          xcode-project use-profiles \
+            --project "$PROJECT" \
+            --archive-method app-store \
+            --export-options-plist "$export_plist" \
+            --no-color
+          EXPORT_PLIST="$export_plist" python3 - <<'PY'
+          import os
+          import plistlib
+          from pathlib import Path
+
+          path = Path(os.environ["EXPORT_PLIST"])
+          with path.open("rb") as handle:
+              options = plistlib.load(handle)
+          team = Path(os.environ["RUNNER_TEMP"], "team.id").read_text(encoding="utf-8").strip()
+          options["method"] = "app-store-connect"
+          options["signingStyle"] = "manual"
+          options["destination"] = "export"
+          options["manageAppVersionAndBuildNumber"] = False
+          options["uploadSymbols"] = True
+          options["teamID"] = team
+          with path.open("wb") as handle:
+              plistlib.dump(options, handle, fmt=plistlib.FMT_XML)
+          profiles = options.get("provisioningProfiles") or {}
+          print(f"Export : {options['method']}, signature {options['signingStyle']}")
+          print("Profils : " + ", ".join(sorted(str(bundle) for bundle in profiles)))
+          PY
+          grep -E "CODE_SIGN_STYLE|PRODUCT_BUNDLE_IDENTIFIER" "$PROJECT/project.pbxproj"
+
+      - name: Numéro de build
+        working-directory: mobile/ios/App
+        run: |
+          set -euo pipefail
+          xcrun agvtool new-version -all "$BUILD_NUMBER"
+          xcrun agvtool what-version
+
+      - name: Archive IPA
+        run: |
+          set -euo pipefail
+          unset APP_STORE_CONNECT_PRIVATE_KEY
+          unset CERTIFICATE_PRIVATE_KEY
+          unset APP_STORE_CONNECT_KEY_IDENTIFIER
+          unset APP_STORE_CONNECT_ISSUER_ID
+          unset APPLE_TEAM_ID
+          export_plist="$RUNNER_TEMP/export_options.plist"
+          packages="$HOME/Library/Developer/Xcode/DerivedData/SourcePackages"
+          archive="$RUNNER_TEMP/App.xcarchive"
+          mkdir -p "$packages" "$RUNNER_TEMP/ipa"
+          plutil -lint "$export_plist"
+          echo "Export : $(plutil -extract method raw -o - "$export_plist")"
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme App \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$archive" \
+            -clonedSourcePackagesDirPath "$packages" \
+            archive \
+            COMPILER_INDEX_STORE_ENABLE=NO
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$archive" \
+            -exportPath "$RUNNER_TEMP/ipa" \
+            -exportOptionsPlist "$export_plist"
+
+      - name: Envoyer à TestFlight
+        run: |
+          set -euo pipefail
+          unset APP_STORE_CONNECT_PRIVATE_KEY
+          unset CERTIFICATE_PRIVATE_KEY
+          unset APP_STORE_CONNECT_KEY_IDENTIFIER
+          unset APP_STORE_CONNECT_ISSUER_ID
+          unset APPLE_TEAM_ID
+          shopt -s nullglob
+          ipas=("$RUNNER_TEMP"/ipa/*.ipa)
+          if [[ "${#ipas[@]}" -ne 1 ]]; then
+            echo "IPA attendu : 1, trouvé ${#ipas[@]}"
+            exit 1
+          fi
+          echo "IPA : $(basename "${ipas[0]}")"
+          app-store-connect publish \
+            --path "${ipas[0]}" \
+            --private-key "@file:${RUNNER_TEMP}/asc.p8" \
+            --key-id "@file:${RUNNER_TEMP}/asc.keyid" \
+            --issuer-id "@file:${RUNNER_TEMP}/asc.issuer" \
+            --max-build-processing-wait 0 \
+            --no-color

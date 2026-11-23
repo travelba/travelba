@@ -90,7 +90,7 @@ L’agence crée ce compte et publie un séjour d’exemple visible. Ne pas util
 
    Sans ces variables, aucun envoi APNs. Une preview Vercel ne les utilise pas.
 
-8. **Codemagic** : connecter le dépôt, groupe de variables `travelba_ios` (voir `codemagic.yaml`). Y mettre la clé API App Store Connect, pas la clé APNs. Lancer le workflow « TBA iOS TestFlight » à la main, ou pousser un tag `ios-1`. Le build signe, archive, et envoie à TestFlight. Pas de Mac requis.
+8. **Codemagic** : connecter le dépôt, groupe de variables `travelba_ios` (voir `codemagic.yaml`). Y mettre la clé API App Store Connect, pas la clé APNs. Lancer le workflow « TBA iOS TestFlight » à la main, ou pousser un tag `ios-1`. Le build signe, archive, et envoie à TestFlight. Pas de Mac requis. Le même envoi part de GitHub Actions (section « Build via GitHub Actions »).
 
 9. **TestFlight** : installer sur un iPhone, se connecter avec le compte de démonstration, accepter les notifications. Vérifier qu’un vol ou un règlement de test arrive, et que `/admin` ne s’ouvre pas.
 
@@ -110,6 +110,33 @@ L’agence crée ce compte et publie un séjour d’exemple visible. Ne pas util
 | Pont dans le site | `components/native/NativeApp.tsx` (inactif dans Safari) |
 
 Un changement d’écran du portail part avec le site. Un changement d’icône, de permission ou de plugin demande un nouveau build TestFlight.
+
+## Build via GitHub Actions
+
+Même envoi que Codemagic, depuis GitHub. `codemagic.yaml` reste en place.
+
+Workflow : `.github/workflows/ios-testflight.yml`. Runner `macos-latest` (macOS 26, Xcode 26, exigé par Capacitor 8). Un seul run à la fois (groupe `ios-testflight`).
+
+Lancer :
+
+- Actions → **iOS TestFlight** → Run workflow, sur la branche voulue
+- ou pousser un tag `ios-*` (`git tag ios-1 && git push origin ios-1`)
+
+Le numéro de build est `github.run_number`. La version marketing reste celle du projet (`1.0`).
+
+Secrets du dépôt (Settings → Secrets and variables → Actions) :
+
+| Secret | Contenu |
+| --- | --- |
+| `APP_STORE_CONNECT_KEY_IDENTIFIER` | Identifiant de la clé API App Store Connect |
+| `APP_STORE_CONNECT_ISSUER_ID` | Issuer id de cette clé |
+| `APP_STORE_CONNECT_PRIVATE_KEY` | PEM .p8 brut, retours à la ligne conservés |
+| `APPLE_TEAM_ID` | `X9FYJNAYD8` |
+| `CERTIFICATE_PRIVATE_KEY` | PEM RSA 2048, sans mot de passe |
+
+Signature. `codemagic-cli-tools` exécute `app-store-connect fetch-signing-files --type IOS_APP_STORE --create` avec `CERTIFICATE_PRIVATE_KEY`. Le premier run crée le certificat de distribution ; les suivants réutilisent le même, tant que cette clé ne change pas. Un profil App Store est récupéré ou créé pour chaque `PRODUCT_BUNDLE_IDENTIFIER` littéral de `mobile/ios` (`--strict-match-identifier`). Aujourd’hui : `fr.travelba.client`. Dès que la cible Widgets est dans le projet : `fr.travelba.client.Widgets` aussi. L’archive est en Release. L’IPA est exportée pour App Store Connect (`method` `app-store-connect`, le nom actuel sous Xcode 26 de la méthode `app-store`) et envoyée à l’app `6838238661` par `app-store-connect publish` (`xcrun altool --upload-app`). Le workflow s’arrête à l’envoi. Le traitement du build se termine dans App Store Connect.
+
+La clé API doit pouvoir créer un certificat et des profils. Apple limite le nombre de certificats de distribution : si la création est refusée, révoquer un certificat inutilisé dans le portail, et garder la même `CERTIFICATE_PRIVATE_KEY`. Le cache SPM reste sur le runner. Le journal de debug de l’action reste éteint.
 
 ## Ce qui ne part pas tout seul
 
