@@ -265,17 +265,26 @@ jobs:
           unset APP_STORE_CONNECT_KEY_IDENTIFIER
           unset APP_STORE_CONNECT_ISSUER_ID
           unset APPLE_TEAM_ID
-          mkdir -p "$HOME/Library/Developer/Xcode/DerivedData/SourcePackages"
-          xcode-project build-ipa \
-            --project "$PROJECT" \
-            --scheme App \
-            --config Release \
-            --archive-directory "$RUNNER_TEMP/App.xcarchive" \
-            --ipa-directory "$RUNNER_TEMP/ipa" \
-            --export-options-plist "$RUNNER_TEMP/export_options.plist" \
-            --archive-flags "-clonedSourcePackagesDirPath $HOME/Library/Developer/Xcode/DerivedData/SourcePackages" \
-            --disable-xcpretty \
-            --no-color
+          export_plist="$RUNNER_TEMP/export_options.plist"
+          packages="$HOME/Library/Developer/Xcode/DerivedData/SourcePackages"
+          archive="$RUNNER_TEMP/App.xcarchive"
+          mkdir -p "$packages" "$RUNNER_TEMP/ipa"
+          plutil -lint "$export_plist"
+          echo "Export : $(plutil -extract method raw -o - "$export_plist")"
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme App \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$archive" \
+            -clonedSourcePackagesDirPath "$packages" \
+            archive \
+            COMPILER_INDEX_STORE_ENABLE=NO
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$archive" \
+            -exportPath "$RUNNER_TEMP/ipa" \
+            -exportOptionsPlist "$export_plist"
 
       - name: Envoyer à TestFlight
         run: |
