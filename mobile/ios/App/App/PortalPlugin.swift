@@ -1,6 +1,7 @@
 import Capacitor
 import LocalAuthentication
 import Security
+import UIKit
 import WebKit
 
 @objc(PortalPlugin)
@@ -18,6 +19,7 @@ public class PortalPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "saveVaultKey", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "readVaultKey", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearVaultKey", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
     ]
 
     private let keychainService = "fr.travelba.client"
@@ -43,6 +45,18 @@ public class PortalPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve(["ok": true])
         } else {
             call.reject("Résumé illisible.")
+        }
+    }
+
+    @objc func openSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let url = URL(string: UIApplication.openSettingsURLString) else {
+                call.resolve(["ok": false])
+                return
+            }
+            UIApplication.shared.open(url, options: [:]) { ok in
+                call.resolve(["ok": ok])
+            }
         }
     }
 

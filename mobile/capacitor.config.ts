@@ -28,7 +28,7 @@ const config: CapacitorConfig = {
       launchFadeOutDuration: 120,
     },
     PushNotifications: {
-      presentationOptions: ["alert", "sound"],
+      presentationOptions: ["alert", "sound", "badge"],
     },
   },
 };

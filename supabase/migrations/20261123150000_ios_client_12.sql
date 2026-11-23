@@ -22,6 +22,12 @@ alter table public.crm_notification_preferences
   add column if not exists push_departure boolean not null default true,
   add column if not exists push_balance boolean not null default true;
 
+alter table public.crm_notification_preferences
+  alter column push_checkin set default true,
+  alter column push_flight_change set default true,
+  alter column push_departure set default true,
+  alter column push_balance set default true;
+
 alter table public.crm_device_unlocks enable row level security;
 
 revoke all on public.crm_device_unlocks from anon, authenticated;

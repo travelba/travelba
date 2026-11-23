@@ -1,7 +1,7 @@
 import { biometricChoiceOf, shouldLockWithBiometric, shouldRestoreWithBiometric } from "@/lib/crm/biometric-lock";
 import { portalNavigation, pushTargetPath } from "@/lib/crm/native-portal";
 import { isNativeAppBridge } from "@/lib/native/detect";
-import { registerNativePush } from "@/lib/native/push-client";
+import { askIosNotificationPermission, registerNativePush } from "@/lib/native/push-client";
 
 const TRIP_KEY = "tba.trip";
 const BIOMETRIC_KEY = "tba.biometric";
@@ -202,6 +202,7 @@ async function startNativeShell() {
   guardClicks();
   installShare();
   watchTrip();
+  void askIosNotificationPermission().catch(() => {});
 
   let hiddenAt = 0;
   await App.addListener("appStateChange", ({ isActive }) => {

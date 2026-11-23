@@ -237,6 +237,8 @@ La clé API doit pouvoir créer un certificat et des profils. Apple limite le no
 
 Quatre ajouts dans l’application. Le site dans Safari ne demande ni Face ID, ni le cache des pièces. La migration se joue à la main, elle n’est pas appliquée par ce dépôt.
 
+Au premier lancement, l’écran local demande tout de suite la permission iOS (alerte, son, pastille). Pas d’écran préalable. iOS ne la montre qu’une fois. Si la personne accepte, toutes les catégories sont ouvertes, et le jeton est enregistré dès la connexion (il est gardé sur l’appareil si la demande a lieu avant). Si elle refuse, un bandeau discret propose plus tard d’ouvrir les réglages de l’iPhone.
+
 ### Face ID / Touch ID
 
 Après la première entrée, l’application propose le déverrouillage. Le jeton (préfixe `tu_`, empreinte seule en base) va dans le trousseau, protégé par la biométrie. À la réouverture, Face ID ou Touch ID rouvre la session. « Utiliser le mot de passe » revient au formulaire. La case est dans Mon compte. La déconnexion efface le trousseau et révoque les jetons. Le repli mot de passe garde le trousseau pour la fois suivante.

@@ -111,8 +111,19 @@
     }
   }
 
+  function askNotifications() {
+    var push = plugin("PushNotifications");
+    if (!push || !push.checkPermissions || !push.requestPermissions) return;
+    Promise.resolve(push.checkPermissions()).then(function (current) {
+      var receive = current && current.receive;
+      if (receive !== "prompt" && receive !== "prompt-with-rationale") return null;
+      return push.requestPermissions();
+    }).catch(function () {});
+  }
+
   function boot() {
     hideSplash();
+    askNotifications();
     readCache().then(paint);
     var retry = document.getElementById("retry");
     if (retry) {
