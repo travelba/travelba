@@ -1,7 +1,16 @@
 import { siteConfig } from "@/lib/site";
+import { SIGNATURE_SLOTS, signatureSlug } from "@/lib/site-offers";
 import { routing } from "@/i18n/routing";
 
-const PATHS = ["", "/legal"] as const;
+const PATHS = [
+  "",
+  "/legal",
+  "/voyages",
+  ...SIGNATURE_SLOTS.map((slot) => `/voyages/${signatureSlug(slot)}`),
+  "/application",
+  "/evenements",
+  "/famille",
+] as const;
 
 export default function sitemap() {
   const lastModified = new Date();

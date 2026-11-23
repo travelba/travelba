@@ -1,6 +1,5 @@
 import NextLink from "next/link";
 import { useTranslations } from "next-intl";
-import { MapPin, ShieldCheck } from "lucide-react";
 import { BrandMark } from "./BrandMark";
 import { Link } from "@/i18n/navigation";
 import { siteConfig, SERVICE_KEYS } from "@/lib/site";
@@ -28,30 +27,25 @@ export function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="border-t border-border px-5 py-14 sm:px-8">
+    <footer className="border-t border-[#C5A880] bg-[#0B192C] px-5 py-16 text-[#F7F3EB] sm:px-8 sm:py-20">
       <div className="mx-auto max-w-7xl">
-        <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="lg:col-span-1">
-            <div className="flex items-center gap-2.5">
-              <BrandMark />
-              <span className="text-sm font-semibold tracking-tight">
-                Travel Business Agency
-              </span>
+        <div className="grid grid-cols-1 gap-12 sm:grid-cols-2 lg:grid-cols-12 lg:gap-10">
+          <div className="lg:col-span-4">
+            <div className="flex items-center gap-3">
+              <BrandMark className="h-11 w-11" />
+              <span className="font-display text-[1.45rem] leading-none">Travel Business Agency</span>
             </div>
-            <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted">
-              {t("tagline")}
-            </p>
-            <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-border bg-surface/60 px-3 py-1.5 text-xs font-medium text-foreground/90">
-              <ShieldCheck className="h-3.5 w-3.5 text-accent-2" />
+            <p className="mt-5 max-w-xs text-sm leading-[1.7] text-[#F7F3EB]/75">{t("tagline")}</p>
+            <p className="mt-5 text-[11px] font-medium uppercase tracking-[0.2em] text-[#E8D7BC]">
               {t("accreditations")}
             </p>
-            <div className="mt-5 flex gap-3">
+            <div className="mt-6 flex gap-3">
               <a
                 href={siteConfig.social.instagram}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Instagram"
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:text-foreground"
+                className="flex h-11 w-11 items-center justify-center border border-[#F7F3EB]/25 text-[#F7F3EB]/80 transition-colors hover:border-[#C5A880] hover:text-[#F7F3EB]"
               >
                 <InstagramIcon className="h-4 w-4" />
               </a>
@@ -60,72 +54,83 @@ export function Footer() {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="LinkedIn"
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:text-foreground"
+                className="flex h-11 w-11 items-center justify-center border border-[#F7F3EB]/25 text-[#F7F3EB]/80 transition-colors hover:border-[#C5A880] hover:text-[#F7F3EB]"
               >
                 <LinkedinIcon className="h-4 w-4" />
               </a>
             </div>
           </div>
 
-          <div>
-            <h4 className="text-sm font-semibold">{t("servicesTitle")}</h4>
-            <ul className="mt-4 space-y-2.5 text-sm text-muted">
+          <div className="lg:col-span-2">
+            <h2 className="text-[11px] font-medium uppercase tracking-[0.22em] text-[#E8D7BC]">
+              {t("servicesTitle")}
+            </h2>
+            <ul className="mt-5 space-y-2.5 text-sm text-[#F7F3EB]/75">
               {SERVICE_KEYS.map((key) => (
                 <li key={key}>
-                  <a
-                    href="#services"
-                    className="transition-colors hover:text-foreground"
-                  >
+                  <Link href="/#services" className="lux-line transition-colors hover:text-[#F7F3EB]">
                     {tServices(`${key}.title`)}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
           </div>
 
-          <div>
-            <h4 className="text-sm font-semibold">{t("companyTitle")}</h4>
-            <ul className="mt-4 space-y-2.5 text-sm text-muted">
+          <div className="lg:col-span-3">
+            <h2 className="text-[11px] font-medium uppercase tracking-[0.22em] text-[#E8D7BC]">
+              {t("companyTitle")}
+            </h2>
+            <ul className="mt-5 space-y-2.5 text-sm text-[#F7F3EB]/75">
               <li>
-                <a href="#why" className="transition-colors hover:text-foreground">
+                <Link href="/voyages" className="lux-line hover:text-[#F7F3EB]">
+                  {tNav("voyages")}
+                </Link>
+              </li>
+              <li>
+                <Link href="/application" className="lux-line hover:text-[#F7F3EB]">
+                  {tNav("app")}
+                </Link>
+              </li>
+              <li>
+                <Link href="/evenements" className="lux-line hover:text-[#F7F3EB]">
+                  {tNav("events")}
+                </Link>
+              </li>
+              <li>
+                <Link href="/famille" className="lux-line hover:text-[#F7F3EB]">
+                  {tNav("family")}
+                </Link>
+              </li>
+              <li>
+                <Link href="/#why" className="lux-line hover:text-[#F7F3EB]">
                   {tNav("why")}
-                </a>
+                </Link>
               </li>
               <li>
-                <a
-                  href="#process"
-                  className="transition-colors hover:text-foreground"
-                >
+                <Link href="/#process" className="lux-line hover:text-[#F7F3EB]">
                   {tNav("process")}
-                </a>
+                </Link>
               </li>
               <li>
-                <a
-                  href="#testimonials"
-                  className="transition-colors hover:text-foreground"
-                >
+                <Link href="/#testimonials" className="lux-line hover:text-[#F7F3EB]">
                   {tNav("testimonials")}
-                </a>
+                </Link>
               </li>
               <li>
-                <NextLink
-                  href="/connexion"
-                  className="font-medium text-foreground/90 transition-colors hover:text-foreground"
-                >
+                <NextLink href="/connexion" className="lux-line text-[#F7F3EB] hover:text-[#E8D7BC]">
                   {tNav("account")}
                 </NextLink>
               </li>
             </ul>
           </div>
 
-          <div>
-            <h4 className="text-sm font-semibold">{t("contactTitle")}</h4>
-            <ul className="mt-4 space-y-2.5 text-sm text-muted">
+          <div className="lg:col-span-3">
+            <h2 className="text-[11px] font-medium uppercase tracking-[0.22em] text-[#E8D7BC]">
+              {t("contactTitle")}
+            </h2>
+            <ul className="mt-5 space-y-2.5 text-sm text-[#F7F3EB]/75">
               <li>
-                <a
-                  href={`mailto:${siteConfig.contactEmail}`}
-                  className="transition-colors hover:text-foreground"
-                >
+                <a href={`mailto:${siteConfig.contactEmail}`} className="lux-line hover:text-[#F7F3EB]">
                   {siteConfig.contactEmail}
                 </a>
               </li>
@@ -134,35 +139,29 @@ export function Footer() {
                   href={`https://wa.me/${siteConfig.whatsappNumber}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="transition-colors hover:text-foreground"
+                  className="lux-line hover:text-[#F7F3EB]"
                 >
                   {siteConfig.whatsappDisplay}
                 </a>
               </li>
-              <li className="flex items-start gap-2 pt-1">
-                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-accent-2" />
-                <span>
-                  {siteConfig.address.line1}
-                  <br />
-                  {siteConfig.address.postalCode} {siteConfig.address.city}
-                </span>
+              <li className="pt-1 leading-relaxed">
+                {siteConfig.address.line1}
+                <br />
+                {siteConfig.address.postalCode} {siteConfig.address.city}
               </li>
             </ul>
           </div>
         </div>
 
-        <div className="mt-12 flex flex-col gap-3 border-t border-border pt-6 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-14 flex flex-col gap-3 border-t border-[#F7F3EB]/15 pt-6 text-sm text-[#F7F3EB]/65 sm:flex-row sm:items-center sm:justify-between">
           <p>
             © {year} {siteConfig.name}. {t("rights")}
           </p>
-          <div className="flex items-center gap-4">
-            <Link
-              href="/legal"
-              className="transition-colors hover:text-foreground"
-            >
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Link href="/legal" className="lux-line hover:text-[#F7F3EB]">
               {t("legalLink")}
             </Link>
-            <span className="hidden sm:inline">·</span>
+            <span aria-hidden>·</span>
             <p>{t("madeWith")}</p>
           </div>
         </div>

@@ -1699,14 +1699,16 @@ button:disabled,
 #process,
 #testimonials,
 #contact,
-#accreditations {
-  scroll-margin-top: 5rem;
+#accreditations,
+#offres,
+#devis {
+  scroll-margin-top: 5.75rem;
 }
 
 /* Entrée du hero en CSS : visible même si le JavaScript n’a pas encore hydraté. */
 @media (prefers-reduced-motion: no-preference) {
   .hero-rise {
-    animation: hero-rise 0.7s cubic-bezier(0.21, 0.47, 0.32, 0.98) both;
+    animation: hero-rise 1.05s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 }
 
@@ -1735,4 +1737,210 @@ details[open] .menu-icon-open {
 }
 body:has(header details[open]) {
   overflow: hidden;
+}
+
+/* Vitrine publique. Les tokens du CRM (:root, .admin-af, .account-app) ne bougent pas. */
+.vitrine {
+  --background: #f4efe6;
+  --surface: #fbf8f3;
+  --surface-2: #ebe4d6;
+  --foreground: #1a1714;
+  --muted: #4e4942;
+  --border: rgba(26, 23, 20, 0.14);
+  --accent: #8a7044;
+  --accent-2: #5c4824;
+  --accent-3: #c5a880;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+html:has(.vitrine) body {
+  background: #f4efe6;
+}
+
+.vitrine .font-display {
+  font-family: var(--font-cormorant), "Iowan Old Style", Palatino, Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.vitrine h1,
+.vitrine h2,
+.vitrine h3 {
+  text-wrap: balance;
+}
+
+.vitrine .lux-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  color: #5c4824;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.vitrine .lux-kicker::before {
+  content: "";
+  width: 1.75rem;
+  height: 1px;
+  background: #c5a880;
+  flex: none;
+}
+
+.vitrine .lux-kicker-inverse {
+  color: #e8d7bc;
+}
+
+.vitrine .lux-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  min-height: 3rem;
+  padding: 0.8rem 1.5rem;
+  background: #0b192c;
+  color: #f7f3eb;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  transition: background-color 200ms ease;
+}
+
+.vitrine .lux-btn:hover {
+  background: #1a3148;
+}
+
+.vitrine .lux-btn-gold {
+  background: #c5a880;
+  color: #0b192c;
+}
+
+.vitrine .lux-btn-gold:hover {
+  background: #d4bc9a;
+}
+
+.vitrine .lux-btn-ghost {
+  background: transparent;
+  color: #f7f3eb;
+  box-shadow: inset 0 0 0 1px rgba(247, 243, 235, 0.55);
+}
+
+.vitrine .lux-btn-ghost:hover {
+  background: rgba(247, 243, 235, 0.1);
+}
+
+.vitrine .lux-btn-sm {
+  min-height: 2.75rem;
+  padding: 0.55rem 1rem;
+  letter-spacing: 0.16em;
+}
+
+/* .lux-btn est hors couche : il gagne sur `hidden`. Sous sm, le bouton du header reste masqué. */
+@media (max-width: 639px) {
+  .vitrine .lux-btn.hidden {
+    display: none;
+  }
+}
+
+.vitrine .lux-field {
+  width: 100%;
+  border: 1px solid rgba(26, 23, 20, 0.2);
+  border-radius: 0;
+  background: #fbf8f3;
+  padding: 0.9rem 1rem;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #1a1714;
+  outline: none;
+  transition: border-color 180ms ease;
+}
+
+.vitrine .lux-field::placeholder {
+  color: #6a645c;
+}
+
+.vitrine .lux-field:hover {
+  border-color: rgba(26, 23, 20, 0.38);
+}
+
+.vitrine .lux-field:focus-visible {
+  border-color: #5c4824;
+  outline: 2px solid #5c4824;
+  outline-offset: 2px;
+}
+
+.vitrine select.lux-field {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #5c4824 50%),
+    linear-gradient(135deg, #5c4824 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 55%,
+    calc(100% - 10px) 55%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 2rem;
+}
+
+.vitrine .lux-photo {
+  transition: transform 900ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.vitrine .group:hover .lux-photo {
+  transform: scale(1.035);
+}
+
+.vitrine .lux-line {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 0 1px;
+  transition: background-size 280ms ease;
+}
+
+.vitrine .lux-line:hover {
+  background-size: 100% 1px;
+}
+
+.vitrine :where(a, button, summary, [tabindex]):focus-visible {
+  outline: 2px solid #5c4824;
+  outline-offset: 3px;
+}
+
+.vitrine-skip {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  z-index: 80;
+  background: #0b192c;
+  color: #f7f3eb;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+}
+
+.vitrine-skip:focus {
+  top: 0.75rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.vitrine) {
+    scroll-behavior: smooth;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vitrine .lux-photo,
+  .vitrine .group:hover .lux-photo {
+    transition: none;
+    transform: none;
+  }
+}
+
+body:has(header details[open]) .wa-float {
+  visibility: hidden;
 }

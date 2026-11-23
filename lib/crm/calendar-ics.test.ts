@@ -93,7 +93,9 @@ test("hôtel : journée entière check-in → checkout exclusif, sans heure", ()
   assert.match(event || "", /DTEND;VALUE=DATE:20260815/);
   assert.match(event || "", /SUMMARY:Hôtel · Nantipa/);
   assert.match(event || "", /LOCATION:Nantipa\\, Santa Teresa/);
-  assert.equal((event || "").includes("T00"), false);
+  // DTSTAMP est l’heure UTC du moment : à minuit elle contient « T00 » sans être un horaire d’hôtel.
+  const withoutStamp = (event || "").replace(/DTSTAMP:[^\r\n]+/g, "");
+  assert.equal(withoutStamp.includes("T00"), false);
 });
 
 test("minuit n’invente pas d’horaire", () => {

@@ -21,7 +21,7 @@ export function LanguageSwitcher() {
 
   return (
     <div
-      className="flex items-center rounded-full border border-border bg-surface/60 p-0.5 text-xs font-medium"
+      className="flex items-center"
       role="group"
       aria-label={tCommon("language")}
     >
@@ -33,10 +33,10 @@ export function LanguageSwitcher() {
             type="button"
             onClick={() => switchTo(loc)}
             disabled={isPending}
-            className={`rounded-full px-2.5 py-1 uppercase tracking-wide transition-colors ${
+            className={`inline-flex min-h-11 min-w-11 items-center justify-center text-[11px] font-medium uppercase tracking-[0.16em] transition-colors ${
               active
-                ? "bg-[#C5A880] text-[#0B192C]"
-                : "text-muted hover:text-foreground"
+                ? "text-[#1A1714] shadow-[inset_0_-1px_0_0_#5C4824]"
+                : "text-[#6A645C] hover:text-[#1A1714]"
             }`}
             aria-current={active ? "true" : undefined}
           >

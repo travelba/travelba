@@ -11,7 +11,12 @@
     "testimonials": "Reviews",
     "contact": "Contact",
     "account": "My account",
-    "cta": "Request a quote"
+    "cta": "Request a quote",
+    "voyages": "Journeys",
+    "app": "The app",
+    "events": "Events",
+    "family": "Family",
+    "agency": "The agency"
   },
   "Hero": {
     "badge": "Travel concierge · International",
@@ -224,10 +229,189 @@
       "phone": "Phone"
     }
   },
+  "Offers": {
+    "eyebrow": "The house",
+    "title": "Four ways to travel with the agency",
+    "open": "View",
+    "voyages": {
+      "title": "Signature journeys",
+      "text": "Itineraries the agency keeps, then adjusts to your pace. The catalogue is still to be written."
+    },
+    "app": {
+      "title": "The TBA app",
+      "text": "The client space: hotels at member rates, the trip record, documents and transactions."
+    },
+    "events": {
+      "title": "Seminars and celebrations",
+      "text": "Seminars, private events and birthdays, from the venue to the last detail."
+    },
+    "family": {
+      "title": "Family travel",
+      "text": "Palaces and children's clubs, shaped around the youngest travellers."
+    }
+  },
+  "QuoteBlock": {
+    "eyebrow": "Quote",
+    "title": "Describe the project",
+    "text": "The same form as the homepage. We come back to you within an hour during business hours."
+  },
+  "Voyages": {
+    "metaTitle": "Signature journeys — Travel Business Agency",
+    "metaDescription": "Signature itineraries by Travel Business Agency, shaped to you. The journey catalogue is still being written.",
+    "eyebrow": "Signature journeys",
+    "title": "An itinerary the agency holds, then adjusts for you",
+    "lede": "A signature journey starts from a frame: destination, length, season, pace, then the days. Nothing is fixed. The catalogue below waits for the journeys the agency chooses to show.",
+    "methodTitle": "How a journey reads",
+    "method": {
+      "destination": { "title": "The destination", "text": "The cities where you stay. Not the city you leave from, and not a layover." },
+      "rhythm": { "title": "The pace", "text": "The number of nights, the tempo of the days, what stays free." },
+      "days": { "title": "The days", "text": "Each day has a title and what happens, only when it is known." },
+      "adjust": { "title": "The adjustment", "text": "The frame is taken up with you: dates, number of travellers, wishes." }
+    },
+    "catalogueTitle": "The catalogue",
+    "catalogueText": "Four places. Each field stays empty until the journey is written.",
+    "cardTitle": "Signature journey {slot}",
+    "fields": {
+      "destination": "Destination",
+      "duration": "Length",
+      "season": "Season",
+      "pace": "Pace"
+    },
+    "blank": "[To be completed]",
+    "openItinerary": "Open the frame"
+  },
+  "VoyageDetail": {
+    "metaTitle": "Signature journey {slot} — Travel Business Agency",
+    "metaDescription": "Frame of a Travel Business Agency signature journey. The facts of the trip are still to be written.",
+    "missingTitle": "Signature journey — Travel Business Agency",
+    "back": "All journeys",
+    "eyebrow": "Signature journey {slot}",
+    "title": "Signature journey {slot}",
+    "lede": "This page is the frame of an itinerary. The facts, the price and the promises are not written yet.",
+    "facts": {
+      "destination": "Destination",
+      "duration": "Length",
+      "season": "Season",
+      "pace": "Pace",
+      "forWhom": "For whom"
+    },
+    "blank": "[To be completed]",
+    "daysTitle": "The days",
+    "daysText": "Three days are placed to show the shape. Their content is still to be written, and the list grows with the journey.",
+    "day": "Day {day}",
+    "includedTitle": "What is included",
+    "bespokeTitle": "What is decided with you",
+    "bespokeText": "Dates, number of travellers, rooms, tables, pace. Nothing in this frame is a firm offer."
+  },
+  "AppPage": {
+    "metaTitle": "The TBA app — Travel Business Agency",
+    "metaDescription": "The Travel Business Agency client space: hotels, the trip record, documents, boarding passes and transactions. A web app, with no store listing yet.",
+    "eyebrow": "The TBA app",
+    "title": "The space where the trip is held",
+    "lede": "TBA is the agency's client space, opened in the browser. Members book hotels at reserved rates, follow the journey, and find their documents.",
+    "features": {
+      "hotels": {
+        "title": "Hotels",
+        "text": "A hotel catalogue at rates reserved for you, with benefits you do not find on a direct booking. The request goes to the agency, the confirmation is followed in the same place, and cancellation is possible when the rate allows it."
+      },
+      "stay": {
+        "title": "The trip record",
+        "text": "The bookings of the stay: flights, hotels, transfers and the rest of the itinerary, in one place."
+      },
+      "papers": {
+        "title": "Documents",
+        "text": "Trip documents and boarding passes live in the space, not in another tool."
+      },
+      "ledger": {
+        "title": "Transactions",
+        "text": "The client account and the movements of the stay are read in the space."
+      }
+    },
+    "clubEyebrow": "Club Travel BA",
+    "clubTitle": "Four levels, shown inside the space",
+    "clubPromise": "A hotel catalogue at rates reserved for you, with benefits you do not find on a direct booking.",
+    "levels": {
+      "silver": { "name": "Silver", "price": "€300 a year", "line": "Up to 10% off the catalogue, early arrival and late departure." },
+      "gold": { "name": "Gold", "price": "€700 a year", "line": "Up to 15% off the catalogue, and an upgrade when a room is free." },
+      "platinum": { "name": "Platinum", "price": "€1,200 a year", "line": "Up to 20% off the catalogue, breakfast, a hotel credit of up to $200, and an airport transfer." },
+      "titanium": { "name": "Titanium", "price": "€1,600 a year", "line": "Up to 25% off the catalogue, concierge, VIP welcome and pre-registration." }
+    },
+    "clubNote": "These amounts and benefits are the ones shown in the client space. The product's asterisk remains: subject to availability and to the hotel. Hotel access is opened by the agency.",
+    "accessTitle": "Open the space",
+    "accessText": "Entry is by invitation, then a password or a magic link, on travelba.fr. On a phone, the space can be added to the home screen: it is the same application, full screen.",
+    "stores": "There is no iOS or Android application on the App Store or Google Play. When one exists, the link will be here.",
+    "open": "Open my space",
+    "screens": {
+      "home": "Home",
+      "hotels": "Hotels",
+      "stays": "Bookings",
+      "money": "Transactions",
+      "account": "My account"
+    }
+  },
+  "EventsPage": {
+    "metaTitle": "Seminars, private events, birthdays — Travel Business Agency",
+    "metaDescription": "Corporate seminars, private events and VIP birthdays, organised by Travel Business Agency. Request a quote.",
+    "eyebrow": "Events",
+    "title": "Seminars, private evenings, birthdays",
+    "lede": "The agency designs a gathering the way it designs a journey: the place, the people, the travel, the table. The quote uses the site's form.",
+    "chapters": {
+      "seminars": {
+        "title": "Seminars",
+        "text": "Full organisation of your company seminars: exceptional venues, logistics and hosting.",
+        "blank": "Formats, group sizes and venues the agency wants to feature: [To be completed]."
+      },
+      "private": {
+        "title": "Private events",
+        "text": "Design and production of private and corporate events at the level of your ambitions.",
+        "blank": "The kinds of evenings and receptions on offer: [To be completed]."
+      },
+      "birthdays": {
+        "title": "VIP birthdays",
+        "text": "A birthday is prepared as a private event: the place, the guests, the journey to get there, the table.",
+        "blank": "The birthday formats the agency wants to show (dinner, villa, a trip): [To be completed]."
+      }
+    }
+  },
+  "FamilyPage": {
+    "metaTitle": "Family travel — Travel Business Agency",
+    "metaDescription": "Family stays composed by Travel Business Agency: palaces and children's clubs. The addresses the agency keeps are still to be named.",
+    "eyebrow": "With children",
+    "title": "The journey follows the children's pace",
+    "lede": "A family stay is drawn like a tailor-made journey: the hotel, the rooms, the children's club, the transfers. The houses named below are inspiration, not partners of the agency.",
+    "imageAlt": "A palace pool by the water",
+    "composeTitle": "What the agency composes",
+    "composeText": "The palace or the villa, the transfer, the welcome on arrival, and the children's day. The addresses TBA keeps for families are not published yet.",
+    "inspirationTitle": "Three children's clubs, to give a sense of the level",
+    "inspirationText": "Public facts from the houses, November 2026. No TBA rate, no exclusive agreement.",
+    "source": "Source",
+    "resorts": {
+      "soneva": {
+        "name": "Soneva Fushi",
+        "place": "Maldives · The Den",
+        "fact": "The Den welcomes children and teenagers from 4 to 17. Access and the daily programme are included in the stay, with a team present. Under 4, childcare is requested separately."
+      },
+      "reethi": {
+        "name": "One&Only Reethi Rah",
+        "place": "Maldives · KidsOnly",
+        "fact": "KidsOnly is the club for ages 4 to 12, open every day. One Tribe is for ages 13 to 17. Babysitting exists, on request."
+      },
+      "borabora": {
+        "name": "Four Seasons Resort Bora Bora",
+        "place": "Bora Bora · Tamarii Club",
+        "fact": "The Kids For All Seasons programme is held at Tamarii Club, for ages 5 to 12, on weekends and holidays, with a dedicated team."
+      }
+    },
+    "selectionTitle": "The agency's addresses",
+    "selectionText": "The list of resorts TBA offers families, and what it adds there, is still to be written.",
+    "blank": "[To be completed]"
+  },
   "Common": {
     "whatsapp": "WhatsApp",
     "menu": "Menu",
     "close": "Close",
+    "skip": "Skip to content",
+    "nav": "Main navigation",
     "backHome": "Back to home",
     "language": "Language"
   }

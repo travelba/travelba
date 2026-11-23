@@ -91,18 +91,19 @@ export const SERVICE_KEYS = [
 
 export type ServiceKey = (typeof SERVICE_KEYS)[number];
 
+/** Photos Unsplash (licence Unsplash). next/image les sert recadrées. */
 const UNSPLASH = (id: string) =>
-  `https://images.unsplash.com/${id}?q=75&w=800&auto=format&fit=crop`;
+  `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1800&q=75`;
 
 export const SERVICE_IMAGES: Record<ServiceKey, string> = {
   jet: UNSPLASH("photo-1540962351504-03099e0a754b"),
-  seminars: UNSPLASH("photo-1540575467063-178a50c2df87"),
-  events: UNSPLASH("photo-1511795409834-ef04bbd61622"),
+  seminars: UNSPLASH("photo-1511578314322-379afb476865"),
+  events: UNSPLASH("photo-1464366400600-7168b8af9bc3"),
   prestige: UNSPLASH("photo-1554068865-24cecd4e34b8"),
-  hotels: UNSPLASH("photo-1566073771259-6a8506099945"),
-  restaurants: UNSPLASH("photo-1517248135467-4c7edcad34c4"),
-  clubs: UNSPLASH("photo-1470225620780-dba8ba36b745"),
-  chauffeur: UNSPLASH("photo-1503376780353-7e6692767b70"),
+  hotels: UNSPLASH("photo-1551882547-ff40c63fe5fa"),
+  restaurants: UNSPLASH("photo-1414235077428-338989a2e8c0"),
+  clubs: UNSPLASH("photo-1514933651103-005eec06c04b"),
+  chauffeur: UNSPLASH("photo-1563720223185-11003d516935"),
   vip: UNSPLASH("photo-1556388158-158ea5ccacbd"),
-  bespoke: UNSPLASH("photo-1488646953014-85cb44e25828"),
+  bespoke: UNSPLASH("photo-1476514525535-07fb3b4ae5f1"),
 };
