@@ -1,7 +1,7 @@
 import "server-only";
 
 import { apnsTokenRejected, currentApnsSettings, postApns } from "@/lib/crm/apns";
-import { missingDbColumn } from "@/lib/crm/optional-column";
+import { missingDbColumn, queryWithOptionalColumn } from "@/lib/crm/optional-column";
 import { pushTargetPath } from "@/lib/crm/native-portal";
 import { pushAllowed, type PushPreference, type PushPreferenceRow } from "@/lib/crm/push-copy";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -68,11 +68,12 @@ export async function sendCustomerPush(input: CustomerPushInput): Promise<Custom
     }
     if ((existing.data || []).length) return { sent: 0, skipped: "already" };
 
-    const prefs = await admin
-      .from("crm_notification_preferences")
-      .select("push_travel, push_documents, push_payment")
-      .eq("customer_id", customerId)
-      .maybeSingle();
+    const prefs = await queryWithOptionalColumn(
+      (columns) =>
+        admin.from("crm_notification_preferences").select(columns).eq("customer_id", customerId).maybeSingle(),
+      "push_travel, push_documents, push_payment",
+      "push_messages"
+    );
     if (prefs.error) {
       if (missingDbColumn(prefs.error, "push_travel") || prefs.error.code === "42703" || prefs.error.code === "PGRST204") {
         return { sent: 0, skipped: "schema" };

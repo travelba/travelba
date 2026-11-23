@@ -27,7 +27,11 @@ TBA est l’espace client de Travel Business Agency.
 
 Retrouvez le carnet du séjour que l’agence a publié : les villes, les vols, l’hôtel, les transferts et les pièces du dossier. Les horaires sont ceux du voyage, pas une estimation.
 
-L’application prévient quand un vol change, quand une carte d’embarquement est prête, ou quand un règlement est reçu. Chaque envoi se coupe dans Mon compte.
+L’application prévient quand un vol change, quand une carte d’embarquement est prête, quand un règlement est reçu, ou quand l’agence répond dans Messages. Chaque envoi se coupe dans Mon compte.
+
+Les messages avec l’agence sont dans l’application. Une photo part depuis l’appareil. Ce n’est pas WhatsApp.
+
+Quand le certificat est en place, l’hôtel, le transfert et le vol sans carte de la compagnie proposent Ajouter à Apple Wallet.
 
 Sur l’iPhone, le prochain séjour, le vol et la météo de la destination peuvent rester sur l’écran d’accueil. Le jour du vol, l’heure, la porte et le statut s’affichent sur l’écran verrouillé.
 
@@ -44,7 +48,8 @@ Réponses pour App Store Connect. Rien n’est utilisé pour le suivi publicitai
 | Nom | Oui | Oui | Non |
 | Adresse e-mail | Oui | Oui | Non |
 | Numéro de téléphone | Oui | Oui | Non |
-| Photos ou vidéos (pièce photographiée) | Oui | Oui | Non |
+| Photos ou vidéos (pièce photographiée, photo envoyée à l’agence) | Oui | Oui | Non |
+| Autres contenus utilisateur (messages à l’agence) | Oui | Oui | Non |
 | Autres infos financières (règlements affichés) | Oui | Oui | Non |
 | Identifiant de l’appareil (jeton de notification) | Oui | Oui | Non |
 
@@ -56,7 +61,11 @@ Face ID reste sur l’appareil : le système répond seulement oui ou non. Le nu
 
 L’application montre d’abord l’écran local (séjour déjà connu sur l’appareil), puis ouvre l’espace sur `https://travelba.fr`. Les cookies de session restent ceux du site. Il n’y a pas d’inscription ouverte : l’agence crée le compte et envoie l’invitation. Le back-office `/admin` est refusé (redirection vers la connexion, et le délégué de navigation annule la page).
 
-Fonctions natives : notifications Apple, widgets d’écran d’accueil (prochain séjour, prochain vol, météo de la destination), activité en direct le jour du vol (écran verrouillé et Dynamic Island : numéro, trajet, heure, porte, terminal, statut), Face ID au retour (résultat gardé sur l’appareil), appareil photo pour une pièce, feuille de partage, écran hors ligne, écran de lancement. Les widgets lisent un résumé déjà chargé par l’application. L’activité en direct ne démarre que le jour du vol, dans l’application, ou par une notification Apple si l’iPhone le permet. Un iPhone plus ancien garde la notification classique.
+Fonctions natives : notifications Apple, widgets d’écran d’accueil (prochain séjour, prochain vol, météo de la destination), activité en direct le jour du vol (écran verrouillé et Dynamic Island : numéro, trajet, heure, porte, terminal, statut), Face ID au retour (résultat gardé sur l’appareil), appareil photo pour une pièce ou un message, feuille de partage, écran hors ligne, écran de lancement. Les widgets lisent un résumé déjà chargé par l’application. L’activité en direct ne démarre que le jour du vol, dans l’application, ou par une notification Apple si l’iPhone le permet. Un iPhone plus ancien garde la notification classique.
+
+Messages : Mon compte, icône en haut, et « Écrire à l’agence » sur un séjour. Le fil est dans l’application. Il ne passe pas par WhatsApp. L’agence répond dans Boîte de réception › Messages.
+
+Apple Wallet : le bouton n’apparaît que si le certificat Pass Type ID est posé (voir plus bas). Sans lui, l’écran n’a pas le bouton. Une carte déjà signée par la compagnie reste celle de la compagnie. Les passes TBA (hôtel, transfert, vol de repli) ne se mettent pas à jour tout seuls : la mise à jour par le service PassKit est l’étape suivante.
 
 Suppression du compte : Mon compte › Supprimer mon compte. La demande est enregistrée et envoyée à l’agence. Le client est déconnecté. Le traitement est fait sous 30 jours. Les séjours ne sont pas effacés sur-le-champ. Politique : `https://travelba.fr/fr/confidentialite`. Assistance : `https://travelba.fr/fr/support`.
 
@@ -128,6 +137,45 @@ Ce que l’API du workflow ne fait pas, et qui se pose dans le portail developer
 
 Le workflow, lui, crée l’identifiant `fr.travelba.client.Widgets` s’il manque, récupère un profil App Store pour chaque identifiant, et réutilise le certificat de `CERTIFICATE_PRIVATE_KEY`.
 
+11. **Pass Type ID** (après le compte développeur). Un seul identifiant : `pass.fr.travelba.client`. Hôtel, transfert et vol de repli partagent ce certificat. Trois identifiants (`pass.fr.travelba.client.hotel`, `.transfer`, `.boarding`) demanderaient trois certificats : ce n’est pas le choix retenu.
+
+    Créer le certificat sans Mac, avec OpenSSL :
+
+    ```bash
+    openssl req -new -newkey rsa:2048 -nodes \
+      -keyout pass.key -out pass.csr \
+      -subj "/CN=pass.fr.travelba.client/O=Travel Business Agency/C=FR"
+    ```
+
+    Dans Certificates, Identifiers & Profiles : Identifiers → Pass Type IDs → enregistrer `pass.fr.travelba.client`, puis créer le certificat à partir de `pass.csr`. Télécharger `pass.cer`.
+
+    Intermédiaire public Apple (déjà dans `lib/crm/wallet/`, G4 et G6) :
+
+    ```bash
+    curl -fsSL -o AppleWWDRCAG4.cer https://www.apple.com/certificateauthority/AppleWWDRCAG4.cer
+    openssl x509 -inform DER -in AppleWWDRCAG4.cer -out AppleWWDRCAG4.pem
+    openssl x509 -inform DER -in pass.cer -out pass.pem
+    openssl pkcs12 -export -inkey pass.key -in pass.pem -certfile AppleWWDRCAG4.pem \
+      -out pass.p12 -passout pass:CHOISIR
+    base64 -i pass.p12 | tr -d '\n'
+    ```
+
+    Le `.key` et le `.p12` ne vont pas dans git.
+
+12. **Variables Wallet** (Production seulement, puis redéployer). Sans elles, le bouton n’existe pas.
+
+    - `WALLET_PASS_CERT_P12` — le base64 du `.p12`
+    - `WALLET_PASS_CERT_PASSWORD` — le mot de passe choisi ci-dessus
+    - `WALLET_PASS_TYPE_ID` = `pass.fr.travelba.client`
+    - `WALLET_TEAM_ID` — les dix caractères de l’équipe (le même que `APPLE_TEAM_ID`)
+    - `WALLET_WWDR_CERT_PEM` — facultatif. Vide : les certificats publics G4 et G6 du dépôt.
+
+    Migration messages : `supabase/migrations/20261123180000_app_messages.sql`, dans le SQL Editor. Elle ajoute `crm_app_threads`, `crm_app_messages` et `push_messages`. Additive. Tant qu’elle n’est pas jouée, Messages dit que la messagerie n’est pas ouverte, et le site continue.
+
+## Mise à jour des passes
+
+Le service web PassKit (enregistrement de l’appareil, push quand la porte ou l’heure change) n’est pas dans cette version. Il demande une table d’appareils par numéro de série, des routes `webServiceURL`, et un envoi APNs sur le sujet du type de passe, distinct des notifications de l’application. Le bouton ajoute la carte telle qu’elle est au moment du téléchargement. L’étape suivante branche ce service quand le certificat existe.
+
 ## Où est le code
 
 | Pièce | Chemin |
@@ -140,7 +188,9 @@ Le workflow, lui, crée l’identifiant `fr.travelba.client.Widgets` s’il manq
 | Widgets | `GET /api/client/widgets`, extension `mobile/ios/App/Widgets` |
 | Activité en direct | `POST` et `DELETE /api/client/live-activity`, `lib/crm/live-activity-run.ts` |
 | Préférences | `GET` et `PATCH /api/client/notifications` |
-| Envoi | `lib/crm/push-notices.ts` (vol, carte d’embarquement, règlement reçu) |
+| Envoi | `lib/crm/push-notices.ts` (vol, carte d’embarquement, règlement reçu, message de l’agence) |
+| Cartes Wallet TBA | `lib/crm/wallet-pass.ts`, `GET /api/client/bookings/[id]/passe/[itemId]` |
+| Messages | `/mon-compte/messages`, Boîte de réception › Messages |
 | Pont dans le site | `components/native/NativeApp.tsx` (inactif dans Safari) |
 
 Un changement d’écran du portail part avec le site. Un changement d’icône, de permission ou de plugin demande un nouveau build TestFlight.
@@ -176,6 +226,8 @@ La clé API doit pouvoir créer un certificat et des profils. Apple limite le no
 
 - Pas de notification si `APNS_*` manque, si la préférence est décochée, ou s’il n’y a pas d’appareil.
 - Pas d’activité en direct si `APNS_*` manque, si la migration n’est pas jouée, ou s’il n’y a pas de jeton. Le suivi de vol et la notification classique continuent.
+- Pas de bouton Apple Wallet si `WALLET_PASS_*` manque. Une preview Vercel ne signe pas.
+- Pas de mise à jour automatique d’une carte déjà ajoutée (service PassKit : étape suivante).
 - Pas de notification sur une preview Vercel.
 - Le site dans Safari ne demande pas la permission de notification.
 - Déposer une pièce ou montrer un séjour n’envoie pas la notification à la place du geste déjà prévu (WhatsApp, e-mail). La notification s’ajoute, elle ne le remplace pas.

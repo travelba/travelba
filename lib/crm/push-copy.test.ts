@@ -31,4 +31,7 @@ test("sans préférence, les notifications partent ; false les coupe", () => {
   assert.equal(pushAllowed({ push_travel: false }, "travel"), false);
   assert.equal(pushAllowed({ push_travel: false }, "documents"), true);
   assert.equal(pushAllowed({ push_payment: true }, "payment"), true);
+  assert.equal(pushAllowed(null, "messages"), true);
+  assert.equal(pushAllowed({ push_messages: false }, "messages"), false);
+  assert.equal(pushAllowed({}, "messages"), true);
 });

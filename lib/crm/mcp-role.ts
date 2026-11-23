@@ -162,6 +162,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   carte_arrivee: "edit_dossiers",
   facture_groupee: "edit_finances",
   compte_jumeau: "edit_dossiers",
+  messages_app: "message_client",
 };
 
 export type McpStaffGate = {

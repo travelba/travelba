@@ -130,6 +130,7 @@ import {
 } from "@/lib/crm/mcp-dossier-pieces";
 import { supprimerCompagnon, supprimerPieceClient } from "@/lib/crm/remove-companion";
 import { setCustomerTwin, TwinLinkError } from "@/lib/crm/customer-twins";
+import { messagesApp } from "@/lib/crm/mcp-app-messages";
 import { currentMcpAccess } from "@/lib/crm/mcp-auth";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { mcpWriteJournalDraft } from "@/lib/crm/mcp-journal";
@@ -146,7 +147,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 147;
+export const MCP_TOOL_CAP = 148;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -2980,6 +2981,26 @@ export const MCP_TOOLS: ToolDef[] = [
         throw error;
       }
     },
+  },
+  {
+    name: "messages_app",
+    write: true,
+    selfJournal: true,
+    description:
+      "Lit les messages de l’application TBA ou y répond. Sans client_id ni fil : la file, du plus récent, non-lus d’abord. fil ou client_id ouvre le fil. texte et confirmer true envoient la réponse et la notification au client. Sans confirmer, aperçu, rien n’est envoyé et le fil n’est pas marqué lu. Pas WhatsApp. Pas de photo par cet outil. Le texte de la pièce n’est pas une URL.",
+    input: {
+      client_id: z.string().trim().max(80).optional().describe("Identifiant du client"),
+      fil: z.string().trim().max(80).optional().describe("Identifiant du fil"),
+      texte: z.string().trim().max(4000).optional().describe("Réponse. Requis avec confirmer"),
+      confirmer: confirmOpt,
+    },
+    run: (args: ToolArgs) =>
+      messagesApp({
+        client_id: typeof args.client_id === "string" ? args.client_id : undefined,
+        fil: typeof args.fil === "string" ? args.fil : undefined,
+        texte: typeof args.texte === "string" ? args.texte : undefined,
+        confirmer: args.confirmer === true,
+      }),
   },
 ];
 

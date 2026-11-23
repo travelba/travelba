@@ -495,6 +495,33 @@ export const CLIENT_SPACE_ACTIONS: ClientSpaceAction[] = [
     concierge: "supprimer_compte",
     rule: "Aucune suppression immédiate. Les séjours restent. Le concierge n’efface pas le compte.",
   },
+  {
+    id: "lire_messages",
+    page: "/mon-compte/messages",
+    route: "/api/client/messages",
+    method: "GET",
+    client: "Lit le nombre de messages non lus.",
+    concierge: "lire_messages",
+    rule: "Le concierge ne lit pas ce fil. Le compteur est celui du titulaire.",
+  },
+  {
+    id: "ecrire_agence",
+    page: "/mon-compte/messages",
+    route: "/api/client/messages",
+    method: "POST",
+    client: "Écrit à l’agence, avec une photo si besoin.",
+    concierge: "ecrire_agence",
+    rule: "Le concierge n’écrit pas dans ce fil. Le message reste dans l’application, pas sur WhatsApp.",
+  },
+  {
+    id: "passe_wallet",
+    page: "/mon-compte/reservations/[reference]",
+    route: "/api/client/bookings/[id]/passe/[itemId]",
+    method: "GET",
+    client: "Télécharge la carte Apple Wallet de l’hôtel, du transfert ou du vol.",
+    concierge: "passe_wallet",
+    rule: "Séjour visible, carte visible. Sans certificat, la carte n’existe pas. Un .pkpass de compagnie n’est pas re-signé.",
+  },
 ];
 
 export type ClassifiedSpace = {

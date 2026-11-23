@@ -52,6 +52,7 @@ import {
   type CrmCompanion,
   type CrmCustomer,
   type CrmTravelDocument,
+  customerFullName,
 } from "@/lib/crm/types";
 import { expenseCountsForClient } from "@/lib/crm/expense-validation";
 import { bookingPayerLabel, type FundingCompany } from "@/lib/crm/funding-wallet";
@@ -61,8 +62,18 @@ import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
 import { loadClientRestaurantEvenings } from "@/lib/crm/client-tables";
 import { VosTables } from "@/components/account/VosTables";
 import { stripClientMoneyItem, withoutClientInvoices } from "@/lib/crm/client-price-privacy";
+import { walletSigningReady } from "@/lib/crm/wallet-sign";
 
 type VisaRow = { country: string; step?: ClientVisaStep; status?: string; accepted_at?: string | null };
+
+function stayGuestLabel(travelers: CrmBookingTraveler[], customer: CrmCustomer) {
+  const people = travelers
+    .map((row) => [row.first_name, row.last_name].filter(Boolean).join(" ").trim())
+    .filter(Boolean);
+  if (people.length) return people.slice(0, 4).join(", ");
+  const name = customerFullName(customer);
+  return name === "Client" ? null : name;
+}
 
 async function loadLeCancelRows(bookingId: string): Promise<LeCancelRow[]> {
   try {
@@ -229,6 +240,9 @@ export async function ClientStayRest({
           pricesVisible={!hidePrices && b.prices_visible !== false}
           calendarBase={`/mon-compte/reservations/${b.reference}/agenda.ics`}
           phones={googlePhoneMap(b, visibleItems)}
+          walletReady={walletSigningReady()}
+          guestLabel={stayGuestLabel(party, customer)}
+          messagesHref={`/mon-compte/messages?sejour=${encodeURIComponent(b.reference)}`}
           services={{
             variant: "client",
             travelers: party,
