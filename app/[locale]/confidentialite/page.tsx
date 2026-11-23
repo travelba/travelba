@@ -75,9 +75,9 @@ function PrivacyBody({ english }: { english: boolean }) {
         <section>
           <h2 className="font-display text-xl font-semibold text-foreground">Retention</h2>
           <p className="mt-3">
-            Account data is kept for the business relationship and the legal retention periods that apply to travel documents
-            and invoices. A deletion request is handled within 30 days. Bookings required for accounting or a legal claim may
-            be kept for that purpose, then deleted or anonymised.
+            Account data is kept for the business relationship. Deleting the account removes the login, the profile, identity
+            documents and registered devices immediately. Bookings, invoices and payments stay for the legal retention periods
+            (accounting, ten years; the travel contract), without the account.
           </p>
         </section>
         <section>
@@ -91,8 +91,8 @@ function PrivacyBody({ english }: { english: boolean }) {
           <h2 className="font-display text-xl font-semibold text-foreground">Your rights</h2>
           <p className="mt-3">
             You may access, correct, delete, limit or object to the use of your data, and lodge a complaint with the CNIL
-            (cnil.fr). Write to {contactEmail}. In the app, Mon compte includes “Supprimer mon compte”: that sends a request.
-            It does not erase trips on the spot. The agency completes it within 30 days.
+            (cnil.fr). Write to {contactEmail}. In the app, Mon compte includes “Supprimer mon compte”. The account is deleted
+            immediately. Bookings, invoices and payments that the law requires us to keep remain with the agency.
           </p>
         </section>
       </div>
@@ -129,9 +129,9 @@ function PrivacyBody({ english }: { english: boolean }) {
       <section>
         <h2 className="font-display text-xl font-semibold text-foreground">Durée</h2>
         <p className="mt-3">
-          Les données du compte sont gardées le temps de la relation et des délais légaux applicables aux pièces de voyage
-          et aux factures. Une demande de suppression est traitée sous 30 jours. Un séjour encore nécessaire à la
-          comptabilité ou à un litige peut être conservé pour ce seul motif, puis effacé ou anonymisé.
+          Les données du compte sont gardées le temps de la relation. Supprimer le compte retire tout de suite la connexion,
+          le profil, les pièces d’identité et les appareils enregistrés. Les dossiers, les factures et les règlements restent
+          le temps des obligations légales (comptabilité, dix ans ; contrat de voyage), sans le compte.
         </p>
       </section>
       <section>
@@ -145,8 +145,8 @@ function PrivacyBody({ english }: { english: boolean }) {
         <h2 className="font-display text-xl font-semibold text-foreground">Vos droits</h2>
         <p className="mt-3">
           Vous pouvez accéder à vos données, les rectifier, les effacer, en limiter l’usage, vous y opposer, et saisir la
-          CNIL (cnil.fr). Écrivez à {contactEmail}. Dans l’application, Mon compte propose « Supprimer mon compte » : cela
-          envoie une demande. Les séjours ne sont pas effacés sur-le-champ. L’agence termine le traitement sous 30 jours.
+          CNIL (cnil.fr). Écrivez à {contactEmail}. Dans l’application, Mon compte propose « Supprimer mon compte ». Le compte
+          est effacé tout de suite. Les dossiers, les factures et les règlements que la loi impose de garder restent à l’agence.
         </p>
       </section>
     </div>

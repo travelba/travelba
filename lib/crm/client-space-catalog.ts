@@ -491,9 +491,9 @@ export const CLIENT_SPACE_ACTIONS: ClientSpaceAction[] = [
     page: "/mon-compte/profil",
     route: "/api/client/account/deletion",
     method: "POST",
-    client: "Demande la suppression du compte. L’agence la traite sous 30 jours.",
+    client: "Supprime le compte tout de suite. Les dossiers, factures et règlements restent.",
     concierge: "supprimer_compte",
-    rule: "Aucune suppression immédiate. Les séjours restent. Le concierge n’efface pas le compte.",
+    rule: "Le titulaire le fait dans Mon compte. Le concierge n’efface pas le compte. Les dossiers, factures et règlements restent.",
   },
   {
     id: "lire_messages",
