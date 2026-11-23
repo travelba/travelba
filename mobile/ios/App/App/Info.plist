@@ -61,6 +61,12 @@
 	<string>UIStatusBarStyleDarkContent</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSCalendarsUsageDescription</key>
+	<string>TBA ajoute vos vols et les étapes du séjour au calendrier de l’iPhone.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>TBA ajoute vos vols et les étapes du séjour au calendrier de l’iPhone. L’application ne lit pas vos autres événements.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>TBA ajoute vos vols et les étapes du séjour au calendrier de l’iPhone.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>TBA utilise l’appareil photo pour photographier un passeport ou une pièce de voyage.</string>
 	<key>NSFaceIDUsageDescription</key>
