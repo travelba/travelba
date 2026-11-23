@@ -5,7 +5,20 @@ import { createServiceClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
-const FIELDS = ["push_travel", "push_documents", "push_payment", "push_messages"] as const;
+const FIELDS = [
+  "push_travel",
+  "push_documents",
+  "push_payment",
+  "push_messages",
+  "push_checkin",
+  "push_flight_change",
+  "push_departure",
+  "push_balance",
+] as const;
+
+const CORE = "push_travel, push_documents, push_payment";
+const WITH_MESSAGES = `${CORE}, push_messages`;
+const FULL = `${WITH_MESSAGES}, push_checkin, push_flight_change, push_departure, push_balance`;
 
 type PrefRow = Partial<Record<(typeof FIELDS)[number], boolean | null>>;
 
@@ -26,6 +39,10 @@ function flags(row: PrefRow | null) {
     push_documents: row?.push_documents !== false,
     push_payment: row?.push_payment !== false,
     push_messages: row?.push_messages !== false,
+    push_checkin: row?.push_checkin !== false,
+    push_flight_change: row?.push_flight_change !== false,
+    push_departure: row?.push_departure !== false,
+    push_balance: row?.push_balance !== false,
   };
 }
 
@@ -34,28 +51,43 @@ export async function GET() {
   const auth = await requireCustomer();
   if (auth instanceof NextResponse) return auth;
   const admin = createServiceClient();
-  const full = await admin
-    .from("crm_notification_preferences")
-    .select("push_travel, push_documents, push_payment, push_messages")
-    .eq("customer_id", auth.customer.id)
-    .maybeSingle();
-  if (full.error && missingDbColumn(full.error, "push_messages")) {
-    const legacy = await admin
+  const full = await admin.from("crm_notification_preferences").select(FULL).eq("customer_id", auth.customer.id).maybeSingle();
+  let messages = true;
+  let extended = true;
+  let result = full;
+  const columnGone = (error: { code?: string; message?: string | null } | null, column: string) =>
+    Boolean(error && missingDbColumn(error, column));
+  if (columnGone(full.error, "push_checkin")) {
+    extended = false;
+    result = await admin.from("crm_notification_preferences").select(WITH_MESSAGES).eq("customer_id", auth.customer.id).maybeSingle();
+  } else if (columnGone(full.error, "push_messages")) {
+    messages = false;
+    result = await admin
       .from("crm_notification_preferences")
-      .select("push_travel, push_documents, push_payment")
+      .select(`${CORE}, push_checkin, push_flight_change, push_departure, push_balance`)
       .eq("customer_id", auth.customer.id)
       .maybeSingle();
-    if (legacy.error) {
-      if (closed(legacy.error)) return NextResponse.json({ available: false, ...flags(null), messages: false });
-      return dbError(legacy.error);
+  }
+  if (result.error && columnGone(result.error, "push_messages")) {
+    messages = false;
+    result = await admin.from("crm_notification_preferences").select(CORE).eq("customer_id", auth.customer.id).maybeSingle();
+  }
+  if (result.error && columnGone(result.error, "push_checkin")) {
+    extended = false;
+    result = await admin.from("crm_notification_preferences").select(CORE).eq("customer_id", auth.customer.id).maybeSingle();
+  }
+  if (result.error) {
+    if (closed(result.error)) {
+      return NextResponse.json({ available: false, extended: false, messages: false, ...flags(null) });
     }
-    return NextResponse.json({ available: true, ...flags(legacy.data as PrefRow | null), messages: false });
+    return dbError(result.error);
   }
-  if (full.error) {
-    if (closed(full.error)) return NextResponse.json({ available: false, ...flags(null), messages: false });
-    return dbError(full.error);
-  }
-  return NextResponse.json({ available: true, ...flags(full.data as PrefRow | null), messages: true });
+  return NextResponse.json({
+    available: true,
+    extended,
+    messages,
+    ...flags(result.data as PrefRow | null),
+  });
 }
 
 export async function PATCH(request: Request) {

@@ -11,6 +11,7 @@ import { accountTabDirection } from "@/lib/crm/account-motion";
 import { AccountNightTabs, type NightTabIcon } from "@/components/account/AccountNightTabs";
 import { AccountUserMenu } from "@/components/account/AccountUserMenu";
 import { SIGN_OUT_LABEL } from "@/lib/crm/user-menu";
+import { PushSettingsBanner } from "@/components/account/PushSettingsBanner";
 
 const TAB_DEFS = [
   { suffix: "", label: "Accueil", exact: true, icon: "explore", night: "home" },
@@ -250,6 +251,7 @@ export function AccountChrome({
             pour que l’agence puisse vous joindre.
           </p>
         ) : null}
+        <PushSettingsBanner preview={preview} />
         {children}
       </main>
 

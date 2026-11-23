@@ -47,6 +47,10 @@
       "schedule": "5,15,25,35,45,55 * * * *"
     },
     {
+      "path": "/api/cron/travel-notices",
+      "schedule": "8 * * * *"
+    },
+    {
       "path": "/api/cron/esta",
       "schedule": "18 * * * *"
     },

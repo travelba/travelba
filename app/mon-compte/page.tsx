@@ -16,6 +16,7 @@ import { BookingHero } from "@/components/crm/BookingHero";
 import { AccountPage } from "@/components/account/AccountPage";
 import { StayConfirmedNote } from "@/components/account/StayConfirmedNote";
 import { RememberEspace } from "@/components/account/RememberEspace";
+import { TravelNotices } from "@/components/account/TravelNotices";
 import { hotelBookingEnabled, showHotelButton } from "@/lib/crm/hotel-access";
 import { readHotelButtonVisibility } from "@/lib/crm/hotel-access-run";
 import {
@@ -79,6 +80,8 @@ export default async function AccountHomePage({ searchParams }: { searchParams: 
             Bonjour {firstName}
           </h1>
         </section>
+
+        <TravelNotices />
 
         <Suspense fallback={null}>
           <HomeHotels customer={customer} visibility={hotels} />

@@ -23,6 +23,11 @@ const COLUMN: Record<PushPreference, keyof PushPreferenceRow> = {
   messages: "push_messages",
 };
 
+/** Même clé que le suivi de vol, pour ne pas envoyer deux fois un retard. */
+export function flightNoticeKey(itemId: string, kind: string, startAt: string | null) {
+  return `flight:${itemId}:${kind}:${startAt || ""}`.slice(0, 180);
+}
+
 /** Pas de ligne : les trois canaux sont ouverts, comme les e-mails. `false` ferme. */
 export function pushAllowed(row: PushPreferenceRow | null | undefined, kind: PushPreference) {
   if (!row) return true;

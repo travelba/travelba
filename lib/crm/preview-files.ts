@@ -31,6 +31,8 @@ export type FilePreviewModel = {
   href?: string | null;
   /** Passe Apple Wallet du même voyageur. */
   walletHref?: string | null;
+  /** Déjà sur l’appareil. Le fichier d’un passeport n’est jamais dans ce cache. */
+  offline?: boolean;
 };
 
 export function isPreviewImage(mime?: string | null, name?: string | null) {
