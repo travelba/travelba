@@ -86,9 +86,13 @@ Fiche client et menu **…** du dossier › « Ouvrir l’espace client » (`com
 - Départ d’un collègue : `/admin/equipe/[id]` → « Couper l’accès » (ban + `sessions_revoked_at` + `crm_staff_sessions.revoked_at`) et réattribution de ses dossiers en charge (`lib/crm/staff-departure.ts`). Un dossier sans responsable reste « À prendre ».
 - Suppression client (`deleteCustomerById`) : ne **pas** `auth.admin.deleteUser` si le même `auth_user_id` est staff.
 
-## Client : pas de self-delete
+## Suppression du compte client
 
-Pas de bouton « supprimer mon compte ». L’agence peut supprimer une fiche admin (dossiers + fichiers + txs + user Auth si non staff).
+Mon compte › « Supprimer mon compte » (`POST /api/client/account/deletion`, `deleteClientAccount`). Le dialogue `ConfirmDialog` (z-[80], au-dessus de la barre) dit ce qui part tout de suite et ce que la loi garde. Confirmation : « Supprimer définitivement mon compte ».
+
+Effacé tout de suite : utilisateur Auth (connexion impossible), jetons d’appareil, Face ID, préférences, profil (nom, e-mail, téléphone, adresse, naissance), passeports et fichiers du coffre `customers/{id}/`. La fiche reste, anonymisée (`account_deleted_at`, e-mail `supprime+<id>@compte.invalid`), pour les dossiers, factures et règlements. Un second appel ne renvoie pas l’e-mail. Un compte `crm_staff` ou un rôle d’agence est refusé, et son utilisateur Auth n’est pas retiré. L’ouverture desk non plus. Après succès : écran « Votre compte a été supprimé », puis déconnexion vers `/compte-supprime`.
+
+L’agence peut toujours supprimer une fiche entière (`deleteCustomerById`) : dossiers, txs, fichiers, user Auth si non staff. Ce n’est pas le geste du client.
 
 ## Fichiers
 

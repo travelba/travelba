@@ -71,14 +71,14 @@ Messages : Mon compte, icône en haut, et « Écrire à l’agence » sur un sé
 
 Apple Wallet : le bouton n’apparaît que si le certificat Pass Type ID est posé (voir plus bas). Sans lui, l’écran n’a pas le bouton. Une carte déjà signée par la compagnie reste celle de la compagnie. Les passes TBA (hôtel, transfert, vol de repli) ne se mettent pas à jour tout seuls : la mise à jour par le service PassKit est l’étape suivante.
 
-Suppression du compte : Mon compte › Supprimer mon compte. La demande est enregistrée et envoyée à l’agence. Le client est déconnecté. Le traitement est fait sous 30 jours. Les séjours ne sont pas effacés sur-le-champ. Politique : `https://travelba.fr/fr/confidentialite`. Assistance : `https://travelba.fr/fr/support`.
+Suppression du compte : Mon compte › Supprimer mon compte. Le dialogue explique ce qui est effacé tout de suite (connexion, profil, passeport, Face ID, appareils) et ce que l’agence garde (dossiers, factures, règlements : comptabilité dix ans, contrat de voyage). Le bouton est « Supprimer définitivement mon compte ». Le compte est effacé immédiatement, puis l’écran « Votre compte a été supprimé » s’affiche. Politique : `https://travelba.fr/fr/confidentialite`. Assistance : `https://travelba.fr/fr/support`.
 
-Compte de démonstration (à remplacer avant l’envoi) :
+Compte de démonstration :
 
-- E-mail : `REMPLACER@exemple.invalid`
-- Mot de passe : `REMPLACER`
+- E-mail : `appreview@travelba.fr` (`is_test`)
+- Mot de passe : celui posé pour la revue, hors dépôt
 
-L’agence crée ce compte et publie un séjour d’exemple visible. Ne pas utiliser un client réel.
+L’agence publie un séjour d’exemple visible sur cette fiche. Ne pas utiliser un client réel. Si la revue supprime le compte, la fiche anonymisée reste pour les dossiers. Recréer l’accès avec `APPREVIEW_PASSWORD='…' APPREVIEW_CONFIRM=1 npx tsx scripts/recreate-appreview-account.ts` (12 caractères minimum, le mot de passe n’est pas affiché). Le script refuse une adresse d’agence.
 
 ## Ce que Benjamin fait, dans l’ordre
 
@@ -211,7 +211,7 @@ Lancer :
 - Actions → **iOS TestFlight** → Run workflow, sur la branche voulue
 - ou pousser un tag `ios-*` (`git tag ios-1 && git push origin ios-1`)
 
-Le numéro de build du projet est `2`, la version marketing `1.4`. À l’archive, le workflow remplace le numéro de build par `github.run_number`.
+Le numéro de build du projet est `2`, la version marketing `1.5`. À l’archive, le workflow remplace le numéro de build par `github.run_number`.
 
 Secrets du dépôt (Settings → Secrets and variables → Actions) :
 
@@ -290,3 +290,11 @@ Un seul événement ouvre la feuille système. Plusieurs événements (tout le s
 Safari, l’icône sur l’écran d’accueil et Android ne changent pas. Le `.ics` reste la voie du site. L’application demande `Accept: application/json` sur la même adresse.
 
 Le site doit être en production avant le TestFlight : l’application charge `https://travelba.fr`. Sans le JavaScript de cette version, le binaire annule quand même une ouverture de `.ics` dans la webview et écrit les événements. Pas de tag `ios-*` dans ce changement : le build se lance à la main, ou avec un tag plus tard.
+
+## Version 1.5
+
+Suppression du compte dans l’application, conforme à la guideline 5.1.1(v). Mon compte › Supprimer mon compte ouvre un dialogue (au-dessus de la barre). « Supprimer définitivement mon compte » efface le compte tout de suite : la connexion, le profil, les passeports et pièces d’identité, les préférences, Face ID et les appareils. Les dossiers, les factures et les règlements restent, sur une fiche sans identité. L’écran « Votre compte a été supprimé » suit, puis la déconnexion.
+
+Migration à jouer à la main, non appliquée par ce dépôt : `supabase/migrations/20261123200000_account_deletion.sql` (`crm_customers.account_deleted_at`). Sans elle, l’effacement utilise l’adresse `supprime+<id>@compte.invalid`. Rien d’autre n’est détruit.
+
+Le compte de revue `appreview@travelba.fr` peut être supprimé pendant la revue. Le script `scripts/recreate-appreview-account.ts` le recrée. Pas de tag `ios-*` : le build TestFlight se lance à la main, ou avec un tag plus tard.
