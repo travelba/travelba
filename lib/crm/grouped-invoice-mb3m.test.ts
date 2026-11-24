@@ -18,10 +18,50 @@ import {
 import type { Mb3mInvoiceContext } from "./mb3m-invoice";
 import { MB3M_ACTIVITY } from "./mb3m-conform";
 import { mb3mAddInvoice, Mb3mError, type Mb3mLine } from "./mb3m";
+import {
+  applyMb3mPaymentPlans,
+  groupedMb3mPaymentWarning,
+  planMb3mPayments,
+  type Mb3mCredit,
+} from "./mb3m-payments";
 
 const COMPANY = "11111111-1111-4111-8111-111111111111";
 const CUSTOMER = "30c1eaff-a968-4e1e-9387-05450e90e024";
 const INVOICE = "22222222-2222-4222-8222-222222222222";
+const DOSSIER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const DOSSIER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const DOSSIER_CREDIT_A = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const DOSSIER_CREDIT_B = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const WALLET = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+const DEJA = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+const HORS = "99999999-9999-4999-8999-999999999999";
+
+function payCredit(patch: Partial<Mb3mCredit> & Pick<Mb3mCredit, "id" | "amount" | "date">): Mb3mCredit {
+  return {
+    bookingId: null,
+    customerId: CUSTOMER,
+    billingCompanyId: null,
+    source: "revolut",
+    label: "Virement",
+    ...patch,
+  };
+}
+
+function fixtureCredits(): Mb3mCredit[] {
+  return [
+    payCredit({ id: DOSSIER_CREDIT_A, bookingId: DOSSIER_A, amount: 1000, date: "2026-11-02", label: "Virement dossier A" }),
+    payCredit({ id: DOSSIER_CREDIT_B, bookingId: DOSSIER_B, amount: 500, date: "2026-11-03", label: "Virement dossier B" }),
+    payCredit({
+      id: WALLET,
+      amount: 7198,
+      date: "2026-11-18",
+      source: "stripe",
+      label: "Carte bancaire",
+    }),
+    payCredit({ id: DEJA, amount: 400, date: "2026-10-01", label: "Déjà lettré" }),
+    payCredit({ id: HORS, bookingId: "autre-dossier", amount: 800, date: "2026-11-04", label: "Autre séjour" }),
+  ];
+}
 
 const previous = {
   user: process.env.MB3M_API_USER,
@@ -351,11 +391,13 @@ describe("pièce MB3M de la facture groupée", () => {
     assert.equal(calls.includes("memoire:societe-creee"), true);
   });
 
-  it("refuse de remplacer une pièce imprimée et n’écrit rien", async () => {
+  it("ne remplace pas une pièce imprimée, et lettre les règlements sur elle", async () => {
     arm();
     const calls: string[] = [];
+    const payments: { invoiceNumber: string; balance: number | null; folderId: string; bookingIds: string[] }[] = [];
     const deps = fakeDeps({
       findPiece: async () => "printed",
+      readLettrage: async () => ({ lettered: true, amount: 8000, balance: 7198, seen: true }),
       saveCompany: async () => {
         calls.push("societe");
         return { uid: "x", partnerId: "" };
@@ -371,22 +413,36 @@ describe("pièce MB3M de la facture groupée", () => {
       cancelInvoice: async () => {
         calls.push("annulation");
       },
+      recordPayments: async (input) => {
+        payments.push({
+          invoiceNumber: input.invoiceNumber,
+          balance: input.balance,
+          folderId: input.folderId,
+          bookingIds: input.bookingIds,
+        });
+        return [];
+      },
     });
-    await assert.rejects(
-      () =>
-        emitGroupedMb3mPiece(
-          {
-            customerId: CUSTOMER,
-            invoiceId: INVOICE,
-            number: "FG-2026-0002",
-            contexts: nilosContexts(),
-            previous: { pieceNumber: "2218", folderId: "22-1", customerUid: "deja" },
-          },
-          deps
-        ),
-      (error: unknown) => error instanceof Mb3mError && /2218/.test(error.message) && /imprimée/.test(error.message)
+    const pushed = await emitGroupedMb3mPiece(
+      {
+        customerId: CUSTOMER,
+        invoiceId: INVOICE,
+        number: "FG-2026-0002",
+        contexts: nilosContexts(),
+        previous: { pieceNumber: "2218", folderId: "22-1", customerUid: "deja" },
+      },
+      deps
     );
     assert.deepEqual(calls, []);
+    assert.equal(pushed.replaced, false);
+    assert.equal(pushed.number, "2218");
+    assert.match(pushed.avertissement || "", /2218/);
+    assert.match(pushed.avertissement || "", /imprimée/);
+    assert.equal(payments.length, 1);
+    assert.equal(payments[0]?.invoiceNumber, "2218");
+    assert.equal(payments[0]?.balance, 7198);
+    assert.equal(payments[0]?.folderId, "22-1");
+    assert.deepEqual(payments[0]?.bookingIds, ["TB-2026-0211", "TB-2026-0212", "TB-2026-0077"]);
   });
 
   it("remplace une pro forma ouverte, puis retire l’ancienne", async () => {
@@ -514,14 +570,245 @@ describe("pièce MB3M de la facture groupée", () => {
     assert.equal(source.includes("CreditNote"), false);
     assert.equal(source.includes("mb3mAddCreditNote"), false);
     assert.equal(source.includes("mb3mRenderPiece"), false);
-    assert.equal(source.includes("mb3mSavePayment"), false);
     assert.equal(source.includes("sendEmail"), false);
     assert.equal(source.includes("whatsapp"), false);
     assert.equal(/IATA|APST/.test(source), false);
+    assert.match(source, /recordMb3mInvoicePayments/);
+    assert.match(source, /grouped:\s*true/);
     for (const call of GROUPED_INVOICE_MB3M_CALLS) {
       assert.equal(/print|validate|finali|impress/i.test(call), false);
     }
     assert.equal(GROUPED_INVOICE_MB3M_CALLS.includes("FolderService/AddPieces"), true);
+    assert.equal(GROUPED_INVOICE_MB3M_CALLS.includes("FolderService/SavePayment"), true);
+    assert.equal(GROUPED_INVOICE_MB3M_CALLS.includes("PieceService/WriteMatching"), true);
+    const run = readFileSync(new URL("./grouped-invoice-run.ts", import.meta.url), "utf8");
+    const guard = run.slice(run.indexOf("async function guardGroupedMb3m"), run.indexOf("async function syncGroupedMb3m"));
+    assert.equal(guard.includes("groupedMb3mPrintedMessage"), false);
+    assert.equal(/imprimée/.test(guard), false);
+  });
+
+  it("envoie les règlements de plusieurs dossiers et du portefeuille sur la pièce groupée", async () => {
+    arm();
+    const saved: { id: string; mode: string; amount: number }[] = [];
+    const matched: { payment: string; invoice: string; amount: number }[] = [];
+    let cap = 0;
+    const deps = fakeDeps({
+      recordPayments: async (input) => {
+        cap = input.invoiceAmount;
+        assert.equal(input.folderId, "22-0000099");
+        assert.equal(input.customerUid, "client-connu");
+        assert.equal(input.invoiceNumber, "4542");
+        assert.equal(input.balance, input.invoiceAmount);
+        assert.ok((input.invoiceAmount || 0) > 0);
+        const plans = planMb3mPayments({
+          bookingId: DOSSIER_A,
+          bookingIds: [DOSSIER_A, DOSSIER_B],
+          includeWallet: true,
+          attributeWallet: false,
+          invoiceNumber: input.invoiceNumber,
+          invoiceAmount: input.invoiceAmount,
+          maxLetter: input.balance,
+          credits: fixtureCredits(),
+          otherOpenBookings: 2,
+          links: [
+            {
+              transactionId: DEJA,
+              paymentNumber: "2100",
+              invoiceNumber: "1999",
+              matchedAmount: 400,
+            },
+          ],
+          remote: [
+            {
+              number: "2100",
+              reference: "CRM deja",
+              amount: 400,
+              date: "2026-11-01",
+              invoiceNumber: "1999",
+              unmatched: 0,
+            },
+          ],
+          remoteReady: true,
+        });
+        return applyMb3mPaymentPlans(
+          { folderId: input.folderId, invoiceNumber: input.invoiceNumber, plans },
+          {
+            savePayment: async (plan) => {
+              saved.push({ id: plan.credit.id, mode: plan.mode, amount: plan.credit.amount });
+              assert.notEqual(plan.mode, "OnlinePaymentCard");
+              return { number: `R-${plan.credit.id}` };
+            },
+            writeMatching: async (plan, paymentNumber) => {
+              matched.push({ payment: paymentNumber, invoice: input.invoiceNumber, amount: plan.matched });
+              return { id: `M-${plan.credit.id}` };
+            },
+            remember: async () => undefined,
+            attributeBooking: async () => {
+              throw new Error("le portefeuille ne doit pas être posé sur un dossier");
+            },
+          }
+        );
+      },
+    });
+    const contexts = nilosContexts();
+    contexts[0] = { ...contexts[0], bookingId: DOSSIER_A };
+    contexts[1] = { ...contexts[1], bookingId: DOSSIER_B };
+    const pushed = await emitGroupedMb3mPiece(
+      {
+        customerId: CUSTOMER,
+        invoiceId: INVOICE,
+        number: "FG-2026-0010",
+        contexts,
+        previous: { pieceNumber: null, folderId: null, customerUid: "client-connu" },
+      },
+      deps
+    );
+    assert.equal(pushed.number, "4542");
+    assert.equal(pushed.statut, undefined);
+    assert.deepEqual(
+      saved.map((row) => row.id).sort(),
+      [DOSSIER_CREDIT_A, DOSSIER_CREDIT_B, WALLET].sort()
+    );
+    assert.equal(saved.some((row) => row.id === DEJA), false);
+    assert.equal(saved.find((row) => row.id === WALLET)?.mode, "PaymentCard");
+    assert.equal(matched.length, 3);
+    assert.ok(matched.every((row) => row.invoice === "4542" && row.amount > 0));
+    const lettered = matched.reduce((sum, row) => sum + row.amount, 0);
+    assert.equal(lettered, Math.min(1000 + 500 + 7198, cap));
+    assert.ok(lettered <= cap + 0.001);
+    const wallet = matched.find((row) => row.payment === `R-${WALLET}`);
+    assert.ok(wallet && wallet.amount > 0 && wallet.amount <= 7198);
+  });
+
+  it("ne renvoie pas un crédit déjà enregistré et plafonne le lettrage au solde", async () => {
+    const links = [
+      { transactionId: WALLET, paymentNumber: "2240", invoiceNumber: "2001", matchedAmount: 7198 },
+      { transactionId: DEJA, paymentNumber: "2100", invoiceNumber: "1999", matchedAmount: 400 },
+    ];
+    const remote = [
+      {
+        number: "2240",
+        reference: `CRM ${WALLET}`,
+        amount: 7198,
+        date: "2026-11-18",
+        invoiceNumber: "2001",
+        unmatched: 0,
+      },
+      {
+        number: "2100",
+        reference: `CRM ${DEJA}`,
+        amount: 400,
+        date: "2026-10-01",
+        invoiceNumber: "1999",
+        unmatched: 0,
+      },
+    ];
+    const skipped = planMb3mPayments({
+      bookingId: DOSSIER_A,
+      bookingIds: [DOSSIER_A, DOSSIER_B],
+      includeWallet: true,
+      attributeWallet: false,
+      invoiceNumber: "2248",
+      invoiceAmount: 20000,
+      credits: fixtureCredits(),
+      otherOpenBookings: 3,
+      links,
+      remote,
+      remoteReady: true,
+    });
+    assert.equal(skipped.some((row) => row.credit.id === WALLET), false);
+    assert.equal(skipped.some((row) => row.credit.id === DEJA), false);
+    assert.equal(skipped.some((row) => row.credit.id === HORS), false);
+    const capped = planMb3mPayments({
+      bookingId: DOSSIER_A,
+      bookingIds: [DOSSIER_A, DOSSIER_B],
+      includeWallet: true,
+      attributeWallet: false,
+      invoiceNumber: "2248",
+      invoiceAmount: 20000,
+      maxLetter: 300,
+      credits: fixtureCredits().filter((row) => row.id !== DEJA),
+      otherOpenBookings: 1,
+      links: [],
+      remote: [],
+      remoteReady: true,
+    });
+    assert.equal(capped.length, 1);
+    assert.equal(capped[0]?.matched, 300);
+    assert.equal(capped[0]?.attributeBooking, false);
+    const matchedAmounts: number[] = [];
+    const reglements = await applyMb3mPaymentPlans(
+      { folderId: "22-0002248", invoiceNumber: "2248", plans: capped },
+      {
+        savePayment: async (plan) => {
+          assert.equal(plan.mode, "BankTransfer");
+          assert.notEqual(plan.mode, "OnlinePaymentCard");
+          return { number: "3001" };
+        },
+        writeMatching: async (plan) => {
+          matchedAmounts.push(plan.matched);
+          return { id: "lettrage" };
+        },
+        remember: async () => undefined,
+        attributeBooking: async () => undefined,
+      }
+    );
+    assert.deepEqual(matchedAmounts, [300]);
+    assert.equal(reglements[0]?.statut, "envoye");
+    assert.equal(reglements[0]?.montant, 300);
+    assert.equal(reglements[0]?.numero_mb3m, "3001");
+  });
+
+  it("un échec de règlement ou de lettrage laisse la facture groupée", async () => {
+    const plans = planMb3mPayments({
+      bookingId: DOSSIER_A,
+      bookingIds: [DOSSIER_A],
+      includeWallet: true,
+      attributeWallet: false,
+      invoiceNumber: "2248",
+      invoiceAmount: 1000,
+      maxLetter: 1000,
+      credits: [fixtureCredits()[0]],
+      otherOpenBookings: 0,
+      links: [],
+      remote: [],
+      remoteReady: true,
+    });
+    const failed = await applyMb3mPaymentPlans(
+      { folderId: "22-1", invoiceNumber: "2248", plans },
+      {
+        savePayment: async () => {
+          throw new Error("MB3M refuse le règlement.");
+        },
+        writeMatching: async () => ({ id: "non" }),
+        remember: async () => undefined,
+        attributeBooking: async () => undefined,
+      }
+    );
+    const warning = groupedMb3mPaymentWarning(failed);
+    assert.match(warning || "", /n’a pas été envoyé sur la facture groupée/);
+    assert.match(warning || "", /MB3M refuse le règlement/);
+    assert.match(warning || "", /reste en place/);
+    arm();
+    const deps = fakeDeps({
+      recordPayments: async () => {
+        throw new Error("Le lettrage n’a pas abouti.");
+      },
+    });
+    const pushed = await emitGroupedMb3mPiece(
+      {
+        customerId: CUSTOMER,
+        invoiceId: INVOICE,
+        number: "FG-2026-0010",
+        contexts: nilosContexts(),
+        previous: { pieceNumber: null, folderId: null, customerUid: "client-connu" },
+      },
+      deps
+    );
+    assert.equal(pushed.number, "4542");
+    assert.equal(pushed.replaced, false);
+    assert.match(pushed.avertissement || "", /lettrage n’a pas abouti/);
+    assert.match(pushed.avertissement || "", /reste en place/);
   });
 });
 

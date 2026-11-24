@@ -9,6 +9,7 @@ import {
   type Mb3mInvoiceContext,
 } from "@/lib/crm/mb3m-invoice";
 import { mb3mSendableLines, mb3mSoapLines } from "@/lib/crm/mb3m-conform";
+import { groupedMb3mPaymentWarning, recordMb3mInvoicePayments, type Mb3mReglement } from "@/lib/crm/mb3m-payments";
 import { readMb3mParty, writeMb3mParty } from "@/lib/crm/mb3m-party";
 import {
   mb3mAddInvoice,
@@ -35,7 +36,8 @@ import type { Mb3mAccountLine } from "@/lib/crm/mb3m-account";
 
 /**
  * Une seule pro forma MB3M pour plusieurs dossiers du même payeur.
- * AddPieces seulement : pas d’impression, pas de validation, pas de finalisation, pas d’avoir.
+ * AddPieces, puis les règlements reçus (SavePayment + WriteMatching) sur cette pièce.
+ * Pas d’impression, pas de validation, pas de finalisation, pas d’avoir, pas de fournisseur créé.
  * Aucun e-mail, aucun message.
  */
 export const GROUPED_MB3M_MIGRATION = "supabase/migrations/20261119201000_crm_grouped_invoice_mb3m.sql";
@@ -52,6 +54,8 @@ export const GROUPED_INVOICE_MB3M_CALLS = [
   "FolderService/Save",
   "FolderService/AddPieces",
   "FolderService/CancelInvoice",
+  "FolderService/SavePayment",
+  "PieceService/WriteMatching",
 ] as const;
 
 export function groupedMb3mPrintedMessage(number: string) {
@@ -93,6 +97,18 @@ export type GroupedMb3mDeps = {
   }) => Promise<Mb3mLettrageSnapshot>;
   cancelInvoice: typeof mb3mCancelInvoice;
   agencyUid?: () => Promise<string | null>;
+  /**
+   * Règlements des dossiers inclus et du portefeuille, sur la pièce groupée.
+   * Absent dans les tests qui ne couvrent pas l’encaissement.
+   */
+  recordPayments?: (input: {
+    bookingIds: string[];
+    folderId: string;
+    customerUid: string;
+    invoiceNumber: string;
+    invoiceAmount: number;
+    balance: number | null;
+  }) => Promise<Mb3mReglement[]>;
 };
 
 export type GroupedMb3mPush = {
@@ -391,8 +407,64 @@ async function resolveCustomer(
   return saved.uid;
 }
 
+function pieceAmount(lines: Mb3mLine[]) {
+  return (
+    Math.round(lines.reduce((sum, line) => sum + (Number(line.netPriceTotal) || 0) + (Number(line.marginUnit) || 0), 0) * 100) /
+    100
+  );
+}
+
+function joinWarnings(...parts: (string | null | undefined)[]) {
+  return parts.map((part) => clean(part)).filter(Boolean).join(" ") || null;
+}
+
+const UNREAD_PAYMENTS = "Les règlements ne sont pas envoyés : le solde de la pièce n’a pas pu être lu.";
+
 /**
- * Crée ou remplace la pro forma. Une pièce imprimée est refusée avant toute écriture.
+ * SavePayment + WriteMatching après la pièce. Un échec reste un avertissement.
+ * Sans solde connu, rien n’est envoyé.
+ */
+async function settleGroupedPayments(
+  deps: GroupedMb3mDeps,
+  input: {
+    contexts: Mb3mInvoiceContext[];
+    folderId: string;
+    customerUid: string;
+    invoiceNumber: string;
+    invoiceAmount: number;
+    balance: number | null;
+  }
+): Promise<string | null> {
+  if (!deps.recordPayments) return null;
+  const folderId = clean(input.folderId);
+  const customerUid = clean(input.customerUid);
+  const invoiceNumber = clean(input.invoiceNumber);
+  if (!folderId || !customerUid || !invoiceNumber) {
+    return "Les règlements ne sont pas envoyés : le dossier MB3M ou le client de la pièce manque.";
+  }
+  if (input.balance == null) return UNREAD_PAYMENTS;
+  if (input.balance <= 0.005) return null;
+  try {
+    const reglements = await deps.recordPayments({
+      bookingIds: input.contexts.map((ctx) => ctx.bookingId).filter(Boolean),
+      folderId,
+      customerUid,
+      invoiceNumber,
+      invoiceAmount: input.invoiceAmount,
+      balance: input.balance,
+    });
+    return groupedMb3mPaymentWarning(reglements);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Le règlement n’a pas abouti.";
+    return `Les règlements n’ont pas été envoyés sur la facture groupée. ${message} La facture groupée reste en place.`
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+}
+
+/**
+ * Crée ou remplace la pro forma. Une pièce imprimée ou déjà lettrée n’est pas remplacée.
+ * Les règlements partent ensuite sur la pièce qui reste (créée, déjà là, ou imprimée).
  * L’appelant ne doit pas passer ici pour un aperçu.
  */
 export async function emitGroupedMb3mPiece(
@@ -414,10 +486,27 @@ export async function emitGroupedMb3mPiece(
   const built = assembleGroupedMb3m(input.contexts);
   const blocker = mergedBlocker(input.contexts, built);
   const previousNumber = clean(input.previous.pieceNumber);
+  const lignes = publicLines(built.lines, built.dossiers);
   let openPrevious: { number: string; folderId: string | null } | null = null;
   if (previousNumber) {
     const state = await deps.findPiece(previousNumber);
-    if (state === "printed") throw new Mb3mError(groupedMb3mPrintedMessage(previousNumber), -1);
+    if (state === "printed") {
+      const payments = await settleKnownPiece(deps, input.contexts, {
+        number: previousNumber,
+        folderId: input.previous.folderId,
+        customerUid: input.previous.customerUid,
+        fallbackAmount: pieceAmount(built.lines),
+      });
+      return {
+        number: previousNumber,
+        uid: "",
+        folderId: clean(input.previous.folderId),
+        customerUid: clean(input.previous.customerUid),
+        replaced: false,
+        avertissement: joinWarnings(groupedMb3mPrintedMessage(previousNumber), payments),
+        lignes,
+      };
+    }
     if (state === "open") openPrevious = { number: previousNumber, folderId: input.previous.folderId };
   }
   if (blocker || !built.lines.length) {
@@ -427,9 +516,7 @@ export async function emitGroupedMb3mPiece(
   if (!built.dateStart || !built.dateEnd) throw new Mb3mError("Les dates des séjours manquent.", 0);
 
   if (openPrevious) {
-    const nextAmount = Math.round(
-      built.lines.reduce((sum, line) => sum + (Number(line.netPriceTotal) || 0) + (Number(line.marginUnit) || 0), 0) * 100
-    ) / 100;
+    const nextAmount = pieceAmount(built.lines);
     const hold = await mb3mReplacementHold(deps.readLettrage ?? mb3mReadLettrage, {
       number: openPrevious.number,
       folderId: openPrevious.folderId,
@@ -438,15 +525,24 @@ export async function emitGroupedMb3mPiece(
       currentAmount: null,
     });
     if (hold) {
+      const payments =
+        hold.statut === "bloque_lettrage"
+          ? await settleKnownPiece(deps, input.contexts, {
+              number: openPrevious.number,
+              folderId: openPrevious.folderId,
+              customerUid: input.previous.customerUid,
+              fallbackAmount: nextAmount,
+            })
+          : UNREAD_PAYMENTS;
       return {
         number: openPrevious.number,
         uid: "",
         folderId: openPrevious.folderId || "",
         customerUid: clean(input.previous.customerUid),
         replaced: false,
-        avertissement: hold.avertissement,
+        avertissement: joinWarnings(hold.avertissement, payments),
         statut: hold.statut,
-        lignes: publicLines(built.lines, built.dossiers),
+        lignes,
       };
     }
   }
@@ -503,6 +599,15 @@ export async function emitGroupedMb3mPiece(
   }
   const held = built.warnings.filter(Boolean).join(" ");
   const skipped = built.skipped.length ? `Dossiers sans ligne envoyée : ${built.skipped.join(", ")}.` : "";
+  const amount = pieceAmount(built.lines);
+  const payments = await settleGroupedPayments(deps, {
+    contexts: input.contexts,
+    folderId,
+    customerUid,
+    invoiceNumber: invoice.number,
+    invoiceAmount: amount,
+    balance: amount,
+  });
   console.info(`[mb3m] facture groupée ${input.number} pro forma ${invoice.number}`);
   return {
     number: invoice.number,
@@ -510,9 +615,34 @@ export async function emitGroupedMb3mPiece(
     folderId,
     customerUid,
     replaced: Boolean(openPrevious),
-    avertissement: [held, skipped].filter(Boolean).join(" ") || null,
-    lignes: publicLines(built.lines, built.dossiers),
+    avertissement: joinWarnings(held, skipped, payments),
+    lignes,
   };
+}
+
+/** Relit le solde, puis lettre sans remplacer la pièce. */
+async function settleKnownPiece(
+  deps: GroupedMb3mDeps,
+  contexts: Mb3mInvoiceContext[],
+  piece: { number: string; folderId: string | null; customerUid: string | null; fallbackAmount: number }
+) {
+  try {
+    const snap = await (deps.readLettrage ?? mb3mReadLettrage)({
+      number: piece.number,
+      folderId: piece.folderId,
+      customerUid: clean(piece.customerUid) || null,
+    });
+    return settleGroupedPayments(deps, {
+      contexts,
+      folderId: piece.folderId || "",
+      customerUid: clean(piece.customerUid),
+      invoiceNumber: piece.number,
+      invoiceAmount: snap.amount ?? piece.fallbackAmount,
+      balance: snap.balance,
+    });
+  } catch {
+    return UNREAD_PAYMENTS;
+  }
 }
 
 export function groupedMb3mDeps(admin: SupabaseClient): GroupedMb3mDeps {
@@ -529,6 +659,17 @@ export function groupedMb3mDeps(admin: SupabaseClient): GroupedMb3mDeps {
     readLettrage: mb3mReadLettrage,
     cancelInvoice: mb3mCancelInvoice,
     agencyUid: mb3mSingleAgencyUid,
+    recordPayments: (payment) =>
+      recordMb3mInvoicePayments(admin, {
+        bookingId: payment.bookingIds[0] || "",
+        bookingIds: payment.bookingIds,
+        folderId: payment.folderId,
+        customerUid: payment.customerUid,
+        invoiceNumber: payment.invoiceNumber,
+        invoiceAmount: payment.invoiceAmount,
+        balance: payment.balance,
+        grouped: true,
+      }),
   };
 }
 

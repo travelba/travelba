@@ -85,6 +85,8 @@ export type GroupedInvoiceDocument = {
   legal: string[];
   paymentLines: string[];
   paymentMissing: boolean;
+  /** Crédits du portefeuille du payeur, utilisés dans la limite du reste à payer. */
+  walletPayments: GroupedPayment[];
   filename: string;
   /** Tout le texte imprimé, pour refuser IATA, APST et le nom du logiciel. */
   clientText: string;
@@ -193,6 +195,65 @@ export type GroupedSectionInput = {
   foreignPayments?: boolean;
 };
 
+export type GroupedWalletCredit = {
+  booking_id?: string | null;
+  billing_company_id?: string | null;
+  direction?: string | null;
+  status?: string | null;
+  currency?: string | null;
+  amount?: number | string | null;
+  label?: string | null;
+  occurred_on?: string | null;
+};
+
+/** Crédits sans dossier du payeur : même société, ou particulier si le séjour l’est. */
+export function payerWalletCredits<T extends { booking_id?: string | null; billing_company_id?: string | null }>(
+  companyId: string | null,
+  rows: T[]
+) {
+  return rows.filter((row) => {
+    if (row.booking_id) return false;
+    if (companyId) return !row.billing_company_id || row.billing_company_id === companyId;
+    return !row.billing_company_id;
+  });
+}
+
+/**
+ * Part du portefeuille utilisée sur cette facture, du plus ancien au plus récent.
+ * Le lettrage s’arrête au reste à payer. Un crédit plus grand est pris en partie.
+ */
+export function usedWalletPayments(input: {
+  total: number;
+  alreadyPaid: number;
+  credits: GroupedWalletCredit[];
+}) {
+  let remaining = roundMoney(input.total - input.alreadyPaid);
+  if (remaining <= 0) return [] as { label: string; amount: number }[];
+  const rows = input.credits
+    .filter((row) => {
+      if (row.booking_id) return false;
+      if (row.direction && row.direction !== "credit") return false;
+      if (row.status && row.status !== "posted") return false;
+      const currency = (row.currency || "EUR").trim().toUpperCase() || "EUR";
+      const amount = Number(row.amount);
+      return currency === "EUR" && Number.isFinite(amount) && amount > 0;
+    })
+    .sort(
+      (left, right) =>
+        (left.occurred_on || "").localeCompare(right.occurred_on || "") || (left.label || "").localeCompare(right.label || "")
+    );
+  const payments: { label: string; amount: number }[] = [];
+  for (const row of rows) {
+    if (remaining <= 0) break;
+    const amount = roundMoney(Number(row.amount) || 0);
+    if (amount <= 0) continue;
+    const used = roundMoney(Math.min(amount, remaining));
+    payments.push({ label: (row.label || "").trim() || "Règlement du compte", amount: used });
+    remaining = roundMoney(remaining - used);
+  }
+  return payments;
+}
+
 export function groupedInvoiceDocument(input: {
   number: string;
   billTo: string[];
@@ -202,6 +263,7 @@ export function groupedInvoiceDocument(input: {
   dueDays?: number | null;
   wire?: InvoiceWire | null;
   outsideEu?: boolean;
+  walletCredits?: GroupedWalletCredit[];
 }): GroupedInvoiceDocument {
   const now = input.now || new Date();
   const issuedOn = parisIsoDate(now);
@@ -242,7 +304,13 @@ export function groupedInvoiceDocument(input: {
     };
   });
   const total = roundMoney(sections.reduce((sum, section) => sum + section.subtotal, 0));
-  const paid = roundMoney(sections.reduce((sum, section) => sum + section.paid, 0));
+  const sectionPaid = roundMoney(sections.reduce((sum, section) => sum + section.paid, 0));
+  const walletPayments = usedWalletPayments({
+    total,
+    alreadyPaid: sectionPaid,
+    credits: input.walletCredits || [],
+  }).map((row) => ({ ...row, amountLabel: money(row.amount) }));
+  const paid = roundMoney(sectionPaid + walletPayments.reduce((sum, row) => sum + row.amount, 0));
   const remain = splitBalance(total, paid);
   const number = input.number.trim();
   const iban = validIban(input.wire?.iban);
@@ -282,6 +350,7 @@ export function groupedInvoiceDocument(input: {
     legal,
     paymentLines,
     paymentMissing: !iban,
+    walletPayments,
     filename: number ? `Facture-pro-forma-${number}.pdf` : "Facture-pro-forma-groupee.pdf",
     clientText: "",
   };
@@ -291,7 +360,21 @@ export function groupedInvoiceDocument(input: {
 
 export function groupedClientText(doc: Pick<
   GroupedInvoiceDocument,
-  "kicker" | "numberLabel" | "payerLabel" | "billTo" | "sections" | "totalLabel" | "paidLabel" | "balanceLabel" | "surplusLabel" | "issuedLabel" | "dueLabel" | "issuer" | "legal" | "paymentLines"
+  | "kicker"
+  | "numberLabel"
+  | "payerLabel"
+  | "billTo"
+  | "sections"
+  | "totalLabel"
+  | "paidLabel"
+  | "balanceLabel"
+  | "surplusLabel"
+  | "issuedLabel"
+  | "dueLabel"
+  | "issuer"
+  | "legal"
+  | "paymentLines"
+  | "walletPayments"
 >) {
   const parts = [
     doc.kicker,
@@ -307,6 +390,7 @@ export function groupedClientText(doc: Pick<
     doc.paidLabel,
     doc.balanceLabel,
     doc.surplusLabel || "",
+    ...(doc.walletPayments || []).flatMap((row) => [row.label, row.amountLabel]),
   ];
   for (const section of doc.sections) {
     parts.push(

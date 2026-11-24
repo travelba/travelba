@@ -18,7 +18,6 @@ import { renderGroupedInvoicePdf } from "@/lib/crm/grouped-invoice-pdf";
 import {
   emitGroupedMb3mPiece,
   groupedMb3mDeps,
-  groupedMb3mPrintedMessage,
   groupedMb3mUnstoredMessage,
   readGroupedMb3m,
   readGroupedMb3mForCustomer,
@@ -32,6 +31,8 @@ import {
   nextGroupedNumber,
   payerKey,
   payerRefOf,
+  payerWalletCredits,
+  type GroupedWalletCredit,
   type GroupedBookingRow,
   type GroupedInvoiceDocument,
   type GroupedSectionInput,
@@ -307,7 +308,14 @@ async function loadBundle(admin: SupabaseClient, customerId: string, bookingIds:
   const ordered = unique.map((id) => rows.find((row) => row.id === id)!);
   const refusal = assertGroupedSelection(ordered, customerId);
   if (refusal) return fail(400, refusal);
-  const [itemsRes, travelersRes, debitsRes, creditsRes, personRes, companies] = await Promise.all([
+  const payerIds = [
+    ...new Set(
+      [customerId, ...ordered.flatMap((row) => [row.customer_id, row.billing_customer_id])].filter(
+        (id): id is string => Boolean(id)
+      )
+    ),
+  ];
+  const [itemsRes, travelersRes, debitsRes, creditsRes, walletRes, personRes, companies] = await Promise.all([
     admin
       .from("crm_booking_items")
       .select("id, booking_id, kind, title, amount, start_at, end_at, details, lifecycle, include_in_ledger")
@@ -324,6 +332,15 @@ async function loadBundle(admin: SupabaseClient, customerId: string, bookingIds:
       .select("booking_id, direction, status, currency, amount, label")
       .in("booking_id", unique)
       .eq("direction", "credit"),
+    payerIds.length
+      ? admin
+          .from("crm_transactions")
+          .select("booking_id, billing_company_id, direction, status, currency, amount, label, occurred_on")
+          .in("customer_id", payerIds)
+          .is("booking_id", null)
+          .eq("direction", "credit")
+          .eq("status", "posted")
+      : Promise.resolve({ data: [] as GroupedWalletCredit[], error: null }),
     admin
       .from("crm_customers")
       .select(
@@ -333,7 +350,7 @@ async function loadBundle(admin: SupabaseClient, customerId: string, bookingIds:
       .maybeSingle(),
     loadCompanies(admin, customerId),
   ]);
-  const saleError = itemsRes.error || travelersRes.error || debitsRes.error || creditsRes.error;
+  const saleError = itemsRes.error || travelersRes.error || debitsRes.error || creditsRes.error || walletRes.error;
   if (saleError) return fail(400, asError(saleError, "Les lignes de vente ne sont pas lisibles."));
   if (!personRes.data) return fail(404, "Client introuvable.");
   return {
@@ -351,6 +368,7 @@ async function loadBundle(admin: SupabaseClient, customerId: string, bookingIds:
         amount?: number | string | null;
         label?: string | null;
       }[],
+      wallet: (walletRes.data || []) as GroupedWalletCredit[],
       person: personRes.data as PersonRow,
       companies,
     },
@@ -403,6 +421,7 @@ export async function previewGroupedInvoice(
     dueDays: number | null;
     wire: InvoiceWire | null;
     outsideEu: boolean;
+    walletCredits: GroupedWalletCredit[];
   }>
 > {
   const loaded = await loadBundle(admin, customerId, bookingIds);
@@ -472,11 +491,13 @@ export async function previewGroupedInvoice(
   const settings = await loadDueDays(admin);
   const revolut = await loadWire();
   const wire = revolut || settings.wire;
+  const walletCredits = payerWalletCredits(payer.companyId, bundle.wallet);
   const document = groupedInvoiceDocument({
     number: "",
     billTo: bill.lines,
     payerLabel: bill.label,
     sections: composed.sections,
+    walletCredits,
     now,
     dueDays: settings.dueDays,
     wire,
@@ -492,6 +513,7 @@ export async function previewGroupedInvoice(
       dueDays: settings.dueDays,
       wire,
       outsideEu: bill.outsideEu,
+      walletCredits,
     },
   };
 }
@@ -611,6 +633,7 @@ export async function generateGroupedInvoice(
     dueDays: preview.data.dueDays,
     wire: preview.data.wire,
     outsideEu: preview.data.outsideEu,
+    walletCredits: preview.data.walletCredits,
   });
   const pdf = await renderGroupedInvoicePdf(document);
   const bytes = Buffer.from(pdf);
@@ -865,8 +888,7 @@ async function guardGroupedMb3m(admin: SupabaseClient, invoiceId: string): Promi
   if (!number) return { ok: true, data: { pieceNumber: null, folderId: stored.folderId, customerUid: stored.customerUid } };
   if (!mb3mConfigured()) return fail(400, "L’accès MB3M n’est pas configuré. La pièce déjà créée n’a pas été relue.");
   try {
-    const state = await mb3mFindPiece(number);
-    if (state === "printed") return fail(400, groupedMb3mPrintedMessage(number));
+    await mb3mFindPiece(number);
   } catch (error) {
     if (error instanceof Mb3mError) return fail(400, error.message);
     return fail(400, error instanceof Error ? error.message : "La pièce MB3M n’a pas pu être relue.");
@@ -1150,6 +1172,7 @@ export function groupedPublicPreview(document: GroupedInvoiceDocument) {
     total: document.total,
     paye: document.paid,
     reste: document.balance,
+    compte: document.walletPayments.map((row) => ({ libelle: row.label, montant: row.amount })),
     message:
       "Pro forma. Le PDF reste masqué sur chaque dossier. À la confirmation, une seule pièce pro forma MB3M est créée au nom du payeur. Aucun e-mail, aucun WhatsApp. Rien n’est imprimé.",
   };
