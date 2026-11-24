@@ -25,7 +25,8 @@ import {
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { toPublicBooking } from "@/lib/crm/public-booking";
-import { clientTripOwnerIds, clientTwinIds } from "@/lib/crm/company-peers";
+import { applyClientBookingScope, type ClientBookingScope } from "@/lib/crm/company-role";
+import { clientBookingScope, clientTwinIds } from "@/lib/crm/company-peers";
 import { clientHidesPrices, foreignPriceOwnerIds, stayHidesPrices, stripClientMoneyItem } from "@/lib/crm/client-price-privacy";
 import { hiddenPriceCustomerIds } from "@/lib/crm/client-price-privacy-load";
 
@@ -54,17 +55,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /** Le dossier est bien à ce client mais la RLS le cache (dépublié, archivé) : on l’explique, pas un 404. */
-async function stayExistsForCustomer(ownerIds: string[], reference: string) {
-  const ids = [...new Set(ownerIds.filter(Boolean))];
-  if (!ids.length) return false;
+async function stayExistsForCustomer(scope: ClientBookingScope, reference: string) {
+  if (!scope.ownerIds.length && !scope.travelerBookingIds.length) return false;
   try {
     const admin = createServiceClient();
-    const { data } = await admin
-      .from("crm_bookings")
-      .select("id")
-      .in("customer_id", ids)
-      .eq("reference", reference)
-      .limit(1);
+    const { data } = await applyClientBookingScope(
+      admin.from("crm_bookings").select("id").eq("reference", reference).limit(1),
+      scope
+    );
     return Boolean(data?.length);
   } catch {
     return false;
@@ -78,8 +76,8 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
   if (!user) redirect("/connexion");
   if (!customer) redirect("/connexion");
   if (!booking) {
-    const owners = await clientTripOwnerIds(customer);
-    if (await stayExistsForCustomer(owners, reference)) return <HiddenStayNotice reference={reference} />;
+    const scope = await clientBookingScope(customer);
+    if (await stayExistsForCustomer(scope, reference)) return <HiddenStayNotice reference={reference} />;
     notFound();
   }
   if (booking.archived_at) return <HiddenStayNotice reference={booking.reference} />;

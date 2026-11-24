@@ -3,7 +3,8 @@ import "server-only";
 import { cache } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
-import { clientTripOwnerIds } from "@/lib/crm/company-peers";
+import { applyClientBookingScope } from "@/lib/crm/company-role";
+import { clientBookingScope } from "@/lib/crm/company-peers";
 import type { CrmBooking, CrmBookingItem, CrmCustomer } from "@/lib/crm/types";
 
 export type ClientStayLoad = {
@@ -19,13 +20,11 @@ export const loadClientStay = cache(async (reference: string): Promise<ClientSta
   if (!user) return { supabase, user: null, customer: null, booking: null };
   const customer = await ensureCustomerForUser(user);
   if (!customer) return { supabase, user, customer: null, booking: null };
-  const ownerIds = await clientTripOwnerIds(customer);
-  const { data } = await supabase
-    .from("crm_bookings")
-    .select("*")
-    .in("customer_id", ownerIds)
-    .eq("reference", reference)
-    .maybeSingle();
+  const scope = await clientBookingScope(customer);
+  const { data } = await applyClientBookingScope(
+    supabase.from("crm_bookings").select("*").eq("reference", reference),
+    scope
+  ).maybeSingle();
   return {
     supabase,
     user,

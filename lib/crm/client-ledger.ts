@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { filterClientLedgerRows, isCompanyMember } from "@/lib/crm/company-role";
+import { bookingIdsWhereClientTravels, filterClientLedgerRows, isCompanyMember } from "@/lib/crm/company-role";
+import { clientTwinIds } from "@/lib/crm/company-peers";
 import {
   ledgerMovementTitle,
   ledgerPlace,
@@ -161,8 +162,10 @@ export function shapeClientLedger(input: {
   fundingCompanies?: FundingCompany[];
   viewerId?: string;
   spendAccounts?: SpendingAccountInput[];
-  /** Collaborateurs dont le carnet s’ouvre. Un autre admin reste fermé. */
+  /** Jumeaux dont le carnet s’ouvre. Un collaborateur n’y entre pas. */
   openCarnetOwnerIds?: string[];
+  /** Dossiers d’un autre titulaire où ce client voyage. */
+  openCarnetBookingIds?: string[];
   mb3mByTransaction?: Map<string, { text: string; href: string | null }>;
   /** Cartes et voyageurs des séjours du livre. Absent : aucun nom. */
   parties?: { cards?: LedgerPartyCard[]; travelers?: LedgerPartyTraveler[] };
@@ -225,7 +228,8 @@ export function shapeClientLedger(input: {
       booking,
       input.audience,
       input.viewerId,
-      input.openCarnetOwnerIds
+      input.openCarnetOwnerIds,
+      input.openCarnetBookingIds
     );
     const companyName = row.billing_company_id ? companyLabels.get(row.billing_company_id) : null;
     const travelerNames = movementTravelerNames({
@@ -367,14 +371,17 @@ function carnetLink(
   booking: ClientLedgerBooking | undefined,
   audience: ClientLedgerAudience,
   viewerId?: string,
-  openCarnetOwnerIds?: string[]
+  openCarnetOwnerIds?: string[],
+  openCarnetBookingIds?: string[]
 ): { href: string | null; label: string | null } {
   if (!booking) return { href: null, label: null };
   if (audience === "staff") {
     return { href: `/admin/reservations/${booking.id}`, label: "Ouvrir le dossier" };
   }
   if (booking.customer_id && viewerId && booking.customer_id !== viewerId) {
-    if (!openCarnetOwnerIds?.includes(booking.customer_id)) return { href: null, label: null };
+    const ownerOk = Boolean(openCarnetOwnerIds?.includes(booking.customer_id));
+    const travels = Boolean(openCarnetBookingIds?.includes(booking.id));
+    if (!ownerOk && !travels) return { href: null, label: null };
   }
   if (booking.visible_to_client && booking.reference) {
     return {
@@ -491,7 +498,7 @@ async function loadSepaLedgerRows(customerId: string): Promise<CrmTransaction[]>
 async function loadClientLedgerRows(
   supabase: SupabaseClient,
   customer: Pick<CrmCustomer, "id" | "company_role"> &
-    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id" | "stripe_customer_id">>,
+    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "usage_name" | "spending_allowance" | "billing_parent_id" | "stripe_customer_id">>,
   audiences: ClientLedgerAudience[]
 ): Promise<ClientLedgerView[]> {
   const member = isCompanyMember(customer);
@@ -579,6 +586,7 @@ async function loadClientLedgerRows(
     viewerId: customer.id,
     spendAccounts: spend.accounts,
     openCarnetOwnerIds: spend.openCarnetOwnerIds,
+    openCarnetBookingIds: bookingIdsWhereClientTravels(customer, parties.travelers),
     parties,
   };
   const unique = [...new Set(audiences)];
@@ -595,7 +603,7 @@ async function loadClientLedgerRows(
 export async function loadClientLedger(
   supabase: SupabaseClient,
   customer: Pick<CrmCustomer, "id" | "company_role"> &
-    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id" | "stripe_customer_id">>,
+    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "usage_name" | "spending_allowance" | "billing_parent_id" | "stripe_customer_id">>,
   audience: ClientLedgerAudience
 ): Promise<ClientLedgerView> {
   const [view] = await loadClientLedgerRows(supabase, customer, [audience]);
@@ -606,7 +614,7 @@ export async function loadClientLedger(
 export async function loadClientLedgerViews(
   supabase: SupabaseClient,
   customer: Pick<CrmCustomer, "id" | "company_role"> &
-    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "spending_allowance" | "billing_parent_id" | "stripe_customer_id">>,
+    Partial<Pick<CrmCustomer, "first_name" | "last_name" | "usage_name" | "spending_allowance" | "billing_parent_id" | "stripe_customer_id">>,
   audiences: ClientLedgerAudience[]
 ) {
   if (!audiences.length) return [] as ClientLedgerView[];
@@ -790,7 +798,6 @@ async function loadSpendAccounts(
         .eq("company_role", "member");
       for (const row of (members || []) as SpendPerson[]) {
         people.set(row.id, row);
-        openCarnetOwnerIds.add(row.id);
       }
 
       if (contextIds.length) {
@@ -804,6 +811,9 @@ async function loadSpendAccounts(
       }
     }
   }
+
+  const twins = await clientTwinIds(customer.id);
+  for (const id of twins) openCarnetOwnerIds.add(id);
 
   const accounts: SpendingAccountInput[] = [...people.values()].map((person) => ({
     id: person.id,

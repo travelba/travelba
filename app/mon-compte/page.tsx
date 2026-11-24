@@ -7,7 +7,7 @@ import type { CrmBalance, CrmCustomer } from "@/lib/crm/types";
 import { isClientUpcomingStay } from "@/lib/crm/client-stays";
 import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "@/lib/crm/money";
 import { isCompanyMember } from "@/lib/crm/company-role";
-import { clientTripOwnerIds, clientTwinIds } from "@/lib/crm/company-peers";
+import { clientBookingScope, clientTwinIds } from "@/lib/crm/company-peers";
 import { stayHeroPlace } from "@/lib/crm/carnet";
 import { applyClientStayFace } from "@/lib/crm/client-stay-face";
 import { loadClientCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
@@ -187,8 +187,14 @@ async function HomeEncours({ customer }: { customer: CrmCustomer }) {
 
 async function HomeNextStay({ customer, greeting }: { customer: CrmCustomer; greeting: string }) {
   const { supabase } = await getSessionUser();
-  const [ownerIds, twinIds] = await Promise.all([clientTripOwnerIds(customer), clientTwinIds(customer.id)]);
-  const { bookings, faces } = await loadClientCarnets(supabase, customer.id, ownerIds, customer.city);
+  const [scope, twinIds] = await Promise.all([clientBookingScope(customer), clientTwinIds(customer.id)]);
+  const { bookings, faces } = await loadClientCarnets(
+    supabase,
+    customer.id,
+    [...scope.ownerIds],
+    customer.city,
+    [...scope.travelerBookingIds]
+  );
   const shown = bookings.map((booking) => applyClientStayFace(booking, faces[booking.id]));
   const shellStays = shown.map((booking) => {
     const face = faces[booking.id];

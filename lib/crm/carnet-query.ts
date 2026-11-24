@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { applyClientBookingScope } from "@/lib/crm/company-role";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 import { carnetVisible, stayArrivalPlaces } from "@/lib/crm/carnet";
 import { clientStayFace, type ClientStayFace, type StayFaceItem } from "@/lib/crm/client-stay-face";
@@ -8,7 +9,8 @@ import { stayCitiesFromSteps } from "@/lib/crm/staff-stay";
 export async function loadVisibleCarnets(
   supabase: SupabaseClient,
   customerId: string,
-  ownerIds?: string[]
+  ownerIds?: string[],
+  travelerBookingIds?: string[]
 ) {
   const ids = [...new Set((ownerIds?.length ? ownerIds : [customerId]).filter(Boolean))];
   let query = supabase
@@ -16,7 +18,7 @@ export async function loadVisibleCarnets(
     .select("*")
     .is("archived_at", null)
     .order("start_date", { ascending: false, nullsFirst: false });
-  query = ids.length === 1 ? query.eq("customer_id", ids[0]) : query.in("customer_id", ids);
+  query = applyClientBookingScope(query, { ownerIds: ids, travelerBookingIds: travelerBookingIds || [] });
   const { data } = await query;
   const all = (data || []) as CrmBooking[];
   if (!all.length) return [] as CrmBooking[];
@@ -41,7 +43,8 @@ export async function loadClientCarnets(
   supabase: SupabaseClient,
   customerId: string,
   ownerIds?: string[],
-  homeCity?: string | null
+  homeCity?: string | null,
+  travelerBookingIds?: string[]
 ) {
   const ids = [...new Set((ownerIds?.length ? ownerIds : [customerId]).filter(Boolean))];
   let query = supabase
@@ -49,7 +52,7 @@ export async function loadClientCarnets(
     .select("*")
     .is("archived_at", null)
     .order("start_date", { ascending: false, nullsFirst: false });
-  query = ids.length === 1 ? query.eq("customer_id", ids[0]) : query.in("customer_id", ids);
+  query = applyClientBookingScope(query, { ownerIds: ids, travelerBookingIds: travelerBookingIds || [] });
   const { data } = await query;
   const all = (data || []) as CrmBooking[];
   const faces: Record<string, ClientStayFace> = {};

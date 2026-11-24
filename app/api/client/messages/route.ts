@@ -12,7 +12,8 @@ import {
 import { appMessageDb } from "@/lib/crm/app-messages-db";
 import { agencyEmailHtml } from "@/lib/crm/email-html";
 import { uploadCrmFile } from "@/lib/crm/files";
-import { clientTripOwnerIds } from "@/lib/crm/company-peers";
+import { applyClientBookingScope } from "@/lib/crm/company-role";
+import { clientBookingScope } from "@/lib/crm/company-peers";
 import { RATE_LIMITED_MESSAGE, rateLimit, rateLimitKey } from "@/lib/crm/rate-limit";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import { customerFullName, type CrmCustomer } from "@/lib/crm/types";
@@ -32,15 +33,16 @@ function escapeHtml(value: string) {
 async function stayId(customer: CrmCustomer, reference: string) {
   if (!/^TB-\d{4}-\d{4}$/i.test(reference)) return null;
   try {
-    const owners = await clientTripOwnerIds(customer);
     const admin = createServiceClient();
-    const { data } = await admin
-      .from("crm_bookings")
-      .select("id")
-      .in("customer_id", owners)
-      .eq("reference", reference.toUpperCase())
-      .eq("visible_to_client", true)
-      .limit(1);
+    const { data } = await applyClientBookingScope(
+      admin
+        .from("crm_bookings")
+        .select("id")
+        .eq("reference", reference.toUpperCase())
+        .eq("visible_to_client", true)
+        .limit(1),
+      await clientBookingScope(customer)
+    );
     const id = data?.[0]?.id;
     return typeof id === "string" ? id : null;
   } catch {
