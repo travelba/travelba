@@ -81,6 +81,15 @@ describe("coûts du voyage", () => {
     assert.equal(draft.amountEur, 850.5);
     assert.equal(draft.originalAmount, 9200);
     assert.equal(draft.originalCurrency, "MAD");
+    const dong = tripCostFromPliant({
+      ...base,
+      billing_cents: 120000,
+      transaction_cents: 346595800,
+      transaction_currency: "VND",
+    });
+    assert.equal(dong?.amountEur, 1200);
+    assert.equal(dong?.originalAmount, 346595800);
+    assert.equal(dong?.originalCurrency, "VND");
     assert.equal(draft.supplier, "RIAD KNIZA");
     assert.equal(draft.occurredOn, "2026-10-02");
     const refund = tripCostFromPliant({ ...base, type: "REFUND", billing_cents: -10000 });

@@ -129,6 +129,10 @@ test("un achat confirmé se copie, un refus, un remboursement ou un montant nul 
     amount: 42,
     currency: "EUR",
   });
+  assert.deepEqual(pliantSpendCopy(spend({ id: "vnd", billingCents: 346595800, currency: "VND" })), {
+    amount: 346595800,
+    currency: "VND",
+  });
 });
 
 test("le récap groupe les dépenses par carte et additionne les achats", () => {

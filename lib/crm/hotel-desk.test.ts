@@ -54,6 +54,7 @@ import {
   appendSentSubject,
   classifyHotelMail,
   isAutomaticHotelMail,
+  isLoyaltyHotelSender,
   transferCues,
 } from "./hotel-desk";
 import { paymentUrlFromText } from "./hotel-arrival";
@@ -1083,16 +1084,18 @@ test("Hyatt : un nouveau fil avec le numéro rejoint la bonne demande, un homony
     confirmations: hotelConfirmationTokens(sent),
     after: "2026/12/01",
   });
-  assert.ok(queries.some((query) => query.includes('"150912RA041982"') && !query.includes("subject:")));
-  assert.ok(queries.some((query) => query.includes("from:hyatt.com")));
+  assert.ok(queries.some((item) => item.bindsThread && item.query.includes('"150912RA041982"') && !item.query.includes("subject:")));
+  const domainQuery = queries.find((item) => item.query.includes("from:hyatt.com"));
+  assert.ok(domainQuery);
+  assert.equal(domainQuery?.bindsThread, false);
   const generic = hotelLooseSearchQueries({
     subject: sent,
     emails: ["david@gmail.com"],
     confirmations: [],
     after: "2026/12/01",
   });
-  assert.equal(generic.some((query) => /from:gmail\.com\)/.test(query)), false);
-  assert.ok(generic.some((query) => query.includes("from:david@gmail.com")));
+  assert.equal(generic.some((item) => /from:gmail\.com\)/.test(item.query)), false);
+  assert.ok(generic.some((item) => item.query.includes("from:david@gmail.com") && !item.bindsThread));
   const away = classifyHotelMail({
     from: inbound.from,
     subject: inbound.subject,
@@ -1113,6 +1116,48 @@ test("Hyatt : un nouveau fil avec le numéro rejoint la bonne demande, un homony
       nowMs: now,
     }),
     false
+  );
+});
+
+test("Phu Quoc ne se colle pas au fil Saigon, même dans le même dossier Hyatt", () => {
+  const saigon = "David Berda — Payment link — Park Hyatt Saigon — 31 December 2026 — 150912RA041982";
+  const phu = "David Berda — Payment link — Park Hyatt Phu Quoc — 24 December 2026 — 151649RA001191";
+  const cue = (subject: string, id: string, hotel: string): HotelReplyCue => ({
+    subjectKey: hotelMailSubjectKey(subject),
+    requestId: id,
+    confirmations: hotelConfirmationTokens(subject),
+    guest: "David Berda",
+    reference: "TB-2026-0148",
+    recipients: ["reservations@hyatt.com"],
+    hotel,
+  });
+  const cues = [cue(saigon, "saigon", "Park Hyatt Saigon"), cue(phu, "phu", "Park Hyatt Phu Quoc")];
+  const receipt = {
+    from: "Park Hyatt Phu Quoc <reservations@hyatt.com>",
+    subject: "Park Hyatt Phu Quoc - payment received",
+    body: "Dear team, the full payment of VND 346,595,760 has been successfully received for confirmation 151649RA001191.",
+    cues,
+    threadKey: hotelMailSubjectKey(saigon),
+  };
+  assert.equal(hotelReplySubjectKey(receipt)?.subjectKey, hotelMailSubjectKey(phu));
+  assert.equal(hotelReplySubjectKey(receipt)?.via, "confirmation");
+  const byPlace = hotelReplySubjectKey({
+    from: receipt.from,
+    subject: "Re: your stay at Park Hyatt Phu Quoc",
+    body: "The full payment has been successfully received.",
+    cues,
+    threadKey: hotelMailSubjectKey(saigon),
+  });
+  assert.equal(byPlace?.subjectKey, hotelMailSubjectKey(phu));
+  assert.equal(byPlace?.via, "place");
+  assert.equal(
+    hotelReplySubjectKey({
+      from: "World of Hyatt <worldofhyatt@loyalty.hyatt.com>",
+      subject: "Updates Coming to World of Hyatt in 2027",
+      body: "You're receiving this newsletter.",
+      cues,
+    }),
+    null
   );
 });
 
@@ -1182,6 +1227,15 @@ test("une absence ou un bounce ne passe pas le courrier à Répondu", () => {
   assert.equal(isAutomaticHotelMail("news@hilton.com", "Unsubscribe from this list"), true);
   assert.equal(isAutomaticHotelMail("Marriott Bonvoy <noreply@marriott.com>", "Your one-time code is 123456"), true);
   assert.equal(isAutomaticHotelMail("info@click.e.hilton.com", "Hello"), true);
+  assert.equal(isLoyaltyHotelSender("World of Hyatt <worldofhyatt@loyalty.hyatt.com>"), true);
+  assert.equal(isAutomaticHotelMail("World of Hyatt <worldofhyatt@loyalty.hyatt.com>", "Updates Coming to World of Hyatt in 2027"), true);
+  assert.equal(isAutomaticHotelMail("no-reply@loyalty.marriott.com", "Bonvoy points"), true);
+  assert.equal(isAutomaticHotelMail("Hilton Honors <news@hiltonhonors.com>", "Your stay"), true);
+  assert.equal(isAutomaticHotelMail("ALL Accor <hello@all.accor.com>", "Your points"), true);
+  assert.equal(isAutomaticHotelMail("IHG <news@email.ihg.com>", "One Rewards"), true);
+  assert.equal(isAutomaticHotelMail("Reservations <stay@hyatt.com>", "The payment link is ready."), false);
+  const urls = `${"https://click.loyalty.example/very/long/path/to/a/tracking/pixel?id=1 ".repeat(40)}\nYou're receiving this because you joined World of Hyatt.`;
+  assert.equal(isAutomaticHotelMail("Front Office <stay@hotel.test>", urls), true);
   assert.equal(
     classifyHotelMail({
       from: "Marriott Bonvoy <noreply@marriott.com>",
