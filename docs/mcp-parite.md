@@ -53,6 +53,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Vol, hôtel, accueil VIP | `ajouter_vol`, `modifier_vol`, `ajouter_hotel`, `modifier_hotel`, `ajouter_accueil_vip` — couvert |
 | Rechercher les infos d’une carte hôtel | `enrichir_hotel` (`carte_id`) — ajouté. Fiche réutilisable, seulement les champs vides. À vérifier. La visibilité ne change pas. Aucun message. `fiche_hotel` lit cette fiche |
 | Classer un courrier hôtel sans écrire | `classer_courrier_hotel` — ajouté. `rouvrir` true rouvre. Aucun e-mail. Un message entrant plus récent rouvre le fil |
+| Déplacer un courrier hôtel vers une autre carte du même dossier | `deplacer_courrier_hotel` — ajouté. Sans `confirmer`, aperçu. Aucun e-mail. `visible_to_client` inchangé. Le bouton Déplacer du fil hôtel fait le même geste. |
 | Train, transfert, activité, frais, dépense, autres types | `ajouter_carte`, `modifier_carte` — ajouté |
 | Marquer une carte vérifiée (lecture douteuse) | `valider_lecture`, et `effacer_avertissement` sur `modifier_vol`, `modifier_hotel`, `modifier_carte` — ajouté. Ne change pas la visibilité, n’envoie rien. |
 | Visibilité d’une carte, inclusion au grand livre | `definir_visibilite_carte` — couvert |

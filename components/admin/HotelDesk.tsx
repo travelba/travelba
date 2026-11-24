@@ -77,6 +77,7 @@ export function HotelDesk({
   initialRelanceId = null,
   initialReplyId = null,
   printedAmount = null,
+  otherHotels = [],
 }: {
   bookingId: string;
   item: CrmBookingItem;
@@ -96,6 +97,7 @@ export function HotelDesk({
   initialReplyId?: string | null;
   /** Montant brut de la confirmation. Le prix de vente n’entre pas dans le courrier. */
   printedAmount?: { cents: number; currency: string } | null;
+  otherHotels?: { id: string; name: string }[];
 }) {
   const rows = HOTEL_DESK_KINDS.map((kind) => requests.find((row) => row.booking_item_id === item.id && row.kind === kind)).filter(
     (row): row is CrmHotelRequest => Boolean(row)
@@ -331,6 +333,23 @@ export function HotelDesk({
           setOpen(null);
           setRelanceKey(null);
           setReplyKey(key);
+        }}
+        destinations={otherHotels}
+        onMove={async ({ messageId, carteCible, fil, confirmer }) => {
+          const res = await fetch(`/api/admin/bookings/${bookingId}/hotel-desk`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action: "deplacer-courrier", itemId: item.id, messageId, carteCible, fil, confirmer }),
+          });
+          const json = (await res.json().catch(() => null)) as {
+            error?: string;
+            ecrit?: boolean;
+            vers?: { hotel: string };
+            messages?: { extrait: string }[];
+          } | null;
+          if (!res.ok) return { error: json?.error || "Le courrier n’a pas pu être déplacé." };
+          if (json?.ecrit) router.refresh();
+          return json || {};
         }}
       />
       {relanceTurn?.relance && relanceParties ? (
