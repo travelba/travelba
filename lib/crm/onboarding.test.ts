@@ -26,6 +26,10 @@ test("la bienvenue suit les captures de l’espace client, dans l’ordre de la 
       "encours",
       "paiement",
       "coffre",
+      "hotels-catalogue",
+      "hotels-club",
+      "hotels-avantages",
+      "hotels-parcours",
     ]
   );
   for (const step of CLIENT_ONBOARDING_STEPS) {
@@ -40,8 +44,16 @@ test("la bienvenue suit les captures de l’espace client, dans l’ordre de la 
   );
   assert.equal(
     CLIENT_ONBOARDING_STEPS.at(-1)?.title,
-    "Passeports, ESTA, ETA et visas : rien n’est oublié"
+    "Vous choisissez, l’hôtel confirme"
   );
+  const club = CLIENT_ONBOARDING_STEPS.find((step) => step.id === "hotels-avantages");
+  assert.equal(club?.legend.includes("Petit-déjeuner offert"), true);
+  assert.equal(club?.legend.includes("Arrivée anticipée et départ tardif*"), true);
+  assert.equal(club?.legend.includes("Surclassement prioritaire*"), true);
+  assert.equal(club?.legend.includes("Jusqu’à 200 $ de crédit de dépense dans l’hôtel*"), true);
+  assert.equal(club?.legend.includes("Transfert aéroport*"), true);
+  assert.equal(club?.legend.includes("Soumis à disponibilité et selon l’hôtel."), true);
+  assert.equal(club?.legend.startsWith("Petit-déjeuner offert*"), false);
 });
 
 test("la bienvenue se passe et se revoit, sans promettre un brouillon", () => {
