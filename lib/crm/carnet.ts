@@ -912,11 +912,21 @@ function titleTracksCities(named: string, cities: string[], extra: string[] = []
   return parts.every((part) => keys.has(cityPlaceKey(part)));
 }
 
+/** Au moins une ville du titre est une ville où l’on séjourne, pas seulement un départ ou un domicile. */
+function titleCitesStay(named: string, cities: string[]) {
+  const keys = new Set(cities.map((city) => cityPlaceKey(city)).filter(Boolean));
+  if (!keys.size) return false;
+  return titleCityParts(named).some((part) => keys.has(cityPlaceKey(part)));
+}
+
 /**
  * Le titre suit les villes où l’on séjourne.
  * Un nom choisi (« 40 ans ») reste. Une liste de villes s’allonge.
  * Le domicile et les escales, passés à part, sortent de la liste : un titre
  * recalculé ne remet pas Paris devant Tel Aviv.
+ * Un seul lieu qui ne nomme pas les villes de séjour reste tel quel, même
+ * s’il est une ville du trajet ou du domicile. Une liste multi-villes qui
+ * cite déjà le séjour est recalculée. Un titre vide garde les villes lues.
  */
 export function stayHeadline(
   title: string | null | undefined,
@@ -934,10 +944,12 @@ export function stayHeadline(
   const dest = (destination || "").trim();
   if (!stored) return cities.join(" · ") || dest || fallback;
   const named = stored;
+  const multi = titleCityParts(named).length >= 2;
   const tracks = titleTracksCities(named, cities, stops);
   const echoesDestination = Boolean(dest && foldPlace(named) === foldPlace(dest));
-  if (cities.length >= 2 && (tracks || echoesDestination)) return cities.join(" · ");
-  if (stops.length && tracks && cities.length) return cities.join(" · ");
+  const citesStay = titleCitesStay(named, cities);
+  if (citesStay && cities.length >= 2 && (tracks || echoesDestination)) return cities.join(" · ");
+  if (multi && citesStay && stops.length && tracks && cities.length) return cities.join(" · ");
   return named || fallback;
 }
 
