@@ -1,9 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { isIsoDate } from "@/lib/crm/admin-schemas";
-import { confirmationRefsAlign, firstNamesAlign, lastNamesClose, referenceTokens } from "@/lib/crm/email-match";
+import {
+  confirmationLookupTokens,
+  confirmationRefsAlign,
+  confirmationRefsExact,
+  firstNamesAlign,
+  lastNamesClose,
+} from "@/lib/crm/email-match";
 import { leIncludedLines, leRoomLabels } from "@/lib/crm/le-included";
-import { hotelBookingStem, joinConfirmationRefs } from "@/lib/crm/item-match";
+import { joinConfirmationRefs } from "@/lib/crm/item-match";
 import {
   cancellationStatut,
   leCancellationVerdict,
@@ -497,24 +503,26 @@ type ItemRef = {
   details?: Record<string, unknown> | null;
 };
 
-function itemMatchesConfirmation(item: ItemRef, confirmation: string) {
+function itemConfirmationRefs(item: ItemRef) {
   const refs = [item.confirmation_ref];
   const rooms = Array.isArray(item.details?.rooms) ? item.details.rooms : [];
   for (const room of rooms) {
     if (room && typeof room === "object") refs.push((room as { confirmation_ref?: string | null }).confirmation_ref);
   }
-  return refs.some((ref) => confirmationRefsAlign(ref, confirmation));
+  return refs;
+}
+
+function itemMatchesConfirmation(item: ItemRef, confirmation: string) {
+  return itemConfirmationRefs(item).some((ref) => confirmationRefsAlign(ref, confirmation));
+}
+
+/** Lien affiché : numéro exact seulement. Le code hôtel avant `SH` ne rattache pas un dossier. */
+function itemExactConfirmation(item: ItemRef, confirmation: string) {
+  return itemConfirmationRefs(item).some((ref) => confirmationRefsExact(ref, confirmation));
 }
 
 function confirmationNeedles(confirmation: string) {
-  const stem = hotelBookingStem(confirmation);
-  return [
-    ...new Set(
-      [...referenceTokens(confirmation), ...(stem ? [stem.toLowerCase()] : [])].map((token) =>
-        token.replace(/[%_]/g, "")
-      )
-    ),
-  ].filter((token) => token.length >= 4);
+  return confirmationLookupTokens(confirmation);
 }
 
 function cardRefs(item: ItemRef) {
@@ -590,7 +598,7 @@ async function dossiersForConfirmation(admin: Admin, confirmation: string | null
   }
   const ids = new Set<string>();
   for (const row of (data || []) as ItemRef[]) {
-    if (!row.booking_id || !itemMatchesConfirmation(row, confirmation)) continue;
+    if (!row.booking_id || !itemExactConfirmation(row, confirmation)) continue;
     ids.add(row.booking_id);
   }
   if (!ids.size) return [];

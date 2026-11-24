@@ -472,6 +472,7 @@ async function computeSuggestions(admin: Admin, extract: BookingExtract) {
       start_date: cand.start_date,
       end_date: cand.end_date,
       covers_passengers: cand.covers_passengers,
+      destination: cand.destination,
     });
   }
 

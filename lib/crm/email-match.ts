@@ -1,6 +1,6 @@
 import { shownPersonName } from "@/lib/crm/identity";
 import { documentPriceIssues } from "@/lib/crm/booking-issues";
-import { cityPlaceKey } from "@/lib/crm/city-names";
+import { cityPlaceKey, stayCityFromHotel } from "@/lib/crm/city-names";
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
 import { hotelExactStay, hotelRefsShareBooking } from "@/lib/crm/item-match";
 import { isPlaceholderReference } from "@/lib/crm/ingest-samples";
@@ -280,12 +280,24 @@ export function referenceTokens(value: string | null | undefined, names?: Set<st
   return [...new Set(tokens)];
 }
 
-/** Même confirmation, y compris `64570` et `64570SH046795`. */
+/** Même confirmation exacte, ou numéro court face à une seule chambre. Deux numéros `…SH…` ne s’alignent pas. */
 export function confirmationRefsAlign(a: string | null | undefined, b: string | null | undefined) {
+  if (confirmationRefsExact(a, b)) return true;
+  return hotelRefsShareBooking(a, b);
+}
+
+/** Numéro identique, casse et séparateurs ignorés. Pas de préfixe, pas de code hôtel. */
+export function confirmationRefsExact(a: string | null | undefined, b: string | null | undefined) {
   const left = referenceTokens(a);
   const right = new Set(referenceTokens(b));
-  if (left.some((token) => right.has(token))) return true;
-  return hotelRefsShareBooking(a, b);
+  return left.length > 0 && left.some((token) => right.has(token));
+}
+
+/** Jetons pour retrouver une carte. Jamais le code hôtel avant `SH`. */
+export function confirmationLookupTokens(value: string | null | undefined) {
+  return [
+    ...new Set(referenceTokens(value).map((token) => token.replace(/[%_]/g, ""))),
+  ].filter((token) => token.length >= 4);
 }
 
 function detailPnr(details: Record<string, unknown> | null | undefined) {
@@ -595,6 +607,7 @@ export type BookingSuggestionCandidate = {
   start_date?: string | null;
   end_date?: string | null;
   covers_passengers?: boolean;
+  destination?: string | null;
 };
 
 export type BookingSuggestion = {
@@ -744,6 +757,7 @@ export function suggestBookingByTripSignals(
       score,
       start_date: booking.start_date,
       end_date: booking.end_date,
+      destination: booking.destination || booking.title || null,
     });
   }
 
@@ -796,6 +810,37 @@ export function ticketNameMatches(
   );
 }
 
+function hotelStayCities(extract: BookingExtract) {
+  const cities: string[] = [];
+  const push = (value: string | null | undefined) => {
+    const trimmed = (value || "").trim();
+    if (trimmed) cities.push(trimmed);
+  };
+  let hotels = 0;
+  for (const item of extract.items || []) {
+    if ((item.kind || "") !== "hotel") continue;
+    hotels += 1;
+    const city = typeof item.details?.city === "string" ? item.details.city : "";
+    const name = typeof item.details?.hotel_name === "string" ? item.details.hotel_name : item.title || "";
+    push(stayCityFromHotel(name, city));
+    push(city);
+  }
+  if (hotels && !cities.length) push(extract.destination);
+  return cities;
+}
+
+/** Hôtel dans une autre ville : il n’entre pas dans le dossier déjà ouvert. */
+export function hotelStayConflicts(
+  extract: BookingExtract,
+  booking: { destination?: string | null; title?: string | null }
+) {
+  const cities = hotelStayCities(extract);
+  if (!cities.length) return false;
+  const places = [booking.destination, booking.title].filter((value): value is string => Boolean(value && value.trim()));
+  if (!places.length) return false;
+  return !cities.some((city) => places.some((place) => destinationsOverlap(city, place)));
+}
+
 /**
  * Un voyageur du billet (pas seulement le titulaire) désigne un seul dossier :
  * nom exact, dates qui se croisent. Plusieurs dossiers : les candidats restent, aucun n’est choisi.
@@ -825,6 +870,7 @@ export function suggestBookingByTraveler(
     if (holder) names.push(holder);
     const hit = names.some((stored) => people.some((person) => ticketNameMatches(person, stored)));
     if (!hit) continue;
+    if (hotelStayConflicts(extract, booking)) continue;
     const covers = people.every((person) => names.some((stored) => ticketNameMatches(person, stored)));
     candidates.push({
       booking_id: booking.id,
@@ -835,6 +881,7 @@ export function suggestBookingByTraveler(
       start_date: booking.start_date,
       end_date: booking.end_date,
       covers_passengers: covers,
+      destination: booking.destination || booking.title || null,
     });
   }
   candidates.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label, "fr"));

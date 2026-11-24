@@ -322,7 +322,9 @@ export function replacementPlan(
     }
     const incoming = group[0];
     const stayTargets =
-      kind === "hotel" ? targets.filter((row) => hotelSameStay(row, incoming)) : targets;
+      kind === "hotel"
+        ? targets.filter((row) => hotelSameStay(row, incoming) || row.id === chosenId)
+        : targets;
     if (!stayTargets.length) {
       adds += 1;
       continue;

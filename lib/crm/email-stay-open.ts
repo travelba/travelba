@@ -8,7 +8,7 @@ import {
   type FlightAutoCandidate,
   type FlightAutoDecision,
 } from "@/lib/crm/email-flight-deposit";
-import { clientIsMailTraveler, stayDatesCompatible } from "@/lib/crm/email-match";
+import { clientIsMailTraveler, hotelStayConflicts, stayDatesCompatible } from "@/lib/crm/email-match";
 import { isCancellationExtract, type BookingExtract } from "@/lib/crm/ingest-types";
 
 type StayExtract = BookingExtract;
@@ -79,6 +79,14 @@ function compatibleClientStays(extract: StayExtract, candidates: FlightAutoCandi
     if (!row.booking_id || row.customer_id !== customerId) continue;
     if (/annul/i.test(row.reason || "")) continue;
     if (dossierSpansTooLong(row.start_date, row.end_date)) continue;
+    if (
+      hotelStayConflicts(extract, {
+        destination: row.destination,
+        title: row.destination,
+      })
+    ) {
+      continue;
+    }
     if (!compatibleOpenDossier(row, extract)) continue;
     if (seen.has(row.booking_id)) continue;
     seen.add(row.booking_id);

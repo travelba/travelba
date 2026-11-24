@@ -1,7 +1,7 @@
 import { deleteBookingById } from "@/lib/crm/delete-booking";
-import { cancellationApplyPlan, confirmationRefsAlign, referenceTokens } from "@/lib/crm/email-match";
+import { cancellationApplyPlan, confirmationLookupTokens, confirmationRefsAlign } from "@/lib/crm/email-match";
 import { applyCancellationToBooking, persistNewBookingFromExtract } from "@/lib/crm/ingest-booking";
-import { hotelBookingStem } from "@/lib/crm/item-match";
+import { cardStoresShortStem, confirmationShortStem, expandDistinctHotelCards } from "@/lib/crm/item-match";
 import {
   automaticCardAudits,
   confirmationForStamp,
@@ -191,14 +191,7 @@ async function loadMatchContext(admin: SupabaseClient) {
 
 /** Un seul dossier ouvert porte cette confirmation. Plusieurs : on ne crée pas. */
 async function findUniqueDossierByConfirmation(admin: SupabaseClient, confirmation: string | null) {
-  const stem = hotelBookingStem(confirmation);
-  const needles = [
-    ...new Set(
-      [...referenceTokens(confirmation), ...(stem ? [stem.toLowerCase()] : [])].map((token) =>
-        token.replace(/[%_]/g, "")
-      )
-    ),
-  ].filter((token) => token.length >= 4);
+  const needles = confirmationLookupTokens(confirmation);
   if (!needles.length) return null;
   const { data } = await admin
     .from("crm_booking_items")
@@ -210,6 +203,19 @@ async function findUniqueDossierByConfirmation(admin: SupabaseClient, confirmati
   for (const row of data || []) {
     if (!confirmationRefsAlign(row.confirmation_ref, confirmation)) continue;
     if (row.booking_id) ids.add(row.booking_id);
+  }
+  const stem = confirmationShortStem(confirmation);
+  if (!ids.size && stem) {
+    const { data: shortRows } = await admin
+      .from("crm_booking_items")
+      .select("booking_id, confirmation_ref")
+      .eq("kind", "hotel")
+      .or(`confirmation_ref.ilike.%${stem}%`)
+      .limit(30);
+    for (const row of shortRows || []) {
+      if (!cardStoresShortStem(row.confirmation_ref, stem)) continue;
+      if (row.booking_id) ids.add(row.booking_id);
+    }
   }
   if (!ids.size) return null;
   const { data: dossiers } = await admin
@@ -897,9 +903,11 @@ export async function attachLittleEmperorsBooking(opts: {
     throw new LittleEmperorsError("Little Emperors n’a pas indiqué le nom de l’hôtel.", 422, "hotel_name");
   }
   const dossierStatus = leCreatedDossierStatus(booking.state);
+  const createdExtract = leBookingExtract(booking);
+  createdExtract.items = expandDistinctHotelCards(createdExtract.items);
   const created = await persistNewBookingFromExtract({
     customerId: opts.customerId,
-    extract: leBookingExtract(booking),
+    extract: createdExtract,
     status: dossierStatus,
     visibleToClient: false,
     referenceClient: opts.referenceClient,

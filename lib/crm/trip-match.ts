@@ -94,8 +94,12 @@ export function windowsConnect(
 ) {
   const gap = tripGapDays(left.start, left.end, right.start, right.end);
   if (gap == null) return false;
+  const leftKeys = placeKeys(left.places);
+  const rightKeys = placeKeys(right.places);
+  const share = [...leftKeys].some((key) => rightKeys.has(key));
+  if (leftKeys.size > 0 && rightKeys.size > 0 && !share) return false;
   if (gap <= CONNECTING_GAP_DAYS) return true;
-  return gap <= SAME_CITY_GAP_DAYS && placesConnect(left.places, right.places);
+  return share && gap <= SAME_CITY_GAP_DAYS;
 }
 
 function sameParty(left: TripDossier, right: TripDossier) {

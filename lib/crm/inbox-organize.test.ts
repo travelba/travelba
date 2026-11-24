@@ -104,7 +104,7 @@ test("le billet rejoint le dossier hôtel et réunit Con Dao, sans second dossie
   assert.equal(plan.action, "attach");
   if (plan.action !== "attach") return;
   assert.equal(plan.bookingId, "dossier-hcm");
-  assert.deepEqual(plan.mergeIds, ["dossier-con-dao"]);
+  assert.deepEqual(plan.mergeIds, []);
   const calls = { apply: 0, persist: 0, merge: [] as string[], attached: "" };
   const result = await executeInboxPlan(plan, extract, {
     ensureCompanions: async () => undefined,
@@ -134,7 +134,7 @@ test("le billet rejoint le dossier hôtel et réunit Con Dao, sans second dossie
   assert.equal(result.attached, true);
   assert.equal(calls.persist, 0);
   assert.equal(calls.apply, 1);
-  assert.deepEqual(calls.merge, ["dossier-con-dao"]);
+  assert.deepEqual(calls.merge, []);
   assert.equal(calls.attached, "dossier-hcm");
 });
 
