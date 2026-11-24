@@ -7,11 +7,15 @@ import {
   applySignOut,
   browserAuthCookieNames,
   browserCookieDeletion,
+  buildSignOutResponse,
   parseSignOutFields,
   revokeAuthSession,
   signOutCookieWrites,
+  signOutPublicOrigin,
   signOutRedirectPath,
+  signOutWantsNavigation,
 } from "./sign-out";
+import { nativeEndSessionSteps } from "../native/end-session";
 
 function part(value: unknown) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -162,12 +166,70 @@ test("la révocation appelle logout et un réseau coupé n’empêche pas l’ef
   );
 });
 
+test("un formulaire ouvre la connexion et retire le cookie, un JSON ne change pas de page", () => {
+  assert.equal(signOutWantsNavigation("application/x-www-form-urlencoded"), true);
+  assert.equal(signOutWantsNavigation("application/json"), false);
+  assert.equal(signOutWantsNavigation(null), false);
+  const cookies = [sessionCookie("sb-ref-auth-token.0")];
+  const navigated = buildSignOutResponse({
+    origin: "https://travelba.fr",
+    fields: { next: "/connexion" },
+    cookies,
+    secure: true,
+    navigate: true,
+  });
+  assert.equal(navigated.status, 303);
+  assert.equal(navigated.headers.get("location"), "https://travelba.fr/connexion");
+  const cleared = navigated.headers.getSetCookie();
+  assert.ok(cleared.some((line) => line.startsWith("sb-ref-auth-token.0=") && /Max-Age=0/i.test(line)));
+  const json = buildSignOutResponse({
+    origin: "https://travelba.fr",
+    fields: { next: "/connexion" },
+    cookies,
+    secure: true,
+    navigate: false,
+  });
+  assert.equal(json.status, 200);
+  assert.equal(json.headers.get("location"), null);
+});
+
+test("la déconnexion ne suit pas un hôte inconnu", () => {
+  assert.equal(
+    signOutPublicOrigin({
+      url: "http://internal:3000/api/auth/sign-out",
+      headers: { get: (name) => (name === "x-forwarded-host" ? "evil.example" : "https") },
+    }),
+    "http://internal:3000",
+  );
+  assert.equal(
+    signOutPublicOrigin({
+      url: "http://internal:3000/api/auth/sign-out",
+      headers: { get: (name) => (name === "x-forwarded-host" ? "travelba.fr" : name === "x-forwarded-proto" ? "https" : null) },
+    }),
+    "https://travelba.fr",
+  );
+});
+
+test("la déconnexion de l’application coupe Face ID, le repli mot de passe le garde", () => {
+  assert.deepEqual(nativeEndSessionSteps(false), ["biometric-off", "push", "unlock", "offline"]);
+  assert.deepEqual(nativeEndSessionSteps(true), ["push"]);
+  const button = readFileSync(new URL("../../components/account/SignOutButton.tsx", import.meta.url), "utf8");
+  const menu = readFileSync(new URL("../../components/account/AccountUserMenu.tsx", import.meta.url), "utf8");
+  const client = readFileSync(new URL("./account-sign-out.ts", import.meta.url), "utf8");
+  assert.match(button, /onPointerDown/);
+  assert.match(menu, /onPointerDown/);
+  assert.match(client, /submitSignOutForm/);
+  assert.doesNotMatch(client, /location\.replace/);
+  assert.match(client, /SIGN_OUT_NATIVE_DEADLINE_MS/);
+});
+
 test("le menu agence passe par la route, pas par signOut du navigateur", () => {
   const nav = readFileSync(new URL("../../components/admin/AdminNav.tsx", import.meta.url), "utf8");
   const route = readFileSync(new URL("../../app/api/auth/sign-out/route.ts", import.meta.url), "utf8");
   assert.match(nav, /signOutAccount\("local"/);
   assert.doesNotMatch(nav, /auth\.signOut/);
   assert.match(route, /force-dynamic/);
-  assert.match(route, /applySignOut/);
+  assert.match(route, /buildSignOutResponse/);
+  assert.match(route, /signOutWantsNavigation/);
   assert.doesNotMatch(route, /status:\s*400/);
 });

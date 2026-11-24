@@ -1,7 +1,9 @@
+import { NextResponse } from "next/server";
 import { DESK_COOKIE } from "@/lib/crm/desk-mode";
 import {
   isAuthSessionCookieName,
   readAuthSession,
+  sessionAudienceFromCookies,
   type CookieRecord,
   type SessionAudience,
 } from "@/lib/crm/client-session-cookie";
@@ -34,6 +36,53 @@ export function parseSignOutFields(input: { scope?: unknown; next?: unknown }): 
     scope: input.scope === "global" ? "global" : "local",
     next: typeof input.next === "string" ? input.next : null,
   };
+}
+
+/** Un formulaire (navigation) efface le cookie dans la même réponse. Un fetch JSON ne change pas de page. */
+export function signOutWantsNavigation(contentType: string | null | undefined) {
+  const type = (contentType || "").toLowerCase();
+  if (type.includes("application/json")) return false;
+  return type.includes("application/x-www-form-urlencoded") || type.includes("multipart/form-data");
+}
+
+/** Origine de la déconnexion. Un hôte inconnu ne sert pas de redirection. */
+export function signOutPublicOrigin(request: { url: string; headers: { get(name: string): string | null } }) {
+  const url = new URL(request.url);
+  const forwarded = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim().toLowerCase() || "";
+  const host = forwarded || url.host.toLowerCase();
+  const protoHeader = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const proto = protoHeader === "http" || protoHeader === "https" ? protoHeader : url.protocol.replace(":", "");
+  const allowed =
+    host === "travelba.fr" ||
+    host === "www.travelba.fr" ||
+    host.startsWith("localhost:") ||
+    host === "localhost" ||
+    host.startsWith("127.0.0.1") ||
+    /^[a-z0-9-]+\.vercel\.app$/.test(host);
+  if (!allowed || (proto !== "http" && proto !== "https")) return url.origin;
+  return `${proto}://${host}`;
+}
+
+/**
+ * Réponse de déconnexion.
+ * `navigate` : 303, le navigateur applique l’effacement du cookie puis ouvre la connexion.
+ * Un fetch qui ferait `location.replace` ensuite repart parfois avec l’ancien cookie (webview iOS).
+ */
+export function buildSignOutResponse(input: {
+  origin: string;
+  fields: { next: string | null };
+  cookies: readonly CookieRecord[];
+  secure: boolean;
+  navigate: boolean;
+}) {
+  const redirect = signOutRedirectPath({
+    requested: input.fields.next,
+    audience: sessionAudienceFromCookies(input.cookies),
+  });
+  const response = input.navigate
+    ? NextResponse.redirect(new URL(redirect, input.origin), 303)
+    : NextResponse.json({ ok: true, redirect });
+  return applySignOut(response, input.cookies, input.secure);
 }
 
 export function accessTokenFromAuthCookies(cookies: readonly CookieRecord[]): string | null {

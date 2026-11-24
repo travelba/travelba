@@ -1,10 +1,11 @@
 import { biometricChoiceOf, shouldLockWithBiometric, shouldRestoreWithBiometric } from "@/lib/crm/biometric-lock";
+import { BIOMETRIC_PREF_KEY } from "@/lib/native/end-session";
 import { portalNavigation, pushTargetPath } from "@/lib/crm/native-portal";
 import { isNativeAppBridge } from "@/lib/native/detect";
 import { askIosNotificationPermission, registerNativePush } from "@/lib/native/push-client";
 
 const TRIP_KEY = "tba.trip";
-const BIOMETRIC_KEY = "tba.biometric";
+const BIOMETRIC_KEY = BIOMETRIC_PREF_KEY;
 
 function openExternal(url: string) {
   void import("@capacitor/browser").then(({ Browser }) => Browser.open({ url })).catch(() => {});

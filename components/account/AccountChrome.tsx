@@ -118,12 +118,17 @@ export function AccountChrome({
 
   async function signOut() {
     if (!preview && !desk) {
-      await fetch("/api/client/activity", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "sign-out" }),
-        keepalive: true,
-      }).catch(() => {});
+      await Promise.race([
+        fetch("/api/client/activity", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "sign-out" }),
+          keepalive: true,
+        }).catch(() => {}),
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 400);
+        }),
+      ]);
     }
     // Cet appareil seulement : « Se déconnecter de tous les appareils » vit dans Mon compte › Sécurité.
     await signOutAccount("local", "/connexion");

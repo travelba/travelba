@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { biometricChoiceOf, shouldOfferBiometric } from "@/lib/crm/biometric-lock";
 import { isNativeAppBridge } from "@/lib/native/detect";
+import { BIOMETRIC_PREF_KEY } from "@/lib/native/end-session";
 
-const KEY = "tba.biometric";
+const KEY = BIOMETRIC_PREF_KEY;
 
 async function readChoice() {
   const { Preferences } = await import("@capacitor/preferences");
