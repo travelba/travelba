@@ -4,6 +4,13 @@ import { redactIngestText } from "./ingest-redact";
 import { detectCancellationDocument, detectRemovedPassengers, joinAgencyNotes, parseRefundAmount, type BookingExtract } from "./ingest-types";
 import { isPlaceholderTraveler } from "./person-match";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
+import {
+  collectTicketTokens,
+  countRealTickets,
+  isAirlinePnrPair,
+  passengerIsInvented,
+  realTicketList,
+} from "./ticket-party";
 import { tripCityPlan } from "./layover";
 import { TENTATIVE_REVIEW_REASON } from "./review-doubt";
 
@@ -404,6 +411,7 @@ function parsePassengerTicketTable(text: string, out: TicketPassenger[], seen: S
       if (out.length) break;
       continue;
     }
+    if (isAirlinePnrPair(match[1] || "", match[2] || "")) continue;
     rememberPassenger(out, seen, match[1] || "", match[2] || "", ticketNumber(line));
   }
 }
@@ -428,6 +436,7 @@ function parseSlashPassengers(text: string, out: TicketPassenger[], seen: Set<st
   const re =
     /\b([A-Z]{2,40})\/([A-Z]{2,40})(?![A-Z0-9])(?:\s+(MISS|MSTR|MME|MLLE|MRS|CHD|INF|MR|MS))?(?:\s+(\d{3})[-\s]?(\d{10}))?/g;
   for (const match of text.matchAll(re)) {
+    if (isAirlinePnrPair(match[1] || "", match[2] || "")) continue;
     const ticket = match[4] && match[5] ? `${match[4]}${match[5]}` : ticketNumber(match[0]);
     rememberPassenger(out, seen, match[1] || "", match[2] || "", ticket);
   }
@@ -440,7 +449,8 @@ export function parseTicketPassengers(text: string): TicketPassenger[] {
   parsePassengerTicketTable(text, out, seen);
   parseTitledPassengers(text, out, seen);
   parseSlashPassengers(text, out, seen);
-  return out;
+  const { locators, airlines } = collectTicketTokens(text);
+  return out.filter((row) => !passengerIsInvented(row, locators, airlines));
 }
 
 function titleCasePerson(value: string) {
@@ -1851,7 +1861,7 @@ export function structuredHintFromPdfText(text: string): string {
   for (const flight of flights) bits.push(`VOL ${JSON.stringify(flight)}`);
   if (flights.length) {
     bits.push(
-      "Plusieurs e-tickets du même vol (même n°, même jour) = UN item, details.ticket_count = nombre de billets. Prix saisi par l’agent = aller-retour (aller simple : ce vol). Aller-retour dans UN PDF = DEUX items. IATA 8 chiffres = code agence, pas un PNR. « Scan for check-in » n’est pas un hôtel. Ne pas extraire la carte fidélité."
+      "Plusieurs e-tickets du même vol (même n°, même jour) = UN item, details.ticket_count = nombre de vrais numéros de billet (13 chiffres). Prix saisi par l’agent = aller-retour (aller simple : ce vol). Aller-retour dans UN PDF = DEUX items. IATA 8 chiffres = code agence, pas un PNR. « AF/ZLFJIN » (code compagnie / PNR) n’est pas un passager. Un prénom ou un nom égal au PNR, ou un nom qui est un code compagnie, n’est pas un voyageur. « Scan for check-in » n’est pas un hôtel. Ne pas extraire la carte fidélité."
     );
   }
   const taapCar = parseExpediaTaapCar(clean);
@@ -2291,13 +2301,13 @@ export function parsedItemsFromText(text: string): {
           ...(seat ? { seat } : {}),
         };
       });
-      const numbers = [
-        ...new Set(passengers.map((row) => row.ticket_number).filter((value): value is string => Boolean(value))),
-      ];
+      const numbers = realTicketList(passengers);
+      const ticketCount = countRealTickets(passengers);
       item.details = {
         ...(item.details || {}),
         passengers,
         ...(numbers.length ? { ticket_numbers: numbers } : {}),
+        ...(ticketCount != null ? { ticket_count: ticketCount } : {}),
         ...(removedPassengers.length ? { removed_passengers: removedPassengers } : {}),
         ...(refund != null ? { refund_amount: refund } : {}),
       };

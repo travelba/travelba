@@ -76,6 +76,7 @@ import {
   zodIssuesToBookingIssues,
 } from "@/lib/crm/booking-issues";
 import { planTravelerInsert, printedStayTravelers, type StayTravelerRow } from "@/lib/crm/document-passengers";
+import { countRealTickets } from "@/lib/crm/ticket-party";
 import {
   applyRoomGuestLabels,
   attachTravelerToHousehold,
@@ -349,6 +350,8 @@ async function upsertItemsAndTravelers(
   opts?: {
     keepSellingPrice?: boolean;
     replacements?: { itemId: string; kind: string; amount: number | null; includeInLedger: boolean }[];
+    /** Rattachement automatique : seuls ces voyageurs sont créés. Tableau vide : personne. */
+    recordTravelers?: { first_name?: string | null; last_name?: string | null }[];
   }
 ) {
   const remaining = [...existingItems];
@@ -409,7 +412,7 @@ async function upsertItemsAndTravelers(
       const passengers = mergeFlightPassengers(match.details, details);
       if (passengers.length) {
         details.passengers = passengers;
-        details.ticket_count = passengers.length;
+        details.ticket_count = countRealTickets(passengers) ?? passengers.length;
       }
     }
     let sameBooking = Boolean(match && hotelMatchKeepsStay(match, probe));
@@ -592,7 +595,7 @@ async function upsertItemsAndTravelers(
   if (!saved && lastError) throw new Error(lastError);
 
   const printed = printedStayTravelers(extract);
-  const incoming = printed.length ? printed : extract.travelers || [];
+  const incoming = opts?.recordTravelers ?? (printed.length ? printed : extract.travelers || []);
   const skipPlaceholders =
     incoming.some((traveler) => {
       const first = emptyToNull(traveler.first_name);
@@ -810,6 +813,8 @@ export async function applyExtractToBooking(opts: {
   keepSellingPrice?: boolean;
   /** Dépôt d’un billet : ne pas créer les frais de billeterie automatiques. */
   skipTicketingFee?: boolean;
+  /** Rattachement automatique : voyageurs autorisés. Absent : la liste lue. Vide : personne. */
+  recordTravelers?: { first_name?: string | null; last_name?: string | null }[];
   replacements?: { itemId: string; kind: string; amount: number | null; includeInLedger: boolean }[];
   /** Un dossier annulé revient Non visible : le client ne le voit pas tant qu’on ne le montre pas. */
   reopenIfCancelled?: boolean;
@@ -877,7 +882,11 @@ export async function applyExtractToBooking(opts: {
     (items || []) as CrmBookingItem[],
     docs,
     opts.emailIngestId,
-    { keepSellingPrice: opts.keepSellingPrice, replacements: opts.replacements }
+    {
+      keepSellingPrice: opts.keepSellingPrice,
+      replacements: opts.replacements,
+      recordTravelers: opts.recordTravelers,
+    }
   );
   const patch: Record<string, unknown> = {};
   const chosenTitle = emptyToNull(extract.title);
@@ -933,6 +942,7 @@ export async function applyReplacementToBooking(opts: {
   automatic?: boolean;
   replaceItemId?: string | null;
   skipTicketingFee?: boolean;
+  recordTravelers?: { first_name?: string | null; last_name?: string | null }[];
 }) {
   const admin = createServiceClient();
   const { data: items } = await admin

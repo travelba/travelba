@@ -1378,7 +1378,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "retirer_voyageur",
     write: true,
     description:
-      "Retire un voyageur du séjour, et des cartes qui le citent. Le frais de billeterie suit le nombre de voyageurs. Le compagnon reste sur la fiche. Aucun message.",
+      "Retire un voyageur du séjour et des passagers de toutes les cartes. Le nombre de billets est recalculé sur les vrais numéros, sinon sur les passagers restants. Le frais de billeterie suit le nombre de voyageurs. Le compagnon reste sur la fiche. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),

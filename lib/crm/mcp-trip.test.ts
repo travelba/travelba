@@ -94,6 +94,17 @@ function memoryAdmin(seed: Record<string, Row[]>) {
         filters.push((row) => allowed.has(row[column]));
         return api;
       },
+      like(column: string, pattern: string) {
+        const regex = new RegExp(
+          `^${pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`,
+          "i"
+        );
+        filters.push((row) => regex.test(String(row[column] ?? "")));
+        return api;
+      },
+      ilike(column: string, pattern: string) {
+        return api.like(column, pattern);
+      },
       order(column: string) {
         orderCol = column;
         return api;
@@ -1490,6 +1501,26 @@ test("le nom d’usage et le premier prénom rattachent le compagnon, et le doub
   assert.deepEqual(dropped?.party_keys, ["holder"]);
   assert.deepEqual(dropped?.passengers, [{ first_name: "A" }]);
   assert.equal(dropped?.ticket_count, 1);
+  const byName = dropPartyFromDetails(
+    {
+      pnr: "ZLFJIN",
+      flight_number: "LY 9843",
+      passengers: [
+        { first_name: "Zoe", last_name: "Benillouche", ticket_number: "1143812456790" },
+        { first_name: "Zlfjin", last_name: "Af" },
+        { first_name: "Zlfjin", last_name: "Ly" },
+      ],
+      ticket_count: 3,
+      ticket_numbers: ["1143812456790"],
+    },
+    "",
+    { first_name: "Zlfjin", last_name: "Af" }
+  );
+  assert.deepEqual(
+    (byName?.passengers as { last_name: string }[]).map((row) => row.last_name),
+    ["Benillouche", "Ly"]
+  );
+  assert.equal(byName?.ticket_count, 1);
   const moved = retargetCompanionDetails(
     { party_keys: [`companion:${thin}`], passengers: [{ first_name: "Victoria", last_name: "Martin" }] },
     thin,
@@ -1501,6 +1532,76 @@ test("le nom d’usage et le premier prénom rattachent le compagnon, et le doub
   assert.equal(removed.retire, true);
   assert.equal(removed.notifie, false);
   assert.equal(db.tables.crm_booking_travelers.some((row) => row.companion_id === kept), false);
+});
+
+test("retirer un voyageur l’ôte des passagers de chaque vol et recalcule les billets", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Zoe", "Benillouche")],
+    crm_billing_companies: [],
+    crm_travel_companions: [],
+    crm_travel_documents: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Tel Aviv" }, client);
+  const zoe = await addVoyageur({ dossier_id: dossier.id, prenoms: "Zoe", nom: "Benillouche" }, client);
+  const ghost = await addVoyageur({ dossier_id: dossier.id, prenoms: "Zlfjin", nom: "Af" }, client);
+  const outbound = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "El Al",
+      numero: "LY315",
+      depart_iata: "CDG",
+      arrivee_iata: "TLV",
+      depart: "2026-11-20T10:00",
+      arrivee: "2026-11-20T16:00",
+      voyageurs: [zoe.voyageur_id],
+      prix_total: 900,
+      pnr: "ZLFJIN",
+    },
+    client
+  );
+  const inbound = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "El Al",
+      numero: "LY9843",
+      depart_iata: "TLV",
+      arrivee_iata: "CDG",
+      depart: "2026-11-24T18:00",
+      arrivee: "2026-11-24T22:00",
+      voyageurs: [zoe.voyageur_id],
+      prix_total: 900,
+      pnr: "ZLFJIN",
+    },
+    client
+  );
+  for (const id of [outbound.id, inbound.id]) {
+    const item = db.tables.crm_booking_items.find((row) => row.id === id);
+    const details = item?.details as {
+      passengers: { first_name: string; last_name: string; ticket_number?: string }[];
+      ticket_count?: number;
+    };
+    details.passengers.push(
+      { first_name: "Zlfjin", last_name: "Af" },
+      { first_name: "Zlfjin", last_name: "Ly" }
+    );
+    details.passengers[0].ticket_number = "1143812456790";
+    details.ticket_count = 3;
+  }
+  const removed = await removeVoyageur({ dossier_id: dossier.id, voyageur_id: ghost.voyageur_id }, client);
+  assert.equal(removed.retire, true);
+  assert.equal(removed.notifie, false);
+  assert.equal(db.tables.crm_booking_travelers.some((row) => row.id === ghost.voyageur_id), false);
+  for (const id of [outbound.id, inbound.id]) {
+    const details = db.tables.crm_booking_items.find((row) => row.id === id)?.details as {
+      passengers: { last_name: string }[];
+      ticket_count?: number;
+    };
+    assert.deepEqual(
+      details.passengers.map((row) => row.last_name),
+      ["Benillouche", "Ly"]
+    );
+    assert.equal(details.ticket_count, 1);
+  }
 });
 
 test("ces outils n’envoient ni message ni synchro de formalité", () => {

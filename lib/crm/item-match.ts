@@ -1,5 +1,6 @@
 import { catalogNameAgrees } from "@/lib/crm/hotel-gallery";
 import { namesReferToSamePerson } from "@/lib/crm/person-match";
+import { countRealTickets } from "@/lib/crm/ticket-party";
 import type { BookingItemKind } from "@/lib/crm/types";
 
 export type MatchableItem = {
@@ -1087,7 +1088,9 @@ export function mergeExtractItems<T extends MatchableItem>(items: T[]): T[] {
       const passengers = mergeFlightPassengers(hit.details, item.details);
       hit.details = {
         ...(hit.details || {}),
-        ...(passengers.length ? { passengers, ticket_count: passengers.length } : { ticket_count: currentCount + incomingCount }),
+        ...(passengers.length
+          ? { passengers, ticket_count: countRealTickets(passengers) ?? passengers.length }
+          : { ticket_count: currentCount + incomingCount }),
         ...(sourceFiles.length ? { source_files: sourceFiles } : {}),
       };
     }
