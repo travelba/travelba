@@ -157,7 +157,10 @@ export type Mb3mLine = {
   refPiece?: string | null;
   /** Vol : PNR, recopié sur la pièce s’il n’y en a qu’un. */
   refCommand?: string | null;
-  /** Nom des fournisseurs des coûts, imprimé en note. Ne crée pas de fournisseur. */
+  /**
+   * Ancienne note de ligne. N’est plus envoyée : le « + » MB3M reprend ce champ.
+   * Le libellé de la ligne reste seul.
+   */
   note?: string | null;
 };
 
@@ -792,12 +795,11 @@ export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine
         line.type === "Custom" || line.marginUnit == null || !Number.isFinite(line.marginUnit)
           ? ""
           : tag("MarginUnit", money(line.marginUnit));
-      const note = line.type === "Custom" ? "" : tag("Note", (line.note || "").trim().slice(0, 250));
       const refPiece = tag("RefPiece", (line.refPiece || "").trim().slice(0, 40));
       // Ordre WCF : ActivityId, CommissionNetTotal, CommissionTotal, CustomType, Label,
-      // MarginUnit, NetPriceTotal, NetPriceUnit, Note, ProviderId, Quantity, RefPiece, Type.
-      // CommissionId n’est pas dans le WSDL (API 1.78.0). Le train et le maritime partent en 22.
-      return `<${kind}>${activity}${commissionIdXml(line)}${flightEuroCommissionXml(line)}${customTypeXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${providerXml(line, providerFallback)}${tag("Quantity", quantity(line.quantity))}${refPiece}${tag("Type", type)}</${kind}>`;
+      // MarginUnit, NetPriceTotal, NetPriceUnit, ProviderId, Quantity, RefPiece, Type.
+      // Le champ Note (le « + » de la ligne) n’est pas envoyé. CommissionId n’est pas dans le WSDL.
+      return `<${kind}>${activity}${commissionIdXml(line)}${flightEuroCommissionXml(line)}${customTypeXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${providerXml(line, providerFallback)}${tag("Quantity", quantity(line.quantity))}${refPiece}${tag("Type", type)}</${kind}>`;
     })
     .join("");
 }

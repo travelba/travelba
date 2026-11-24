@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { mb3mLineSignature } from "./mb3m-account";
 import { mb3mSoapLines } from "./mb3m-conform";
-import { Mb3mError, MB3M_CREDIT_NOTE_REFUSAL, mb3mAddInvoice, mb3mCancelInvoice, mb3mFindPiece, mb3mReadLettrage } from "./mb3m";
+import { Mb3mError, MB3M_CREDIT_NOTE_REFUSAL, linesXml, mb3mAddInvoice, mb3mCancelInvoice, mb3mFindPiece, mb3mReadLettrage } from "./mb3m";
 import {
   buildMb3mInvoiceContext,
   mb3mInvoiceBlocker,
@@ -16,6 +16,7 @@ import {
   type Mb3mInvoiceDeps,
   type Mb3mStoredPiece,
 } from "./mb3m-invoice";
+import { assembleGroupedMb3m } from "./grouped-invoice-mb3m";
 import { mb3mInvoiceChip, mb3mLettrageHoldNotice, mb3mPreparationView } from "./mb3m-prep";
 import { formatMoney } from "./money";
 
@@ -252,10 +253,16 @@ describe("facture MB3M", () => {
     });
     assert.equal(ctx.amount, 1050);
     assert.equal(ctx.lines.some((line) => line.transactionId === "remise-commerciale"), false);
+    const expense = ctx.lines.find((line) => line.transactionId === "fee-debit");
+    assert.equal(expense?.activityId ?? null, null);
+    assert.equal(expense?.customCode, "12");
+    assert.equal(expense?.amount, 50);
+    assert.equal(expense?.label, "Frais agence · Extra — TBA-42");
+    assert.equal(/dépense/i.test(expense?.label || ""), false);
     assert.deepEqual(
       ctx.lines.map((line) => [line.transactionId, line.amount, line.activityId]),
       [
-        ["fee-debit", 50, 22],
+        ["fee-debit", 50, null],
         ["hotel-debit", 1000, 7],
       ]
     );
@@ -263,6 +270,110 @@ describe("facture MB3M", () => {
     assert.equal(ctx.destinationIso, "FR");
     assert.equal(ctx.destination, "France");
     assert.equal(mb3mInvoiceBlocker(ctx), null);
+  });
+
+  it("facture les frais du dossier en Frais agence, sur la pièce simple et la pièce groupée", () => {
+    arm();
+    const hotelFee = {
+      id: "exp-hotel",
+      kind: "expense",
+      title: "Frais hôtel",
+      amount: 15,
+      lifecycle: "active",
+    };
+    const ticketExpense = {
+      id: "exp-ticket",
+      kind: "expense",
+      title: "Frais de billetterie",
+      amount: 25,
+      lifecycle: "active",
+    };
+    const autoTicket = {
+      id: "auto-ticket",
+      kind: "expense",
+      title: "Frais de billeterie (1 billet)",
+      amount: 25,
+      lifecycle: "active",
+      details: { auto_fee: "ticketing" },
+    };
+    const charge = (
+      id: string,
+      amount: number,
+      label: string,
+      itemId: string,
+      booking: string
+    ) => ({
+      id,
+      direction: "debit" as const,
+      status: "posted",
+      currency: "EUR",
+      amount,
+      label,
+      external_id: `booking:${booking}:expense:${itemId}`,
+      booking_id: bookingId,
+    });
+    const first = buildMb3mInvoiceContext({
+      booking: booking({ reference: "TB-2026-0211", destination: "Tel Aviv" }),
+      items: [hotelFee, autoTicket],
+      travelers: [{ first_name: "Camille", last_name: "Martin" }],
+      payer: payer(),
+      companies: [],
+      charges: [
+        charge("hotel-fee", 15, "Dépense · Frais hôtel — TB-2026-0211", "exp-hotel", bookingId),
+        charge("auto-fee", 25, "Frais de billeterie (1 billet)", "auto-ticket", bookingId),
+      ],
+    });
+    const second = buildMb3mInvoiceContext({
+      booking: booking({ reference: "TB-2026-0212", destination: "Tel Aviv" }),
+      items: [ticketExpense],
+      travelers: [{ first_name: "Camille", last_name: "Martin" }],
+      payer: payer(),
+      companies: [],
+      charges: [charge("ticket-fee", 25, "Dépense · Frais de billetterie — TB-2026-0212", "exp-ticket", bookingId)],
+    });
+    const hotel = first.lines.find((line) => line.transactionId === "hotel-fee");
+    const auto = first.lines.find((line) => line.transactionId === "auto-fee");
+    const manual = second.lines.find((line) => line.transactionId === "ticket-fee");
+    assert.equal(hotel?.customCode, "12");
+    assert.equal(hotel?.agencyProvider, true);
+    assert.equal(hotel?.providerId ?? null, null);
+    assert.equal(hotel?.margin ?? null, null);
+    assert.equal(hotel?.amount, 15);
+    assert.equal(hotel?.label, "Frais agence · Frais hôtel — TB-2026-0211");
+    assert.equal(auto?.customCode, "401");
+    assert.equal(auto?.label, "Frais Agence Billetterie");
+    assert.equal(auto?.amount, 25);
+    assert.equal(manual?.customCode, "12");
+    assert.equal(manual?.amount, 25);
+    assert.equal(manual?.label, "Frais agence · Frais de billetterie — TB-2026-0212");
+    assert.equal(/dépense/i.test([hotel, auto, manual].map((line) => line?.label || "").join(" ")), false);
+
+    const agency = "ba3e9d2d-c2a5-4872-b5d2-99e74b483831";
+    const simple = linesXml("InvoiceLine", mb3mSoapLines(first.lines, 0.01), agency);
+    assert.match(simple, /<Label>Frais agence · Frais hôtel — TB-2026-0211<\/Label>/);
+    assert.match(simple, /<Label>Frais Agence Billetterie<\/Label>/);
+    assert.match(simple, /<Complementary>12<\/Complementary>/);
+    assert.match(simple, /<Complementary>401<\/Complementary>/);
+    assert.match(simple, /<NetPriceUnit>15<\/NetPriceUnit>/);
+    assert.match(simple, /<NetPriceUnit>25<\/NetPriceUnit>/);
+    assert.equal(simple.includes("<Note>"), false);
+    assert.equal(simple.includes("<MarginUnit>"), false);
+    assert.equal(/dépense/i.test(simple), false);
+    assert.match(simple, new RegExp(`<ProviderId>${agency}</ProviderId>`));
+
+    const grouped = assembleGroupedMb3m([first, second]);
+    const groupedXml = linesXml("InvoiceLine", grouped.lines, agency);
+    assert.match(groupedXml, /<Label>Frais agence · Frais hôtel — TB-2026-0211<\/Label>/);
+    assert.match(groupedXml, /<Label>Frais agence · Frais de billetterie — TB-2026-0212<\/Label>/);
+    assert.match(groupedXml, /Frais Agence Billetterie/);
+    assert.match(groupedXml, /TB-2026-0211/);
+    assert.equal(groupedXml.includes("<Note>"), false);
+    assert.equal(/dépense/i.test(groupedXml), false);
+    assert.equal(grouped.lines.every((line) => !line.note), true);
+    assert.equal(
+      grouped.lines.filter((line) => line.label.startsWith("Frais agence · ")).map((line) => line.netPriceUnit).sort((a, b) => a - b).join(","),
+      "15,25"
+    );
   });
 
   it("porte la remise en ligne négative Custom, avec les actions déjà autorisées", () => {

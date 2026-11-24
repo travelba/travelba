@@ -180,38 +180,30 @@ export function groupedMarkerDates(start: string | null, end: string | null) {
   return left || right;
 }
 
-function joinNote(marker: string, existing: string | null | undefined) {
-  const current = clean(existing);
-  const lead = clean(marker);
-  if (!lead) return current || null;
-  if (!current) return lead.slice(0, 250);
-  if (current.includes(lead)) return current.slice(0, 250);
-  return `${lead} — ${current}`.slice(0, 250);
-}
-
 function referenceOf(marker: string) {
   return clean(marker.split(" · ")[0]) || clean(marker);
 }
 
 /**
- * Le premier repère porte la référence, la destination, les dates et les voyageurs.
- * Les lignes suivantes gardent la référence. Un frais Custom n’envoie pas de Note :
- * la référence est dans le libellé. La commission d’agence garde son libellé, sans pourcentage.
+ * Le premier frais Custom porte la référence, la destination, les dates et les voyageurs
+ * quand le dossier n’a pas d’autre ligne. Les frais suivants gardent la référence dans le libellé.
+ * Aucune ligne n’envoie de Note : le « + » MB3M reste vide. Le libellé d’une prestation ne change pas.
+ * La commission d’agence garde son libellé, sans pourcentage.
  */
 export function stampGroupedMb3mSection(marker: string, lines: Mb3mLine[]): Mb3mLine[] {
   const reference = referenceOf(marker);
   const hasStandard = lines.some((line) => line.type !== "Custom");
   let marked = false;
   return lines.map((line) => {
+    const stripped = { ...line, note: null };
     if (line.type === "Custom") {
       const extra = !hasStandard && !marked ? marker : reference;
       marked = true;
-      if (!extra || line.label.includes(extra)) return line;
-      return { ...line, label: `${line.label} · ${extra}`.slice(0, 120) };
+      if (!extra || line.label.includes(extra) || (reference && line.label.includes(reference))) return stripped;
+      return { ...stripped, label: `${line.label} · ${extra}`.slice(0, 120) };
     }
-    const note = joinNote(marked ? reference : marker, line.note);
     marked = true;
-    return { ...line, note };
+    return stripped;
   });
 }
 

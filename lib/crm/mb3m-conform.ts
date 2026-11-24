@@ -270,7 +270,7 @@ function airlineProvider(iata: string, name: string) {
 
 export type Mb3mSupplierResolution =
   | { ok: true; provider: Mb3mCatalogProvider; genericLand: boolean }
-  /** `unknown` : le nom du fournisseur absent du catalogue MB3M. La ligne part sans ProviderId, le nom dans la Note. */
+  /** `unknown` : le nom du fournisseur absent du catalogue MB3M. La ligne part sans ProviderId. */
   | { ok: false; reason: string; unknown?: string };
 
 function found(provider: Mb3mCatalogProvider | null, genericLand = false): Mb3mSupplierResolution {
@@ -409,6 +409,40 @@ export function mb3mFeeLabel(code: Mb3mFeeCode, fallback?: string | null) {
   return (fallback || "").trim() || "Frais agence";
 }
 
+/**
+ * Frais saisis sur le dossier (frais hôtel, frais de billetterie, etc.).
+ * Code 12 : la prestation complémentaire dont le libellé canonique est « Frais agence ».
+ * Même famille que « Frais Agence Billetterie » (401) : Custom, LineType 4, fournisseur = l’agence.
+ * Le frais automatique de billeterie reste en 401. Aucun fournisseur n’est créé.
+ */
+export const MB3M_CLIENT_FEE_CODE: Mb3mFeeCode = "12";
+
+const EXPENSE_PREFIX = /^dépense\s*[·•]\s*/i;
+const LEDGER_DOSSIER_REF = /\s[—–-]\s*(TB-[\w-]+)\s*$/i;
+
+export function isMb3mClientExpense(kind: string, label: string) {
+  if (kind === "expense") return true;
+  return EXPENSE_PREFIX.test(label.trim());
+}
+
+/** « Frais agence · Frais hôtel — TB-2026-0211 ». Jamais le mot Dépense. */
+export function mb3mAgencyExpenseLabel(input: {
+  title?: string | null;
+  ledgerLabel?: string | null;
+  reference?: string | null;
+}) {
+  const ledger = (input.ledgerLabel || "").replace(/\s+/g, " ").trim();
+  const titled = (input.title || "").replace(/\s+/g, " ").trim();
+  const strip = (value: string) =>
+    value.replace(EXPENSE_PREFIX, "").replace(/^dépense\b\s*/i, "").replace(LEDGER_DOSSIER_REF, "").trim();
+  const fromTitle = strip(titled);
+  const fromLedger = strip(ledger);
+  const type = (fromTitle && !/^dépense$/i.test(fromTitle) ? fromTitle : fromLedger) || "Frais";
+  const ref = ((input.reference || "").trim() || ledger.match(LEDGER_DOSSIER_REF)?.[1] || "").trim();
+  const label = ref ? `Frais agence · ${type} — ${ref}` : `Frais agence · ${type}`;
+  return label.slice(0, 120);
+}
+
 function landLabel(label: string, supplier: string) {
   const clean = supplier.trim();
   if (!clean) return label;
@@ -416,7 +450,7 @@ function landLabel(label: string, supplier: string) {
   return `${label} · ${clean}`.slice(0, 120);
 }
 
-/** Nom résolu dans la Note quand aucun ProviderId vérifié n’est envoyé. */
+/** Nom résolu, pour l’avertissement agence. Il n’est pas envoyé : la Note de ligne reste vide. */
 function noteWithResolvedProvider(existing: string | null | undefined, name: string) {
   const clean = name.trim();
   if (!clean) return existing ?? null;
@@ -439,7 +473,11 @@ function commissionScope(item: Mb3mConformItem | null): Mb3mCommissionScope {
 }
 
 /** Pose l’activité, le fournisseur et la garde billetterie sur les lignes du grand livre. */
-export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mConformItem[]): Mb3mAccountLine[] {
+export function conformMb3mAccountLines(
+  lines: Mb3mAccountLine[],
+  items: Mb3mConformItem[],
+  reference?: string | null
+): Mb3mAccountLine[] {
   const byId = new Map(items.flatMap((item) => (item.id ? [[item.id, item] as const] : [])));
   return lines.map((line) => {
     const item = line.itemId ? byId.get(line.itemId) || null : null;
@@ -459,6 +497,31 @@ export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mCon
         held: false,
         supplierReason: null,
         label: mb3mFeeLabel(code, line.label),
+      };
+    }
+    // Dépense libre facturée au client : jamais une activité, jamais le mot Dépense.
+    if (isMb3mClientExpense(kind, line.label)) {
+      return {
+        ...line,
+        activityId: null,
+        customCode: MB3M_CLIENT_FEE_CODE,
+        agencyProvider: true,
+        providerId: null,
+        providerName: null,
+        margin: null,
+        note: null,
+        held: false,
+        supplierReason: null,
+        supplierWarning: null,
+        chargeKind: "expense",
+        refPiece: null,
+        refCommand: null,
+        ticketRefs: [],
+        label: mb3mAgencyExpenseLabel({
+          title: item?.title,
+          ledgerLabel: line.label,
+          reference,
+        }),
       };
     }
     // Choix explicite de la carte. Il prime sur le remap d’envoi train 5 / maritime 9 → 22.
@@ -511,7 +574,7 @@ export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mCon
     const generic = supplier.ok && supplier.genericLand;
     const tickets = ticketRefs(item?.details);
     // Fournisseur absent du catalogue : jamais bloquant. Le vol est de toute façon retenu ; les autres lignes
-    // partent sans ProviderId, avec son nom dans la Note, et la page affiche un avertissement.
+    // partent sans ProviderId. La page affiche un avertissement. La Note de ligne n’est pas envoyée.
     const unknownSupplier = !supplier.ok && supplier.unknown ? supplier.unknown : null;
     const providerName = supplier.ok ? supplier.provider.name : unknownSupplier;
     const providerId = supplier.ok && providerName ? mb3mVerifiedProviderId(providerName) : null;
@@ -557,7 +620,7 @@ export function mb3mSupplierWarnings(lines: Mb3mAccountLine[]) {
   const held = lines.some((line) => line.supplierWarning && line.held);
   const sent = lines.some((line) => line.supplierWarning && !line.held);
   const tail = [
-    sent ? "Sans ProviderId, son nom est dans la Note de la ligne." : "",
+    sent ? "Sans ProviderId : aucun fournisseur n’est créé, et la ligne ne porte pas de note." : "",
     held && !sent ? "La ligne est retenue : rien n’est envoyé à MB3M pour elle." : "",
   ].filter(Boolean);
   return [...unique, ...tail].join(" ");
@@ -575,8 +638,9 @@ export function mb3mInvoiceRefCommand(dossierRef: string, lines: Mb3mLine[]) {
 export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): Mb3mLine {
   if (line.customCode) {
     const amount = Math.round(line.amount * 100) / 100;
+    const keepLabel = line.chargeKind === "expense" || line.label.startsWith("Frais agence · ");
     return {
-      label: mb3mFeeLabel(line.customCode, line.label),
+      label: keepLabel ? line.label : mb3mFeeLabel(line.customCode, line.label),
       quantity: 1,
       netPriceUnit: amount,
       netPriceTotal: amount,
@@ -584,6 +648,7 @@ export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): M
       customType: { complementary: line.customCode, lineType: 4 },
       providerRole: "agency",
       marginUnit: null,
+      note: null,
     };
   }
   const raw = line.margin == null || !Number.isFinite(line.margin) ? null : line.margin;
@@ -601,7 +666,7 @@ export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): M
     activityId: mb3mPrestationActivityId(line.activityId),
     type: "Standard",
     marginUnit: margin,
-    note: line.note ?? null,
+    note: null,
     providerId: line.providerId ?? null,
     providerRole: "supplier",
     refPiece: line.refPiece ?? null,
