@@ -106,21 +106,30 @@ export async function setRememberedCardLimit(
   });
 }
 
-export async function changePliantCardLimit(admin: Admin, cardId: string, limitCents: number, currency: string) {
-  if (!pliantConfigured()) throw new Error("Pliant n’est pas branché.");
-  const kept = await rememberedTransactionRules(admin, cardId, limitCents);
-  await setPliantCardLimit(cardId, { value: limitCents, currency }, kept.count, {
-    value: kept.transactionLimitCents,
-    currency,
-  });
+export async function changePliantCardLimit(
+  admin: Admin,
+  cardId: string,
+  limitCents: number,
+  currency: string,
+  deps: { setLimit?: typeof setPliantCardLimit } = {}
+) {
+  if (!deps.setLimit && !pliantConfigured()) throw new Error("Pliant n’est pas branché.");
+  const count = await rememberedTransactionCount(admin, cardId);
+  const money = { value: limitCents, currency };
+  await (deps.setLimit ?? setPliantCardLimit)(cardId, money, count, money);
   await rememberPliantCard(admin, {
     pliant_card_id: cardId,
     limit_cents: limitCents,
     currency,
     limit_manual: true,
-    transaction_limit_cents: kept.transactionLimitCents,
-    max_transaction_count: kept.count,
+    transaction_limit_cents: limitCents,
+    ...(count != null ? { max_transaction_count: count } : {}),
   });
+  const updated = await admin
+    .from("crm_booking_cards")
+    .update({ limit_cents: limitCents, transaction_limit_cents: limitCents })
+    .eq("pliant_card_id", cardId);
+  if (updated?.error) throw new Error("Le plafond est chez Pliant, mais le dossier ne l’a pas enregistré.");
 }
 
 /** Les 4 derniers chiffres, lus chez Pliant sans ouvrir le numéro complet. */
@@ -379,22 +388,17 @@ function asDraft(data: unknown): PliantCardDraft | null {
   };
 }
 
-async function rememberedTransactionRules(admin: Admin, cardId: string, limitCents: number) {
+async function rememberedTransactionCount(admin: Admin, cardId: string) {
   try {
     const { data } = await admin
       .from("crm_pliant_cards")
-      .select("max_transaction_count, transaction_limit_cents")
+      .select("max_transaction_count")
       .eq("pliant_card_id", cardId)
       .maybeSingle();
-    const row = data as { max_transaction_count?: number | null; transaction_limit_cents?: number | null } | null;
-    const count = numberOrNull(row?.max_transaction_count);
-    const tx = numberOrNull(row?.transaction_limit_cents);
-    return {
-      count: count != null && count >= 1 ? count : null,
-      transactionLimitCents: tx != null && tx > 0 ? Math.min(tx, limitCents) : limitCents,
-    };
+    const count = numberOrNull((data as { max_transaction_count?: number | null } | null)?.max_transaction_count);
+    return count != null && count >= 1 ? count : null;
   } catch {
-    return { count: null, transactionLimitCents: limitCents };
+    return null;
   }
 }
 

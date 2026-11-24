@@ -28,10 +28,15 @@ import {
   maskPliantPath,
   pliantAvailableLimit,
   pliantCardFace,
+  pliantCardLimits,
   pliantHolderId,
   pliantHolderName,
+  pliantLimitMismatchMessage,
+  pliantLimitsApplied,
+  pliantLimitUpdateBody,
   pliantTransactionPage,
   scrubPliantLog,
+  type PliantMoney,
 } from "./pliant-tx";
 
 const PROD = {
@@ -512,23 +517,7 @@ export async function pliantPciWidget(cardId: string, frameId: string) {
 }
 
 export async function raisePliantLimit(cardId: string, limit: { value: number; currency: "EUR" }, count: number) {
-  const token = await accessToken();
-  const res = await fetch(`${endpoints().api}/cards/${cardId}`, {
-    method: "PATCH",
-    signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
-    headers: {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-      "Pliant-API-Version": "2.1.0",
-    },
-    body: JSON.stringify({
-      limit,
-      transactionLimit: limit,
-      limitRenewFrequency: "TOTAL",
-      maxTransactionCount: count,
-    }),
-  });
-  if (!res.ok) throw new Error("Pliant n’a pas relevé le plafond.");
+  await setPliantCardLimit(cardId, limit, count >= 1 ? count : null);
 }
 
 /** Disponible du compte Pliant (organisation), pas le plafond d’une carte. */
@@ -677,21 +666,33 @@ export async function readPliantCardFace(cardId: string) {
   }
 }
 
+async function liveTransactionCount(cardId: string) {
+  try {
+    return pliantCardLimits(unwrapRecord(await pliantGet(`/cards/${encodeURIComponent(cardId)}`))).maxTransactionCount;
+  } catch (err) {
+    rethrowTokenFailure(err);
+    throw new Error("Pliant n’a pas confirmé le nombre de transactions.");
+  }
+}
+
+/**
+ * Plafond total et montant d’un achat.
+ * `PUT /cards/limits/{cardId}` (pas `PATCH /cards/{cardId}`, qui ne change que le libellé).
+ * La carte est relue : les deux montants doivent être ceux demandés.
+ */
 export async function setPliantCardLimit(
   cardId: string,
-  limit: { value: number; currency: string },
+  limit: PliantMoney,
   count: number | null,
-  transactionLimit?: { value: number; currency: string }
+  transactionLimit?: PliantMoney
 ) {
+  const perTransaction = transactionLimit || limit;
+  const keptCount = count != null && count >= 1 ? count : await liveTransactionCount(cardId);
+  const payload = pliantLimitUpdateBody({ limit, transactionLimit: perTransaction, count: keptCount });
   const token = await accessToken();
-  const payload: Record<string, unknown> = {
-    limit,
-    transactionLimit: transactionLimit || limit,
-    limitRenewFrequency: "TOTAL",
-  };
-  if (typeof count === "number" && count >= 1) payload.maxTransactionCount = count;
-  const res = await fetch(`${endpoints().api}/cards/${cardId}`, {
-    method: "PATCH",
+  const path = `/cards/limits/${encodeURIComponent(cardId)}`;
+  const res = await fetch(`${endpoints().api}${path}`, {
+    method: "PUT",
     signal: AbortSignal.timeout(PLIANT_TIMEOUT_MS),
     headers: {
       authorization: `Bearer ${token}`,
@@ -700,7 +701,22 @@ export async function setPliantCardLimit(
     },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Pliant n’a pas modifié le plafond.");
+  if (!res.ok) {
+    console.error("[pliant] plafond", res.status);
+    throw new Error("Pliant n’a pas modifié le plafond.");
+  }
+  let card: unknown;
+  try {
+    card = unwrapRecord(await pliantGet(`/cards/${encodeURIComponent(cardId)}`));
+  } catch (err) {
+    rethrowTokenFailure(err);
+    throw new Error("Pliant n’a pas confirmé le nouveau plafond.");
+  }
+  const applied = pliantLimitsApplied(card, { limit, transactionLimit: perTransaction });
+  if (!applied.ok) {
+    console.error("[pliant] plafond", "relu", applied.limitCents, applied.transactionLimitCents);
+    throw new Error(pliantLimitMismatchMessage(applied));
+  }
 }
 
 const TX_PAGE = 100;
