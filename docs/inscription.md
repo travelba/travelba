@@ -33,13 +33,13 @@ Catégorie Utility, langue `fr`. Bouton « Rejoindre le club », adresse `https:
 
 `invitation_inscription` — catégorie Meta probable : **Utility** (lien personnel d’ouverture de compte, à usage unique). L’offre d’adhésion peut faire pencher Meta vers Marketing.
 
-Bonjour {{1}}, le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum pour une durée d’un an. Cette adhésion est nominative et réservée à vos propres réservations. Ce lien personnel expire le {{2}}.
+Bonjour {{1}}, le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum jusqu’au 31 décembre 2026. Cette adhésion est nominative et réservée à vos propres réservations. Ce lien personnel expire le {{2}}.
 
 {{1}} prénom, {{2}} date.
 
 `invitation_parrainage` — catégorie Meta probable : **Marketing** (recommandation et offre d’adhésion ; le destinataire n’a pas demandé le message).
 
-Bonjour {{1}}, {{2}} vous a recommandé au Travel Club TBA, qui a le plaisir de vous offrir l’adhésion Platinum pour une durée d’un an. Cette adhésion est nominative et réservée à vos propres réservations. Ce lien personnel expire le {{3}}.
+Bonjour {{1}}, {{2}} vous a recommandé au Travel Club TBA, qui a le plaisir de vous offrir l’adhésion Platinum jusqu’au 31 décembre 2026. Cette adhésion est nominative et réservée à vos propres réservations. Ce lien personnel expire le {{3}}.
 
 {{1}} prénom du proche, {{2}} prénom du parrain, {{3}} date.
 

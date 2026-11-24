@@ -319,18 +319,18 @@ export function expiresLabel(date: Date) {
 
 export function invitationShareText(input: { firstName: string; link: string; expiresLabel: string }) {
   const name = input.firstName.trim() || "Bonjour";
-  return `Bonjour ${name}, le ${TRAVEL_CLUB_NAME} a le plaisir de vous offrir l’adhésion ${TRAVEL_CLUB_RANK} pour une durée d’un an. Cette adhésion est nominative et réservée à vos propres réservations. Ce lien personnel expire le ${input.expiresLabel} : ${input.link}`;
+  return `Bonjour ${name}, le ${TRAVEL_CLUB_NAME} a le plaisir de vous offrir l’adhésion ${TRAVEL_CLUB_RANK} jusqu’au 31 décembre 2026. Cette adhésion est nominative et réservée à vos propres réservations. Ce lien personnel expire le ${input.expiresLabel} : ${input.link}`;
 }
 
 export function clubShareText(input: { referrerFirstName: string; link: string }) {
   const referrer = input.referrerFirstName.trim() || "Un membre";
-  return `${referrer} vous a recommandé au ${TRAVEL_CLUB_NAME}, qui a le plaisir de vous offrir l’adhésion ${TRAVEL_CLUB_RANK} pour une durée d’un an. Cette adhésion est nominative et réservée à vos propres réservations. ${input.link}`;
+  return `${referrer} vous a recommandé au ${TRAVEL_CLUB_NAME}, qui a le plaisir de vous offrir l’adhésion ${TRAVEL_CLUB_RANK} jusqu’au 31 décembre 2026. Cette adhésion est nominative et réservée à vos propres réservations. ${input.link}`;
 }
 
 export function referralShareText(input: { guestFirstName: string; referrerFirstName: string; link: string; expiresLabel: string }) {
   const guest = input.guestFirstName.trim() || "Bonjour";
   const referrer = input.referrerFirstName.trim() || "Un membre";
-  return `Bonjour ${guest}, ${referrer} vous a recommandé au ${TRAVEL_CLUB_NAME}, qui a le plaisir de vous offrir l’adhésion ${TRAVEL_CLUB_RANK} pour une durée d’un an. Cette adhésion est nominative et réservée à vos propres réservations. Ce lien personnel expire le ${input.expiresLabel} : ${input.link}`;
+  return `Bonjour ${guest}, ${referrer} vous a recommandé au ${TRAVEL_CLUB_NAME}, qui a le plaisir de vous offrir l’adhésion ${TRAVEL_CLUB_RANK} jusqu’au 31 décembre 2026. Cette adhésion est nominative et réservée à vos propres réservations. Ce lien personnel expire le ${input.expiresLabel} : ${input.link}`;
 }
 
 /** Invitations restantes. `envoi` compte les envois. `validee` compte les filleuls validés. */

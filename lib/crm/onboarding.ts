@@ -13,7 +13,7 @@ export const CLIENT_ONBOARDING_STEPS = [
     image: "/onboarding/04-connexion.webp",
     title: "Bienvenue au Travel Club TBA",
     legend:
-      "Le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum pour une durée d’un an. Cette adhésion est nominative et réservée à vos propres réservations.",
+      "Le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum jusqu’au 31 décembre 2026. Cette adhésion est nominative et réservée à vos propres réservations.",
   },
   {
     id: "accueil",

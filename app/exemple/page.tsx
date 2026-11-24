@@ -93,7 +93,7 @@ export default async function ExampleHomePage() {
         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">Travel Club TBA</p>
         <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Bonjour {firstName}</h1>
         <p className="text-sm leading-relaxed text-muted">
-          Le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum pour une durée d’un an. Cette adhésion est
+          Le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum jusqu’au 31 décembre 2026. Cette adhésion est
           nominative et réservée à vos propres réservations.
         </p>
       </section>
