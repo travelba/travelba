@@ -616,12 +616,36 @@
   color: #1a1a1a;
 }
 .hotel-theme .h-club.h-club-inline {
-  position: relative;
+  position: static;
   inset: auto;
   z-index: auto;
-  bottom: auto;
-  background: #f4efe6;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 0;
+  display: block;
+  overflow: visible;
+  background: transparent;
   color: #1a1a1a;
+}
+.hotel-theme .h-club.h-club-inline .h-club-body {
+  display: block;
+  min-height: 0;
+  flex: none;
+  overflow: visible;
+}
+.hotel-theme .h-club.h-club-inline .h-club-title {
+  padding-top: 0.35rem;
+}
+.hotel-theme .h-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+}
+.hotel-theme .h-card-foot > .min-w-0 {
+  flex: 1 1 9rem;
 }
 .hotel-theme .h-club {
   position: fixed;
@@ -991,9 +1015,8 @@
 }
 .hotel-theme .h-loyalty-value {
   margin-top: 0.15rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  white-space: normal;
   font-size: 1.15rem;
   font-weight: 650;
   line-height: 1.2;

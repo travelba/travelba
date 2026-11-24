@@ -158,7 +158,7 @@ export function HotelClubSheet({
                   <p className="h-card-kicker">{eyebrow}</p>
                   <AgencyLogo className="h-club-card-logo" alt="" />
                 </div>
-                <div className="flex items-end justify-between gap-3">
+                <div className="h-card-foot">
                   <div className="min-w-0">
                     <p className="h-loyalty-value">
                       <span className="sr-only">{HOTEL_CLUB_FAMILY}</span>
