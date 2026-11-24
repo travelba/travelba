@@ -1099,14 +1099,16 @@ export function canPublishCarnet(items: { kind: string; lifecycle?: string | nul
 }
 
 /**
- * Montrer / cacher le carnet. Publier révèle les cartes (`publishRevealIds`) et leurs pièces.
+ * Montrer / cacher le carnet. Publier révèle les cartes (`publishRevealIds`) et, sauf
+ * `revealDocuments: false`, leurs pièces. Un dossier déjà visible ne doit pas rouvrir
+ * les pièces masquées : l’appelant passe `revealDocuments: false`.
  * `prices` (défaut : suivre `visible`) : la formalité ouvre le séjour sans révéler des prix masqués.
  */
 export async function setCarnetPublished(
   supabase: SupabaseClient,
   bookingId: string,
   visible: boolean,
-  options?: { prices?: boolean }
+  options?: { prices?: boolean; revealDocuments?: boolean }
 ) {
   const pricesVisible = visible ? options?.prices !== false : false;
   if (visible) {
@@ -1151,6 +1153,7 @@ export async function setCarnetPublished(
       .in("id", revealIds);
     if (itemsError) throw new Error(itemsError.message);
   }
+  if (options?.revealDocuments === false) return;
   const { data: docs, error: docsLookupError } = await supabase
     .from("crm_booking_documents")
     .select("id, booking_item_id")

@@ -20,13 +20,13 @@ import { parseBillingCompanyId } from "@/lib/crm/billing-companies";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { assignPayer, resolveFeesFollowStay, type PayerCompany } from "@/lib/crm/payer";
 import { BookingActionError, archiveBookingById } from "@/lib/crm/archive-booking";
-import { normalizePieceKind } from "@/lib/crm/concierge-notices";
 import {
   notifyStayPublished,
   queuePublishedPieces,
   remindMissingPieces,
   safeConcierge,
 } from "@/lib/crm/concierge-send";
+import { stayJustShown } from "@/lib/crm/piece-publish";
 import { clientDossierRevalidations } from "@/lib/crm/client-stay-paths";
 import { countsAsCarnetCard, type BookingStatus, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
 
@@ -169,40 +169,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
         .not("billing_company_id", "is", null);
     }
   }
-  let revealedPieces: { id: string; kind: string | null }[] = [];
-  if ("visible_to_client" in body && body.visible_to_client && prev.visible_to_client) {
-    const { data: hidden } = await auth.supabase
-      .from("crm_booking_documents")
-      .select("id, kind, booking_item_id")
-      .eq("booking_id", id)
-      .eq("visible_to_client", false);
-    const itemIds = [
-      ...new Set(
-        ((hidden || []) as { booking_item_id?: string | null }[])
-          .map((doc) => doc.booking_item_id)
-          .filter((value): value is string => Boolean(value))
-      ),
-    ];
-    const kinds = new Map<string, string>();
-    if (itemIds.length) {
-      const { data: linked } = await auth.supabase
-        .from("crm_booking_items")
-        .select("id, kind")
-        .in("id", itemIds);
-      for (const item of (linked || []) as { id: string; kind: string }[]) kinds.set(item.id, item.kind);
-    }
-    revealedPieces = ((hidden || []) as { id: string; kind: string; booking_item_id?: string | null }[])
-      .map((doc) => ({
-        id: doc.id,
-        kind: (doc.booking_item_id && kinds.get(doc.booking_item_id)) || doc.kind,
-      }))
-      .filter((doc) => normalizePieceKind(doc.kind));
-  }
+  const justShown = stayJustShown(prev.visible_to_client, body);
 
   if ("visible_to_client" in body) {
     if (prev.archived_at && body.visible_to_client) {
       return jsonError("Réactivez le dossier avant de le montrer au client.");
     }
+    let announcedPieces: { id: string; kind: string | null }[] = [];
     try {
       if (body.visible_to_client) {
         const { data: publishItems } = await auth.supabase
@@ -211,6 +184,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
           .eq("booking_id", id);
         const publishIssues = collectPublishIssues(publishItems || []);
         if (publishIssues.length) return jsonIssues(publishIssues);
+      }
+      if (justShown) {
+        const { data: shownPieces } = await auth.supabase
+          .from("crm_booking_documents")
+          .select("id")
+          .eq("booking_id", id)
+          .eq("visible_to_client", true);
+        announcedPieces = ((shownPieces || []) as { id: string }[]).map((doc) => ({ id: doc.id, kind: null }));
       }
       let beforeCards: {
         id: string;
@@ -226,7 +207,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
           .eq("booking_id", id);
         if (!before.error) beforeCards = (before.data || []) as typeof beforeCards;
       }
-      await setCarnetPublished(auth.supabase, id, Boolean(body.visible_to_client));
+      await setCarnetPublished(auth.supabase, id, Boolean(body.visible_to_client), {
+        revealDocuments: justShown,
+      });
       if (beforeCards.length) {
         const reveal = new Set(publishRevealIds(beforeCards));
         const additions = beforeCards
@@ -243,11 +226,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
       .eq("id", id)
       .maybeSingle();
     if (refreshed) booking = refreshed as CrmBooking;
-    if (body.visible_to_client && !prev.visible_to_client) {
+    if (justShown) {
       await safeConcierge(() => notifyStayPublished(id));
       await safeConcierge(() => remindMissingPieces(id));
-    } else if (revealedPieces.length) {
-      await safeConcierge(() => queuePublishedPieces(id, revealedPieces));
+      if (announcedPieces.length) await safeConcierge(() => queuePublishedPieces(id, announcedPieces));
     }
   }
   try {
