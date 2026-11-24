@@ -332,6 +332,8 @@ test("l’invitation reprend la phrase Platinum, sans montant ni gestionnaire", 
   assert.match(wizard, /TRAVEL_CLUB_OFFER/);
   assert.match(wizard, /invite-metal/);
   assert.match(wizard, /Sur invitation/);
+  assert.match(wizard, /vous êtes attendu/);
+  assert.match(wizard, /Accepter l’invitation/);
   assert.match(wizard, /Lien personnel, valable jusqu’au/);
   assert.match(wizard, /HOTEL_ACCESS_UNTIL/);
   assert.doesNotMatch(wizard, /Rang Platinum|chevron_left|Membre fondateur|votre gestionnaire|HotelClubSheet/);

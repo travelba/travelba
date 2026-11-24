@@ -1768,251 +1768,305 @@ body:has(header details[open]) {
   overflow: hidden;
 }
 
-/* Invitation — feuille de papier, carte métal. Hôtels n’utilise pas ces classes. */
+/* Invitation — nuit parisienne. Hôtels n’utilise pas ces classes. */
 .invite-root {
-  background: #071018;
+  background: #070a10;
   color: #f7f1e3;
 }
-.invite-letter,
-.invite-sheet {
+.invite-letter {
   max-width: 30rem;
-  margin: 0.7rem auto;
+  margin: 2.5rem auto;
   background: #f7f1e3;
   color: #0b1f3a;
-  padding: 1.55rem 1.15rem 1.45rem;
-  border: 1px solid rgba(201, 162, 75, 0.5);
+  padding: 1.75rem 1.25rem 2rem;
+  border: 1px solid rgba(201, 162, 75, 0.55);
 }
-.invite-mast {
-  text-align: center;
+.invite-night {
+  position: relative;
+  min-height: 100dvh;
+  overflow-x: clip;
+  color: #f7f1e3;
+}
+.invite-night-photo,
+.invite-night-shade {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+.invite-night-photo {
+  z-index: 0;
+}
+.invite-night-img {
+  object-fit: cover;
+  object-position: center 68%;
+}
+.invite-night-shade {
+  z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(11, 31, 58, 0.42) 0%, rgba(11, 31, 58, 0.5) 28%, rgba(7, 10, 16, 0.88) 72%, #070a10 100%);
+}
+.invite-hero,
+.invite-form {
+  position: relative;
+  z-index: 2;
+}
+.invite-hero {
+  min-height: 100dvh;
+  display: flex;
+  align-items: flex-end;
+  padding: 1.4rem 1.2rem 2.2rem;
+}
+.invite-hero-grid {
+  width: min(100%, 30rem);
+  margin: 0 auto;
 }
 .invite-kicker {
+  text-align: center;
   font-family: var(--font-inter), system-ui, sans-serif;
-  font-size: 0.66rem;
+  font-size: 0.68rem;
   font-weight: 600;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.42em;
   text-transform: uppercase;
-  color: #8a7349;
+  color: #c9a24b;
 }
-.invite-kicker-ink {
-  margin-top: 1.6rem;
+.invite-stage {
+  perspective: 900px;
+  display: flex;
+  justify-content: center;
+  margin: 1.6rem 0 1.8rem;
 }
-.invite-wordmark {
-  margin-top: 0.55rem;
+.invite-metal {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  width: min(78vw, 19.6rem);
+  aspect-ratio: 1.586 / 1;
+  padding: 1.15rem 1.05rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #c9a24b;
+  background-color: #070707;
+  background-image: repeating-linear-gradient(
+    102deg,
+    rgba(255, 255, 255, 0.045) 0 1px,
+    transparent 1px 3px
+  );
+  border: 1px solid rgba(201, 162, 75, 0.85);
+  border-radius: 0.85rem;
+  box-shadow:
+    inset 0 0 0 1px rgba(201, 162, 75, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 18px 30px rgba(0, 0, 0, 0.45);
+  transform: rotateY(-12deg) rotateX(7deg) rotateZ(-6deg);
+  transform-style: preserve-3d;
+}
+.invite-metal-sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 32%, rgba(201, 162, 75, 0.45) 48%, transparent 64%);
+  transform: translateX(-110%);
+  opacity: 0;
+  pointer-events: none;
+}
+.invite-metal-mark {
   font-family: var(--font-cormorant), Georgia, "Times New Roman", serif;
-  font-size: clamp(1.7rem, 7vw, 2.25rem);
+  font-size: 2.7rem;
   font-weight: 500;
-  line-height: 1.1;
+  line-height: 0.85;
+  letter-spacing: -0.12em;
+  color: #c9a24b;
 }
-.invite-rule {
-  width: 3.25rem;
-  height: 1px;
-  margin: 0.9rem auto 0;
-  background: #c9a24b;
+.invite-metal-name {
+  margin-top: 0.55rem;
+  max-width: 100%;
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+.invite-metal-rank {
+  margin-top: 0.28rem;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+}
+.invite-metal-quiet {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 0.55rem;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 0.5rem;
+  letter-spacing: 0.06em;
+  color: rgba(201, 162, 75, 0.72);
+}
+.invite-metal-quiet span:first-child {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
 }
 .invite-hello {
-  margin-top: 1.35rem;
-  font-family: var(--font-cormorant), Georgia, "Times New Roman", serif;
-  font-size: clamp(2rem, 8vw, 2.7rem);
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: clamp(2.15rem, 8vw, 3.4rem);
   font-weight: 500;
   line-height: 1.05;
+  color: #f7f1e3;
+}
+.invite-rule {
+  width: 3rem;
+  height: 1px;
+  margin: 0.85rem 0;
+  background: #c9a24b;
 }
 .invite-offer {
-  margin-top: 0.7rem;
   font-family: var(--font-cormorant), Georgia, serif;
   font-size: 1.12rem;
   font-weight: 500;
   line-height: 1.45;
+  color: rgba(247, 241, 227, 0.92);
+}
+.invite-accept {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 1.5rem;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #e4c98a 0%, #c9a24b 48%, #b08a3c 100%);
+  color: #0b1f3a;
+  padding: 0.85rem 1.2rem;
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: 1.25rem;
+  font-weight: 500;
+  line-height: 1;
+}
+.invite-accept:disabled {
+  opacity: 0.6;
+}
+.invite-form {
+  max-width: 30rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.2rem 3.5rem;
 }
 .invite-lines {
-  margin: 1.15rem 0 0;
+  margin: 0 0 2rem;
   padding: 0;
   list-style: none;
 }
 .invite-lines li {
-  padding: 0.72rem 0;
-  border-top: 1px solid rgba(201, 162, 75, 0.45);
+  padding: 0.35rem 0;
   font-family: var(--font-cormorant), Georgia, serif;
-  font-size: 1.12rem;
-  line-height: 1.3;
-}
-.invite-lines li:last-child {
-  border-bottom: 1px solid rgba(201, 162, 75, 0.45);
-}
-.invite-metal {
-  --shine-x: 18%;
-  --shine-y: 0%;
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  width: 100%;
-  margin: 1.2rem 0 0.2rem;
-  min-height: 12.4rem;
-  padding: 1.15rem 1.1rem 1rem;
-  color: #f7f1e3;
-  background-color: #0c1622;
-  background-image:
-    repeating-linear-gradient(92deg, rgba(247, 241, 227, 0.045) 0 1px, transparent 1px 4px),
-    linear-gradient(165deg, #2a4158 0%, #122033 42%, #070d14 100%);
-  border: 1px solid rgba(201, 162, 75, 0.72);
-  box-shadow:
-    inset 0 0 0 1px rgba(201, 162, 75, 0.28),
-    inset 0 1px 0 rgba(247, 241, 227, 0.16),
-    0 16px 28px rgba(7, 16, 24, 0.18);
-}
-.invite-metal-sheen,
-.invite-metal::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.invite-metal-sheen {
-  background: linear-gradient(105deg, transparent 34%, rgba(201, 162, 75, 0.42) 48%, transparent 62%);
-  transform: translateX(-90%);
-  opacity: 0;
-}
-.invite-metal::after {
-  background: radial-gradient(280px circle at var(--shine-x) var(--shine-y), rgba(201, 162, 75, 0.28), transparent 46%);
-  opacity: 0;
-}
-.invite-metal-mark,
-.invite-metal-club,
-.invite-metal-name,
-.invite-metal-foot,
-.invite-metal-until {
-  position: relative;
-  z-index: 1;
-}
-.invite-metal-mark {
-  display: grid;
-  place-items: center;
-  width: 2.4rem;
-  height: 2.4rem;
-  border: 1px solid rgba(201, 162, 75, 0.75);
-  border-radius: 999px;
-  box-shadow: inset 0 0 0 3px #0c1622, inset 0 0 0 4px rgba(201, 162, 75, 0.45);
-  font-family: var(--font-cormorant), Georgia, serif;
-  font-size: 0.72rem;
-  letter-spacing: 0.16em;
-  color: #c9a24b;
-}
-.invite-metal-club {
-  margin-top: 0.95rem;
-  font-family: var(--font-inter), system-ui, sans-serif;
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.18em;
+  font-size: 0.98rem;
   line-height: 1.35;
-  text-transform: uppercase;
-  color: #c9a24b;
+  color: rgba(247, 241, 227, 0.62);
 }
-.invite-metal-name {
-  margin-top: 0.45rem;
-  max-width: 100%;
-  font-family: var(--font-cormorant), Georgia, serif;
-  font-size: 1.05rem;
-  font-weight: 500;
-  letter-spacing: 0.16em;
-  line-height: 1.35;
-  text-transform: uppercase;
-  overflow-wrap: anywhere;
-}
-.invite-metal-foot {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-top: 1.15rem;
+.invite-label {
+  display: block;
   font-family: var(--font-inter), system-ui, sans-serif;
   font-size: 0.66rem;
   font-weight: 600;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: rgba(247, 241, 227, 0.78);
-}
-.invite-metal-until {
-  margin-top: 0.35rem;
-  font-family: var(--font-cormorant), Georgia, serif;
-  font-size: 1rem;
-  letter-spacing: 0.02em;
-  text-transform: none;
+  color: rgba(247, 241, 227, 0.82);
 }
 .invite-field {
-  margin-top: 0.35rem;
+  display: block;
   width: 100%;
+  margin-top: 0.35rem;
   border: 0;
-  border-bottom: 1px solid rgba(11, 31, 58, 0.28);
+  border-bottom: 1px solid rgba(201, 162, 75, 0.55);
   border-radius: 0;
   background: transparent;
-  padding: 0.65rem 0.05rem;
-  color: #0b1f3a;
-  font-family: var(--font-inter), system-ui, sans-serif;
-  font-size: 1rem;
+  padding: 0.55rem 0.05rem 0.45rem;
+  color: #f7f1e3;
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: 1.2rem;
   outline: none;
+  color-scheme: dark;
 }
 .invite-field:focus {
   border-bottom-color: #c9a24b;
 }
-.invite-field[readonly] {
-  color: rgba(11, 31, 58, 0.7);
-}
-.invite-submit {
-  width: 100%;
-  border: 0;
-  border-radius: 999px;
-  background: #c9a24b;
-  color: #0b1f3a;
-  padding: 0.92rem 1.1rem;
+.invite-note,
+.invite-link {
   font-family: var(--font-inter), system-ui, sans-serif;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: rgba(247, 241, 227, 0.55);
 }
-.invite-submit:disabled {
-  opacity: 0.6;
+.invite-link {
+  margin-top: 1rem;
+  text-align: center;
 }
-.invite-sheet .flex .invite-submit {
-  width: auto;
-  flex: 1;
+.invite-check {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+.invite-check a {
+  text-decoration: underline;
+  text-decoration-color: #c9a24b;
 }
 .invite-back {
-  border: 1px solid rgba(11, 31, 58, 0.35);
+  border: 1px solid rgba(201, 162, 75, 0.55);
   border-radius: 999px;
   background: transparent;
-  color: #0b1f3a;
-  padding: 0.85rem 1rem;
-  font-family: var(--font-inter), system-ui, sans-serif;
-  font-size: 0.78rem;
-  font-weight: 600;
+  color: #f7f1e3;
+  padding: 0.75rem 1rem;
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: 1.05rem;
 }
-@media (min-width: 900px) {
-  .invite-root {
-    display: grid;
-    place-items: center;
-    min-height: 100dvh;
-    padding: 3rem 1.5rem;
+.invite-form .flex .invite-accept {
+  width: auto;
+  flex: 1;
+  margin-top: 0;
+}
+@media (min-width: 960px) {
+  .invite-hero {
+    align-items: center;
+    padding: 4rem 2.5rem;
   }
-  .invite-letter,
-  .invite-sheet {
-    width: min(30rem, 100%);
-    margin: 0;
-    padding: 2.5rem 2.15rem 2.15rem;
-    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  .invite-hero-grid {
+    display: grid;
+    grid-template-columns: minmax(16rem, 22rem) minmax(18rem, 28rem);
+    align-items: center;
+    gap: 3.5rem;
+    width: min(100%, 58rem);
+  }
+  .invite-hero-card .invite-kicker {
+    text-align: center;
+  }
+  .invite-metal {
+    width: 20.5rem;
   }
 }
 @media (prefers-reduced-motion: no-preference) {
+  .invite-metal {
+    animation: invite-float 6s ease-in-out infinite;
+  }
   .invite-metal-sheen {
-    animation: invite-sheen 1.5s ease 0.15s both;
+    animation: invite-sheen 1.35s ease 0.25s both;
   }
 }
-@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
-  .invite-metal::after {
-    opacity: 1;
-  }
+@keyframes invite-float {
+  0%,
+  100% { transform: rotateY(-12deg) rotateX(7deg) rotateZ(-6deg) translateY(0); }
+  50% { transform: rotateY(-12deg) rotateX(7deg) rotateZ(-6deg) translateY(-7px); }
 }
 @keyframes invite-sheen {
-  0% { transform: translateX(-90%); opacity: 0; }
+  0% { transform: translateX(-110%); opacity: 0; }
   18% { opacity: 1; }
-  100% { transform: translateX(95%); opacity: 0; }
+  100% { transform: translateX(110%); opacity: 0; }
 }

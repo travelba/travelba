@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, PointerEvent, useState } from "react";
+import { FormEvent, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { Icon } from "@/components/crm/icons";
 import { greetingGivenName } from "@/lib/crm/identity";
 import { HOTEL_ACCESS_UNTIL, HOTEL_CLUB_NUMBER, hotelMemberNumber } from "@/lib/crm/hotel-search-home";
 import { TRAVEL_CLUB_OFFER, TRAVEL_CLUB_PRIVILEGES } from "@/lib/crm/signup-options";
@@ -22,33 +22,26 @@ function quietMotion() {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+/** Carte métal noir, propre à l’invitation. Photo : Unsplash, photo-1566665797739. */
 function MemberCard({ name, number }: { name: string; number: string }) {
-  function follow(event: PointerEvent<HTMLElement>) {
-    if (quietMotion() || !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
-    const box = event.currentTarget.getBoundingClientRect();
-    const x = ((event.clientX - box.left) / box.width) * 100;
-    const y = ((event.clientY - box.top) / box.height) * 100;
-    event.currentTarget.style.setProperty("--shine-x", `${x}%`);
-    event.currentTarget.style.setProperty("--shine-y", `${y}%`);
-  }
-
   return (
-    <article className="invite-metal" data-invite-card="1" aria-label="Carte de membre Platinum" onPointerMove={follow}>
-      <span className="invite-metal-sheen" aria-hidden="true" />
-      <p className="invite-metal-mark" aria-hidden="true">
-        TBA
-      </p>
-      <p className="invite-metal-club">Travel Club TBA</p>
-      <p className="invite-metal-name">{name}</p>
-      <div className="invite-metal-foot">
-        <p>Platinum</p>
-        <p>
-          <span className="sr-only">{HOTEL_CLUB_NUMBER}</span>
-          {number}
+    <div className="invite-stage">
+      <article className="invite-metal" data-invite-card="1" aria-label="Carte de membre Platinum">
+        <span className="invite-metal-sheen" aria-hidden="true" />
+        <p className="invite-metal-mark" aria-hidden="true">
+          TBA
         </p>
-      </div>
-      <p className="invite-metal-until">{HOTEL_ACCESS_UNTIL}</p>
-    </article>
+        <p className="invite-metal-name">{name}</p>
+        <p className="invite-metal-rank">Platinum</p>
+        <p className="invite-metal-quiet">
+          <span>Travel Club TBA</span>
+          <span>{HOTEL_ACCESS_UNTIL}</span>
+        </p>
+        <p className="sr-only">
+          {HOTEL_CLUB_NUMBER} {number}
+        </p>
+      </article>
+    </div>
   );
 }
 
@@ -104,92 +97,123 @@ export function SignupWizard({ prefill, linkUntil }: { prefill: SignupPrefill; l
     setDone(true);
   }
 
-  if (done) {
-    return (
-      <div className="invite-sheet">
-        <p className="invite-kicker">Sur invitation</p>
-        <h1 className="invite-hello">Un message vous attend</h1>
-        <p className="invite-offer">
-          Il confirme votre adresse. Le Travel Club TBA relit ensuite la demande. L’accès reste fermé jusque-là.
-        </p>
-      </div>
-    );
+  function revealForm() {
+    document.getElementById("invite-form")?.scrollIntoView({
+      behavior: quietMotion() ? "auto" : "smooth",
+      block: "start",
+    });
   }
 
   const given = greetingGivenName(firstName);
   const engraved = [given, lastName.trim()].filter(Boolean).join(" ") || "—";
+  const night = (
+    <>
+      <div className="invite-night-photo" aria-hidden="true">
+        <Image
+          src="/invitation/nuit.webp"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="invite-night-img"
+        />
+      </div>
+      <div className="invite-night-shade" aria-hidden="true" />
+    </>
+  );
+
+  if (done) {
+    return (
+      <div className="invite-night">
+        {night}
+        <section className="invite-form">
+          <p className="invite-kicker">Sur invitation</p>
+          <h1 className="invite-hello">Un message vous attend</h1>
+          <p className="invite-offer">
+            Il confirme votre adresse. Le Travel Club TBA relit ensuite la demande. L’accès reste fermé jusque-là.
+          </p>
+        </section>
+      </div>
+    );
+  }
 
   return (
-    <form noValidate onSubmit={step === 0 ? next : submit}>
+    <form className="invite-night" noValidate onSubmit={step === 0 ? next : submit}>
+      {night}
       {step === 0 ? (
-        <div className="invite-sheet">
-          <header className="invite-mast">
-            <p className="invite-kicker">Sur invitation</p>
-            <p className="invite-wordmark">Travel Club TBA</p>
-            <div className="invite-rule" aria-hidden="true" />
-          </header>
-          <MemberCard
-            name={engraved}
-            number={hotelMemberNumber(prefill.invitationToken || phone || "invitation")}
-          />
-          {given ? <h1 className="invite-hello">{given},</h1> : <h1 className="sr-only">Invitation</h1>}
-          <p className="invite-offer">{TRAVEL_CLUB_OFFER}</p>
-          <ul className="invite-lines">
-            {TRAVEL_CLUB_PRIVILEGES.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-          <p className="invite-kicker invite-kicker-ink">Vos coordonnées</p>
-          <div className="mt-4 space-y-4">
-            <label className="block text-[13px] font-semibold">
-              Prénom
-              <input className="invite-field" value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" />
-            </label>
-            <label className="block text-[13px] font-semibold">
-              Nom
-              <input className="invite-field" value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" />
-            </label>
-            <label className="block text-[13px] font-semibold">
-              Adresse e-mail
-              <input className="invite-field" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
-            </label>
-            <label className="block text-[13px] font-semibold">
-              Téléphone
-              <input className="invite-field" type="tel" value={phone} readOnly aria-readonly="true" />
-            </label>
-            <p className="-mt-2 text-xs text-[#5c6570]">Ce numéro est celui de votre invitation.</p>
-            <label className="block text-[13px] font-semibold">
-              Date de naissance
-              <input className="invite-field" type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} />
-            </label>
-          </div>
-          {error ? <p className="mt-4 text-sm text-[var(--admin-red)]">{error}</p> : null}
-          <BusyBar active={loading} label="Envoi…" />
-          <button type="submit" disabled={loading} className="invite-submit mt-6">
-            Poursuivre
-          </button>
-          {linkUntil ? (
-            <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs leading-snug text-[#5c6570]">
-              <Icon name="lock" className="h-3.5 w-3.5 shrink-0 text-[#C9A24B]" />
-              Lien personnel, valable jusqu’au {linkUntil}.
-            </p>
-          ) : null}
-        </div>
+        <>
+          <section className="invite-hero" data-invite-hero="1">
+            <div className="invite-hero-grid">
+              <div className="invite-hero-card">
+                <p className="invite-kicker">Sur invitation</p>
+                <MemberCard
+                  name={engraved}
+                  number={hotelMemberNumber(prefill.invitationToken || phone || "invitation")}
+                />
+              </div>
+              <div className="invite-hero-copy">
+                <h1 className="invite-hello">{given ? `${given}, vous êtes attendu.` : "Vous êtes attendu."}</h1>
+                <div className="invite-rule" aria-hidden="true" />
+                <p className="invite-offer">{TRAVEL_CLUB_OFFER}</p>
+                <button type="button" className="invite-accept" onClick={revealForm}>
+                  Accepter l’invitation
+                </button>
+              </div>
+            </div>
+          </section>
+          <section id="invite-form" className="invite-form">
+            <ul className="invite-lines">
+              {TRAVEL_CLUB_PRIVILEGES.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            <p className="invite-kicker">Vos coordonnées</p>
+            <div className="mt-5 space-y-5">
+              <label className="invite-label">
+                Prénom
+                <input className="invite-field" value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" />
+              </label>
+              <label className="invite-label">
+                Nom
+                <input className="invite-field" value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" />
+              </label>
+              <label className="invite-label">
+                Adresse e-mail
+                <input className="invite-field" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
+              </label>
+              <label className="invite-label">
+                Téléphone
+                <input className="invite-field" type="tel" value={phone} readOnly aria-readonly="true" />
+              </label>
+              <p className="invite-note">Ce numéro est celui de votre invitation.</p>
+              <label className="invite-label">
+                Date de naissance
+                <input className="invite-field" type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} />
+              </label>
+            </div>
+            {error ? <p className="mt-4 text-sm text-[#e7b4b4]">{error}</p> : null}
+            <BusyBar active={loading} label="Envoi…" />
+            <button type="submit" disabled={loading} className="invite-accept mt-8">
+              Poursuivre
+            </button>
+            {linkUntil ? <p className="invite-link">Lien personnel, valable jusqu’au {linkUntil}.</p> : null}
+          </section>
+        </>
       ) : (
-        <div className="invite-sheet">
+        <section className="invite-form">
           <p className="invite-kicker">Votre accord</p>
-          <div className="mt-5 space-y-4">
-            <label className="flex items-start gap-2 text-sm">
-              <input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-1 accent-[#0B1F3A]" />
+          <div className="mt-6 space-y-4">
+            <label className="invite-check">
+              <input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} />
               <span>
-                J’accepte les <Link className="underline decoration-[#C9A24B]" href="/fr/legal">conditions générales</Link>.
+                J’accepte les <Link href="/fr/legal">conditions générales</Link>.
               </span>
             </label>
-            <label className="flex items-start gap-2 text-sm">
-              <input type="checkbox" checked={privacy} onChange={(event) => setPrivacy(event.target.checked)} className="mt-1 accent-[#0B1F3A]" />
+            <label className="invite-check">
+              <input type="checkbox" checked={privacy} onChange={(event) => setPrivacy(event.target.checked)} />
               <span>
                 J’accepte que le Travel Club TBA traite ces informations pour ma demande, selon la{" "}
-                <Link className="underline decoration-[#C9A24B]" href="/fr/confidentialite">politique de confidentialité</Link>.
+                <Link href="/fr/confidentialite">politique de confidentialité</Link>.
               </span>
             </label>
             <div className="absolute -left-[9999px] h-0 w-0 overflow-hidden" aria-hidden="true">
@@ -199,17 +223,17 @@ export function SignupWizard({ prefill, linkUntil }: { prefill: SignupPrefill; l
               </label>
             </div>
           </div>
-          {error ? <p className="mt-4 text-sm text-[var(--admin-red)]">{error}</p> : null}
+          {error ? <p className="mt-4 text-sm text-[#e7b4b4]">{error}</p> : null}
           <BusyBar active={loading} label="Envoi…" />
-          <div className="mt-6 flex gap-2">
+          <div className="mt-8 flex gap-3">
             <button type="button" className="invite-back" onClick={() => setStep(0)}>
               Revenir
             </button>
-            <button type="submit" disabled={loading} className="invite-submit">
+            <button type="submit" disabled={loading} className="invite-accept">
               {loading ? "Envoi…" : "Présenter ma demande"}
             </button>
           </div>
-        </div>
+        </section>
       )}
     </form>
   );
