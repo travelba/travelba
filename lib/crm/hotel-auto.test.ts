@@ -291,6 +291,69 @@ test("l’accueil montre l’état du paiement et le bouton manuel", () => {
   assert.equal(lines[0].href, "/admin/reservations/booking-1");
 });
 
+test("sans les tables, l’accueil et les réglages restent vides et la réservation continue", async () => {
+  const absent = { code: "42P01", message: "relation does not exist" };
+  const admin = {
+    from(table: string) {
+      const missing = table.startsWith("crm_hotel_auto") || table.startsWith("crm_hotel_notice") || table.startsWith("crm_hotel_charge");
+      const api = {
+        select() {
+          return api;
+        },
+        insert() {
+          return api;
+        },
+        eq() {
+          return api;
+        },
+        in() {
+          return api;
+        },
+        order() {
+          return api;
+        },
+        limit() {
+          return api;
+        },
+        maybeSingle: async () => (missing ? { data: null, error: absent } : { data: null, error: null }),
+        then(resolve: (value: unknown) => unknown) {
+          return Promise.resolve(missing ? { data: null, error: absent } : { data: [], error: null }).then(resolve);
+        },
+      };
+      return api;
+    },
+  };
+  const { loadAutonomousDesk, loadHotelAutoSettings, queueHotelAutoNotice } = await import("./hotel-auto-run");
+  const settings = await loadHotelAutoSettings(admin);
+  assert.equal(settings.payRequest, false);
+  assert.equal(settings.chargeEnabled, false);
+  assert.deepEqual(await loadAutonomousDesk(admin), []);
+  const queued = await queueHotelAutoNotice(admin, {
+    kind: "failed",
+    stayId: "stay-1",
+    bookingId: null,
+    reference: "TB-2026-0253",
+    client: "Camille Martin",
+    hotel: "Indigo",
+    city: "Bordeaux",
+    checkIn: "2026-11-27",
+    checkOut: "2026-11-28",
+    room: "Queen",
+    rate: "Flexible",
+    amountCents: 14274,
+    currency: "EUR",
+    payMethod: "agency",
+    supplier: "Little Emperors",
+    confirmation: null,
+    cancellable: true,
+    cancelDeadline: null,
+    cardLast4: "4242",
+    reason: "Refus",
+    origin: "https://travelba.fr",
+  });
+  assert.equal(queued, false);
+});
+
 test("le fichier navigateur ne charge pas Chromium empaqueté", async () => {
   const { readFileSync } = await import("node:fs");
   const browser = readFileSync(new URL("./hotel-charge-browser.ts", import.meta.url), "utf8");
