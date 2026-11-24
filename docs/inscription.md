@@ -4,7 +4,7 @@ Le Travel Club TBA est accessible sur invitation uniquement. Sans lien, `/inscri
 
 Migrations à jouer à la main, dans l’ordre, sans reset :
 
-1. `supabase/migrations/20261123200000_signup_requests.sql`
+1. `supabase/migrations/20261123210000_signup_requests.sql`
 2. `supabase/migrations/20261123220000_travel_club_referrals.sql`
 3. `supabase/migrations/20261123233000_club_platinum.sql`
 

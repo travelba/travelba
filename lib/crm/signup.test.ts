@@ -317,7 +317,7 @@ test("la file est un droit à part, fermé pour l’agent, et la migration pose 
   const classified = classifyAgencyRoute("POST", "/api/admin/inscriptions/11111111-1111-4111-8111-111111111111");
   assert.equal(classified?.permission, "review_signups");
   assert.equal(classifyAgencyRoute("GET", "/api/admin/inscriptions")?.permission, "review_signups");
-  const sql = readFileSync(join(process.cwd(), "supabase/migrations/20261123200000_signup_requests.sql"), "utf8");
+  const sql = readFileSync(join(process.cwd(), "supabase/migrations/20261123210000_signup_requests.sql"), "utf8");
   assert.match(sql, /enable row level security/);
   assert.match(sql, /revoke all on table public\.crm_signup_requests from public, anon, authenticated/);
   assert.match(sql, /crm_signup_requests_staff/);

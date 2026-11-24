@@ -1,6 +1,6 @@
 -- TBA - Travel Club : invitations de parrainage et plafond.
 -- Additive. Le décompte par défaut est l’envoi (`envoi`). `validee` ne compte que les filleuls validés.
--- À jouer à la main, après 20261123200000_signup_requests.sql.
+-- À jouer à la main, après 20261123210000_signup_requests.sql.
 
 alter table public.crm_signup_invitations
   add column if not exists kind text not null default 'admin',
