@@ -4,8 +4,10 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { HotelClubSheet } from "@/components/account/HotelClubSheet";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { Icon } from "@/components/crm/icons";
+import { greetingGivenName } from "@/lib/crm/identity";
 import { HOTEL_SEARCH_HERO_FALLBACK } from "@/lib/crm/hotel-search-home";
-import { TRAVEL_CLUB_OFFER } from "@/lib/crm/signup-options";
+import { TRAVEL_CLUB_OFFER, TRAVEL_CLUB_PRIVILEGES } from "@/lib/crm/signup-options";
 
 const fieldClass =
   "mt-1 w-full rounded-xl border border-[#0B192C]/10 bg-white px-3.5 py-2.5 text-[#0B192C] outline-none focus:border-[#C5A880] focus:ring-2 focus:ring-[#C5A880]/40";
@@ -20,7 +22,7 @@ export type SignupPrefill = {
   resume?: boolean;
 };
 
-export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
+export function SignupWizard({ prefill, linkUntil }: { prefill: SignupPrefill; linkUntil?: string | null }) {
   const [step, setStep] = useState(0);
   const [firstName, setFirstName] = useState(prefill.firstName || "");
   const [lastName, setLastName] = useState(prefill.lastName || "");
@@ -84,18 +86,31 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
     );
   }
 
+  const given = greetingGivenName(firstName);
   return (
     <form noValidate onSubmit={step === 0 ? next : submit} className="space-y-4">
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
-        <h1 className="mt-1 font-display text-2xl font-extrabold tracking-tight text-[#0B192C]">Vous êtes invité</h1>
-        <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8A7349]">Étape {step + 1} sur 2</p>
-      </div>
       {step === 0 ? (
         <>
-          <div className="hotel-theme min-w-0 max-w-full rounded-2xl">
+          <div>
+            <h1 className="font-display text-[1.65rem] font-extrabold leading-tight tracking-tight text-[#0B192C]">
+              Bonjour{given ? ` ${given}` : ""},
+            </h1>
+            <p className="mt-2 text-sm leading-relaxed text-[#0B192C]">{TRAVEL_CLUB_OFFER}</p>
+          </div>
+          <ul className="divide-y divide-[#C5A880]/30 overflow-hidden rounded-2xl border border-[#C5A880]/40 bg-white">
+            {TRAVEL_CLUB_PRIVILEGES.map((item) => (
+              <li key={item.title} className="flex items-start gap-3 px-3.5 py-3">
+                <Icon name={item.icon} className="mt-0.5 h-4 w-4 shrink-0 text-[#C5A880]" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold leading-snug text-[#0B192C]">{item.title}</span>
+                  <span className="mt-0.5 block text-[12px] leading-snug text-[#5c6570]">{item.note}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="hotel-theme min-w-0 max-w-full">
             <HotelClubSheet
-              embedded
+              cardOnly
               showPrices={false}
               firstName={firstName}
               lastName={lastName}
@@ -103,7 +118,6 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
               heroSrc={HOTEL_SEARCH_HERO_FALLBACK}
             />
           </div>
-          <p className="text-[13px] leading-snug text-[#0B192C]">{TRAVEL_CLUB_OFFER}</p>
           <label className="block text-[13px] font-semibold text-[#0B192C]">
             Prénom
             <input className={fieldClass} value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" />
@@ -128,6 +142,7 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
         </>
       ) : (
         <>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#8A7349]">Étape 2 sur 2</p>
           <label className="flex items-start gap-2 text-sm text-[#0B192C]">
             <input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-1 accent-[#0B192C]" />
             <span>
@@ -161,6 +176,12 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
           {step === 0 ? "Continuer" : loading ? "Envoi…" : "Déposer ma demande"}
         </button>
       </div>
+      {step === 0 && linkUntil ? (
+        <p className="flex items-center justify-center gap-1.5 text-center text-xs leading-snug text-[#5c6570]">
+          <Icon name="lock" className="h-3.5 w-3.5 shrink-0 text-[#C5A880]" />
+          Lien personnel, valable jusqu’au {linkUntil}.
+        </p>
+      ) : null}
     </form>
   );
 }

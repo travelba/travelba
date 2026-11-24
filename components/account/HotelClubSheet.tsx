@@ -29,6 +29,49 @@ import {
   hotelMemberNumber,
 } from "@/lib/crm/hotel-search-home";
 
+function ClubMemberCard({
+  firstName,
+  lastName,
+  customerId,
+  heroSrc,
+  untilLabel,
+  eyebrow,
+}: {
+  firstName: string;
+  lastName: string;
+  customerId: string;
+  heroSrc: string;
+  untilLabel: string;
+  eyebrow: string;
+}) {
+  return (
+    <div className="h-loyalty-wrap">
+      <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
+      <div className="h-member h-loyalty" data-card={HOTEL_ACCESS_LEVEL}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
+        <img src={heroSrc} alt="" width={960} height={540} decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-40" />
+        <div className="absolute inset-0 bg-[#0B192C]/78" aria-hidden />
+        <div className="relative flex h-full flex-col justify-between px-4 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <p className="h-card-kicker">{eyebrow}</p>
+            <AgencyLogo className="h-club-card-logo" alt="" />
+          </div>
+          <div className="h-card-foot">
+            <div className="min-w-0">
+              <p className="h-loyalty-value">
+                <span className="sr-only">{HOTEL_CLUB_FAMILY}</span>
+                {[greetingGivenName(firstName), lastName.trim()].filter(Boolean).join(" ") || "—"}
+              </p>
+              <p className="h-loyalty-number">{hotelMemberNumber(customerId)}</p>
+            </div>
+            <p className="h-card-until">{untilLabel}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** La carte du club, la même que l’icône Hôtel. `showPrices` faux masque les montants. */
 export function HotelClubSheet({
   firstName,
@@ -41,6 +84,7 @@ export function HotelClubSheet({
   eyebrow = HOTEL_ACCESS_EYEBROW,
   showPrices = true,
   embedded = false,
+  cardOnly = false,
   pricesOpen: pricesOpenProp,
   onPrices,
   onClose,
@@ -58,6 +102,8 @@ export function HotelClubSheet({
   eyebrow?: string;
   showPrices?: boolean;
   embedded?: boolean;
+  /** Invitation : la carte seule, sans la feuille Hôtels. */
+  cardOnly?: boolean;
   pricesOpen?: boolean;
   onPrices?: (open: boolean) => void;
   onClose?: () => void;
@@ -70,6 +116,20 @@ export function HotelClubSheet({
     else setLocalPrices(open);
   }
   const frame = embedded ? "h-club h-club-inline" : "h-club";
+  const memberCard = (
+    <ClubMemberCard
+      firstName={firstName}
+      lastName={lastName}
+      customerId={customerId}
+      heroSrc={heroSrc}
+      untilLabel={cardUntil || untilLabel}
+      eyebrow={eyebrow}
+    />
+  );
+
+  if (cardOnly) {
+    return <div className="min-w-0 max-w-full">{memberCard}</div>;
+  }
 
   if (pricesOpen) {
     return (
@@ -147,30 +207,7 @@ export function HotelClubSheet({
           </div>
         </div>
         <div className="h-loyalty-pad">
-          <div className="h-loyalty-wrap">
-            <p className="h-member-status">{HOTEL_ACCESS_LEVEL}</p>
-            <div className="h-member h-loyalty" data-card={HOTEL_ACCESS_LEVEL}>
-              {/* eslint-disable-next-line @next/next/no-img-element -- photo de lieu ou image déjà dans le projet */}
-              <img src={heroSrc} alt="" width={960} height={540} decoding="async" className="absolute inset-0 h-full w-full object-cover opacity-40" />
-              <div className="absolute inset-0 bg-[#0B192C]/78" aria-hidden />
-              <div className="relative flex h-full flex-col justify-between px-4 py-4">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="h-card-kicker">{eyebrow}</p>
-                  <AgencyLogo className="h-club-card-logo" alt="" />
-                </div>
-                <div className="h-card-foot">
-                  <div className="min-w-0">
-                    <p className="h-loyalty-value">
-                      <span className="sr-only">{HOTEL_CLUB_FAMILY}</span>
-                      {[greetingGivenName(firstName), lastName.trim()].filter(Boolean).join(" ") || "—"}
-                    </p>
-                    <p className="h-loyalty-number">{hotelMemberNumber(customerId)}</p>
-                  </div>
-                  <p className="h-card-until">{cardUntil || untilLabel}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+          {memberCard}
           <ol className="h-ladder" aria-label={HOTEL_CLUB_LADDER_LABEL} data-hotel-ladder="1">
             {HOTEL_CLUB_LADDER.map((name) => {
               const state = hotelClubLadderState(name);

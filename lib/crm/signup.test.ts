@@ -325,3 +325,23 @@ test("la file est un droit à part, fermé pour l’agent, et la migration pose 
   assert.doesNotMatch(sql, /for insert/);
   assert.match(sql, /signup_completed_at n'est pas posé|signup_completed_at n’est pas posé/);
 });
+
+test("l’invitation reprend la phrase Platinum, sans montant ni gestionnaire", async () => {
+  const { TRAVEL_CLUB_OFFER, TRAVEL_CLUB_PRIVILEGES } = await import("./signup-options");
+  const wizard = readFileSync(join(process.cwd(), "components/inscription/SignupWizard.tsx"), "utf8");
+  assert.match(wizard, /TRAVEL_CLUB_OFFER/);
+  assert.match(wizard, /cardOnly/);
+  assert.match(wizard, /Bonjour/);
+  assert.match(wizard, /Lien personnel, valable jusqu’au/);
+  assert.doesNotMatch(wizard, /Rang Platinum|chevron_left/);
+  assert.equal(
+    TRAVEL_CLUB_OFFER,
+    "Le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum jusqu’au 31 décembre 2026. Cette adhésion est nominative et réservée à vos propres réservations.",
+  );
+  assert.deepEqual(
+    TRAVEL_CLUB_PRIVILEGES.map((item) => item.title),
+    ["Hôtels d’exception", "Avantages membres", "Conciergerie dédiée"],
+  );
+  const shown = [TRAVEL_CLUB_OFFER, ...TRAVEL_CLUB_PRIVILEGES.map((item) => `${item.title} ${item.note}`)].join("\n");
+  assert.doesNotMatch(shown, /votre gestionnaire|€|\$|garanti|7j\/7/i);
+});

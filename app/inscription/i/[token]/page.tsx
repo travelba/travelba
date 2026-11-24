@@ -1,4 +1,5 @@
 import { SignupWizard } from "@/components/inscription/SignupWizard";
+import { expiresLabel } from "@/lib/crm/signup";
 import { openSignupInvitation } from "@/lib/crm/signup-run";
 
 export const dynamic = "force-dynamic";
@@ -15,5 +16,11 @@ export default async function InvitationSignupPage({ params }: { params: Promise
       </>
     );
   }
-  return <SignupWizard prefill={{ ...opened.prefill, invitationToken: token }} />;
+  const until = Date.parse(opened.expiresAt);
+  return (
+    <SignupWizard
+      prefill={{ ...opened.prefill, invitationToken: token }}
+      linkUntil={Number.isFinite(until) ? expiresLabel(new Date(until)) : null}
+    />
+  );
 }
