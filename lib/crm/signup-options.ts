@@ -17,23 +17,16 @@ export const TRAVEL_CLUB_RANK = "Platinum";
 export const TRAVEL_CLUB_OFFER =
   "Le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum jusqu’au 31 décembre 2026. Cette adhésion est nominative et réservée à vos propres réservations.";
 
-/** Trois lignes de l’invitation. Pas de montant, pas de « votre gestionnaire ». */
+/**
+ * Attentions de l’invitation, reprises du catalogue Platinum.
+ * Pas de montant, pas de pourcentage, pas de « votre gestionnaire ».
+ */
 export const TRAVEL_CLUB_PRIVILEGES = [
-  {
-    icon: "hotel",
-    title: "Hôtels d’exception",
-    note: "Un catalogue d’hôtels qui vous est réservé.",
-  },
-  {
-    icon: "coffee",
-    title: "Avantages membres",
-    note: "Petit-déjeuner offert. Surclassement prioritaire, selon l’hôtel.",
-  },
-  {
-    icon: "headset",
-    title: "Conciergerie dédiée",
-    note: "Le Concierge suit le séjour et répond.",
-  },
+  "Un catalogue d’hôtels aux conditions qui vous sont réservées.",
+  "Le petit-déjeuner est offert.",
+  "Le surclassement est prioritaire, selon l’hôtel.",
+  "L’arrivée peut être anticipée, le départ tardif, selon l’hôtel.",
+  "Le transfert depuis l’aéroport, selon l’hôtel.",
 ] as const;
 export const REFERRAL_CAP = 10;
 export const CLUB_RENEWAL_NOTICE_DAYS = 45;
