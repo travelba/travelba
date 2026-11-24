@@ -615,6 +615,14 @@
 .hotel-theme .h-status-card .h-benefit-line {
   color: #1a1a1a;
 }
+.hotel-theme .h-club.h-club-inline {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  bottom: auto;
+  background: #f4efe6;
+  color: #1a1a1a;
+}
 .hotel-theme .h-club {
   position: fixed;
   top: 0;

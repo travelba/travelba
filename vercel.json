@@ -65,6 +65,10 @@
     {
       "path": "/api/cron/ratehawk-content",
       "schedule": "10 3 * * *"
+    },
+    {
+      "path": "/api/cron/club-new-year",
+      "schedule": "30 23 31 12 *"
     }
   ]
 }

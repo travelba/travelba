@@ -210,6 +210,8 @@
     "dataTitle": "Données personnelles",
     "dataText": "Les informations transmises via le formulaire de contact sont utilisées uniquement pour traiter votre demande. Conformément au RGPD, vous disposez d'un droit d'accès, de rectification et de suppression de vos données en écrivant à {email}.",
     "privacyLink": "Lire la politique de confidentialité",
+    "clubTitle": "Travel Club TBA",
+    "clubText": "Le Travel Club TBA a le plaisir d’offrir l’adhésion Platinum jusqu’au 31 décembre 2026. Cette adhésion est nominative et réservée aux propres réservations du membre. Elle ne se transmet pas. Le renouvellement n’est pas automatique.",
     "fields": {
       "legalName": "Dénomination sociale",
       "legalForm": "Forme juridique",

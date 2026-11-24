@@ -128,6 +128,7 @@ test("le titre court est le libellé du menu, ou le titre de la page à onglets"
   assert.equal(adminPageTitle(groups, "/admin/reservations/abc-123"), "Dossier");
   assert.equal(adminPageTitle(groups, "/admin/clients/abc"), "Fiche client");
   assert.equal(adminPageTitle(groups, "/admin/clients", "?filtre=echeance"), "Clients");
+  assert.equal(adminPageTitle(groups, "/admin/inscriptions"), "Inscriptions");
   assert.equal(adminPageTitle(groups, "/admin/recherche", "?q=x"), "Recherche");
   assert.equal(adminPageTitle(groups, "/admin/inconnu"), "Espace agence");
 });

@@ -32,6 +32,7 @@ import {
   connexionMessage,
   withConciergeSignature,
 } from "./whatsapp";
+import { newYearMessage } from "./club-new-year";
 
 const PLACE = "Avoriaz";
 const REFERENCE = "TB-EXEMPLE";
@@ -475,6 +476,27 @@ function catalogGroups(): WhatsappCatalogGroup[] {
   const empty = sampleDossier([]);
 
   return [
+    {
+      id: "travel-club",
+      title: "Travel Club TBA",
+      intro:
+        "Prolongation du 1er janvier. Le modèle n’est pas envoyé tant que NEW_YEAR_EXTENSION_ENABLED n’est pas à 1. La variable est « Bonjour Camille. » ou « Bonjour. » si le prénom est vide.",
+      messages: [
+        message({
+          id: "bonne-annee",
+          title: "Bonne année, adhésion prolongée",
+          when: "Le 1er janvier 2027 à 0 h 30, heure de Paris, pour chaque membre Platinum dont la fin est le 31 décembre 2026.",
+          bubble: {
+            body: newYearMessage(FIRST_NAME),
+            button: null,
+            photo: false,
+            image: null,
+            imageAlt: null,
+            modelName: "bonne_annee_prolongation",
+          },
+        }),
+      ],
+    },
     {
       id: "acces",
       title: "Accès à l’espace",

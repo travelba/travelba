@@ -18,7 +18,7 @@ Deux mondes, un Supabase Auth.
 | Rôle JWT | `app_metadata.crm_role` = `admin` \| `agent` | `crm_role=client` |
 | Après login | `/admin` | mot de passe à définir → bienvenue (une fois) → profil si pas de téléphone, sinon `/mon-compte` |
 
-Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ensureCustomerForUser` **lie** un user à un customer existant par email, ne crée pas de fiche.
+Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ensureCustomerForUser` **lie** un user à un customer existant par email, ne crée pas de fiche. `/inscription` sans jeton n’ouvre aucun formulaire. Une demande ne part que depuis `/inscription/i/{jeton}` (invitation agence ou parrainage) et reste en file (`/admin/inscriptions`) jusqu’au clic Valider, qui réutilise `inviteCustomer`.
 
 ## Créer ≠ Inviter
 

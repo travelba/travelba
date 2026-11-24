@@ -39,7 +39,7 @@ Sur l’iPhone, le prochain séjour, le vol et la météo de la destination peuv
 
 Photographiez un passeport depuis l’appareil. Partagez une pièce avec la feuille de partage du téléphone. Au retour dans l’application, Face ID la déverrouille.
 
-L’agence invite. Il n’y a pas d’inscription ouverte, et le back-office n’est pas dans l’application.
+L’agence valide chaque demande venue d’une invitation. Sans lien, l’écran dit que le Travel Club TBA est accessible sur invitation uniquement. Le back-office n’est pas dans l’application.
 
 ### Étiquette de confidentialité
 
@@ -63,7 +63,9 @@ Le calendrier de l’iPhone n’est pas lu et n’est pas une donnée collectée
 
 À coller dans App Review Information.
 
-L’application montre d’abord l’écran local (séjour déjà connu sur l’appareil), puis ouvre l’espace sur `https://travelba.fr`. Les cookies de session restent ceux du site. Il n’y a pas d’inscription ouverte : l’agence crée le compte et envoie l’invitation. Le back-office `/admin` est refusé (redirection vers la connexion, et le délégué de navigation annule la page).
+L’application montre d’abord l’écran local (séjour déjà connu sur l’appareil), puis ouvre l’espace sur `https://travelba.fr`. Les cookies de session restent ceux du site. Une demande ne part que depuis un lien d’invitation. L’espace reste fermé tant que l’agence n’a pas validé, puis l’invitation habituelle ouvre le compte. Le back-office `/admin` est refusé (redirection vers la connexion, et le délégué de navigation annule la page).
+
+Connexion du client : e-mail et mot de passe, ou lien magique. Pas de connexion tierce dans l’application. Sign in with Apple n’est pas exigé dans cet état (guideline 4.8). Il le deviendrait si le client pouvait se connecter avec Google, Facebook ou un autre fournisseur. La connexion Google de l’agence n’est pas dans l’application.
 
 Fonctions natives : notifications Apple, widgets d’écran d’accueil (prochain séjour, prochain vol, météo de la destination), activité en direct le jour du vol (écran verrouillé et Dynamic Island : numéro, trajet, heure, porte, terminal, statut), Face ID au retour (résultat gardé sur l’appareil), appareil photo pour une pièce ou un message, feuille de partage, calendrier (écriture seule à partir d’iOS 17 : les étapes du séjour, sans lire les autres événements), écran hors ligne, écran de lancement. Les widgets lisent un résumé déjà chargé par l’application. L’activité en direct ne démarre que le jour du vol, dans l’application, ou par une notification Apple si l’iPhone le permet. Un iPhone plus ancien garde la notification classique.
 
@@ -78,7 +80,7 @@ Compte de démonstration :
 - E-mail : `appreview@travelba.fr` (`is_test`)
 - Mot de passe : celui posé pour la revue, hors dépôt
 
-L’agence publie un séjour d’exemple visible sur cette fiche. Ne pas utiliser un client réel. Si la revue supprime le compte, la fiche anonymisée reste pour les dossiers. Recréer l’accès avec `APPREVIEW_PASSWORD='…' APPREVIEW_CONFIRM=1 npx tsx scripts/recreate-appreview-account.ts` (12 caractères minimum, le mot de passe n’est pas affiché). Le script refuse une adresse d’agence.
+L’agence publie un séjour d’exemple visible sur cette fiche. Il n’y a pas de demande libre : sans validation, aucun séjour n’est ouvert. Ne pas utiliser un client réel. Si la revue supprime le compte, la fiche anonymisée reste pour les dossiers. Recréer l’accès avec `APPREVIEW_PASSWORD='…' APPREVIEW_CONFIRM=1 npx tsx scripts/recreate-appreview-account.ts` (12 caractères minimum, le mot de passe n’est pas affiché). Le script refuse une adresse d’agence.
 
 ## Ce que Benjamin fait, dans l’ordre
 

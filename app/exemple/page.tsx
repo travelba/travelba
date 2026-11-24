@@ -90,12 +90,12 @@ export default async function ExampleHomePage() {
     <AccountPage>
     <div className="space-y-3">
       <section className="flex flex-col gap-1 pt-1">
-        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
-          Travel Business Agency · Espace membre
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">Travel Club TBA</p>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Bonjour {firstName}</h1>
+        <p className="text-sm leading-relaxed text-muted">
+          Le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum jusqu’au 31 décembre 2026. Cette adhésion est
+          nominative et réservée à vos propres réservations.
         </p>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">
-          Bonjour {firstName}
-        </h1>
       </section>
 
       <TravelNotices

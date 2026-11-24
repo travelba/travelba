@@ -28,6 +28,8 @@ import {
 } from "@/components/account/HomeTripExtras";
 import { Icon } from "@/components/crm/icons";
 import { greetingGivenName } from "@/lib/crm/identity";
+import { TRAVEL_CLUB_OFFER } from "@/lib/crm/signup-options";
+import { formatClubDate } from "@/lib/crm/signup";
 import { clientHidesPrices, foreignPriceOwnerIds, stayHidesPrices, stripClientMoneyItem } from "@/lib/crm/client-price-privacy";
 import { hiddenPriceCustomerIds } from "@/lib/crm/client-price-privacy-load";
 
@@ -73,12 +75,9 @@ export default async function AccountHomePage({ searchParams }: { searchParams: 
       <div className="space-y-3">
         {confirme === "1" ? <StayConfirmedNote /> : null}
         <section className="flex flex-col gap-1 pt-1">
-          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
-            Travel Business Agency · Espace membre
-          </p>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">
-            Bonjour {firstName}
-          </h1>
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">Travel Club TBA</p>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Bonjour {firstName}</h1>
+          <ClubHomeLine customer={customer} />
         </section>
 
         <TravelNotices />
@@ -99,6 +98,20 @@ export default async function AccountHomePage({ searchParams }: { searchParams: 
       </div>
     </AccountPage>
   );
+}
+
+function ClubHomeLine({ customer }: { customer: CrmCustomer }) {
+  const start = customer.club_started_on;
+  const end = customer.club_ends_on;
+  if (customer.club_rank === "platinum" && start && end) {
+    return (
+      <p className="text-sm leading-relaxed text-muted">
+        Adhésion Platinum, du {formatClubDate(start)} au {formatClubDate(end)}. Elle est nominative et réservée à vos
+        propres réservations.
+      </p>
+    );
+  }
+  return <p className="text-sm leading-relaxed text-muted">{TRAVEL_CLUB_OFFER}</p>;
 }
 
 function HomeEncoursSkeleton() {

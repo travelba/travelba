@@ -1,5 +1,5 @@
 /**
- * Cadence des 16 crons Vercel. L’heure est UTC.
+ * Cadence des crons Vercel. L’heure est UTC.
  * Les minutes sont décalées : plus rien ne part ensemble à :00, :15, :30 et :45.
  * Le détail de chaque choix est `reason`. Le test compare `schedule` à vercel.json.
  */
@@ -101,5 +101,11 @@ export const CRON_CADENCE: CronCadence[] = [
     path: "/api/cron/ratehawk-content",
     schedule: "10 3 * * *",
     reason: "Le catalogue Ratehawk reste nocturne, une fois par jour, à 3 h 10 UTC, avant la matinée de l’agence.",
+  },
+  {
+    path: "/api/cron/club-new-year",
+    schedule: "30 23 31 12 *",
+    reason:
+      "Une fois par an : 31 décembre 23 h 30 UTC, soit le 1er janvier à 0 h 30, heure de Paris. Sans NEW_YEAR_EXTENSION_ENABLED=1, le passage ne fait que lister.",
   },
 ];

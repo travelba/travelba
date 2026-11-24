@@ -152,6 +152,26 @@ export function classifyAgencyRoute(method: string, rawPath: string): AgencyRout
     });
   }
 
+  if (/^\/api\/admin\/clients\/[0-9a-f-]{36}\/adhesion$/i.test(path)) {
+    return classify({
+      permission: "review_signups",
+      action: "update",
+      entity: "client",
+      journal: true,
+      summary: "Adhésion Platinum renouvelée d’un an.",
+    });
+  }
+
+  if (path.startsWith("/api/admin/inscriptions")) {
+    return classify({
+      permission: "review_signups",
+      action: mutation ? (path.endsWith("/invitations") ? "send" : action) : "view",
+      entity: "client",
+      journal: mutation,
+      summary: mutation ? "Demande d’inscription relue." : undefined,
+    });
+  }
+
   if (path.startsWith("/api/admin/cles")) {
     // La route écrit le préfixe et le propriétaire. La clé en clair n’entre pas au journal.
     return classify({

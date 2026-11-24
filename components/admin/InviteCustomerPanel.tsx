@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { PortalAccess } from "@/lib/crm/invite";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
@@ -175,6 +176,9 @@ export function InviteCustomerPanel({
             Mot de passe perdu ? Renvoyer l’invitation
           </button>
         ) : null}
+        <Link href={`/admin/inscriptions?fiche=${customerId}`} className="text-xs font-semibold text-muted underline-offset-2 hover:underline">
+          Invitation d’inscription par WhatsApp
+        </Link>
         <ConfirmAction
           label="Renvoyer ses accès par WhatsApp"
           question="Renvoyer les accès de ce client par WhatsApp ?"

@@ -192,6 +192,10 @@ export type CrmCustomer = {
   /** Droit de dépense en euros sur le wallet société. Null = pas de plafond personnel. */
   spending_allowance?: number | null;
   language: string;
+  /** Platinum dès la validation. Vide tant que la migration n’est pas jouée ou le membre pas encore validé par ce parcours. */
+  club_rank?: "platinum" | null;
+  club_started_on?: string | null;
+  club_ends_on?: string | null;
   /** Le client a ouvert un lien WhatsApp. Sans cette date, aucun message proactif. */
   whatsapp_opt_in_at?: string | null;
   /** Le client a demandé l’arrêt. Les messages proactifs s’arrêtent. */
