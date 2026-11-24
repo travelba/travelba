@@ -43,7 +43,8 @@ import {
   withoutUnheardVoice,
 } from "./whatsapp-voice";
 import { schemaMissesColumn } from "./whatsapp-inbox";
-import { loadCollaboratorTripOwnerIds } from "./company-peers";
+import { applyClientBookingScope } from "./company-role";
+import { clientBookingScope } from "./company-peers";
 import { filledLoyaltyLabels, loyaltyFromCustomer } from "./loyalty";
 import {
   commitClientChange,
@@ -1121,18 +1122,22 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
     async loadDossier(customerId) {
       const { data: holder, error: holderError } = await admin
         .from("crm_customers")
-        .select("id, company_role, billing_parent_id, language, flying_blue, loyalty")
+        .select("id, company_role, billing_parent_id, first_name, last_name, usage_name, language, flying_blue, loyalty")
         .eq("id", customerId)
         .maybeSingle();
       if (holderError) throw holderError;
-      const ownerIds = holder ? await loadCollaboratorTripOwnerIds(admin, holder) : [customerId];
-      const { data: bookings, error: bookingError } = await admin
-        .from("crm_bookings")
-        .select(
-          "id, reference, title, destination, start_date, end_date, currency, total_amount, notes_client, visible_to_client, prices_visible, cover_image_path, share_code"
-        )
-        .in("customer_id", ownerIds)
-        .is("archived_at", null);
+      const scope = holder
+        ? await clientBookingScope(holder)
+        : { ownerIds: [customerId], travelerBookingIds: [] as string[] };
+      const { data: bookings, error: bookingError } = await applyClientBookingScope(
+        admin
+          .from("crm_bookings")
+          .select(
+            "id, reference, title, destination, start_date, end_date, currency, total_amount, notes_client, visible_to_client, prices_visible, cover_image_path, share_code"
+          )
+          .is("archived_at", null),
+        scope
+      );
       if (bookingError) throw bookingError;
       // La photo du séjour exige le code de partage : on le crée pour un séjour publié qui en a une.
       for (const booking of bookings || []) {

@@ -63,6 +63,7 @@ import { BookingHero } from "@/components/crm/BookingHero";
 import { FilePreviewLink } from "@/components/crm/FilePreview";
 import { identityPreview } from "@/lib/crm/preview-files";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
+import { bookingIdsWhereClientTravels } from "@/lib/crm/company-role";
 import { ficheBookingTravelerLine, ficheTravelerCaption, mergeFicheBookings } from "@/lib/crm/fiche-bookings";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
 import { displayedEncours, sepaHoldBadge } from "@/lib/crm/sepa-hold";
@@ -173,10 +174,28 @@ export default async function AdminClientDetailPage({ params }: Props) {
   const mb3mCompanyIds = mb3mRows.map((row) => row.billing_company_id).filter((value): value is string => Boolean(value));
   const logins = loginError ? [] : ((loginRows || []) as CrmCustomerLogin[]);
   const activity = activityError ? [] : ((activityRows || []) as CrmCustomerActivity[]);
-  const bookingRows = mergeFicheBookings(
-    (bookings || []) as CrmBooking[],
-    (billedBookings || []) as CrmBooking[]
+  const foreignBilled = ((billedBookings || []) as CrmBooking[]).filter((row) => row.customer_id !== id);
+  let traveledIds = new Set<string>();
+  if (foreignBilled.length) {
+    const { data: travelerRows } = await supabase
+      .from("crm_booking_travelers")
+      .select("booking_id, first_name, last_name")
+      .in(
+        "booking_id",
+        foreignBilled.map((row) => row.id)
+      );
+    traveledIds = new Set(
+      bookingIdsWhereClientTravels(
+        c,
+        (travelerRows || []) as { booking_id: string; first_name: string | null; last_name: string | null }[]
+      )
+    );
+  }
+  const billedForFiche = ((billedBookings || []) as CrmBooking[]).filter(
+    (row) => row.customer_id === id || traveledIds.has(row.id)
   );
+  const hiddenTeamTrips = foreignBilled.filter((row) => !traveledIds.has(row.id)).length;
+  const bookingRows = mergeFicheBookings((bookings || []) as CrmBooking[], billedForFiche);
   const activeBookings = bookingRows.filter((row) => !row.archived_at);
   const archivedBookings = bookingRows.filter((row) => row.archived_at);
   const travelerIds = [
@@ -376,9 +395,14 @@ export default async function AdminClientDetailPage({ params }: Props) {
             Nouveau dossier
           </Link>
         </div>
-        {activeBookings.some((row) => row.customer_id !== id) ? (
+        {hiddenTeamTrips ? (
           <p className="mt-2 text-xs text-muted">
-            Les séjours facturés sur ce compte figurent ici, avec le nom du voyageur.
+            Les voyages des collaborateurs facturés sur ce compte ne figurent pas ici. Les dépenses restent dans les
+            transactions.
+          </p>
+        ) : activeBookings.some((row) => row.customer_id !== id) ? (
+          <p className="mt-2 text-xs text-muted">
+            Ce client voyage sur un dossier facturé ici. Le nom est celui du titulaire.
           </p>
         ) : null}
         {activeBookings.length ? (

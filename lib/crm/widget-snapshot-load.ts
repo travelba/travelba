@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadVisibleCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
 import { clientStayFace } from "@/lib/crm/client-stay-face";
 import { isClientUpcomingStay } from "@/lib/crm/client-stays";
-import { clientTripOwnerIds } from "@/lib/crm/company-peers";
+import { clientBookingScope } from "@/lib/crm/company-peers";
 import { destinationWeather } from "@/lib/crm/destination-weather";
 import { stayToday } from "@/lib/crm/stay-moment";
 import type { CrmBookingItem, CrmCustomer } from "@/lib/crm/types";
@@ -21,8 +21,13 @@ export async function loadClientWidgetSnapshot(auth: {
 }): Promise<WidgetSnapshot> {
   const now = auth.now || new Date();
   const today = stayToday(now);
-  const ownerIds = await clientTripOwnerIds(auth.customer);
-  const bookings = await loadVisibleCarnets(auth.supabase, auth.customer.id, ownerIds);
+  const scope = await clientBookingScope(auth.customer);
+  const bookings = await loadVisibleCarnets(
+    auth.supabase,
+    auth.customer.id,
+    [...scope.ownerIds],
+    [...scope.travelerBookingIds]
+  );
   const next =
     sortBookingsByStart(
       bookings.filter((booking) => isClientUpcomingStay(booking)),

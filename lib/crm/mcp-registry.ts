@@ -1112,7 +1112,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "definir_role_societe",
     write: true,
     description:
-      "Pose le rôle du client sur sa société, comme la fiche agence. admin : wallet société, voit les carnets publiés de ses collaborateurs. membre : collaborateur, payeur_id est l’admin société qui paie (pas lui-même, pas un autre collaborateur). particulier : ni payeur ni plafond. droit_depense est le plafond en euros, vide pour l’effacer. Aucun message.",
+      "Pose le rôle du client sur sa société, comme la fiche agence. admin : wallet société, voit les dépenses de son équipe, pas le carnet d’un collaborateur (ses dossiers et ceux où il voyage restent). membre : collaborateur, payeur_id est l’admin société qui paie (pas lui-même, pas un autre collaborateur). particulier : ni payeur ni plafond. droit_depense est le plafond en euros, vide pour l’effacer. Aucun message.",
     input: {
       id: z.string().trim().describe("Identifiant du client"),
       role: z.string().trim().describe("admin, membre ou particulier"),

@@ -21,7 +21,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { EmptyState } from "@/components/crm/ui";
 import { resolveListCovers } from "@/lib/crm/cover-resolve";
 import { loadClientCarnets, sortBookingsByStart } from "@/lib/crm/carnet-query";
-import { clientTripOwnerIds, clientTwinIds } from "@/lib/crm/company-peers";
+import { clientBookingScope, clientTwinIds } from "@/lib/crm/company-peers";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { BoardingReadyNote } from "@/components/account/BoardingPassStack";
 import { boardingPassBookingIds } from "@/lib/crm/client-boarding-pass-load";
@@ -44,8 +44,14 @@ export default async function ReservationsPage({
   if (!customer) redirect("/connexion");
 
   console.time("[espace] reservations");
-  const [ownerIds, twinIds] = await Promise.all([clientTripOwnerIds(customer), clientTwinIds(customer.id)]);
-  const { bookings: loaded, faces } = await loadClientCarnets(supabase, customer.id, ownerIds, customer.city);
+  const [scope, twinIds] = await Promise.all([clientBookingScope(customer), clientTwinIds(customer.id)]);
+  const { bookings: loaded, faces } = await loadClientCarnets(
+    supabase,
+    customer.id,
+    [...scope.ownerIds],
+    customer.city,
+    [...scope.travelerBookingIds]
+  );
   const all = loaded.map((booking) => applyClientStayFace(booking, faces[booking.id]));
   const viewerHides = clientHidesPrices(customer);
   const hiddenOwners = viewerHides

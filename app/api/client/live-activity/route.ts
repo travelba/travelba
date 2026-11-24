@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
-import { clientTripOwnerIds } from "@/lib/crm/company-peers";
+import { applyClientBookingScope } from "@/lib/crm/company-role";
+import { clientBookingScope } from "@/lib/crm/company-peers";
 import { parseLiveActivityEnd, parseLiveActivityRegistration } from "@/lib/crm/live-activity";
 import { isActiveItem, type CrmBookingItem, type CrmCustomer } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -22,13 +23,10 @@ async function ownedFlight(
   flightNumber: string | null
 ) {
   const admin = createServiceClient();
-  const owners = await clientTripOwnerIds(customer);
-  const bookings = await admin
-    .from("crm_bookings")
-    .select("id")
-    .in("customer_id", owners)
-    .eq("visible_to_client", true)
-    .is("archived_at", null);
+  const bookings = await applyClientBookingScope(
+    admin.from("crm_bookings").select("id").eq("visible_to_client", true).is("archived_at", null),
+    await clientBookingScope(customer)
+  );
   if (bookings.error) return { error: bookings.error, item: null as { id: string } | null };
   const ids = ((bookings.data || []) as { id: string }[]).map((row) => row.id);
   if (!ids.length) return { error: null, item: null };
