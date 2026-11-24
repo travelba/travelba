@@ -2,8 +2,9 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
+import { HotelClubSheet } from "@/components/account/HotelClubSheet";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { PlatinumInviteCard, PlatinumInviteRights } from "@/components/inscription/PlatinumInviteCard";
+import { HOTEL_SEARCH_HERO_FALLBACK } from "@/lib/crm/hotel-search-home";
 import { TRAVEL_CLUB_OFFER } from "@/lib/crm/signup-options";
 
 const fieldClass =
@@ -84,15 +85,25 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
   }
 
   return (
-    <form noValidate onSubmit={step === 0 ? next : submit} className="space-y-2">
+    <form noValidate onSubmit={step === 0 ? next : submit} className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
         <h1 className="mt-1 font-display text-2xl font-extrabold tracking-tight text-[#0B192C]">Vous êtes invité</h1>
         <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8A7349]">Étape {step + 1} sur 2</p>
       </div>
-      <PlatinumInviteCard firstName={firstName} lastName={lastName} />
       {step === 0 ? (
         <>
+          <div className="hotel-theme -mx-4 overflow-hidden rounded-2xl sm:-mx-5">
+            <HotelClubSheet
+              embedded
+              showPrices={false}
+              firstName={firstName}
+              lastName={lastName}
+              customerId={prefill.invitationToken || phone || "invitation"}
+              heroSrc={HOTEL_SEARCH_HERO_FALLBACK}
+            />
+          </div>
           <p className="text-[13px] leading-snug text-[#0B192C]">{TRAVEL_CLUB_OFFER}</p>
           <label className="block text-[13px] font-semibold text-[#0B192C]">
             Prénom
@@ -118,7 +129,6 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
         </>
       ) : (
         <>
-          <PlatinumInviteRights />
           <label className="flex items-start gap-2 text-sm text-[#0B192C]">
             <input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-1 accent-[#0B192C]" />
             <span>
@@ -141,8 +151,9 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
         </>
       )}
       {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
+      </div>
       <BusyBar active={loading} label="Envoi…" />
-      <div className="flex gap-2">
+      <div className="flex shrink-0 gap-2 bg-[#f6f3ec] pt-2">
         {step > 0 ? (
           <button type="button" className="rounded-full border border-[#0B192C]/35 px-4 py-3 text-sm font-semibold text-[#0B192C]" onClick={() => setStep(0)}>
             Retour
