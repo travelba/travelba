@@ -22,6 +22,7 @@ import {
   pliantStopCovers,
   pliantStopNote,
   documentMoney,
+  exactStayCeiling,
   majorToCents,
   planHotelArrival,
   principalGuest,
@@ -44,6 +45,8 @@ import { manualPliantCardIds, rememberPliantCard, setRememberedCardLimit } from 
 import { issuePliantCard, pliantConfigured, readPliantCardFace, setPliantCardLimit } from "./pliant";
 import { PLIANT_SINGLE_USE } from "./pliant-controls";
 import { pliantReferenceRates } from "./visa-ecb";
+import { isAutonomousStay, type HotelAutoSettings } from "./hotel-auto";
+import { enqueueHotelCharge, loadHotelAutoSettings, sendAutonomousPayRequest } from "./hotel-auto-run";
 import { isActiveItem } from "./types";
 import type {
   CrmBookingItem,
@@ -67,6 +70,8 @@ export type ArrivalDeps = {
   issueCard?: (body: unknown) => Promise<{ cardId: string | null }>;
   setLimit?: (cardId: string, limit: { value: number; currency: string }, count: number | null) => Promise<void>;
   findReplies?: (emails: string[], sinceMs: number) => Promise<Reply[]>;
+  auto?: HotelAutoSettings;
+  deliverPayRequest?: (mail: { to: string; subject: string; text: string }) => Promise<boolean>;
 };
 
 type CardAttempt = {
@@ -102,6 +107,8 @@ function sourceFamily(item: CrmBookingItem) {
 }
 
 function channelOf(item: CrmBookingItem): HotelArrivalChannel {
+  const explicit = item.details?.arrival_channel;
+  if (explicit === "direct" || explicit === "little_emperors" || explicit === "expedia") return explicit;
   return hotelChannel({
     sourceFamily: sourceFamily(item),
     supplier: item.supplier,
@@ -364,6 +371,7 @@ async function alignStayCard(input: {
   limitManual?: boolean;
   stayItems?: CrmBookingItem[];
   stayArrivals?: CrmHotelArrival[];
+  exactEur?: boolean;
 }) {
   const channel = channelOf(input.item);
   const row = input.row.channel === channel ? input.row : { ...input.row, channel };
@@ -375,7 +383,8 @@ async function alignStayCard(input: {
     if (row.channel !== input.row.channel) await save(input.admin, row.id, { channel });
     return row;
   }
-  const provision = stayProvisionFor(input.item, row, input.bookingCurrency, input.le);
+  const priced = stayProvisionFor(input.item, row, input.bookingCurrency, input.le);
+  const provision = priced && input.exactEur ? exactStayCeiling(priced) : priced;
   if (!provision) {
     if (row.channel !== input.row.channel) await save(input.admin, row.id, { channel });
     return row;
@@ -529,6 +538,7 @@ export async function syncStayCards(
   );
   const parisToday = parisIsoDate(input.deps?.now || new Date());
   const deps = input.deps || {};
+  if (!deps.auto) deps.auto = await loadHotelAutoSettings(admin);
   const manualCards = await manualPliantCardIds(
     admin,
     rows.map((row) => row.pliant_card_id || "")
@@ -538,6 +548,7 @@ export async function syncStayCards(
     if (!row) continue;
     const le = leStayAmount({ checkIn: isoDate(item.start_at), hotelName: hotelDisplayName(item) }, leRows);
     const index = rows.findIndex((entry) => entry.id === row.id);
+    const auto = deps.auto;
     rows[index] = await alignStayCard({
       admin,
       row,
@@ -553,6 +564,7 @@ export async function syncStayCards(
       limitManual: Boolean(row.pliant_card_id && manualCards.has(row.pliant_card_id)),
       stayItems: hotels,
       stayArrivals: rows,
+      exactEur: auto?.chargeEnabled === true && isAutonomousStay(item.details),
     });
   }
   await raiseSharedStayLimit(admin, rows, deps, manualCards);
@@ -633,6 +645,7 @@ export async function runHotelArrivals(admin: Admin, deps: ArrivalDeps = {}, onl
   const now = deps.now || new Date();
   const parisToday = parisIsoDate(now);
   const fetchImpl = deps.fetchImpl || fetch;
+  if (!deps.auto) deps.auto = await loadHotelAutoSettings(admin);
   const { data: openRows } = await admin.from("crm_hotel_arrivals").select("*").neq("status", "closed");
   const open = (openRows || []) as CrmHotelArrival[];
   const windowStart = addIsoDays(parisToday, -8);
@@ -797,6 +810,7 @@ async function stepArrival(input: {
     limitManual: Boolean(input.arrival.pliant_card_id && arrivalManual.has(input.arrival.pliant_card_id)),
     stayItems: input.stayItems,
     stayArrivals: input.stayArrivals,
+    exactEur: input.deps.auto?.chargeEnabled === true && isAutonomousStay(input.item.details),
   });
   const { data: limitRows } = await input.admin
     .from("crm_hotel_arrivals")
@@ -854,6 +868,8 @@ async function stepArrival(input: {
       cardId: row.pliant_card_id,
       cardClosed: Boolean(row.card_closed_at),
       blockedReason: row.blocked_reason,
+      autonomous: isAutonomousStay(input.item.details),
+      autoPayRequest: input.deps.auto?.payRequest === true,
     };
     const plan = planHotelArrival(tick);
     if (plan.action === "wait") break;
@@ -878,7 +894,63 @@ async function stepArrival(input: {
       await save(input.admin, row.id, row);
       break;
     }
+    if (plan.action === "request") {
+      const guest = guestName(input.travelers, input.holder);
+      const result = await sendAutonomousPayRequest(input.admin, {
+        arrivalId: row.id,
+        bookingId: input.booking.id,
+        hotel: hotelDisplayName(input.item),
+        reference: input.item.confirmation_ref || input.booking.reference || "—",
+        checkIn,
+        checkOut,
+        amountCents: row.amount_cents,
+        currency: row.currency || "EUR",
+        emails,
+        country: contact.country || "",
+        guest: [guest.firstName, guest.lastName].filter(Boolean).join(" "),
+        relance: plan.relance,
+        status: row.status,
+        requestedAt: row.requested_at,
+        lastRelanceAt: row.last_relance_at,
+        relanceCount: row.relance_count || 0,
+        now: input.now,
+        deliver: input.deps.deliverPayRequest,
+      });
+      if (!result.sent) {
+        await save(input.admin, row.id, { task_open: true, task_note: result.note });
+      }
+      break;
+    }
     if (plan.action === "pay") {
+      if (isAutonomousStay(input.item.details) && input.deps.auto?.chargeEnabled && row.payment_url) {
+        const outcome = await enqueueHotelCharge(input.admin, {
+          bookingItemId: input.item.id,
+          bookingId: input.booking.id,
+          arrivalId: row.id,
+          paymentUrl: row.payment_url,
+          amountCents: row.amount_cents || 0,
+          currency: row.currency || "EUR",
+          pliantCardId: row.pliant_card_id,
+          cardLast4: row.card_last4,
+          cardLimitCents: row.card_limit_cents,
+          enabled: true,
+          maxCents: input.deps.auto.chargeMaxCents,
+          reference: input.booking.reference,
+          hotel: hotelDisplayName(input.item),
+          clientName: [guestName(input.travelers, input.holder).firstName, guestName(input.travelers, input.holder).lastName]
+            .filter(Boolean)
+            .join(" "),
+          dates: `${checkIn} → ${checkOut}`,
+        });
+        const paying = outcome.queued;
+        await save(input.admin, row.id, {
+          status: paying ? "paying" : "blocked",
+          blocked_reason: paying ? null : "payment",
+          task_open: !paying,
+          task_note: outcome.note,
+        });
+        break;
+      }
       if (!row.pliant_card_id && !isActiveItem(input.item)) break;
       const provision = stayProvisionFor(input.item, row, input.booking.currency, le);
       const limitCents = provision?.ceilingCents ?? quoted.cents;

@@ -41,6 +41,8 @@ const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 const FULL_CREDIT_NIGHT_CENTS = 50_000;
 
 export function hotelDeskChannel(item: CrmBookingItem) {
+  const explicit = item.details?.arrival_channel;
+  if (explicit === "direct" || explicit === "little_emperors" || explicit === "expedia") return explicit;
   const family = item.details?.source_family;
   return hotelChannel({
     sourceFamily: typeof family === "string" ? family : "",

@@ -99,6 +99,7 @@ const ALERT_TITLES: Record<string, string> = {
   failed_login: "Connexions refusées",
   role_change: "Rôle modifié",
   pliant: "Pliant",
+  hotel_booking: "Réservation",
 };
 
 function storedHref(row: StoredAgencyAlert) {

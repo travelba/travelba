@@ -16,6 +16,7 @@ import {
 } from "@/lib/crm/admin-list";
 import { findAttachBookingIds } from "@/lib/crm/attach-search-db";
 import { adminTodoLines } from "@/lib/crm/admin-todo";
+import { loadAutonomousDesk } from "@/lib/crm/hotel-auto-run";
 import { clientCreditLines } from "@/lib/crm/unmatch-credit";
 import { dossierFlightStamp } from "@/lib/crm/airport-time";
 import { flightCities, flightIata, hotelDisplayName } from "@/lib/crm/carnet";
@@ -383,6 +384,19 @@ function pieceLine(doc: CrmTravelDocument, names?: Map<string, string>) {
   };
 }
 
+async function autonomousLines(admin: SupabaseClient) {
+  const lines = await loadAutonomousDesk(admin).catch(() => []);
+  return lines.map((line) => ({
+    reference: line.reference,
+    client: line.client,
+    hotel: line.hotel,
+    dates: line.dates || null,
+    paiement: line.payment,
+    a_la_main: line.manual,
+    lien: line.href,
+  }));
+}
+
 export async function readTableauDeBord() {
   const admin = db();
   const today = todayIsoDate();
@@ -442,6 +456,7 @@ export async function readTableauDeBord() {
       message: "Possible doublon de billets.",
       lien: `/admin/reservations/${row.bookingId}`,
     })),
+    reservations_autonomes: await autonomousLines(admin),
     courriers_hotel: courriers.map((mail) => ({
       hotel: mail.title,
       reference: mail.reference,

@@ -25,6 +25,7 @@ const ICONS: Record<string, string> = {
   "Connexions refusées": "lock",
   "Rôle modifié": "user_cog",
   Pliant: "credit_card",
+  Réservation: "hotel",
   "L’hôtel a répondu": "hotel",
 };
 
@@ -42,7 +43,7 @@ export function popupWaitingLabel(count: number) {
 /** Réponse d’hôtel, ou paiement reçu. Le journal, Pliant, WhatsApp et le reste ne s’ouvrent pas. */
 export function isPopupNotice(notice: { kicker?: string; hotel?: string; excerpt?: string }) {
   const kicker = (notice.kicker || "").trim();
-  if (!kicker || kicker === "L’hôtel a répondu" || kicker === "Hôtel") return true;
+  if (!kicker || kicker === "L’hôtel a répondu" || kicker === "Hôtel" || kicker === "Réservation") return true;
   if (kicker !== "Paiement") return false;
   const text = `${notice.hotel || ""} ${notice.excerpt || ""}`;
   if (/refus|abandon|rejet|au-dessus du seuil|échou|prélèvement annulé/i.test(text)) return false;
