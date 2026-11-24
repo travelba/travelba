@@ -513,7 +513,7 @@ export async function loadHotelInbox(supabase: SupabaseClient, nowMs = Date.now(
     ];
     const evidence = await loadPaymentEvidence(supabase, {
       bookingIds,
-      hotelItems: sources.map((row) => ({ bookingId: row.bookingId, hotelName: row.hotelName })),
+      hotelItems: sources.map((row) => ({ bookingId: row.bookingId, hotelName: row.hotelName, itemId: row.itemId })),
       cards: inboxCards,
     });
     return buildHotelInbox(
@@ -646,7 +646,7 @@ async function loadPaymentEvidence(
   supabase: SupabaseClient,
   input: {
     bookingIds: string[];
-    hotelItems: { bookingId: string; hotelName: string }[];
+    hotelItems: { bookingId: string; hotelName: string; itemId?: string }[];
     cards: HotelInboxCard[];
   }
 ): Promise<{ known: boolean; rows: HotelPaymentEvidence[] }> {
@@ -743,10 +743,12 @@ async function loadPaymentEvidence(
       });
     }
 
-    const hotelsByBooking = new Map<string, string[]>();
+    const hotelsByBooking = new Map<string, { name: string; itemId: string }[]>();
     for (const item of input.hotelItems) {
       const list = hotelsByBooking.get(item.bookingId) || [];
-      if (item.hotelName && !list.includes(item.hotelName)) list.push(item.hotelName);
+      if (item.hotelName && !list.some((hotel) => hotel.name === item.hotelName && hotel.itemId === (item.itemId || ""))) {
+        list.push({ name: item.hotelName, itemId: item.itemId || "" });
+      }
       hotelsByBooking.set(item.bookingId, list);
     }
     try {
@@ -805,11 +807,11 @@ async function readEvidenceSpends(supabase: SupabaseClient, sourceIds: string[],
 /** Dépenses non pointées dont le commerçant ressemble à un hôtel du fil, confiance haute seulement. */
 async function readProposals(
   supabase: SupabaseClient,
-  hotelsByBooking: Map<string, string[]>,
+  hotelsByBooking: Map<string, { name: string; itemId: string }[]>,
   cardByPliant: Map<string, { bookingId: string; label: string; last4: string | null }>,
   attached: Set<string>
 ) {
-  const names = [...hotelsByBooking.values()].flat();
+  const names = [...hotelsByBooking.values()].flat().map((hotel) => hotel.name);
   if (!names.length) return [] as HotelPaymentEvidence[];
   const { data, error } = await supabase
     .from("crm_pliant_transactions")
@@ -857,12 +859,15 @@ async function readProposals(
     for (const hit of suggestions) {
       if (hit.confidence !== "haute" || !hotelsByBooking.has(hit.bookingId)) continue;
       const hotels = hotelsByBooking.get(hit.bookingId) || [];
-      if (!hotels.some((hotel) => merchantResemblesHotel(spend.merchant, hotel))) continue;
+      const named = hotels.filter((hotel) => merchantResemblesHotel(spend.merchant, hotel.name));
+      const pinned = hotels.filter((hotel) => hotel.itemId && hotel.itemId === hit.itemId);
+      const chosen = named.length === 1 ? named[0] : named.length === 0 && pinned.length === 1 ? pinned[0] : null;
+      if (!chosen) continue;
       rows.push({
         id: spend.id,
         source: "pliant",
         bookingId: hit.bookingId,
-        bookingItemId: null,
+        bookingItemId: chosen.itemId || null,
         place: "proposal",
         status: spend.status,
         type: spend.type,

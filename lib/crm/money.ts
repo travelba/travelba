@@ -27,6 +27,28 @@ export function centsToAmount(cents: number) {
   return cents / 100;
 }
 
+/** Devises sans décimale (ISO 4217). Le dong est déjà l’unité, pas un centime. */
+const ZERO_DECIMAL_CURRENCIES = new Set([
+  "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF",
+]);
+
+/** Devises à trois décimales. */
+const THREE_DECIMAL_CURRENCIES = new Set(["BHD", "JOD", "KWD", "OMR", "TND"]);
+
+/** Diviseur de l’unité mineure : 1 pour le dong, 100 pour l’euro, 1000 pour le dinar. */
+export function currencyMinorFactor(currency: string | null | undefined) {
+  const code = (currency || "EUR").trim().toUpperCase();
+  if (ZERO_DECIMAL_CURRENCIES.has(code)) return 1;
+  if (THREE_DECIMAL_CURRENCIES.has(code)) return 1000;
+  return 100;
+}
+
+/** Unité mineure Pliant → montant. 346 595 800 VND reste 346 595 800, pas 3 465 958. */
+export function amountFromMinor(minor: number, currency: string | null | undefined) {
+  const factor = currencyMinorFactor(currency);
+  return Math.round(Math.abs(minor)) / factor;
+}
+
 /** Commission d’agence par défaut : 10 % du total vendu, si le voyage l’active. */
 export const AGENCY_FEE_RATE = DEFAULT_AGENCY_FEE_RATE;
 

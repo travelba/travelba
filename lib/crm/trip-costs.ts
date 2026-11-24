@@ -14,6 +14,7 @@ import {
 } from "./cost-match";
 import { COMMERCIAL_DISCOUNT_LABEL, COMMERCIAL_DISCOUNT_LINE_ID, type DiscountCut } from "./commercial-discount";
 import { isStayRollupDebit } from "./ledger-display";
+import { amountFromMinor, currencyMinorFactor } from "./money";
 import { matchTokens, normalizeMatchText } from "./revolut-match";
 
 export {
@@ -150,15 +151,16 @@ export function tripCostFromPliant(row: {
   if (!Number.isFinite(cents) || Math.round(Math.abs(cents)) === 0) return null;
   const currency = (row.billing_currency || "EUR").toUpperCase();
   if (currency !== "EUR") return null;
+  const originalCurrency = (row.transaction_currency || currency).toUpperCase();
   return {
     source: "pliant",
     sourceId: row.id,
-    amountEur: round((sign * Math.abs(Math.round(cents))) / 100),
+    amountEur: round((sign * Math.abs(Math.round(cents))) / currencyMinorFactor(currency)),
     originalAmount:
       row.transaction_cents == null || !Number.isFinite(Number(row.transaction_cents))
         ? null
-        : round(Math.abs(Number(row.transaction_cents)) / 100),
-    originalCurrency: (row.transaction_currency || currency).toUpperCase(),
+        : round(amountFromMinor(Number(row.transaction_cents), originalCurrency)),
+    originalCurrency,
     supplier: (row.merchant || "").trim() || null,
     occurredOn: row.booked_at ? String(row.booked_at).slice(0, 10) : null,
     instrument: "pliant_card",
