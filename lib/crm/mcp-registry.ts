@@ -2734,7 +2734,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Change le plafond d’une carte Pliant du dossier, comme Modifier le plafond. dossier_id ou reference, carte_id s’il y a plusieurs cartes, plafond en euros. Sans confirmer, aperçu : libellé, quatre derniers chiffres, plafond actuel et nouveau. confirmer true écrit chez Pliant. Le numéro complet ne sort pas.",
+      "Change le plafond d’une carte Pliant du dossier, comme Modifier le plafond. dossier_id ou reference, carte_id s’il y a plusieurs cartes, plafond en euros. Sans confirmer, aperçu : libellé, quatre derniers chiffres, plafond actuel et nouveau. confirmer true écrit le plafond total et le même montant par transaction, relit la carte, et ne confirme que si les deux montants sont le nouveau plafond. Le dossier est alors mis à jour. Le numéro complet ne sort pas.",
     input: {
       dossier_id: z.string().trim().max(80).optional(),
       reference: z.string().trim().max(80).optional(),

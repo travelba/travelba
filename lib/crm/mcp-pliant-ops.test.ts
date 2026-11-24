@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { McpWriteError } from "./mcp-write";
 import { cloturerCartePliant, modifierPlafondPliant, type PliantCardSnapshot } from "./mcp-pliant-ops";
 
 const CARD: PliantCardSnapshot = {
@@ -45,13 +46,41 @@ test("le plafond et la clôture restent un aperçu sans confirmer", async () => 
   assert.equal(limits, 0);
   assert.equal(closed, 0);
 
-  const written = await modifierPlafondPliant({ plafond: 1500, confirmer: true }, effects);
+  const written = (await modifierPlafondPliant({ plafond: 1500, confirmer: true }, effects)) as {
+    ecrit: boolean;
+    apercu: boolean;
+    plafond_euros: number;
+    montant_transaction: number;
+  };
   assert.equal(written.ecrit, true);
   assert.equal(written.apercu, false);
+  assert.equal(written.plafond_euros, 1500);
+  assert.equal(written.montant_transaction, 1500);
   const done = await cloturerCartePliant({ confirmer: true }, effects);
   assert.equal(done.statut, "terminated");
   assert.equal(limits, 1);
   assert.equal(closed, 1);
+});
+
+test("un plafond relu à l’ancien montant n’est pas marqué écrit", async () => {
+  let calls = 0;
+  await assert.rejects(
+    () =>
+      modifierPlafondPliant(
+        { plafond: "1685,97", confirmer: true },
+        {
+          load: async () => ({ ...CARD, plafond_euros: 1652.28 }),
+          changeLimit: async () => {
+            calls += 1;
+            throw new Error(
+              "Pliant n’a pas appliqué le nouveau plafond. Plafond relu : 1 652,28 €. Montant par transaction relu : 1 652,28 €."
+            );
+          },
+        }
+      ),
+    (err: unknown) => err instanceof McpWriteError && /n’a pas appliqué/.test(err.message) && /1 652,28/.test(err.message)
+  );
+  assert.equal(calls, 1);
 });
 
 test("une carte déjà supprimée n’est pas renvoyée à Pliant", async () => {

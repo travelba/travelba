@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "node:test";
 import { emptyPliantCardControls } from "./pliant-controls";
-import { issuePliantCard, PliantSecretsError, readIssuedPliantCardSecrets, readPliantCardholderName, readPliantCardSecrets, readPliantHealth, resetPliantAvailableCardsCache } from "./pliant";
+import { issuePliantCard, PliantSecretsError, readIssuedPliantCardSecrets, readPliantCardholderName, readPliantCardSecrets, readPliantHealth, resetPliantAvailableCardsCache, setPliantCardLimit } from "./pliant";
 import {
   PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300,
   PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D,
@@ -383,6 +383,110 @@ describe("lectures Pliant", { concurrency: 1 }, () => {
     assert.match(health.reason, /400/);
     assert.equal(health.reason.includes(PAN), false);
     assert.equal(health.reason.includes(ORG), false);
+  });
+
+  test("le plafond est écrit par PUT /cards/limits puis relu, jamais sur l’API de production", async () => {
+    arm();
+    const cardId = "8c269177-4030-4477-b759-f2584df6f484";
+    const calls: { url: string; method: string; body: unknown }[] = [];
+    let live = { limit: 165228, transaction: 165228, count: 1 };
+    const prior = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method || "GET";
+      if (url.includes("getpliant.com") && !url.includes("sandbox")) throw new Error("production Pliant");
+      if (url.includes("pliant-test.supabase.co")) {
+        if (url.includes("/rpc/crm_claim_integration_refresh")) return Response.json(true);
+        if (url.includes("/crm_integrations") && method === "GET") return Response.json([]);
+        return Response.json(null, { status: 201 });
+      }
+      if (url.includes("/oauth/token")) return Response.json({ access_token: "test-token", expires_in: 3600 });
+      let body: unknown = null;
+      if (typeof init?.body === "string") body = JSON.parse(init.body);
+      calls.push({ url, method, body });
+      if (method === "PUT" && url.includes(`/cards/limits/${cardId}`)) {
+        const sent = body as { limit?: { value?: number }; transactionLimit?: { value?: number } };
+        if (sent.limit?.value === 168597 && sent.transactionLimit?.value === 168597) {
+          live = { limit: 168597, transaction: 168597, count: 1 };
+        }
+        return new Response(null, { status: 204 });
+      }
+      if (method === "GET" && url.includes(`/cards/${cardId}`)) {
+        return Response.json({
+          cardId,
+          limit: { value: live.limit, currency: "EUR" },
+          transactionLimit: { value: live.transaction, currency: "EUR" },
+          limitRenewFrequency: "TOTAL",
+          maxTransactionCount: live.count,
+        });
+      }
+      return new Response("unexpected", { status: 500 });
+    }) as typeof fetch;
+    restoreFetch = () => {
+      globalThis.fetch = prior;
+    };
+    try {
+      await setPliantCardLimit(cardId, { value: 168597, currency: "EUR" }, 1, { value: 168597, currency: "EUR" });
+      const put = calls.find((call) => call.method === "PUT");
+      assert.ok(put);
+      assert.match(put.url, /sandbox\.partner-api\.getpliant\.com\/api\/cards\/limits\//);
+      assert.equal(calls.some((call) => call.method === "PATCH"), false);
+      const sent = put.body as {
+        limit: { value: number; currency: string };
+        transactionLimit: { value: number; currency: string };
+        limitRenewFrequency: string;
+        maxTransactionCount: number;
+        additionalLimits?: unknown;
+      };
+      assert.deepEqual(sent.limit, { value: 168597, currency: "EUR" });
+      assert.deepEqual(sent.transactionLimit, { value: 168597, currency: "EUR" });
+      assert.equal(sent.limitRenewFrequency, "TOTAL");
+      assert.equal(sent.maxTransactionCount, 1);
+      assert.equal(sent.additionalLimits, undefined);
+      assert.equal(calls.filter((call) => call.method === "GET" && call.url.includes(`/cards/${cardId}`)).length, 1);
+    } finally {
+      restoreFetch();
+      restoreFetch = null;
+    }
+  });
+
+  test("un PUT accepté qui laisse l’ancien montant par transaction n’est pas un succès", async () => {
+    arm();
+    const cardId = "8c269177-4030-4477-b759-f2584df6f484";
+    const prior = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method || "GET";
+      if (url.includes("getpliant.com") && !url.includes("sandbox")) throw new Error("production Pliant");
+      if (url.includes("pliant-test.supabase.co")) {
+        if (url.includes("/rpc/crm_claim_integration_refresh")) return Response.json(true);
+        if (url.includes("/crm_integrations") && method === "GET") return Response.json([]);
+        return Response.json(null, { status: 201 });
+      }
+      if (url.includes("/oauth/token")) return Response.json({ access_token: "test-token", expires_in: 3600 });
+      if (method === "PUT" && url.includes("/cards/limits/")) return new Response(null, { status: 204 });
+      if (method === "GET" && url.includes(`/cards/${cardId}`)) {
+        return Response.json({
+          cardId,
+          limit: { value: 165228, currency: "EUR" },
+          transactionLimit: { value: 165228, currency: "EUR" },
+          maxTransactionCount: 1,
+        });
+      }
+      return new Response("unexpected", { status: 500 });
+    }) as typeof fetch;
+    restoreFetch = () => {
+      globalThis.fetch = prior;
+    };
+    try {
+      await assert.rejects(
+        () => setPliantCardLimit(cardId, { value: 168597, currency: "EUR" }, 1),
+        /n’a pas appliqué le nouveau plafond/
+      );
+    } finally {
+      restoreFetch();
+      restoreFetch = null;
+    }
   });
 
   const CARD = "33333333-3333-4333-8333-333333333333";
