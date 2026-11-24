@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { receivedPaymentPopup } from "@/lib/crm/agency-alerts";
+import { receivedPaymentPopup, storedAgencyAlert } from "@/lib/crm/agency-alerts";
 import { requireStaff } from "@/lib/crm/auth";
 import { hotelReplyNotices, type HotelReplyNoticeRow } from "@/lib/crm/hotel-reply-notice";
 import { syncRecentHotelReplies } from "@/lib/crm/hotel-desk-run";
@@ -65,7 +65,9 @@ export async function GET(request: Request) {
     return notice;
   });
 
-  return NextResponse.json({ notices: hotelReplyNotices(rows, since), alerts: await receivedPayments(admin, since), replied });
+  const payments = await receivedPayments(admin, since);
+  const bookings = await hotelBookingAlerts(admin, since);
+  return NextResponse.json({ notices: hotelReplyNotices(rows, since), alerts: [...payments, ...bookings], replied });
 }
 
 async function receivedPayments(admin: ReturnType<typeof createServiceClient>, since: string) {
@@ -88,6 +90,38 @@ async function receivedPayments(admin: ReturnType<typeof createServiceClient>, s
     }[]
   ).flatMap((row) => {
     const alert = receivedPaymentPopup({
+      id: String(row.id),
+      kind: row.kind,
+      summary: row.summary,
+      createdAt: row.created_at,
+      entityId: row.entity_id,
+      entityType: row.entity_type,
+    });
+    return alert ? [alert] : [];
+  });
+}
+
+async function hotelBookingAlerts(admin: ReturnType<typeof createServiceClient>, since: string) {
+  const selected = await admin
+    .from("crm_agency_alerts")
+    .select("id, kind, summary, created_at, entity_id, entity_type")
+    .eq("kind", "hotel_booking")
+    .is("read_at", null)
+    .gt("created_at", since)
+    .order("created_at", { ascending: true })
+    .limit(8);
+  if (selected.error) return [];
+  return (
+    (selected.data || []) as {
+      id: string;
+      kind: string;
+      summary: string | null;
+      created_at: string;
+      entity_id: string | null;
+      entity_type: string | null;
+    }[]
+  ).flatMap((row) => {
+    const alert = storedAgencyAlert({
       id: String(row.id),
       kind: row.kind,
       summary: row.summary,

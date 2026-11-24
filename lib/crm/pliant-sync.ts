@@ -40,6 +40,20 @@ export async function syncPliantAccount() {
   } catch (err) {
     console.error("[pliant] lien dossier", err instanceof Error ? err.message : "échec");
   }
+  try {
+    const open = await admin.from("crm_hotel_charge_jobs").select("pliant_card_id").in("status", ["submitted", "running"]);
+    const ids = ((open.data || []) as { pliant_card_id?: string | null }[])
+      .map((row) => row.pliant_card_id || "")
+      .filter(Boolean);
+    if (ids.length) {
+      const { listOpenChargeDebits, reconcileHotelCharges } = await import("./hotel-auto-run");
+      const { lockPliantCard } = await import("./pliant");
+      const debits = await listOpenChargeDebits(admin, ids);
+      await reconcileHotelCharges(admin, debits, lockPliantCard);
+    }
+  } catch (err) {
+    console.error("[pliant] paiement hôtel", err instanceof Error ? err.message : "échec");
+  }
   return { fetched: fetched.length, stored: changed.length, auto_matched: linked };
 }
 

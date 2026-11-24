@@ -476,7 +476,7 @@ test("un refus amont gèle la carte et n’ouvre pas le dossier", async () => {
       assert.equal(state?.reason === "Refus", false);
       assert.equal(String(state?.reason || "").includes(PAN), false);
       assert.doesNotMatch(String(state?.reason || ""), /\b123\b/);
-      const alert = tables.crm_agency_alerts?.[0];
+      const alert = (tables.crm_agency_alerts || []).find((row) => row.kind === "pliant");
       assert.equal(alert?.kind, "pliant");
       assert.match(String(alert?.summary || ""), /credit_card\.cvc/);
       assert.equal(String(alert?.summary || "").includes(PAN), false);
