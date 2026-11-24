@@ -754,7 +754,7 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(club, /HOTEL_ACCESS_RESERVE/);
   assert.match(club, /layout="grid"/);
   const homeCopy = readFileSync(join(root, "lib/crm/hotel-search-home.ts"), "utf8");
-  assert.match(homeCopy, /Club Travel BA/);
+  assert.match(homeCopy, /Travel Club TBA/);
   assert.match(homeCopy, /Platinum/);
   assert.match(homeCopy, /Offert\*/);
   assert.match(homeCopy, /Jusqu’au 31 déc\. 2026/);

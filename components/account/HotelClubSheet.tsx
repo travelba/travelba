@@ -54,7 +54,7 @@ export function HotelClubSheet({
   untilLabel?: string;
   /** Durée sur la carte, si elle doit rester plus courte que untilLabel. */
   cardUntil?: string;
-  /** Nom sur la carte. Par défaut, « Club Travel BA ». */
+  /** Nom sur la carte. Par défaut, « Travel Club TBA ». */
   eyebrow?: string;
   showPrices?: boolean;
   embedded?: boolean;

@@ -4,6 +4,7 @@
  */
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { CLUB_OFFER_ENDS_ON } from "./club-new-year";
 import { rateLimitKey, type RateLimitRule } from "./rate-limit";
 import {
   HEARD_ABOUT,
@@ -131,10 +132,10 @@ function addYears(isoDate: string, years: number) {
   return shifted.toISOString().slice(0, 10);
 }
 
-/** Platinum, du jour (Paris) à la même date un an plus tard. */
+/** Platinum à la validation : début le jour même, fin au 31 décembre 2026. */
 export function clubTerm(now = new Date()) {
   const startedOn = parisDate(now);
-  return { rank: "platinum" as const, startedOn, endsOn: addYears(startedOn, 1) };
+  return { rank: "platinum" as const, startedOn, endsOn: CLUB_OFFER_ENDS_ON };
 }
 
 /** Prolonge d’un an à partir de la fin en cours, ou d’aujourd’hui si l’échéance est passée. */

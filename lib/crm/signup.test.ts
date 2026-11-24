@@ -235,7 +235,7 @@ test("l’invitation expire, le SMS reste éteint sans flag, WhatsApp retombe su
   const term = clubTerm(NOW);
   assert.equal(term.rank, "platinum");
   assert.equal(term.startedOn, "2026-11-23");
-  assert.equal(term.endsOn, "2027-11-23");
+  assert.equal(term.endsOn, "2026-12-31");
   assert.equal(clubRenewalDue("2026-12-01", NOW), true);
   assert.equal(clubRenewalDue("2027-11-23", NOW), false);
   assert.deepEqual(referralBalance({ mode: "envoi", sent: 3, validated: 1 }), {

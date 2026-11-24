@@ -6,8 +6,8 @@ import { ensureCustomerForUser, getSessionUser } from "@/lib/crm/auth";
 import { hotelBookingEnabled, hotelDirectLive, hotelLeApiBooking, showHotelButton, showPlatinumScreen } from "@/lib/crm/hotel-access";
 import { readHotelButtonVisibility, readPendingAccess } from "@/lib/crm/hotel-access-run";
 import { clientPathSummary, recordCustomerActivity } from "@/lib/crm/customer-activity";
+import { clubUntilLabel } from "@/lib/crm/club-new-year";
 import { loadFeaturedHotels } from "@/lib/crm/hotel-search-home-run";
-import { formatClubDate } from "@/lib/crm/signup";
 
 export default async function HotelsPage() {
   const { user } = await getSessionUser();
@@ -37,7 +37,7 @@ export default async function HotelsPage() {
         customerId={customer.id}
         firstName={customer.first_name}
         lastName={customer.last_name}
-        untilLabel={customer.club_ends_on ? `Jusqu’au ${formatClubDate(customer.club_ends_on)}` : undefined}
+        untilLabel={clubUntilLabel(customer.club_ends_on)}
         highlights={await loadFeaturedHotels()}
       />
     </Suspense>

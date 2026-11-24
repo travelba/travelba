@@ -17,7 +17,7 @@ comment on column public.crm_customers.club_rank is
 comment on column public.crm_customers.club_started_on is
   'Début de l’adhésion Platinum.';
 comment on column public.crm_customers.club_ends_on is
-  'Fin de l’adhésion, un an après le début. Le renouvellement est manuel.';
+  'Fin de l’adhésion. À la validation : 2026-12-31. La prolongation du 1er janvier peut l’avancer à 2027-12-31.';
 
 create or replace function public.crm_customers_self_column_guard()
 returns trigger

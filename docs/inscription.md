@@ -7,6 +7,7 @@ Migrations à jouer à la main, dans l’ordre, sans reset :
 1. `supabase/migrations/20261123210000_signup_requests.sql`
 2. `supabase/migrations/20261123220000_travel_club_referrals.sql`
 3. `supabase/migrations/20261123233000_club_platinum.sql`
+4. `supabase/migrations/20261124140000_club_new_year.sql`
 
 ## Variables
 
@@ -52,6 +53,18 @@ Avec un jeton valable, deux écrans :
 2. Les deux cases (conditions, confidentialité) et le bouton « Déposer ma demande ».
 
 Les préférences de voyage ne sont pas dans ce parcours. L’origine est l’invitation : agence ou parrainage. Après le dépôt, Benjamin valide à la main.
+
+## Fin d’adhésion et 1er janvier
+
+La validation pose `club_ends_on` au 31 décembre 2026 (`CLUB_OFFER_ENDS_ON`). L’invitation et l’écran Hôtels affichent « Jusqu’au 31 déc. 2026 », ou la date stockée si elle diffère. Le 1er janvier 2027 à 0 h 30, heure de Paris, `GET /api/cron/club-new-year` (`30 23 31 12 *`, soit 23 h 30 UTC le 31 décembre) peut passer cette date au 31 décembre 2027 et envoyer le modèle `bonne_annee_prolongation`.
+
+Sans `NEW_YEAR_EXTENSION_ENABLED=1`, le cron ne fait que lister les membres Platinum encore au 31 décembre 2026. Aucun WhatsApp ne part, aucune date n’est écrite. Avec le flag, chaque membre n’est traité qu’une fois : la table `crm_club_year_extensions` refuse un second passage. Un membre sans téléphone voit sa date avancée, et le journal note `sans_telephone`.
+
+Modèle `bonne_annee_prolongation`. `{{1}}` vaut `Bonjour Camille.` ou `Bonjour.` si le prénom est vide :
+
+{{1}} Le Travel Club TBA vous souhaite une bonne année. Votre adhésion Platinum est prolongée jusqu’au 31 décembre 2027. Elle reste nominative et réservée à vos propres réservations.
+
+Catégorie Meta probable : Marketing.
 
 ## Réglages
 
