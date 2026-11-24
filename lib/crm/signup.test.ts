@@ -330,10 +330,12 @@ test("l’invitation reprend la phrase Platinum, sans montant ni gestionnaire", 
   const { TRAVEL_CLUB_OFFER, TRAVEL_CLUB_PRIVILEGES } = await import("./signup-options");
   const wizard = readFileSync(join(process.cwd(), "components/inscription/SignupWizard.tsx"), "utf8");
   assert.match(wizard, /TRAVEL_CLUB_OFFER/);
-  assert.match(wizard, /cardOnly/);
+  assert.match(wizard, /invite-card/);
+  assert.match(wizard, /Sur invitation/);
   assert.match(wizard, /Bonjour/);
   assert.match(wizard, /Lien personnel, valable jusqu’au/);
-  assert.doesNotMatch(wizard, /Rang Platinum|chevron_left/);
+  assert.match(wizard, /HOTEL_ACCESS_UNTIL/);
+  assert.doesNotMatch(wizard, /Rang Platinum|chevron_left|Membre fondateur|votre gestionnaire/);
   assert.equal(
     TRAVEL_CLUB_OFFER,
     "Le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum jusqu’au 31 décembre 2026. Cette adhésion est nominative et réservée à vos propres réservations.",

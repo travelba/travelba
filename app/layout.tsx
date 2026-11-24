@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Space_Grotesk, Inter, Nunito_Sans, Plus_Jakarta_Sans } from "next/font/google";
+import { Cormorant_Garamond, Space_Grotesk, Inter, Nunito_Sans, Plus_Jakarta_Sans } from "next/font/google";
 import { NativeApp } from "@/components/native/NativeApp";
 import { brandShareImages, siteConfig } from "@/lib/site";
 import "./globals.css";
@@ -35,6 +35,16 @@ const nunito = Nunito_Sans({
   weight: ["400", "600", "700"],
   variable: "--font-nunito",
   display: "swap",
+  preload: false,
+});
+
+/** Serif de l’invitation seulement. Pas de preload : le CRM reste en Plus Jakarta. */
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["500", "600"],
+  variable: "--font-cormorant",
+  display: "swap",
+  adjustFontFallback: true,
   preload: false,
 });
 
@@ -82,7 +92,7 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
-      className={`${spaceGrotesk.variable} ${inter.variable} ${plusJakarta.variable} ${nunito.variable}`}
+      className={`${spaceGrotesk.variable} ${inter.variable} ${plusJakarta.variable} ${nunito.variable} ${cormorant.variable}`}
     >
       <body className="bg-background text-foreground antialiased">
         <NativeApp />

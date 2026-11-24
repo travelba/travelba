@@ -2,15 +2,11 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { HotelClubSheet } from "@/components/account/HotelClubSheet";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { Icon } from "@/components/crm/icons";
 import { greetingGivenName } from "@/lib/crm/identity";
-import { HOTEL_SEARCH_HERO_FALLBACK } from "@/lib/crm/hotel-search-home";
+import { HOTEL_ACCESS_UNTIL, HOTEL_CLUB_NUMBER, hotelMemberNumber } from "@/lib/crm/hotel-search-home";
 import { TRAVEL_CLUB_OFFER, TRAVEL_CLUB_PRIVILEGES } from "@/lib/crm/signup-options";
-
-const fieldClass =
-  "mt-1 w-full rounded-xl border border-[#0B192C]/10 bg-white px-3.5 py-2.5 text-[#0B192C] outline-none focus:border-[#C5A880] focus:ring-2 focus:ring-[#C5A880]/40";
 
 export type SignupPrefill = {
   firstName?: string;
@@ -76,10 +72,10 @@ export function SignupWizard({ prefill, linkUntil }: { prefill: SignupPrefill; l
 
   if (done) {
     return (
-      <div className="space-y-3">
-        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
-        <h1 className="font-display text-3xl font-extrabold tracking-tight text-[#0B192C]">Vérifiez votre e-mail</h1>
-        <p className="text-sm leading-relaxed text-[#0B192C]">
+      <div className="invite-letter space-y-3">
+        <p className="invite-paper-kicker">Sur invitation</p>
+        <h1 className="font-display text-3xl font-extrabold tracking-tight text-[#0B1F3A]">Vérifiez votre e-mail</h1>
+        <p className="text-sm leading-relaxed">
           Un message part pour confirmer l’adresse. Le Travel Club TBA relit ensuite la demande. L’accès reste fermé jusque-là.
         </p>
       </div>
@@ -87,101 +83,128 @@ export function SignupWizard({ prefill, linkUntil }: { prefill: SignupPrefill; l
   }
 
   const given = greetingGivenName(firstName);
+  const engraved = [given, lastName.trim()].filter(Boolean).join(" ") || "—";
+
   return (
-    <form noValidate onSubmit={step === 0 ? next : submit} className="space-y-4">
+    <form noValidate onSubmit={step === 0 ? next : submit}>
       {step === 0 ? (
         <>
-          <div>
-            <h1 className="font-display text-[1.65rem] font-extrabold leading-tight tracking-tight text-[#0B192C]">
-              Bonjour{given ? ` ${given}` : ""},
-            </h1>
-            <p className="mt-2 text-sm leading-relaxed text-[#0B192C]">{TRAVEL_CLUB_OFFER}</p>
-          </div>
-          <ul className="divide-y divide-[#C5A880]/30 overflow-hidden rounded-2xl border border-[#C5A880]/40 bg-white">
-            {TRAVEL_CLUB_PRIVILEGES.map((item) => (
-              <li key={item.title} className="flex items-start gap-3 px-3.5 py-3">
-                <Icon name={item.icon} className="mt-0.5 h-4 w-4 shrink-0 text-[#C5A880]" />
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold leading-snug text-[#0B192C]">{item.title}</span>
-                  <span className="mt-0.5 block text-[12px] leading-snug text-[#5c6570]">{item.note}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-          <div className="hotel-theme min-w-0 max-w-full">
-            <HotelClubSheet
-              cardOnly
-              showPrices={false}
-              firstName={firstName}
-              lastName={lastName}
-              customerId={prefill.invitationToken || phone || "invitation"}
-              heroSrc={HOTEL_SEARCH_HERO_FALLBACK}
-            />
-          </div>
-          <label className="block text-[13px] font-semibold text-[#0B192C]">
-            Prénom
-            <input className={fieldClass} value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" />
-          </label>
-          <label className="block text-[13px] font-semibold text-[#0B192C]">
-            Nom
-            <input className={fieldClass} value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" />
-          </label>
-          <label className="block text-[13px] font-semibold text-[#0B192C]">
-            E-mail
-            <input className={fieldClass} type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
-          </label>
-          <label className="block text-[13px] font-semibold text-[#0B192C]">
-            Téléphone
-            <input className={`${fieldClass} cursor-default bg-[#ebe6dc]`} type="tel" value={phone} readOnly aria-readonly="true" />
-          </label>
-          <p className="-mt-2 text-xs text-[#5c6570]">Ce numéro est celui de l’invitation.</p>
-          <label className="block text-[13px] font-semibold text-[#0B192C]">
-            Date de naissance
-            <input className={fieldClass} type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} />
-          </label>
+          <section className="invite-hero" data-invite-hero="1">
+            <div className="invite-hero-inner">
+              <div className="invite-reveal">
+                <p className="invite-mono" aria-hidden="true">
+                  TBA
+                </p>
+                <p className="invite-kicker mt-4">Sur invitation</p>
+                <p className="invite-wordmark">Travel Club TBA</p>
+                <div className="invite-rule" aria-hidden="true" />
+                <h1 className="invite-hello">Bonjour{given ? ` ${given}` : ""},</h1>
+                <p className="invite-offer">{TRAVEL_CLUB_OFFER}</p>
+              </div>
+              <div className="invite-stage">
+                <article className="invite-card" aria-label="Carte Platinum">
+                  <div className="invite-card-top">
+                    <p className="invite-card-brand">TBA</p>
+                    <p className="invite-card-rank">Platinum</p>
+                  </div>
+                  <p className="invite-card-word">Travel Club TBA</p>
+                  <p className="invite-card-person">{engraved}</p>
+                  <p className="invite-card-number">
+                    <span className="sr-only">{HOTEL_CLUB_NUMBER}</span>
+                    {hotelMemberNumber(prefill.invitationToken || phone || "invitation")}
+                  </p>
+                  <p className="invite-card-until">{HOTEL_ACCESS_UNTIL}</p>
+                </article>
+              </div>
+              <ol className="invite-chapters invite-reveal invite-reveal-late">
+                {TRAVEL_CLUB_PRIVILEGES.map((item, index) => (
+                  <li key={item.title}>
+                    <span className="invite-index">{String(index + 1).padStart(2, "0")}</span>
+                    <div>
+                      <h2>{item.title}</h2>
+                      <p>{item.note}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </section>
+          <section className="invite-paper">
+            <p className="invite-paper-kicker">Confirmer</p>
+            <div className="mt-5 space-y-4">
+              <label className="block text-[13px] font-semibold">
+                Prénom
+                <input className="invite-field" value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" />
+              </label>
+              <label className="block text-[13px] font-semibold">
+                Nom
+                <input className="invite-field" value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" />
+              </label>
+              <label className="block text-[13px] font-semibold">
+                E-mail
+                <input className="invite-field" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
+              </label>
+              <label className="block text-[13px] font-semibold">
+                Téléphone
+                <input className="invite-field" type="tel" value={phone} readOnly aria-readonly="true" />
+              </label>
+              <p className="-mt-2 text-xs text-[#5c6570]">Ce numéro est celui de l’invitation.</p>
+              <label className="block text-[13px] font-semibold">
+                Date de naissance
+                <input className="invite-field" type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} />
+              </label>
+            </div>
+            {error ? <p className="mt-4 text-sm text-[var(--admin-red)]">{error}</p> : null}
+            <BusyBar active={loading} label="Envoi…" />
+            <div className="mt-6">
+              <button type="submit" disabled={loading} className="invite-submit">
+                Continuer
+              </button>
+            </div>
+            {linkUntil ? (
+              <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs leading-snug text-[#5c6570]">
+                <Icon name="lock" className="h-3.5 w-3.5 shrink-0 text-[#C9A24B]" />
+                Lien personnel, valable jusqu’au {linkUntil}.
+              </p>
+            ) : null}
+          </section>
         </>
       ) : (
-        <>
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#8A7349]">Étape 2 sur 2</p>
-          <label className="flex items-start gap-2 text-sm text-[#0B192C]">
-            <input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-1 accent-[#0B192C]" />
-            <span>
-              J’accepte les <Link className="underline decoration-[#C5A880]" href="/fr/legal">conditions générales</Link>.
-            </span>
-          </label>
-          <label className="flex items-start gap-2 text-sm text-[#0B192C]">
-            <input type="checkbox" checked={privacy} onChange={(event) => setPrivacy(event.target.checked)} className="mt-1 accent-[#0B192C]" />
-            <span>
-              J’accepte que le Travel Club TBA utilise ces informations pour traiter ma demande, comme indiqué dans la{" "}
-              <Link className="underline decoration-[#C5A880]" href="/fr/confidentialite">politique de confidentialité</Link>.
-            </span>
-          </label>
-          <div className="absolute -left-[9999px] h-0 w-0 overflow-hidden" aria-hidden="true">
-            <label>
-              Site
-              <input tabIndex={-1} autoComplete="off" value={companyWebsite} onChange={(event) => setCompanyWebsite(event.target.value)} name="company_website" />
+        <section className="invite-paper">
+          <p className="invite-paper-kicker">Étape 2 sur 2</p>
+          <div className="mt-5 space-y-4">
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-1 accent-[#0B1F3A]" />
+              <span>
+                J’accepte les <Link className="underline decoration-[#C9A24B]" href="/fr/legal">conditions générales</Link>.
+              </span>
             </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" checked={privacy} onChange={(event) => setPrivacy(event.target.checked)} className="mt-1 accent-[#0B1F3A]" />
+              <span>
+                J’accepte que le Travel Club TBA utilise ces informations pour traiter ma demande, comme indiqué dans la{" "}
+                <Link className="underline decoration-[#C9A24B]" href="/fr/confidentialite">politique de confidentialité</Link>.
+              </span>
+            </label>
+            <div className="absolute -left-[9999px] h-0 w-0 overflow-hidden" aria-hidden="true">
+              <label>
+                Site
+                <input tabIndex={-1} autoComplete="off" value={companyWebsite} onChange={(event) => setCompanyWebsite(event.target.value)} name="company_website" />
+              </label>
+            </div>
           </div>
-        </>
+          {error ? <p className="mt-4 text-sm text-[var(--admin-red)]">{error}</p> : null}
+          <BusyBar active={loading} label="Envoi…" />
+          <div className="mt-6 flex gap-2">
+            <button type="button" className="invite-back" onClick={() => setStep(0)}>
+              Retour
+            </button>
+            <button type="submit" disabled={loading} className="invite-submit">
+              {loading ? "Envoi…" : "Déposer ma demande"}
+            </button>
+          </div>
+        </section>
       )}
-      {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
-      <BusyBar active={loading} label="Envoi…" />
-      <div className="flex gap-2">
-        {step > 0 ? (
-          <button type="button" className="rounded-full border border-[#0B192C]/35 px-4 py-3 text-sm font-semibold text-[#0B192C]" onClick={() => setStep(0)}>
-            Retour
-          </button>
-        ) : null}
-        <button type="submit" disabled={loading} className="flex-1 rounded-full bg-[#0B192C] px-4 py-3.5 text-sm font-bold text-[#C5A880] disabled:opacity-60">
-          {step === 0 ? "Continuer" : loading ? "Envoi…" : "Déposer ma demande"}
-        </button>
-      </div>
-      {step === 0 && linkUntil ? (
-        <p className="flex items-center justify-center gap-1.5 text-center text-xs leading-snug text-[#5c6570]">
-          <Icon name="lock" className="h-3.5 w-3.5 shrink-0 text-[#C5A880]" />
-          Lien personnel, valable jusqu’au {linkUntil}.
-        </p>
-      ) : null}
     </form>
   );
 }

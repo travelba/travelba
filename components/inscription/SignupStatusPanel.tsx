@@ -55,14 +55,18 @@ export function SignupStatusPanel({ status }: { status: Status }) {
 
   if (!status) {
     return (
-      <>
+      <div className="invite-letter">
         <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
         <h1 className="mt-2 font-display text-3xl font-extrabold text-[#0B192C]">Demande en attente</h1>
         <p className="mt-3 text-sm leading-relaxed text-[#0B192C]">
           Confirmez l’adresse reçue par e-mail pour suivre la demande. Tant que l’agence n’a pas validé, l’espace reste fermé.
         </p>
-      </>
+      </div>
     );
+  }
+
+  if (status.status === "a_completer" && status.prefill) {
+    return <SignupWizard prefill={{ ...status.prefill, resume: true }} />;
   }
 
   const title =
@@ -79,7 +83,7 @@ export function SignupStatusPanel({ status }: { status: Status }) {
               : "Demande en attente";
 
   return (
-    <div className="space-y-3">
+    <div className="invite-letter space-y-3">
       <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
       <h1 className="font-display text-3xl font-extrabold text-[#0B192C]">{title}</h1>
       <p className="text-sm leading-relaxed text-[#0B192C]">
@@ -95,9 +99,6 @@ export function SignupStatusPanel({ status }: { status: Status }) {
                   ? "Un message confirme l’adresse. Ensuite, l’agence relit la demande."
                   : `${status.firstName}, la demande est en attente. Vous n’avez pas encore accès à vos séjours.`}
       </p>
-      {status.status === "a_completer" && status.prefill ? (
-        <SignupWizard prefill={{ ...status.prefill, resume: true }} />
-      ) : null}
       {status.smsPending ? (
         <form onSubmit={confirm} className="space-y-3 pt-2">
           <button type="button" onClick={() => void sendCode()} className="text-sm font-semibold underline" disabled={loading}>

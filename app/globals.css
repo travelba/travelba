@@ -1767,3 +1767,322 @@ details[open] .menu-icon-open {
 body:has(header details[open]) {
   overflow: hidden;
 }
+
+/* Invitation — carton gravé. La feuille Hôtels n’utilise pas ces classes. */
+.invite-root {
+  background: #0b1f3a;
+  color: #f7f1e3;
+}
+.invite-letter {
+  max-width: 32rem;
+  margin: 2.5rem auto;
+  background: #f7f1e3;
+  color: #0b1f3a;
+  padding: 1.75rem 1.25rem 2rem;
+  border: 1px solid rgba(201, 162, 75, 0.55);
+}
+.invite-hero {
+  position: relative;
+  padding: 2.6rem 1.35rem 3.25rem;
+}
+.invite-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0.65rem;
+  border: 1px solid rgba(201, 162, 75, 0.32);
+  pointer-events: none;
+}
+.invite-hero-inner {
+  position: relative;
+  max-width: 36rem;
+  margin: 0 auto;
+  text-align: center;
+}
+.invite-kicker,
+.invite-index,
+.invite-card-rank,
+.invite-paper-kicker {
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+.invite-kicker {
+  color: #c9a24b;
+}
+.invite-wordmark {
+  margin-top: 0.85rem;
+  font-family: var(--font-cormorant), Georgia, "Times New Roman", serif;
+  font-size: clamp(1.65rem, 6.2vw, 2.35rem);
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  white-space: normal;
+}
+.invite-rule {
+  width: 4.5rem;
+  height: 1px;
+  margin: 1.15rem auto;
+  background: #c9a24b;
+}
+.invite-mono {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  margin: 0 auto;
+  border: 1px solid rgba(201, 162, 75, 0.7);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 4px rgba(11, 31, 58, 1), inset 0 0 0 5px rgba(201, 162, 75, 0.45);
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: 0.95rem;
+  letter-spacing: 0.14em;
+  color: #c9a24b;
+}
+.invite-hello {
+  font-family: var(--font-cormorant), Georgia, "Times New Roman", serif;
+  font-size: clamp(2.35rem, 10vw, 4.4rem);
+  font-weight: 500;
+  line-height: 1.02;
+  letter-spacing: -0.015em;
+}
+.invite-offer {
+  max-width: 34rem;
+  margin: 1rem auto 0;
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: clamp(1.05rem, 3.4vw, 1.28rem);
+  font-weight: 500;
+  line-height: 1.45;
+  color: rgba(247, 241, 227, 0.88);
+}
+.invite-stage {
+  padding: 2.1rem 0.35rem 0.4rem;
+}
+.invite-card {
+  --invite-tilt: -2deg;
+  position: relative;
+  width: min(100%, 22.5rem);
+  margin-inline: auto;
+  min-height: 12.75rem;
+  padding: 1.35rem 1.2rem 1.15rem;
+  text-align: left;
+  color: #f7f1e3;
+  background:
+    linear-gradient(118deg, rgba(201, 162, 75, 0.34) 0%, rgba(201, 162, 75, 0.06) 26%, transparent 48%),
+    linear-gradient(180deg, #17324f 0%, #0b1f3a 52%, #07111e 100%);
+  border: 1px solid rgba(201, 162, 75, 0.78);
+  box-shadow:
+    inset 0 1px 0 rgba(247, 241, 227, 0.2),
+    inset 0 -18px 28px rgba(0, 0, 0, 0.28),
+    0 22px 36px rgba(0, 0, 0, 0.4);
+  transform: rotate(var(--invite-tilt));
+}
+.invite-card::after {
+  content: "";
+  position: absolute;
+  inset: 0.42rem;
+  border: 1px solid rgba(201, 162, 75, 0.4);
+  pointer-events: none;
+}
+.invite-card-top,
+.invite-card-foot {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.invite-card-brand,
+.invite-card-word,
+.invite-card-person,
+.invite-card-until {
+  position: relative;
+  white-space: normal;
+}
+.invite-card-brand {
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: 1rem;
+  letter-spacing: 0.18em;
+  color: #c9a24b;
+}
+.invite-card-word {
+  margin-top: 1.15rem;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  color: #c9a24b;
+}
+.invite-card-person {
+  margin-top: 0.35rem;
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: clamp(1.55rem, 6vw, 1.9rem);
+  font-weight: 500;
+  line-height: 1.05;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+.invite-card-number {
+  position: relative;
+  margin-top: 0.45rem;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  color: rgba(247, 241, 227, 0.72);
+}
+.invite-card-foot {
+  margin-top: 1.15rem;
+}
+.invite-card-rank {
+  color: #c9a24b;
+}
+.invite-card-until {
+  margin-top: 0.85rem;
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: 1.05rem;
+  line-height: 1.2;
+  text-align: left;
+}
+.invite-chapters {
+  max-width: 32rem;
+  margin: 2.4rem auto 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+.invite-chapters li {
+  display: grid;
+  grid-template-columns: 2.4rem 1fr;
+  gap: 0.75rem;
+  padding: 0.95rem 0;
+  border-top: 1px solid rgba(201, 162, 75, 0.4);
+}
+.invite-chapters li:last-child {
+  border-bottom: 1px solid rgba(201, 162, 75, 0.4);
+}
+.invite-index {
+  padding-top: 0.35rem;
+  color: #c9a24b;
+}
+.invite-chapters h2 {
+  font-family: var(--font-cormorant), Georgia, serif;
+  font-size: 1.45rem;
+  font-weight: 500;
+  line-height: 1.1;
+}
+.invite-chapters p {
+  margin-top: 0.2rem;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: rgba(247, 241, 227, 0.74);
+}
+.invite-paper {
+  position: relative;
+  max-width: 40rem;
+  margin: 0 auto;
+  background: #f7f1e3;
+  color: #0b1f3a;
+  padding: 2.1rem 1.35rem 2.4rem;
+}
+.invite-paper-kicker {
+  color: #8a7349;
+}
+.invite-field {
+  margin-top: 0.4rem;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid rgba(11, 31, 58, 0.28);
+  border-radius: 0;
+  background: transparent;
+  padding: 0.7rem 0.1rem;
+  color: #0b1f3a;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 1rem;
+  outline: none;
+}
+.invite-field:focus {
+  border-bottom-color: #c9a24b;
+  box-shadow: inset 0 -1px 0 #c9a24b;
+}
+.invite-field[readonly] {
+  color: rgba(11, 31, 58, 0.72);
+}
+.invite-submit {
+  width: 100%;
+  border: 0;
+  border-radius: 999px;
+  background: #c9a24b;
+  color: #0b1f3a;
+  padding: 0.95rem 1.2rem;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.invite-submit:disabled {
+  opacity: 0.6;
+}
+.invite-paper .flex .invite-submit {
+  width: auto;
+  flex: 1;
+}
+.invite-back {
+  border: 1px solid rgba(11, 31, 58, 0.35);
+  border-radius: 999px;
+  background: transparent;
+  color: #0b1f3a;
+  padding: 0.85rem 1rem;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+@media (min-width: 768px) {
+  .invite-hero {
+    padding: 4.5rem 2rem 4.75rem;
+  }
+  .invite-card {
+    --invite-tilt: -4deg;
+    width: 24rem;
+  }
+  .invite-paper {
+    margin: -1.5rem auto 3rem;
+    padding: 2.75rem 3rem 3rem;
+    border: 1px solid rgba(201, 162, 75, 0.65);
+    box-shadow: 0 28px 70px rgba(0, 0, 0, 0.28);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .invite-reveal {
+    animation: invite-reveal 0.9s ease both;
+  }
+  .invite-reveal-late {
+    animation-delay: 0.16s;
+  }
+  .invite-card {
+    animation: invite-card 1.05s cubic-bezier(0.2, 0.7, 0.2, 1) 0.12s both;
+  }
+}
+@keyframes invite-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes invite-card {
+  from {
+    opacity: 0;
+    transform: translateY(16px) rotate(-7deg);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(var(--invite-tilt));
+  }
+}
