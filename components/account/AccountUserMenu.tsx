@@ -48,11 +48,17 @@ export function AccountMenuPanel({
       <button
         type="button"
         role="menuitem"
-        onClick={() => {
-          onClose();
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
           void onSignOut();
         }}
-        className="account-press flex w-full items-center gap-2 border-t border-[#e5e3dc] px-4 py-3 text-left text-sm font-medium hover:bg-[var(--surface-2)]"
+        onClick={(event) => {
+          event.preventDefault();
+          void onSignOut();
+        }}
+        className="flex min-h-11 w-full items-center gap-2 border-t border-[#e5e3dc] px-4 py-3 text-left text-sm font-medium hover:bg-[var(--surface-2)]"
       >
         <AccountIcon name="logout" className="h-4 w-4 text-[var(--admin-gold-dark)]" />
         {SIGN_OUT_LABEL}

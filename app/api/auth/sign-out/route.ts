@@ -1,13 +1,13 @@
 import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
-import { requestIsSecure, sessionAudienceFromCookies } from "@/lib/crm/client-session-cookie";
+import { requestIsSecure } from "@/lib/crm/client-session-cookie";
 import {
   SIGN_OUT_REVOKE_MS,
   accessTokenFromAuthCookies,
-  applySignOut,
+  buildSignOutResponse,
   parseSignOutFields,
   revokeAuthSession,
-  signOutRedirectPath,
+  signOutPublicOrigin,
+  signOutWantsNavigation,
 } from "@/lib/crm/sign-out";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 
@@ -20,17 +20,13 @@ export const dynamic = "force-dynamic";
  * le proxy renverrait `/admin/login` vers `/admin` tant que le cookie est là.
  */
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
-  const fields = parseSignOutFields(body && typeof body === "object" ? body : {});
+  const navigate = signOutWantsNavigation(request.headers.get("content-type"));
+  const fields = navigate ? await fieldsFromForm(request) : await fieldsFromJson(request);
   const jar = await cookies();
   const before = jar.getAll();
   const secure = requestIsSecure({
     forwardedProto: request.headers.get("x-forwarded-proto"),
     protocol: new URL(request.url).protocol,
-  });
-  const redirect = signOutRedirectPath({
-    requested: fields.next,
-    audience: sessionAudienceFromCookies(before),
   });
 
   try {
@@ -46,6 +42,24 @@ export async function POST(request: Request) {
     /* La révocation a échoué ou a trop tardé. Les cookies partent quand même. */
   }
 
-  const response = NextResponse.json({ ok: true, redirect });
-  return applySignOut(response, before, secure);
+  return buildSignOutResponse({
+    origin: signOutPublicOrigin(request),
+    fields,
+    cookies: before,
+    secure,
+    navigate,
+  });
+}
+
+async function fieldsFromJson(request: Request) {
+  const body = await request.json().catch(() => null);
+  return parseSignOutFields(body && typeof body === "object" ? body : {});
+}
+
+async function fieldsFromForm(request: Request) {
+  const form = await request.formData().catch(() => null);
+  return parseSignOutFields({
+    scope: form?.get("scope") ?? undefined,
+    next: form?.get("next") ?? undefined,
+  });
 }

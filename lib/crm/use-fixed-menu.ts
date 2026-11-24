@@ -46,15 +46,13 @@ export function useFixedMenu(
     place();
     document.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onPointer);
-    document.addEventListener("touchstart", onPointer);
+    document.addEventListener("touchstart", onPointer, { passive: true });
     window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, { capture: true, passive: true });
     return () => {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("mousedown", onPointer);
       document.removeEventListener("touchstart", onPointer);
       window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, { capture: true });
     };
   }, [open, align, buttonRef, rootRef, menuRef]);
 
