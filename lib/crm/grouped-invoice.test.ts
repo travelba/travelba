@@ -13,6 +13,8 @@ import {
   nextGroupedNumber,
   payerKey,
   payerRefOf,
+  payerWalletCredits,
+  usedWalletPayments,
   type GroupedBookingRow,
 } from "./grouped-invoice";
 import { renderGroupedInvoicePdf } from "./grouped-invoice-pdf";
@@ -135,6 +137,76 @@ test("trois dossiers d’un même payeur : commission gardée, remise négative,
   assert.equal(doc.clientText.includes("MB3M"), false);
   assert.equal(doc.issuer.some((line) => line.includes("20291655")), false);
   assert.equal(doc.legal.some((line) => /IATA|APST/i.test(line)), false);
+});
+
+test("le portefeuille du payeur entre dans le payé, plafonné au reste", async () => {
+  const sections = [
+    {
+      bookingId: LAGOS,
+      reference: "TB-2026-0211",
+      destination: "Lagos",
+      dates: "4 mars 2026",
+      travelers: ["Camille Martin"],
+      commission: false,
+      lines: [{ label: "Hôtel", amount: 8000 }],
+      payments: [{ label: "Acompte", amount: 802 }],
+    },
+    {
+      bookingId: FRANKFURT,
+      reference: "TB-2026-0077",
+      destination: "Francfort",
+      dates: "12 janv. 2026",
+      travelers: [],
+      commission: false,
+      lines: [{ label: "Train", amount: 2000 }],
+      payments: [],
+    },
+  ];
+  const sepa = {
+    booking_id: null,
+    billing_company_id: NILOS,
+    direction: "credit" as const,
+    status: "posted" as const,
+    currency: "EUR",
+    amount: 7198,
+    label: "Prélèvement SEPA",
+    occurred_on: "2026-11-18",
+  };
+  const kept = payerWalletCredits(NILOS, [
+    sepa,
+    { ...sepa, billing_company_id: "autre-societe", label: "Autre société", amount: 50 },
+    { ...sepa, booking_id: LAGOS, label: "Déjà sur un dossier", amount: 10 },
+  ]);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0]?.label, "Prélèvement SEPA");
+  const doc = groupedInvoiceDocument({
+    number: "FG-2026-0010",
+    billTo: ["Nilos France"],
+    payerLabel: "Nilos France",
+    sections,
+    walletCredits: [sepa],
+    now: new Date("2026-11-19T10:00:00.000Z"),
+  });
+  assert.equal(doc.sections[0].paid, 802);
+  assert.equal(doc.total, 10000);
+  assert.equal(doc.paid, 8000);
+  assert.equal(doc.balance, 2000);
+  assert.equal(doc.walletPayments.length, 1);
+  assert.equal(doc.walletPayments[0]?.label, "Prélèvement SEPA");
+  assert.equal(doc.walletPayments[0]?.amount, 7198);
+  assert.match(doc.clientText, /Prélèvement SEPA/);
+  const pdf = Buffer.from(await renderGroupedInvoicePdf(doc));
+  assert.match(pdfDrawnText(pdf), /Prélèvement SEPA|Prelevement SEPA/);
+  assert.match(pdfDrawnText(pdf), /7[\s\u00a0]?198/);
+  const capped = usedWalletPayments({
+    total: 1000,
+    alreadyPaid: 200,
+    credits: [{ ...sepa, amount: 7198 }, { ...sepa, amount: 50, occurred_on: "2026-11-01", label: "Plus ancien" }],
+  });
+  assert.deepEqual(
+    capped.map((row) => [row.label, row.amount]),
+    [["Plus ancien", 50], ["Prélèvement SEPA", 750]]
+  );
 });
 
 test("sans écriture de commission, la ligne n’est pas inventée", () => {

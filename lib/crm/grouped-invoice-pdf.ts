@@ -1,6 +1,11 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import { loadBrandLogoPng } from "./brand-logo";
-import { groupedInvoiceDocument, type GroupedInvoiceDocument, type GroupedSectionInput } from "./grouped-invoice";
+import {
+  groupedInvoiceDocument,
+  type GroupedInvoiceDocument,
+  type GroupedSectionInput,
+  type GroupedWalletCredit,
+} from "./grouped-invoice";
 import type { InvoiceWire } from "./invoice-document";
 import { pdfSafe } from "./statement-pdf";
 
@@ -225,6 +230,7 @@ export async function renderGroupedInvoicePdf(
         dueDays?: number | null;
         wire?: InvoiceWire | null;
         outsideEu?: boolean;
+        walletCredits?: GroupedWalletCredit[];
       }
 ) {
   const model = "clientText" in input ? input : groupedInvoiceDocument(input);
@@ -295,6 +301,22 @@ export async function renderGroupedInvoicePdf(
   draw.y -= 16;
 
   model.sections.forEach((_, index) => paintSection(draw, index));
+
+  if (model.walletPayments?.length) {
+    ensure(draw, 28);
+    textAt(draw, "Règlements reçus sur le compte", MARGIN, 9, draw.bold, NAVY);
+    draw.y -= 14;
+    for (const payment of model.walletPayments) {
+      const rows = wrap(draw.regular, payment.label, 9, PAGE_W - MARGIN * 2 - 120);
+      ensure(draw, rows.length * 12 + 2);
+      rows.forEach((row, rowIndex) => {
+        draw.page.drawText(row, { x: MARGIN, y: draw.y, size: 9, font: draw.regular, color: NAVY });
+        if (rowIndex === 0) drawRight(draw, payment.amountLabel, 9, draw.regular);
+        draw.y -= 12;
+      });
+    }
+    draw.y -= 8;
+  }
 
   const grand: [string, string, boolean][] = [
     ["Total général", model.totalLabel, false],

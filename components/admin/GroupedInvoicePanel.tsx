@@ -46,6 +46,7 @@ type Preview = {
   total: number;
   paye: number;
   reste: number;
+  compte?: { libelle: string; montant: number }[];
   message: string;
 };
 
@@ -308,6 +309,16 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
                     </li>
                   ))}
                 </ul>
+                {preview.compte?.length ? (
+                  <ul className="mt-3 text-xs text-muted">
+                    {preview.compte.map((row) => (
+                      <li key={`${row.libelle}-${row.montant}`} className="flex justify-between gap-3">
+                        <span>Compte · {row.libelle}</span>
+                        <span>{euros(row.montant)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <p className="mt-3 font-semibold">
                   Total {euros(preview.total)} · Payé {euros(preview.paye)} · Reste à payer {euros(preview.reste)}
                 </p>
