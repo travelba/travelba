@@ -360,7 +360,7 @@ describe("client MB3M Partners", () => {
     assert.equal(invoice.number, "4531");
   });
 
-  it("écrit la marge et la note dans l’ordre du schéma, et les omet sans coût pointé", async () => {
+  it("écrit la marge dans l’ordre du schéma, sans note de ligne, et omet la marge sans coût pointé", async () => {
     arm();
     let body = "";
     await mb3mAddInvoice(
@@ -381,9 +381,10 @@ describe("client MB3M Partners", () => {
       }
     );
     const hotel = body.slice(body.indexOf("<InvoiceLine>"), body.indexOf("</InvoiceLine>"));
-    const order = ["<ActivityId>7", "<Label>Hôtel", "<MarginUnit>-50.5", "<NetPriceTotal>1200", "<NetPriceUnit>1200", "<Note>Fournisseur : RIAD", "<Quantity>1", "<Type>Standard"].map(
+    const order = ["<ActivityId>7", "<Label>Hôtel", "<MarginUnit>-50.5", "<NetPriceTotal>1200", "<NetPriceUnit>1200", "<Quantity>1", "<Type>Standard"].map(
       (needle) => hotel.indexOf(needle)
     );
+    assert.equal(hotel.includes("<Note>"), false);
     assert.ok(order.every((index) => index >= 0), hotel);
     assert.deepEqual(order, [...order].sort((left, right) => left - right));
     assert.equal(hotel.includes("<CommissionNetTotal>"), false);

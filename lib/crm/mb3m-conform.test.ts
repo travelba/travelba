@@ -107,7 +107,7 @@ describe("fournisseur MB3M", () => {
       [{ transactionId: "tx-zz", label: "Vol", amount: 90, activityId: 2, itemId: "zz", chargeKind: "flight" }],
       [{ id: "zz", kind: "flight", supplier: "Compagnie Inconnue", details: { airline_iata: "ZZ", sale_channel: "amadeus" } }]
     );
-    // Un fournisseur absent du catalogue n’est plus un blocage : avertissement, nom dans la Note.
+    // Un fournisseur absent du catalogue n’est plus un blocage : avertissement, sans Note envoyée.
     assert.equal(mb3mSupplierBlock(unknownAirline), null);
     assert.match(unknownAirline[0]?.supplierWarning || "", /Compagnie Inconnue/);
     assert.equal(unknownAirline[0]?.providerId ?? null, null);
@@ -119,11 +119,15 @@ describe("fournisseur MB3M", () => {
     );
     assert.equal(mb3mSupplierBlock(lines), null);
     assert.match(mb3mSupplierWarnings(lines) || "", /Sixt/);
-    assert.match(mb3mSupplierWarnings(lines) || "", /Note de la ligne/);
+    assert.match(mb3mSupplierWarnings(lines) || "", /aucun fournisseur n’est créé/);
     const sent = mb3mSoapLines(lines, 0.01);
     assert.equal(sent.length, 1);
     assert.equal(sent[0]?.providerId ?? null, null);
-    assert.equal(sent[0]?.note, "Fournisseur : Sixt");
+    assert.equal(sent[0]?.note ?? null, null);
+    assert.equal(sent[0]?.label, "Voiture");
+    const sentXml = linesXml("InvoiceLine", sent, "ba3e9d2d-c2a5-4872-b5d2-99e74b483831");
+    assert.equal(sentXml.includes("<Note>"), false);
+    assert.match(sentXml, /<Label>Voiture<\/Label>/);
     assert.equal(mb3mInvoiceBlocker(invoiceContext(lines)), null);
   });
 
@@ -378,10 +382,9 @@ describe("lignes de facture", () => {
     assert.ok(xml.includes("<NetPriceUnit>362</NetPriceUnit>"), xml);
     assert.ok(xml.includes("<MarginUnit>0</MarginUnit>"), xml);
     if (soap[0]?.providerId) assert.ok(xml.includes(`<ProviderId>${soap[0].providerId}</ProviderId>`), xml);
-    else {
-      assert.equal(xml.includes("<ProviderId>"), false);
-      assert.match(xml, /OUIGO direct/);
-    }
+    else assert.equal(xml.includes("<ProviderId>"), false);
+    assert.equal(xml.includes("<Note>"), false);
+    assert.equal(soap[0]?.note ?? null, null);
 
     const ferry = conformMb3mAccountLines(
       [
@@ -595,7 +598,8 @@ describe("lignes de facture", () => {
     assert.equal(diversXml.includes("<ProviderId>"), false);
     assert.equal(diversXml.includes(bolonDivers), false);
     assert.equal(diversXml.includes(agency), false);
-    assert.match(diversXml, /<Note>Fournisseur : HOTELS DIVERS<\/Note>/);
+    assert.equal(diversXml.includes("<Note>"), false);
+    assert.match(diversXml, /<Label>Riad<\/Label>/);
     assert.ok(airFranceXml.includes(`<ProviderId>${airFranceId}</ProviderId>`), airFranceXml);
     assert.equal(airFranceXml.includes(bolonAirFrance), false);
     assert.equal(airFranceXml.includes("<Note>"), false);

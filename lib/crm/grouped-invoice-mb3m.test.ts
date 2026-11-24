@@ -214,20 +214,19 @@ describe("pièce MB3M de la facture groupée", () => {
       ["TB-2026-0211", "TB-2026-0212", "TB-2026-0077"]
     );
     const first = built.lines[0];
-    assert.match(first?.note || "", /TB-2026-0211/);
-    assert.match(first?.note || "", /Lagos/);
-    assert.match(first?.note || "", /Camille Martin/);
+    assert.equal(first?.label, "Hôtel Lagos");
+    assert.equal(first?.note ?? null, null);
     assert.equal(first?.activityId, MB3M_ACTIVITY.hotel);
     const fee = built.lines.find((row) => row.type === "Custom");
     assert.equal(fee?.label.startsWith(AGENCY_FEE_LABEL), true);
     assert.match(fee?.label || "", /TB-2026-0212/);
+    assert.equal(fee?.note ?? null, null);
     assert.equal(fee?.customType?.lineType, 4);
-    assert.equal(/%|IATA|APST/.test(built.lines.map((row) => `${row.label} ${row.note || ""}`).join(" ")), false);
+    assert.equal(/%|IATA|APST/.test(built.lines.map((row) => row.label).join(" ")), false);
     const frankfurt = built.lines.find((row) => row.label === "Train Francfort");
     assert.equal(frankfurt?.activityId, MB3M_ACTIVITY.land);
-    assert.match(frankfurt?.note || "", /TB-2026-0077/);
-    assert.match(frankfurt?.note || "", /Francfort/);
-    assert.match(frankfurt?.note || "", /Louis Martin/);
+    assert.equal(frankfurt?.note ?? null, null);
+    assert.equal(built.lines.every((row) => !row.note), true);
     assert.equal(built.dateStart, "2026-01-12");
     assert.equal(built.dateEnd, "2026-03-08");
     assert.deepEqual(
@@ -306,8 +305,10 @@ describe("pièce MB3M de la facture groupée", () => {
     assert.equal(calls.includes("recherche"), false);
     assert.equal(calls.includes("ajout"), true);
     assert.equal(/<(?:DatePrint|PrintedDate|Validate|Finalize|Validation|CreditNote)\b/i.test(body), false);
-    assert.match(body, /TB-2026-0211/);
-    assert.match(body, /TB-2026-0077/);
+    assert.match(body, /Hôtel Lagos/);
+    assert.match(body, /Train Francfort/);
+    assert.match(body, /TB-2026-0212/);
+    assert.equal(body.includes("<Note>"), false);
     assert.equal(body.includes("%"), false);
   });
 

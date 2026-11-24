@@ -271,7 +271,7 @@ export function mb3mInvoiceLine(line: Mb3mAccountLine): Mb3mLine {
     activityId: mb3mPrestationActivityId(line.activityId),
     type: "Standard" as const,
     marginUnit: margin,
-    note: line.note ?? null,
+    note: null,
     providerId: line.providerId ?? null,
     refPiece: line.refPiece ?? null,
     refCommand: line.refCommand ?? null,
@@ -536,7 +536,8 @@ export function buildMb3mInvoiceContext(input: {
         );
   const conformed = conformMb3mAccountLines(
     posted.filter((line) => !covered.has(line.transactionId)),
-    input.items
+    input.items,
+    input.booking.reference
   );
   const lines = input.discountCuts
     ? withCommercialDiscountLines(conformed, input.discountCuts)
