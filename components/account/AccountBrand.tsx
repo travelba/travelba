@@ -22,9 +22,11 @@ export function AccountBrand({
     <Link href={href} className="flex items-center gap-2.5">
       <AgencyLogo className="h-9 w-9" />
       <span className="flex min-w-0 flex-col leading-tight">
-        <span className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-          {mark}
-        </span>
+        {mark ? (
+          <span className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+            {mark}
+          </span>
+        ) : null}
         {subtitle ? (
           <span
             className={`account-title truncate font-display font-semibold ${lead} ${ink} ${

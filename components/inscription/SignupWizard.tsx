@@ -85,8 +85,7 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
   }
 
   return (
-    <form noValidate onSubmit={step === 0 ? next : submit} className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+    <form noValidate onSubmit={step === 0 ? next : submit} className="space-y-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
         <h1 className="mt-1 font-display text-2xl font-extrabold tracking-tight text-[#0B192C]">Vous êtes invité</h1>
@@ -94,7 +93,7 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
       </div>
       {step === 0 ? (
         <>
-          <div className="hotel-theme -mx-4 overflow-hidden rounded-2xl sm:-mx-5">
+          <div className="hotel-theme min-w-0 max-w-full rounded-2xl">
             <HotelClubSheet
               embedded
               showPrices={false}
@@ -151,9 +150,8 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
         </>
       )}
       {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
-      </div>
       <BusyBar active={loading} label="Envoi…" />
-      <div className="flex shrink-0 gap-2 bg-[#f6f3ec] pt-2">
+      <div className="flex gap-2">
         {step > 0 ? (
           <button type="button" className="rounded-full border border-[#0B192C]/35 px-4 py-3 text-sm font-semibold text-[#0B192C]" onClick={() => setStep(0)}>
             Retour
