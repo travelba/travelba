@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { appOrigin } from "@/lib/crm/invite";
 import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { setHotelCourrierClass } from "@/lib/crm/hotel-courrier-classify";
+import { moveHotelCourrier } from "@/lib/crm/hotel-courrier-move";
 import { clearClientStayCard, issueHotelCheckinCard, restoreHotelRequest, saveHotelRequest, saveUploadedClientCard, sendHotelFollowUp, sendHotelMessage, sendHotelReply, sendHotelRequest, skipHotelRequest } from "@/lib/crm/hotel-desk-run";
 import { HOTEL_DESK_KINDS } from "@/lib/crm/types";
 import type { HotelDeskKind } from "@/lib/crm/types";
@@ -69,6 +70,10 @@ async function readPayload(request: Request) {
     return {
       ...(json || {}),
       note: typeof json?.note === "string" ? json.note : "",
+      messageId: typeof json?.messageId === "string" ? json.messageId : "",
+      carteCible: typeof json?.carteCible === "string" ? json.carteCible : "",
+      fil: json?.fil === true,
+      confirmer: json?.confirmer === true,
       clientCard: null as { filename: string; content: Buffer; mime?: string } | null,
     };
   }
@@ -96,6 +101,9 @@ async function readPayload(request: Request) {
     contacts: contactRows(form.get("contacts")),
     identityDocumentIds: documentIds(form.get("identityDocumentIds")),
     note: String(form.get("note") || ""),
+    carteCible: String(form.get("carteCible") || ""),
+    fil: String(form.get("fil") || "") === "true",
+    confirmer: String(form.get("confirmer") || "") === "true",
     clientCard,
   };
 }
@@ -182,6 +190,25 @@ export async function POST(request: Request, ctx: Ctx) {
   if (action === "clear-client-card") {
     await clearClientStayCard(admin, id, itemId);
     return NextResponse.json({ ok: true });
+  }
+  if (action === "deplacer-courrier") {
+    try {
+      const moved = await moveHotelCourrier(
+        admin,
+        {
+          dossier_id: id,
+          message_id: typeof body.messageId === "string" ? body.messageId : "",
+          carte_cible: typeof body.carteCible === "string" ? body.carteCible : "",
+          fil: body.fil === true,
+          confirmer: body.confirmer === true,
+        },
+        { staffId: auth.staff.id, name: auth.staff.full_name },
+        { journalPath: `/api/admin/bookings/${id}/hotel-desk` }
+      );
+      return NextResponse.json(moved);
+    } catch (error) {
+      return jsonError(error instanceof Error ? error.message : "Action impossible", 400);
+    }
   }
   if (action === "classer" || action === "rouvrir") {
     if (!kind) return jsonError("Action incomplète", 400);

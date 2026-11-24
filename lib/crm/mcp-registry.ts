@@ -147,6 +147,7 @@ import { mcpStaffDenial } from "@/lib/crm/mcp-role";
 import { lireRecherchesHotels } from "@/lib/crm/hotel-activity-run";
 import { lancerFormalite, statutFormalite } from "@/lib/crm/visa-launch";
 import { setHotelCourrierClass } from "@/lib/crm/hotel-courrier-classify";
+import { moveHotelCourrier } from "@/lib/crm/hotel-courrier-move";
 import { runHotelMail } from "@/lib/crm/mcp-hotel-mail";
 import { deposerBillet, detacherEmail, importerPieces } from "@/lib/crm/mcp-pieces-mail";
 import { envoyerRestaurants, fileWhatsapp, partagerSejour, propositionConcierge } from "@/lib/crm/mcp-messages";
@@ -156,7 +157,7 @@ import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 155;
+export const MCP_TOOL_CAP = 156;
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -1712,6 +1713,32 @@ export const MCP_TOOLS: ToolDef[] = [
       const { createServiceClient } = await import("@/lib/supabase/admin");
       const access = currentMcpAccess();
       return setHotelCourrierClass(
+        createServiceClient(),
+        args,
+        { staffId: access.staff?.id || null, name: access.staff?.name || "Jeton MCP" },
+        { journalPath: "/api/mcp" }
+      );
+    },
+  },
+  {
+    name: "deplacer_courrier_hotel",
+    write: true,
+    selfJournal: true,
+    description:
+      "Déplace un message, ou son fil Gmail, d’une carte hôtel vers une autre carte du même dossier. message_id ou extrait désigne le message. carte_cible est la carte d’arrivée. fil true emporte les messages du même fil Gmail, pas les autres courriers de la carte. Sans confirmer, aperçu : rien n’est écrit. confirmer true écrit. Aucun e-mail. visible_to_client n’est pas modifié.",
+    input: {
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
+      reference: z.string().trim().max(80).optional().describe("Référence du dossier, ex. TB-2026-0148"),
+      message_id: z.string().trim().max(80).optional().describe("Identifiant du message du fil"),
+      extrait: z.string().trim().max(300).optional().describe("Extrait unique du message, si message_id est absent"),
+      carte_cible: z.string().trim().max(80).describe("Carte hôtel de destination, dans le même dossier"),
+      fil: z.boolean().optional().describe("true : tout le fil Gmail de ce message. Sinon ce message seul"),
+      confirmer: confirmOpt,
+    },
+    run: async (args) => {
+      const { createServiceClient } = await import("@/lib/supabase/admin");
+      const access = currentMcpAccess();
+      return moveHotelCourrier(
         createServiceClient(),
         args,
         { staffId: access.staff?.id || null, name: access.staff?.name || "Jeton MCP" },

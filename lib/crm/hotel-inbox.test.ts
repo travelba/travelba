@@ -22,6 +22,7 @@ import {
   hotelPaymentAmountCents,
   hotelPaymentSignal,
   matchHotelInboxCard,
+  isNoiseHotelTurn,
   merchantResemblesHotel,
   pliantCardCaption,
   type HotelInboxCard,
@@ -508,7 +509,10 @@ test("Fairmont Singapore : en cours du 19 au 22/11, classé et payé, reste visi
 test("Park Hyatt Saigon : PENDING proposé en confiance haute, sans carte du dossier", () => {
   assert.equal(merchantResemblesHotel("ONEPAYJ*PARK HYATT SAI", "Park Hyatt Saigon"), true);
   assert.equal(merchantResemblesHotel("ONEPAYJ*PARK HYATT SAI", "Park Hyatt Phu Quoc"), false);
+  assert.equal(merchantResemblesHotel("ONEPAYJ*PARK HYATT PHU", "Park Hyatt Phu Quoc"), true);
+  assert.equal(merchantResemblesHotel("ONEPAYJ*PARK HYATT PHU", "Park Hyatt Saigon"), false);
   assert.equal(merchantResemblesHotel("HYATT", "Park Hyatt Saigon"), false);
+  assert.equal(merchantResemblesHotel("PARK HYATT", "Park Hyatt Phu Quoc"), false);
   const proposal = evidence({
     id: "onepay",
     place: "proposal",
@@ -573,6 +577,112 @@ test("Park Hyatt Saigon : PENDING proposé en confiance haute, sans carte du dos
   assert.equal(low.payment.length, 1);
   assert.equal(low.paid.length, 0);
   assert.equal(low.upcoming.length, 0);
+});
+
+test("Park Hyatt Phu Quoc : ONEPAYJ*PARK HYATT PHU en confiance haute, à pointer", async () => {
+  const proposal = evidence({
+    id: "phu-quoc",
+    place: "proposal",
+    status: "PENDING",
+    merchant: "ONEPAYJ*PARK HYATT PHU",
+    confidence: "haute",
+    billingCents: 346595800,
+    currency: "VND",
+    cardLabel: null,
+    last4: "6438",
+  });
+  const inbox = buildHotelInbox(
+    [
+      request({
+        hotelName: "Park Hyatt Phu Quoc",
+        reference: "TB-2026-0148",
+        kind: "payment_link",
+        itemId: "8fbc496a",
+        stayStart: "2026-12-24T15:00:00+07:00",
+        itemEnd: "2026-12-31T11:00:00+07:00",
+        turns: [
+          turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({
+            id: "in",
+            at: "2026-11-02T09:00:00.000Z",
+            direction: "in",
+            body: "Please complete the payment link.",
+            link: "https://pay.hotel.test/pqc",
+          }),
+        ],
+      }),
+      request({
+        id: "letter-sgn",
+        hotelName: "Park Hyatt Saigon",
+        itemId: "6f30388b",
+        kind: "payment_link",
+        stayStart: "2026-12-31T15:00:00+07:00",
+        itemEnd: "2027-01-01T11:00:00+07:00",
+        turns: [
+          turn({ id: "out-sgn", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({
+            id: "in-sgn",
+            at: "2026-11-02T09:00:00.000Z",
+            direction: "in",
+            body: "Please complete the payment link.",
+            link: "https://pay.hotel.test/sgn",
+          }),
+        ],
+      }),
+    ],
+    [],
+    true,
+    [],
+    [],
+    NOW,
+    [proposal]
+  );
+  const phu = inbox.upcoming.find((row) => row.hotel === "Park Hyatt Phu Quoc");
+  const saigon = inbox.payment.find((row) => row.hotel === "Park Hyatt Saigon") || inbox.upcoming.find((row) => row.hotel === "Park Hyatt Saigon");
+  assert.equal(phu?.paymentState, "probable");
+  assert.equal(phu?.status, "Payé probablement, à pointer");
+  assert.notEqual(saigon?.paymentState, "probable");
+  assert.equal(saigon?.paymentState, "unpaid");
+  const { HotelInbox } = await inboxView;
+  const html = renderToStaticMarkup(createElement(HotelInbox, { inbox }));
+  assert.match(html, /Payé probablement, à pointer/);
+  assert.match(html, /Park Hyatt Phu Quoc/);
+  assert.equal(html.includes("Park Hyatt Phu Quoc") && html.slice(html.indexOf("Park Hyatt Phu Quoc"), html.indexOf("Park Hyatt Phu Quoc") + 800).includes(">À payer<"), false);
+});
+
+test("une newsletter World of Hyatt n’est pas une réponse à traiter", async () => {
+  const newsletter = turn({
+    id: "news",
+    at: "2026-11-19T04:18:00.000Z",
+    direction: "in",
+    from: "World of Hyatt <worldofhyatt@loyalty.hyatt.com>",
+    body: `${"https://click.loyalty.hyatt.com/track/pixel?u=1 ".repeat(40)}\nYou're receiving this email. Updates Coming to World of Hyatt in 2027.`,
+    countsAsReply: true,
+  });
+  assert.equal(isNoiseHotelTurn(newsletter), true);
+  const inbox = buildHotelInbox(
+    [
+      request({
+        hotelName: "Park Hyatt Phu Quoc",
+        kind: "payment_link",
+        status: "sent",
+        turns: [
+          turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          newsletter,
+        ],
+      }),
+    ],
+    [],
+    true,
+    [],
+    [],
+    NOW
+  );
+  assert.equal(inbox.replies.length, 0);
+  assert.equal(inbox.payment.length, 0);
+  const { HotelInbox } = await inboxView;
+  const html = renderToStaticMarkup(createElement(HotelInbox, { inbox }));
+  assert.equal(html.includes("Réponse à traiter"), false);
 });
 
 test("Park Hyatt Phu Quoc : seulement nos envois, le paiement est quand même lu", () => {

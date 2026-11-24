@@ -1,5 +1,5 @@
 import { hotelReplyHref, meaningfulMailExcerpt, noticeHotelName } from "./hotel-reply-notice";
-import { HOTEL_DESK_LABELS } from "./hotel-desk";
+import { HOTEL_DESK_LABELS, hotelReplyForDesk } from "./hotel-desk";
 import { followUpCountLabel, followUpHref, isUnanswered } from "./mail-followup";
 import { formatMoney } from "./money";
 import { pliantSpendCopy } from "./pliant-booking";
@@ -299,13 +299,29 @@ export function classificationSuperseded(
   return Boolean(classifiedAt) && !classificationStillHolds(classifiedAt, turns);
 }
 
-/** Le lien est payé, dit par l’hôtel. « Le lien est prêt » ne compte pas. */
-export function paymentSettledText(text: string) {
-  const flat = text.replace(/\s+/g, " ").trim();
-  if (!flat || asksSomething(flat)) return false;
-  return /(?:^|[^\p{L}])(?:payment (?:has been )?(?:received|successful|completed|confirmed)|paiement (?:a été )?(?:reçu|effectué|effectue|confirmé)|paid in full)(?![\p{L}])/iu.test(
-    flat
+const PAYMENT_SETTLED =
+  /(?:^|[^\p{L}])(?:(?:full\s+)?payment(?:\s+[\p{L}\p{N}.,']+){0,14}\s+(?:has been\s+)?(?:successfully\s+)?(?:received|successful|completed|confirmed)|paiement(?:\s+[\p{L}\p{N}.,']+){0,14}\s+(?:a été\s+)?(?:reçu|effectué|effectue|confirmé)|paid in full)(?![\p{L}])/iu;
+
+function sentenceDeniesPayment(sentence: string) {
+  return /(?:^|[^\p{L}])(?:not|no longer|pas encore|n['’]est pas|hasn't|has not|n['’]a pas)(?![\p{L}]).{0,48}(?:receiv|reçu|received|confirm|payment|paiement)/iu.test(
+    sentence
   );
+}
+
+/**
+ * Le lien est payé, dit par l’hôtel. « Le lien est prêt » ne compte pas.
+ * Le texte utile seulement : une citation, ou une demande avant l’arrivée, n’annule pas l’accusé.
+ */
+export function paymentSettledText(text: string) {
+  const useful = hotelReplyForDesk(text);
+  const flat = useful.replace(/\s+/g, " ").trim();
+  if (!flat) return false;
+  const sentences = flat.split(/(?<=[.!])\s+/);
+  return sentences.some((sentence) => {
+    if (sentence.includes("?")) return false;
+    if (sentenceDeniesPayment(sentence)) return false;
+    return PAYMENT_SETTLED.test(sentence);
+  });
 }
 
 export type CourrierCloseReason = "payment" | "confirmed" | "cancelled" | "past";
@@ -382,7 +398,7 @@ export function dashboardCourriers(
     const agencyAfterHotel =
       last?.direction === "out" && ordered.some((turn) => turn.direction === "in" && time(turn.at) <= time(last.at));
     const latestHotel = [...ordered].reverse().find((turn) => turn.direction === "in");
-    const latestHotelText = meaningfulMailExcerpt(latestHotel?.body || "", 400);
+    const latestHotelText = hotelReplyForDesk(latestHotel?.body || "");
     const moment = last?.at || latestMoment([row.repliedAt, row.lastFollowUpAt, row.sentAt]);
     if (!moment) continue;
     const asked = row.kind === "payment_link" || Boolean(row.paymentAsked);

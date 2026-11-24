@@ -6,6 +6,7 @@ import { RecentMails } from "../../components/admin/RecentMails";
 import {
   DASHBOARD_MAIL_PREVIEW,
   dashboardCourriers,
+  paymentSettledText,
   latestHotelPliantPayment,
   type HotelCourrierSource,
   type HotelPliantSpend,
@@ -152,6 +153,53 @@ test("un message qui compte vaut une réponse même si le statut n’a pas suivi
   assert.equal(line?.replyLabel, "Réponse à traiter");
   assert.equal(line?.lastWriter, "L'hôtel");
   assert.equal(line?.detail, "TB-1042 · Bien reçu.");
+});
+
+test("l’accusé Phu Quoc règle ce fil, pas celui de Saigon", () => {
+  const receipt =
+    "Please send the arrival flight details before check-in.\nThe full payment of VND 346,595,760 has been successfully received.\nOn Tue, 18 Nov 2026, Travel BA <contact@travelba.fr> wrote:\n> Could you confirm the payment has been received?";
+  assert.equal(paymentSettledText(receipt), true);
+  assert.equal(paymentSettledText("Has the payment been received?"), false);
+  assert.equal(paymentSettledText("The payment has not been received."), false);
+  const now = Date.parse("2026-11-20T12:00:00.000Z");
+  const lines = dashboardCourriers(
+    [
+      courrier({
+        id: "phu",
+        kind: "payment_link",
+        status: "replied",
+        itemId: "8fbc496a",
+        hotelName: "Park Hyatt Phu Quoc",
+        reference: "TB-2026-0148",
+        itemEnd: "2026-12-31",
+        replies: [{ id: "paid", body: receipt, receivedAt: "2026-11-19T04:18:00.000Z" }],
+        repliedAt: "2026-11-19T04:18:00.000Z",
+      }),
+      courrier({
+        id: "sgn",
+        kind: "payment_link",
+        status: "replied",
+        itemId: "6f30388b",
+        hotelName: "Park Hyatt Saigon",
+        reference: "TB-2026-0148",
+        itemEnd: "2027-01-01",
+        replies: [
+          {
+            id: "link",
+            body: "Please complete the payment link for Park Hyatt Saigon.",
+            receivedAt: "2026-11-18T08:00:00.000Z",
+          },
+        ],
+        repliedAt: "2026-11-18T08:00:00.000Z",
+      }),
+    ],
+    [],
+    true,
+    now
+  );
+  assert.equal(lines.some((line) => line.title.includes("Phu Quoc")), false);
+  assert.equal(lines.some((line) => line.title.includes("Saigon")), true);
+  assert.equal(lines.find((line) => line.title.includes("Saigon"))?.replyLabel, "Réponse à traiter");
 });
 
 test("le lien de paiement sort s’il est payé, et le dit s’il ne l’est pas", () => {

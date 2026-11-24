@@ -1,4 +1,5 @@
 import { formatDateFr } from "./dates";
+import { currencyMinorFactor } from "./money";
 import type { PliantSpendLine } from "./pliant-cards";
 import { pliantLedgerDraft } from "./pliant-match";
 import { isActiveItem, isLedgerExpenseKind } from "./types";
@@ -168,7 +169,8 @@ export function pliantSpendCopy(
   if (line.billingCents == null || !Number.isFinite(line.billingCents)) return null;
   const cents = Math.abs(Math.round(line.billingCents));
   if (cents === 0) return null;
-  return { amount: cents / 100, currency: moneyCode(line.currency) };
+  const currency = moneyCode(line.currency);
+  return { amount: cents / currencyMinorFactor(currency), currency };
 }
 
 export type BookingCardMosaicSlot =
@@ -209,7 +211,7 @@ export function pliantCardRecaps(cards: PliantBookingCard[], spends: PliantSpend
     for (const line of lines) {
       const copy = pliantSpendCopy(line);
       if (!copy || copy.currency !== card.currency) continue;
-      spentCents += Math.round(copy.amount * 100);
+      spentCents += Math.round(copy.amount * currencyMinorFactor(copy.currency));
     }
     return { ...card, spends: lines, spentCents };
   });

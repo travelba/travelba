@@ -1132,6 +1132,9 @@ export function BookingItemsPanel({
                           focusReply={openHotelItemId === item.id}
                           initialRelanceId={openHotelItemId === item.id ? openRelanceId : null}
                           initialReplyId={openHotelItemId === item.id ? openReplyId : null}
+                          otherHotels={cardRows
+                            .filter((row) => row.kind === "hotel" && row.id !== item.id && !isDraftStepId(row.id))
+                            .map((row) => ({ id: row.id, name: hotelDisplayName(row) || row.title || "Hôtel" }))}
                         />
                       ) : null}
                     </div>

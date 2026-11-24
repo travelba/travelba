@@ -414,7 +414,7 @@ export async function syncHotelDeskThreads(admin: Admin, bookingId: string) {
         if (!anchor.confirmations.some((item) => item.toUpperCase() === token.toUpperCase())) anchor.confirmations.push(token);
       }
     }
-    const cues = replyCues(anchors, context.guest, context.reference);
+    const cues = replyCues(anchors, context.guest, context.reference, context.hotels);
     const sharedConfirmation = new Map<string, boolean>();
     for (const anchor of dueAnchors) {
       const knownThreads = existing
@@ -525,9 +525,22 @@ async function replyContext(admin: Admin, bookingId: string) {
   const confirmations = new Map<string, string>();
   let guest = "";
   let reference = "";
-  const { data: itemRows } = await admin.from("crm_booking_items").select("id, confirmation_ref").eq("booking_id", bookingId).eq("kind", "hotel");
-  for (const row of (itemRows || []) as { id?: string; confirmation_ref?: string | null }[]) {
+  const hotels = new Map<string, string>();
+  const { data: itemRows } = await admin
+    .from("crm_booking_items")
+    .select("id, confirmation_ref, title, details")
+    .eq("booking_id", bookingId)
+    .eq("kind", "hotel");
+  for (const row of (itemRows || []) as {
+    id?: string;
+    confirmation_ref?: string | null;
+    title?: string | null;
+    details?: { hotel_name?: unknown } | null;
+  }[]) {
     if (row.id && row.confirmation_ref) confirmations.set(row.id, row.confirmation_ref);
+    const named = typeof row.details?.hotel_name === "string" ? row.details.hotel_name.trim() : "";
+    const hotel = named || (row.title || "").trim();
+    if (row.id && hotel) hotels.set(row.id, hotel);
   }
   const { data: booking } = await admin.from("crm_bookings").select("reference, customer_id").eq("id", bookingId).maybeSingle();
   const stay = booking as { reference?: string | null; customer_id?: string | null } | null;
@@ -547,10 +560,15 @@ async function replyContext(admin: Admin, bookingId: string) {
     holder,
   });
   guest = `${lead.firstName} ${lead.lastName}`.trim();
-  return { confirmations, guest, reference };
+  return { confirmations, hotels, guest, reference };
 }
 
-function replyCues(anchors: (ThreadAnchor & { subjectKey: string })[], guest: string, reference: string): HotelReplyCue[] {
+function replyCues(
+  anchors: (ThreadAnchor & { subjectKey: string })[],
+  guest: string,
+  reference: string,
+  hotels: Map<string, string>
+): HotelReplyCue[] {
   return anchors.map((anchor) => ({
     subjectKey: anchor.subjectKey,
     requestId: anchor.requestId || anchor.messageId || anchor.subjectKey,
@@ -558,6 +576,7 @@ function replyCues(anchors: (ThreadAnchor & { subjectKey: string })[], guest: st
     guest,
     reference,
     recipients: anchor.recipients,
+    hotel: hotels.get(anchor.bookingItemId) || "",
   }));
 }
 
@@ -647,7 +666,8 @@ async function collectThreadHits(
     }
     if (inThread) prev.inThread = true;
   };
-  const threadIds = new Set(knownThreads.filter(Boolean));
+  const boundThreads = new Set(knownThreads.filter(Boolean));
+  const looseThreads = new Set<string>();
   let searchFailed = false;
   const take = async (message: ParsedGmailMessage, inThread: boolean) => {
     if (!message.id) return;
@@ -658,19 +678,28 @@ async function collectThreadHits(
     }
     push(await toGmailHit(message, storedLinks.get(message.id) || null), inThread);
   };
-  for (const query of queries) {
+  for (const spec of queries) {
     try {
-      for (const message of await searchInbox(query, 4)) {
+      for (const message of await searchInbox(spec.query, 4)) {
         await take(message, false);
-        if (message.threadId) threadIds.add(message.threadId);
+        if (!message.threadId) continue;
+        if (spec.bindsThread || boundThreads.has(message.threadId)) boundThreads.add(message.threadId);
+        else looseThreads.add(message.threadId);
       }
     } catch {
       searchFailed = true;
     }
   }
-  for (const threadId of [...threadIds].slice(0, 5)) {
+  for (const threadId of [...boundThreads].slice(0, 5)) {
     try {
       for (const message of await getThread(threadId)) await take(message, true);
+    } catch {
+      continue;
+    }
+  }
+  for (const threadId of [...looseThreads].filter((id) => !boundThreads.has(id)).slice(0, 5)) {
+    try {
+      for (const message of await getThread(threadId)) await take(message, false);
     } catch {
       continue;
     }
@@ -772,7 +801,7 @@ async function storeThreadHits(
       nestedText: hit.nestedText,
     });
     if (!classified.keep || classified.subjectKey !== anchor.subjectKey || !hit.id) continue;
-    if (classified.via === "confirmation" || classified.via === "domain") {
+    if (classified.via === "confirmation" || classified.via === "place" || classified.via === "domain") {
       const tokens = hotelConfirmationTokens(hit.subject, hit.body).filter((token) =>
         anchor.confirmations.some((item) => item.toUpperCase() === token.toUpperCase())
       );
