@@ -31,6 +31,7 @@ export async function applyBookingSteps(opts: {
   emailIngestId?: string;
   visibleToClient: boolean;
   skipTicketingFee?: boolean;
+  recordTravelers?: { first_name?: string | null; last_name?: string | null }[];
 }) {
   const preview = await previewBookingSteps(opts.admin, opts.bookingId, opts.extract);
   await applyReplacementToBooking({
@@ -41,6 +42,7 @@ export async function applyBookingSteps(opts: {
     visibleToClient: opts.visibleToClient,
     emailIngestId: opts.emailIngestId,
     skipTicketingFee: opts.skipTicketingFee,
+    recordTravelers: opts.recordTravelers,
   });
   return preview;
 }

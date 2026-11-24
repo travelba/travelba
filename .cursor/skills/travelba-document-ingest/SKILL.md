@@ -87,7 +87,8 @@ IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **ja
 ## Vol
 
 - Aller + retour **imprimés** (même PDF) = **deux** cartes. Correspondance = deux. Pas de retour fantôme.
-- 10 e-tickets passagers du **même n° + jour** = **une** carte. Noms → `travelers`. `details.ticket_count` = nombre de billets. Prix vendu = **prix du billet pour l’aller-retour** (aller simple : le prix de ce vol).
+- 10 e-tickets passagers du **même n° + jour** = **une** carte. Noms → `travelers`. `details.ticket_count` = nombre de **vrais numéros de billet** (13 chiffres). Prix vendu = **prix du billet pour l’aller-retour** (aller simple : le prix de ce vol).
+- « Référence du dossier compagnie AF/ZLFJIN, LY/ZLFJIN » n’est pas un passager. Un code à 2 caractères / PNR à 6 caractères est ignoré. Un prénom ou un nom égal au PNR, ou un nom qui est le code compagnie du reçu, n’est pas un voyageur.
 - Chaque PDF de ces passagers reste **un fichier**. `details.source_files` retient tous les noms fusionnés sur le segment. L’affichage le montre sur **chaque** vol du même PNR (et sur les segments lus), sans seconde copie. Une carte d’embarquement ne suit pas l’autre segment. Skill `travelba-carnet`.
 - `confirmation_ref` = PNR GDS. `details.pnr` = réf. compagnie (`AF/AB12CD`).
 - `details.airline` = **opérant**. `supplier` = émetteur (Hahn Air ≠ Air Panama).

@@ -32,7 +32,8 @@ import { leCardFill, loadLeReservation } from "@/lib/crm/mcp-le";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { parseMoney } from "@/lib/crm/money";
 import { defaultBillingCompany, type PayerCompany } from "@/lib/crm/payer";
-import { addedTravelerNames, holderMatchesAddedTraveler, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
+import { addedTravelerNames, holderMatchesAddedTraveler, namesReferToSamePerson, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
+import { countRealTickets, realTicketList } from "@/lib/crm/ticket-party";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
 import { dossierFace } from "@/lib/crm/dossier-status";
 import { withoutHomeCity } from "@/lib/crm/staff-stay";
@@ -1809,22 +1810,65 @@ export function retargetCompanionDetails(
   return changed ? next : null;
 }
 
-/** Retire un voyageur des listes de la carte. */
-export function dropPartyFromDetails(details: Record<string, unknown>, partyKey: string): Record<string, unknown> | null {
+function samePartyPassenger(
+  person: { first_name?: string | null; last_name?: string | null },
+  row: unknown
+) {
+  if (!row || typeof row !== "object") return false;
+  const named = row as { first_name?: unknown; last_name?: unknown };
+  return namesReferToSamePerson(
+    { first_name: person.first_name ?? null, last_name: person.last_name ?? null },
+    { first_name: typeof named.first_name === "string" ? named.first_name : null, last_name: typeof named.last_name === "string" ? named.last_name : null }
+  );
+}
+
+/** Retire un voyageur des listes de la carte, par clé ou par nom, et recalcule les billets. */
+export function dropPartyFromDetails(
+  details: Record<string, unknown>,
+  partyKey: string,
+  person?: { first_name?: string | null; last_name?: string | null }
+): Record<string, unknown> | null {
   let changed = false;
   const next: Record<string, unknown> = { ...details };
   const keys = Array.isArray(details.party_keys) ? details.party_keys.map(String) : null;
+  let passengers = Array.isArray(details.passengers) ? [...details.passengers] : null;
   if (keys?.includes(partyKey)) {
     changed = true;
     const kept = keys
       .map((key, index) => ({ key, index }))
       .filter((entry) => entry.key !== partyKey);
     next.party_keys = kept.map((entry) => entry.key);
-    if (Array.isArray(details.passengers)) {
-      const passengers = details.passengers as unknown[];
-      next.passengers = kept.map((entry) => passengers[entry.index]).filter((person) => person != null);
+    if (passengers) {
+      passengers = kept.map((entry) => passengers?.[entry.index]).filter((row) => row != null);
     }
-    if (typeof details.ticket_count === "number") next.ticket_count = kept.length;
+  }
+  if (person && (person.first_name || person.last_name) && passengers) {
+    const currentKeys = Array.isArray(next.party_keys) ? (next.party_keys as string[]) : keys;
+    const aligned = Boolean(currentKeys && currentKeys.length === passengers.length);
+    const keptPassengers: unknown[] = [];
+    const keptKeys: string[] = [];
+    passengers.forEach((row, index) => {
+      if (samePartyPassenger(person, row)) {
+        changed = true;
+        return;
+      }
+      keptPassengers.push(row);
+      if (aligned && currentKeys) keptKeys.push(currentKeys[index]);
+    });
+    if (changed) {
+      passengers = keptPassengers;
+      if (aligned && currentKeys) next.party_keys = keptKeys;
+    }
+  }
+  if (changed && passengers) {
+    next.passengers = passengers;
+    const numbers = realTicketList(passengers);
+    const real = countRealTickets(passengers);
+    next.ticket_count = real ?? passengers.length;
+    if (numbers.length) next.ticket_numbers = numbers;
+    else delete next.ticket_numbers;
+  } else if (changed && typeof details.ticket_count === "number" && Array.isArray(next.party_keys)) {
+    next.ticket_count = next.party_keys.length;
   }
   if (Array.isArray(details.rooms)) {
     next.rooms = details.rooms.map((room) => {
@@ -2204,7 +2248,12 @@ export async function removeVoyageur(input: Record<string, unknown>, admin?: Adm
     .eq("id", traveler.id)
     .eq("booking_id", booking.id);
   if (deleteError) throw new McpWriteError("Voyageur non retiré.");
-  if (party) await rewriteBookingParty(db, booking.id, (details) => dropPartyFromDetails(details, party));
+  await rewriteBookingParty(db, booking.id, (details) =>
+    dropPartyFromDetails(details, party, {
+      first_name: traveler.first_name,
+      last_name: traveler.last_name,
+    })
+  );
   const warning = await ledgerWarning("Voyageur retiré", () => refreshTicketingFee(db, booking.id));
   return {
     voyageur_id: traveler.id,

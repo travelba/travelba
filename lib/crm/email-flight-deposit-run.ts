@@ -8,6 +8,7 @@ import {
 import {
   decideFlightAutoAttach,
   flightOnlyExtract,
+  guardAutoFlightTravelers,
   hasUsableFlight,
   planFlightDeposit,
   sumFlightTicketCounts,
@@ -85,12 +86,14 @@ export function flightDepositSummary(extract: BookingExtract) {
     })
     .join(" · ");
   const notes = (extract.items || [])
-    .map((item) => {
-      const note = (item.details as { party_note?: unknown } | null | undefined)?.party_note;
-      return typeof note === "string" ? note.trim() : "";
+    .flatMap((item) => {
+      const details = item.details as { party_note?: unknown; review_reason?: unknown } | null | undefined;
+      return [details?.party_note, details?.review_reason];
     })
-    .filter(Boolean);
-  const tail = notes.length ? ` ${notes.join(" ")}` : "";
+    .filter((note): note is string => typeof note === "string" && note.trim().length > 0)
+    .map((note) => note.trim());
+  const uniqueNotes = [...new Set(notes)];
+  const tail = uniqueNotes.length ? ` ${uniqueNotes.join(" ")}` : "";
   return `Vols déposés, cachés, prix de vente 0 € : ${vols}.${tail} Aucun message. Aucun débit.`;
 }
 
@@ -110,7 +113,9 @@ export async function depositFlightsOnBooking(
   if (!extract || !hasUsableFlight(extract)) return { wrote: false as const, message: "" };
   enterFlightRematch();
   try {
-  const prepared = await prepareFlightDepositExtract(admin, bookingId, extract, row.id);
+  const summed = await prepareFlightDepositExtract(admin, bookingId, extract, row.id);
+  const guarded = opts?.automatic ? guardAutoFlightTravelers(summed) : null;
+  const prepared = guarded?.extract ?? summed;
   if (!(prepared.items || []).length) return { wrote: false as const, message: "" };
   if (prepared.document_status === "cancelled") {
     await admin
@@ -128,6 +133,7 @@ export async function depositFlightsOnBooking(
     emailIngestId: row.id,
     visibleToClient: false,
     skipTicketingFee: opts?.automatic ? false : true,
+    recordTravelers: guarded?.record,
   });
   const cardIds = await flightCardIdsForExtract(admin, bookingId, prepared);
   const cardId = cardIds[0] || (await resolveEmailCardId(admin, bookingId, prepared));

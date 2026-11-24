@@ -7,6 +7,7 @@ import {
   dossierSpansTooLong,
   flightExtractIsStale,
   FLIGHT_PARSER_REVISION,
+  guardAutoFlightTravelers,
   partyReviewReason,
   planFlightDeposit,
   planQueuedFlightAttach,
@@ -229,6 +230,92 @@ describe("dépôt des vols", () => {
   });
 });
 
+describe("garde-fou du rattachement automatique", () => {
+  it("n’ajoute pas les références compagnie et laisse le cas à l’agence", () => {
+    const guarded = guardAutoFlightTravelers({
+      document_status: "confirmed",
+      travelers: [
+        { first_name: "Zoe", last_name: "Benillouche" },
+        { first_name: "Zlfjin", last_name: "Af" },
+        { first_name: "Zlfjin", last_name: "Ly" },
+      ],
+      items: [
+        {
+          kind: "flight",
+          title: "Tel Aviv → Paris",
+          confirmation_ref: "ZLFJIN",
+          start_at: "2026-11-24T18:00:00",
+          details: {
+            flight_number: "LY 9843",
+            pnr: "ZLFJIN",
+            airline_iata: "LY",
+            ticket_count: 3,
+            passengers: [
+              { first_name: "Zoe", last_name: "Benillouche", ticket_number: "1143812456790" },
+              { first_name: "Zlfjin", last_name: "Af" },
+              { first_name: "Zlfjin", last_name: "Ly" },
+            ],
+          },
+        },
+      ],
+    });
+    assert.deepEqual(guarded.record, [{ first_name: "Zoe", last_name: "Benillouche" }]);
+    assert.match(guarded.held.join(" "), /Zlfjin Af/);
+    assert.match(guarded.held.join(" "), /Zlfjin Ly/);
+    const details = guarded.extract.items?.[0]?.details as {
+      passengers?: { last_name?: string }[];
+      ticket_count?: number;
+      needs_review?: boolean;
+      review_reason?: string;
+    };
+    assert.equal(details.ticket_count, 1);
+    assert.deepEqual((details.passengers || []).map((row) => row.last_name), ["Benillouche"]);
+    assert.equal(details.needs_review, true);
+    assert.match(details.review_reason || "", /ne sont pas ajoutés/);
+  });
+
+  it("n’ajoute personne quand la lecture est déjà à vérifier", () => {
+    const guarded = guardAutoFlightTravelers({
+      items: [
+        {
+          kind: "flight",
+          confirmation_ref: "ZLFJIN",
+          details: {
+            flight_number: "LY 9843",
+            pnr: "ZLFJIN",
+            needs_review: true,
+            review_reason: "Codes IATA à confirmer.",
+            passengers: [{ first_name: "Zoe", last_name: "Benillouche", ticket_number: "1143812456790" }],
+          },
+        },
+      ],
+    });
+    assert.deepEqual(guarded.record, []);
+    assert.match(
+      String((guarded.extract.items?.[0]?.details as { review_reason?: string } | undefined)?.review_reason),
+      /Codes IATA/
+    );
+  });
+
+  it("laisse un passager Transavia sans numéro de billet", () => {
+    const guarded = guardAutoFlightTravelers({
+      items: [
+        {
+          kind: "flight",
+          confirmation_ref: "WFPMHG",
+          details: {
+            flight_number: "TO 4338",
+            pnr: "WFPMHG",
+            passengers: [{ first_name: "Inès", last_name: "Morel" }],
+          },
+        },
+      ],
+    });
+    assert.deepEqual(guarded.record, [{ first_name: "Inès", last_name: "Morel" }]);
+    assert.equal(guarded.held.length, 0);
+  });
+});
+
 describe("rattachement automatique", () => {
   const dossier = { booking_id: "b1", customer_id: "c1", score: 90, reason: "Référence fournisseur" };
   const traveler = { booking_id: "b1", customer_id: "c1", score: 88, reason: "Voyageur et dates" };
@@ -330,6 +417,8 @@ describe("rattachement automatique", () => {
     assert.match(run, /visibleToClient: false/);
     assert.match(run, /skipTicketingFee: opts\?\.automatic \? false : true/);
     assert.match(run, /auto_attach/);
+    assert.match(run, /guardAutoFlightTravelers/);
+    assert.match(run, /recordTravelers: guarded\?\.record/);
     assert.equal(run.includes("inviteCustomer"), false);
     assert.equal(run.includes("notifyStayPublished"), false);
     assert.equal(run.includes("envoyer"), false);

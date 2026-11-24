@@ -1,4 +1,5 @@
 import { mergeFlightPassengers, type FlightPassengerRow, type MatchableItem } from "@/lib/crm/item-match";
+import { countRealTickets } from "@/lib/crm/ticket-party";
 
 export const TICKET_DUPLICATE_MESSAGE = "Possible doublon de billets.";
 
@@ -65,7 +66,7 @@ export function planTicketOnExistingCard(existing: MatchableItem, incoming: Matc
     if (!text(current.seat) && seats.length === 1) details.seat = seats[0];
     if (passengers.length) {
       details.passengers = passengers;
-      details.ticket_count = passengers.length;
+      details.ticket_count = countRealTickets(passengers) ?? passengers.length;
     }
   } else if (passengers.length) {
     const kept = mergeFlightPassengers(current, { passengers: [] }, false);
