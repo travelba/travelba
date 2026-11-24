@@ -29,6 +29,8 @@ Retrouvez le carnet du séjour que l’agence a publié : les villes, les vols, 
 
 L’application prévient quand un vol change, quand une carte d’embarquement est prête, quand un règlement est reçu, ou quand l’agence répond dans Messages. Chaque envoi se coupe dans Mon compte.
 
+Ajoutez un vol ou tout le séjour au calendrier de l’iPhone. L’application écrit ces étapes, elle ne lit pas les autres événements.
+
 Les messages avec l’agence sont dans l’application. Une photo part depuis l’appareil. Ce n’est pas WhatsApp.
 
 Quand le certificat est en place, l’hôtel, le transfert et le vol sans carte de la compagnie proposent Ajouter à Apple Wallet.
@@ -55,6 +57,8 @@ Réponses pour App Store Connect. Rien n’est utilisé pour le suivi publicitai
 
 Face ID reste sur l’appareil : le système répond seulement oui ou non. Le numéro de carte bancaire n’est pas stocké par TBA (le paiement carte passe par Stripe, dans le site). Le jeton de notification et le jeton d’activité en direct sont des identifiants d’appareil, liés au compte, sans suivi. Ils ne sont pas revendus.
 
+Le calendrier de l’iPhone n’est pas lu et n’est pas une donnée collectée. L’application demande seulement d’y écrire les vols et les étapes du séjour. Rien n’est envoyé.
+
 ### Note pour l’équipe de revue
 
 À coller dans App Review Information.
@@ -63,20 +67,20 @@ L’application montre d’abord l’écran local (séjour déjà connu sur l’
 
 Connexion du client : e-mail et mot de passe, ou lien magique. Pas de connexion tierce dans l’application. Sign in with Apple n’est pas exigé dans cet état (guideline 4.8). Il le deviendrait si le client pouvait se connecter avec Google, Facebook ou un autre fournisseur. La connexion Google de l’agence n’est pas dans l’application.
 
-Fonctions natives : notifications Apple, widgets d’écran d’accueil (prochain séjour, prochain vol, météo de la destination), activité en direct le jour du vol (écran verrouillé et Dynamic Island : numéro, trajet, heure, porte, terminal, statut), Face ID au retour (résultat gardé sur l’appareil), appareil photo pour une pièce ou un message, feuille de partage, écran hors ligne, écran de lancement. Les widgets lisent un résumé déjà chargé par l’application. L’activité en direct ne démarre que le jour du vol, dans l’application, ou par une notification Apple si l’iPhone le permet. Un iPhone plus ancien garde la notification classique.
+Fonctions natives : notifications Apple, widgets d’écran d’accueil (prochain séjour, prochain vol, météo de la destination), activité en direct le jour du vol (écran verrouillé et Dynamic Island : numéro, trajet, heure, porte, terminal, statut), Face ID au retour (résultat gardé sur l’appareil), appareil photo pour une pièce ou un message, feuille de partage, calendrier (écriture seule à partir d’iOS 17 : les étapes du séjour, sans lire les autres événements), écran hors ligne, écran de lancement. Les widgets lisent un résumé déjà chargé par l’application. L’activité en direct ne démarre que le jour du vol, dans l’application, ou par une notification Apple si l’iPhone le permet. Un iPhone plus ancien garde la notification classique.
 
 Messages : Mon compte, icône en haut, et « Écrire à l’agence » sur un séjour. Le fil est dans l’application. Il ne passe pas par WhatsApp. L’agence répond dans Boîte de réception › Messages.
 
 Apple Wallet : le bouton n’apparaît que si le certificat Pass Type ID est posé (voir plus bas). Sans lui, l’écran n’a pas le bouton. Une carte déjà signée par la compagnie reste celle de la compagnie. Les passes TBA (hôtel, transfert, vol de repli) ne se mettent pas à jour tout seuls : la mise à jour par le service PassKit est l’étape suivante.
 
-Suppression du compte : Mon compte › Supprimer mon compte. La demande est enregistrée et envoyée à l’agence. Le client est déconnecté. Le traitement est fait sous 30 jours. Les séjours ne sont pas effacés sur-le-champ. Politique : `https://travelba.fr/fr/confidentialite`. Assistance : `https://travelba.fr/fr/support`.
+Suppression du compte : Mon compte › Supprimer mon compte. Le dialogue explique ce qui est effacé tout de suite (connexion, profil, passeport, Face ID, appareils) et ce que l’agence garde (dossiers, factures, règlements : comptabilité dix ans, contrat de voyage). Le bouton est « Supprimer définitivement mon compte ». Le compte est effacé immédiatement, puis l’écran « Votre compte a été supprimé » s’affiche. Politique : `https://travelba.fr/fr/confidentialite`. Assistance : `https://travelba.fr/fr/support`.
 
-Compte de démonstration (à créer dans l’admin avant l’envoi, puis coller ici) :
+Compte de démonstration :
 
-- E-mail : `REMPLACER@exemple.invalid`
-- Mot de passe : `REMPLACER`
+- E-mail : `appreview@travelba.fr` (`is_test`)
+- Mot de passe : celui posé pour la revue, hors dépôt
 
-L’agence crée la fiche, envoie l’invitation, définit le mot de passe et publie un séjour d’exemple visible. Il n’y a pas de demande libre : sans validation, aucun séjour n’est ouvert. Ne pas utiliser un client réel.
+L’agence publie un séjour d’exemple visible sur cette fiche. Il n’y a pas de demande libre : sans validation, aucun séjour n’est ouvert. Ne pas utiliser un client réel. Si la revue supprime le compte, la fiche anonymisée reste pour les dossiers. Recréer l’accès avec `APPREVIEW_PASSWORD='…' APPREVIEW_CONFIRM=1 npx tsx scripts/recreate-appreview-account.ts` (12 caractères minimum, le mot de passe n’est pas affiché). Le script refuse une adresse d’agence.
 
 ## Ce que Benjamin fait, dans l’ordre
 
@@ -194,6 +198,7 @@ Le service web PassKit (enregistrement de l’appareil, push quand la porte ou l
 | Cartes Wallet TBA | `lib/crm/wallet-pass.ts`, `GET /api/client/bookings/[id]/passe/[itemId]` |
 | Messages | `/mon-compte/messages`, Boîte de réception › Messages |
 | Pont dans le site | `components/native/NativeApp.tsx` (inactif dans Safari) |
+| Calendrier | `mobile/ios/App/App/CalendarBridge.swift`, `components/account/AddToPhoneCalendar.tsx` |
 
 Un changement d’écran du portail part avec le site. Un changement d’icône, de permission ou de plugin demande un nouveau build TestFlight.
 
@@ -208,7 +213,7 @@ Lancer :
 - Actions → **iOS TestFlight** → Run workflow, sur la branche voulue
 - ou pousser un tag `ios-*` (`git tag ios-1 && git push origin ios-1`)
 
-Le numéro de build du projet est `2`, la version marketing `1.3`. À l’archive, le workflow remplace le numéro de build par `github.run_number`.
+Le numéro de build du projet est `2`, la version marketing `1.5`. À l’archive, le workflow remplace le numéro de build par `github.run_number`.
 
 Secrets du dépôt (Settings → Secrets and variables → Actions) :
 
@@ -232,6 +237,7 @@ La clé API doit pouvoir créer un certificat et des profils. Apple limite le no
 - Pas de mise à jour automatique d’une carte déjà ajoutée (service PassKit : étape suivante).
 - Pas de notification sur une preview Vercel.
 - Le site dans Safari ne demande pas la permission de notification.
+- Pas d’écriture dans le calendrier si la personne refuse l’accès. Le bouton reste sur la page et propose les réglages. Safari, l’écran d’accueil et Android ne demandent pas cette permission.
 - Déposer une pièce ou montrer un séjour n’envoie pas la notification à la place du geste déjà prévu (WhatsApp, e-mail). La notification s’ajoute, elle ne le remplace pas.
 - Créditer un client, imprimer une pièce, ou ouvrir `/admin` ne se fait pas depuis l’application.
 
@@ -276,3 +282,21 @@ Pour qu’Apple Pay s’ouvre dans la webview :
 6. Rebuild TestFlight. Safari et l’application utilisent alors le même bouton.
 
 Aucune nouvelle clé Stripe. Les variables APNs de la 1.1 restent celles du document. `APPLE_PAY_DOMAIN_ASSOCIATION` est la seule variable nouvelle.
+
+## Version 1.4
+
+Le bouton **Ajouter au calendrier** (séjour entier, carte, prochain vol, carte d’embarquement, confirmation) écrit dans Calendrier via EventKit. La webview ne charge plus le fichier `.ics` : elle en montrait le texte, sans retour.
+
+Un seul événement ouvre la feuille système. Plusieurs événements (tout le séjour, accueil aller-retour) sont écrits d’un coup. À partir d’iOS 17, l’accès demandé est l’écriture seule (`NSCalendarsWriteOnlyAccessUsageDescription`). En dessous, l’accès calendrier déjà connu d’iOS 15. Les trois textes sont dans `Info.plist`, en français. Aucune capacité à cocher dans le portail développeur : ce n’est pas un entitlement.
+
+Safari, l’icône sur l’écran d’accueil et Android ne changent pas. Le `.ics` reste la voie du site. L’application demande `Accept: application/json` sur la même adresse.
+
+Le site doit être en production avant le TestFlight : l’application charge `https://travelba.fr`. Sans le JavaScript de cette version, le binaire annule quand même une ouverture de `.ics` dans la webview et écrit les événements. Pas de tag `ios-*` dans ce changement : le build se lance à la main, ou avec un tag plus tard.
+
+## Version 1.5
+
+Suppression du compte dans l’application, conforme à la guideline 5.1.1(v). Mon compte › Supprimer mon compte ouvre un dialogue (au-dessus de la barre). « Supprimer définitivement mon compte » efface le compte tout de suite : la connexion, le profil, les passeports et pièces d’identité, les préférences, Face ID et les appareils. Les dossiers, les factures et les règlements restent, sur une fiche sans identité. L’écran « Votre compte a été supprimé » suit, puis la déconnexion.
+
+Migration à jouer à la main, non appliquée par ce dépôt : `supabase/migrations/20261123200000_account_deletion.sql` (`crm_customers.account_deleted_at`). Sans elle, l’effacement utilise l’adresse `supprime+<id>@compte.invalid`. Rien d’autre n’est détruit.
+
+Le compte de revue `appreview@travelba.fr` peut être supprimé pendant la revue. Le script `scripts/recreate-appreview-account.ts` le recrée. Pas de tag `ios-*` : le build TestFlight se lance à la main, ou avec un tag plus tard.

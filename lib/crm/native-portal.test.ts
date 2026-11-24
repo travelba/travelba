@@ -25,6 +25,7 @@ test("le portail client reste dans l’application, l’agence jamais", () => {
   assert.equal(portalNavigation({ url: "https://travelba.fr/inscription" }), "allow");
   assert.equal(isPortalPath("/e/abc"), true);
   assert.equal(isPortalPath("/acces/jeton"), true);
+  assert.equal(isPortalPath("/compte-supprime"), true);
   assert.equal(isPortalPath("/auth/callback"), true);
   assert.equal(isPortalPath("/api/client/devices"), true);
   assert.equal(isNativeBlockedPath("/admin"), true);

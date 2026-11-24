@@ -165,6 +165,11 @@ async function route(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Écran après suppression du compte : public, sans session.
+  if (path === "/compte-supprime") {
+    return NextResponse.next();
+  }
+
   if (path === "/anniversaire-cyril" || path.startsWith("/anniversaire-cyril/")) {
     return NextResponse.next();
   }

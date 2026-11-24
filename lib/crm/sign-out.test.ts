@@ -34,6 +34,7 @@ test("la déconnexion agence ouvre la connexion agence, le client la sienne", ()
     "/admin/login?espace=myler",
   );
   assert.equal(signOutRedirectPath({ requested: "/connexion", audience: "staff" }), "/connexion");
+  assert.equal(signOutRedirectPath({ requested: "/compte-supprime", audience: "client" }), "/compte-supprime");
   assert.equal(
     signOutRedirectPath({ requested: "/connexion?error=application", audience: "staff" }),
     "/connexion?error=application",

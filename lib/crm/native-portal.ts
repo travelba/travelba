@@ -15,6 +15,7 @@ export function isPortalPath(pathname: string) {
   if (pathname === "/auth" || pathname.startsWith("/auth/")) return true;
   if (pathname === "/e" || pathname.startsWith("/e/")) return true;
   if (pathname === "/acces" || pathname.startsWith("/acces/")) return true;
+  if (pathname === "/compte-supprime") return true;
   if (pathname === "/api" || pathname.startsWith("/api/")) {
     if (pathname === "/api/admin" || pathname.startsWith("/api/admin/")) return false;
     if (pathname === "/api/mcp" || pathname.startsWith("/api/mcp/")) return false;

@@ -20,6 +20,7 @@ public class PortalPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "readVaultKey", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearVaultKey", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "addCalendarEvents", returnType: CAPPluginReturnPromise),
     ]
 
     private let keychainService = "fr.travelba.client"
@@ -46,6 +47,10 @@ public class PortalPlugin: CAPPlugin, CAPBridgedPlugin {
         } else {
             call.reject("Résumé illisible.")
         }
+    }
+
+    @objc func addCalendarEvents(_ call: CAPPluginCall) {
+        CalendarBridge.shared.add(events: eventRows(call), call: call, presenter: bridge?.viewController)
     }
 
     @objc func openSettings(_ call: CAPPluginCall) {
@@ -168,9 +173,26 @@ public class PortalPlugin: CAPPlugin, CAPBridgedPlugin {
         SecItemDelete(query as CFDictionary)
     }
 
+    private func eventRows(_ call: CAPPluginCall) -> [[String: Any]] {
+        let raw = call.options["events"]
+        if let rows = raw as? [[String: Any]] { return rows }
+        guard let rows = raw as? [NSDictionary] else { return [] }
+        return rows.map { dict in
+            var row: [String: Any] = [:]
+            for (key, value) in dict {
+                if let key = key as? String { row[key] = value }
+            }
+            return row
+        }
+    }
+
     @objc override public func shouldOverrideLoad(_ navigationAction: WKNavigationAction) -> NSNumber? {
         guard let url = navigationAction.request.url, let host = url.host?.lowercased() else { return nil }
         guard host == "travelba.fr" || host == "www.travelba.fr" else { return nil }
+        if navigationAction.targetFrame?.isMainFrame != false, url.path.lowercased().hasSuffix(".ics") {
+            CalendarBridge.shared.add(url: url, presenter: bridge?.viewController, webView: bridge?.webView)
+            return true
+        }
         let path = url.path
         let blocked = path == "/admin" || path.hasPrefix("/admin/")
             || path == "/api/admin" || path.hasPrefix("/api/admin/")
