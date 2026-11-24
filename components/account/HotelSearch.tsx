@@ -303,6 +303,7 @@ export function HotelSearch({
   firstName = "",
   lastName = "",
   highlights = [],
+  untilLabel,
 }: {
   trial?: boolean;
   leApi?: boolean;
@@ -312,6 +313,8 @@ export function HotelSearch({
   lastName?: string;
   /** Hôtels déjà réservés, avec photo. Vide : la section reste cachée. */
   highlights?: FeaturedHotel[];
+  /** Fin d’adhésion. Vide : la date du catalogue hôtel reste affichée. */
+  untilLabel?: string;
 }) {
   const today = useDeviceToday();
   const storedDraft = useSyncExternalStore(subscribeHotelDraft, readHotelDraftSnapshot, emptyHotelDraftSnapshot);
@@ -1285,6 +1288,7 @@ export function HotelSearch({
           pricesOpen={pricesOpen}
           onPrices={setPricesOpen}
           onClose={() => setClubOpen(false)}
+          untilLabel={untilLabel}
         />
       ) : null}
     </section>

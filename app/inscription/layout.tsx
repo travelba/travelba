@@ -15,7 +15,7 @@ export default function InscriptionLayout({ children }: { children: React.ReactN
       </div>
       <div className="relative mx-auto flex h-dvh max-w-[440px] flex-col px-4 py-4 sm:px-5 sm:py-6">
         <div className="mb-3 shrink-0">
-          <AccountBrand href="/" subtitle="Travel Business Agency" onDark />
+          <AccountBrand href="/" mark="Travel Club TBA" subtitle="Travel Club TBA" onDark />
         </div>
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] bg-[#f6f3ec] p-4 text-[#0B192C] shadow-[0_30px_80px_rgba(0,0,0,0.45)] ring-1 ring-[#C5A880] sm:p-5">
           <div className="pointer-events-none absolute inset-2.5 rounded-[22px] ring-1 ring-[#C5A880]/45" aria-hidden />

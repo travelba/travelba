@@ -102,6 +102,9 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
               lastName={lastName}
               customerId={prefill.invitationToken || phone || "invitation"}
               heroSrc={HOTEL_SEARCH_HERO_FALLBACK}
+              untilLabel="1 an à compter de la validation"
+              cardUntil="1 an"
+              eyebrow="Travel Club TBA"
             />
           </div>
           <p className="text-[13px] leading-snug text-[#0B192C]">{TRAVEL_CLUB_OFFER}</p>

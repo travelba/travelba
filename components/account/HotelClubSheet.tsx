@@ -36,6 +36,9 @@ export function HotelClubSheet({
   customerId,
   heroSrc,
   onHeroError,
+  untilLabel = HOTEL_ACCESS_UNTIL,
+  cardUntil,
+  eyebrow = HOTEL_ACCESS_EYEBROW,
   showPrices = true,
   embedded = false,
   pricesOpen: pricesOpenProp,
@@ -47,6 +50,12 @@ export function HotelClubSheet({
   customerId: string;
   heroSrc: string;
   onHeroError?: () => void;
+  /** Date ou durée affichée. Par défaut, la date du catalogue hôtel. */
+  untilLabel?: string;
+  /** Durée sur la carte, si elle doit rester plus courte que untilLabel. */
+  cardUntil?: string;
+  /** Nom sur la carte. Par défaut, « Club Travel BA ». */
+  eyebrow?: string;
   showPrices?: boolean;
   embedded?: boolean;
   pricesOpen?: boolean;
@@ -134,7 +143,7 @@ export function HotelClubSheet({
           </div>
           <div className="text-right">
             <p className="h-loyalty-label">{HOTEL_ACCESS_OFFER}</p>
-            <p className="h-club-until">{HOTEL_ACCESS_UNTIL}</p>
+            <p className="h-club-until">{untilLabel}</p>
           </div>
         </div>
         <div className="h-loyalty-pad">
@@ -146,7 +155,7 @@ export function HotelClubSheet({
               <div className="absolute inset-0 bg-[#0B192C]/78" aria-hidden />
               <div className="relative flex h-full flex-col justify-between px-4 py-4">
                 <div className="flex items-start justify-between gap-3">
-                  <p className="h-card-kicker">{HOTEL_ACCESS_EYEBROW}</p>
+                  <p className="h-card-kicker">{eyebrow}</p>
                   <AgencyLogo className="h-club-card-logo" alt="" />
                 </div>
                 <div className="flex items-end justify-between gap-3">
@@ -157,7 +166,7 @@ export function HotelClubSheet({
                     </p>
                     <p className="h-loyalty-number">{hotelMemberNumber(customerId)}</p>
                   </div>
-                  <p className="h-card-until">{HOTEL_ACCESS_UNTIL}</p>
+                  <p className="h-card-until">{cardUntil || untilLabel}</p>
                 </div>
               </div>
             </div>

@@ -6,11 +6,13 @@ import { siteConfig } from "@/lib/site";
 export function AccountBrand({
   href = "/",
   subtitle,
+  mark = "Travel Business Agency",
   compact = false,
   onDark = false,
 }: {
   href?: string;
   subtitle?: string;
+  mark?: string;
   compact?: boolean;
   onDark?: boolean;
 }) {
@@ -21,7 +23,7 @@ export function AccountBrand({
       <AgencyLogo className="h-9 w-9" />
       <span className="flex min-w-0 flex-col leading-tight">
         <span className="font-label text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-          Travel Business Agency
+          {mark}
         </span>
         {subtitle ? (
           <span
