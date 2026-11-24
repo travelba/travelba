@@ -12,6 +12,7 @@ import {
   cardLast4Only,
   chargeMayStart,
   claimChargeJob,
+  isBufferCeiling,
   hotelAutoJournalSummary,
   hotelPayRequestTarget,
   matchHotelChargeDebit,
@@ -273,6 +274,15 @@ export async function sendAutonomousPayRequest(
     await releaseArrivalRequest(admin, input);
     return { sent: false, note: "L’envoi n’a pas abouti." };
   }
+  if (input.relance && input.relanceCount === 5) {
+    await admin.from("crm_agency_alerts").insert({
+      kind: "hotel_booking",
+      summary: `L’hôtel n’a toujours pas envoyé de lien · ${input.hotel}`.slice(0, 240),
+      staff_id: null,
+      entity_type: "dossier",
+      entity_id: input.bookingId,
+    });
+  }
   await admin.from("crm_agency_journal").insert({
     staff_id: null,
     action: "send",
@@ -360,15 +370,38 @@ export async function enqueueHotelCharge(
   if (prior && !claimChargeJob(prior.status) && prior.status !== "needs_agent") {
     return { queued: false, note: "Un paiement est déjà engagé pour ce séjour." };
   }
+  const buffer =
+    input.cardLimitCents != null && input.amountCents > 0 && isBufferCeiling(input.amountCents, input.cardLimitCents);
   const gate = chargeMayStart({
     enabled: input.enabled,
     amountCents: input.amountCents,
     currency: input.currency,
-    cardLimitCents: input.cardLimitCents,
+    cardLimitCents: buffer ? input.amountCents : input.cardLimitCents,
     maxCents: input.maxCents,
     already: Boolean(prior && prior.status !== "needs_agent" && prior.status !== "queued"),
   });
   const last4 = cardLast4Only(input.cardLast4);
+  if (!gate.ok && gate.reason === "carte" && !input.pliantCardId) {
+    await writeChargeJob(admin, prior?.id || null, {
+      booking_item_id: input.bookingItemId,
+      booking_id: input.bookingId,
+      arrival_id: input.arrivalId,
+      payment_url: input.paymentUrl,
+      amount_cents: input.amountCents,
+      currency: (input.currency || "EUR").toUpperCase(),
+      pliant_card_id: null,
+      card_last4: last4,
+      card_limit_cents: input.cardLimitCents,
+      status: "queued",
+      reason: gate.note,
+      next_attempt_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+      reference: input.reference,
+      hotel_name: input.hotel.slice(0, 160),
+      client_name: (input.clientName || "").slice(0, 160) || null,
+      dates: (input.dates || "").slice(0, 80) || null,
+    });
+    return { queued: true, note: "La carte n’est pas prête. Nouvel essai." };
+  }
   if (!gate.ok) {
     await writeChargeJob(admin, prior?.id || null, {
       booking_item_id: input.bookingItemId,

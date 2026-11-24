@@ -3,6 +3,7 @@
  * Aucun numéro de carte n’entre dans un texte, un journal ou une file.
  */
 
+import { chooseBrowserLaunch } from "./chromium-pack";
 import type { HotelArrivalChannel } from "./types";
 
 export const HOTEL_AUTO_CHARGE_MAX_CENTS = 200_000;
@@ -235,6 +236,11 @@ export type ChargePageView = {
 };
 
 const CHALLENGE = /3d\s*secure|three-d|acs\.|creq|pareq|verified by visa|securecode|authentication required|challenge/i;
+
+export function chargeUrlAllowed(url: string) {
+  if (url.startsWith("https://")) return true;
+  return /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(url);
+}
 const CONFIRMED = /payment\s+(successful|received|confirmed)|paiement\s+(reçu|confirme|confirmé)|thank you for your payment/i;
 
 export function readChargePage(input: { url: string; text: string; amountCents: number | null; currency: string | null; hasCardFields: boolean }): ChargePageView {
@@ -259,7 +265,7 @@ export function decideHotelCharge(input: {
   stayCents: number;
   ceilingCents: number;
 }): { pay: true } | { pay: false; reason: ChargeStop; note: string } {
-  if (!input.page.url.startsWith("https://")) {
+  if (!chargeUrlAllowed(input.page.url)) {
     return { pay: false, reason: "page", note: "La page de paiement n’est pas en https." };
   }
   if (input.page.challenge) return { pay: false, reason: "3ds", note: "La page demande une authentification. Paiement à la main." };
@@ -370,15 +376,64 @@ export function claimChargeJob(status: string) {
   return status === "queued";
 }
 
+export const CHARGE_RETRY_CAP = 8;
+const CHARGE_STALE_MS = 8 * 60 * 1000;
+
 export function chargeWorkerAllowed(flag: string | undefined) {
   return flag === "1";
 }
 
-export function chargeBrowserPlan(localPaths: string[]) {
-  if (localPaths.length > 0) return { mode: "local" as const };
+/** Chrome local, sinon Chromium empaqueté (la fonction Vercel). */
+export function chargeBrowserPlan(input: { localPaths: string[]; packagedBin: string | null }) {
+  const plan = chooseBrowserLaunch(input);
+  if (plan.mode === "error") {
+    return { mode: "refuse" as const, message: "Chromium n’est pas dans le bundle du paiement hôtel." };
+  }
+  return plan;
+}
+
+export function bufferCeilingCents(stayCents: number) {
+  if (!(stayCents > 0)) return null;
+  return Math.ceil((stayCents * 13) / 10);
+}
+
+export function isBufferCeiling(stayCents: number, limitCents: number) {
+  const buffer = bufferCeilingCents(stayCents);
+  return buffer != null && limitCents === buffer;
+}
+
+export function chargeRetryDelayMs(attempts: number) {
+  const minutes = Math.min(60, 2 ** Math.max(0, attempts - 1));
+  return minutes * 60_000;
+}
+
+export function staleChargeClaim(claimedAt: string | null, nowMs: number, staleMs = CHARGE_STALE_MS) {
+  if (!claimedAt) return true;
+  const at = Date.parse(claimedAt);
+  return Number.isFinite(at) && nowMs - at >= staleMs;
+}
+
+/**
+ * 3DS, montant ou devise : on s’arrête et l’agence paie à la main.
+ * Le reste reprend, avec un délai. L’alerte ne part qu’au dernier essai.
+ */
+export function nextChargeStep(input: {
+  submitted: boolean;
+  reason: ChargeStop | null;
+  attempts: number;
+  nowMs: number;
+}): { status: "submitted" | "needs_agent" | "queued"; alert: boolean; nextAttemptMs: number | null } {
+  if (input.submitted || input.reason === "deja") {
+    return { status: "submitted", alert: false, nextAttemptMs: null };
+  }
+  if (input.reason === "3ds" || input.reason === "montant" || input.reason === "devise" || input.reason === "plafond") {
+    return { status: "needs_agent", alert: true, nextAttemptMs: null };
+  }
+  const alert = input.attempts >= CHARGE_RETRY_CAP;
   return {
-    mode: "refuse" as const,
-    message: "Le paiement hôtel attend une machine avec Chrome. Il ne tourne pas sur Vercel.",
+    status: "queued",
+    alert,
+    nextAttemptMs: input.nowMs + chargeRetryDelayMs(input.attempts),
   };
 }
 

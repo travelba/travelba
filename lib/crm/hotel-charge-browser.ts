@@ -1,15 +1,15 @@
 /**
- * Navigateur du paiement hôtel. Chrome local seulement.
- * Chromium empaqueté (Vercel) ne règle pas une page d’hôtel : le worker refuse.
+ * Navigateur du paiement hôtel.
+ * Chrome local, sinon Chromium empaqueté sur la fonction Vercel.
  * Le numéro de carte ne sort pas de cette fonction.
  */
 
 import { existsSync } from "node:fs";
+import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
-import { chargeBrowserPlan, runChargeSession, type ChargeFill } from "./hotel-auto";
-import { parseMoneyToCents } from "./hotel-arrival";
-
-const EURO = /(\d[\d\s.]*(?:,\d{2})?)\s*(?:€|eur)/i;
+import { chooseBrowserLaunch, findChromiumBin } from "./chromium-pack";
+import { runChargeSession, type ChargeFill } from "./hotel-auto";
+import { checkoutAmount } from "./hotel-charge-page";
 
 export function localChargeChrome() {
   const found: string[] = [];
@@ -27,27 +27,27 @@ export function localChargeChrome() {
   return found;
 }
 
-function amountIn(text: string) {
-  const hits = [...text.matchAll(new RegExp(EURO, "gi"))].map((hit) => parseMoneyToCents(hit[1] || ""));
-  const cents = [...new Set(hits.filter((value): value is number => value != null))];
-  if (cents.length !== 1) return { cents: null as number | null, currency: cents.length ? "EUR" : null };
-  return { cents: cents[0], currency: "EUR" };
-}
-
-export async function chargeWithLocalChrome(input: {
+export async function chargeStayInBrowser(input: {
   url: string;
   secrets: { pan: string; expiry: string; cvc: string };
   stayCents: number;
   ceilingCents: number;
 }) {
-  const plan = chargeBrowserPlan(localChargeChrome());
-  if (plan.mode !== "local") {
+  const plan = chooseBrowserLaunch({ localPaths: localChargeChrome(), packagedBin: findChromiumBin() });
+  if (plan.mode === "error") {
     return { status: "needs_agent" as const, reason: "erreur" as const, note: plan.message, screenshot: null as Uint8Array | null };
   }
+  let executablePath = plan.mode === "local" ? plan.executablePath : "";
+  let args = ["--no-sandbox", "--disable-dev-shm-usage"];
+  if (plan.mode === "packaged") {
+    chromium.setGraphicsMode = false;
+    executablePath = await chromium.executablePath(plan.binDir);
+    args = chromium.args;
+  }
   const browser = await puppeteer.launch({
-    executablePath: localChargeChrome()[0],
+    executablePath,
     headless: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    args,
     defaultViewport: { width: 1280, height: 900 },
   });
   try {
@@ -62,7 +62,7 @@ export async function chargeWithLocalChrome(input: {
       },
       async amount() {
         const text = await page.evaluate(() => document.body?.innerText || "");
-        return amountIn(text);
+        return checkoutAmount(text);
       },
       async hasCardFields() {
         return page.evaluate(() => {

@@ -70,6 +70,12 @@ export const CRON_CADENCE: CronCadence[] = [
       "L’arrivée à l’hôtel et le ménage des cartes peuvent attendre 30 minutes. Les fils d’hôtel sont déjà relus par l’ingestion Gmail, toutes les 5 minutes.",
   },
   {
+    path: "/api/cron/hotel-charge",
+    schedule: "9,24,39,54 * * * *",
+    reason:
+      "Un seul lien hôtel par passage, avec Chromium. Toutes les 15 minutes, à la minute 9, à l’écart des autres lectures.",
+  },
+  {
     path: "/api/cron/flight-status",
     schedule: "5,15,25,35,45,55 * * * *",
     reason:

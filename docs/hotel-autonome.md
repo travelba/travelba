@@ -31,13 +31,11 @@ Le bug corrigé est ailleurs. Une demande envoyée par e-mail à l’hôtel, mê
 
 `auto_hotel_charge_enabled` met le lien reçu (`payment_url`) en file `crm_hotel_charge_jobs`. Un seul paiement par séjour.
 
-Le navigateur ne tourne pas sur Vercel. Les pages d’hôtel bloquent le Chromium des fonctions, le délai peut tomber après un débit, et le numéro de carte ne doit pas vivre dans le même processus que le site. Le worker est `scripts/hotel-charge-worker.ts`, sur une machine qui a Chrome :
+Le paiement tourne dans la fonction Vercel `/api/cron/hotel-charge` (Node, 300 s, Chromium empaqueté, le même que les formalités). Un seul séjour à la fois. `HOTEL_CHARGE_WORKER=1` est le drapeau : sans lui, le cron ne lit aucune carte. Le script local appelle le même passage.
 
-```bash
-HOTEL_CHARGE_WORKER=1 npx tsx scripts/hotel-charge-worker.ts
-```
+Le numéro est lu chez Pliant au moment du paiement (`readPliantCardSecrets`). Il n’est pas écrit, pas journalisé, pas mis dans l’e-mail. Seuls les quatre derniers chiffres sont en base. Avant de saisir, le cron regarde si le débit est déjà là. Une page déjà payée ne reçoit pas la carte. Un passage interrompu reprend. Une page illisible reprend avec un délai, jusqu’à huit fois, puis une alerte, et la reprise continue. Seuls un écart de montant ou de devise, un plafond dépassé, ou une page 3DS passent à « Payer à la main ».
 
-Sans ce drapeau, le script ne lit aucune carte et n’ouvre aucune page. Le numéro est lu chez Pliant au moment du paiement (`readPliantCardSecrets`). Il n’est pas écrit, pas journalisé, pas mis dans l’e-mail. Seuls les quatre derniers chiffres sont en base.
+Une carte d’arrivée encore au plafond +30 % est ramenée au montant exact du séjour juste avant le paiement.
 
 La page, le montant du séjour et le plafond de la seconde carte doivent être le même montant, en euros. Sinon le worker s’arrête. Au-dessus de `auto_hotel_charge_max_cents` (2 000 € par défaut), validation humaine. Un 3DS, une page inconnue ou une erreur s’arrêtent aussi. L’accueil affiche alors « Payer à la main ».
 
