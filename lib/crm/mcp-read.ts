@@ -57,6 +57,7 @@ import { scoreStripeMatches, STRIPE_MATCH_SELECT, type StripeMatchCustomer } fro
 import { matchStripeReasonLabel } from "@/lib/crm/stripe-labels";
 import { stripeShownCandidate } from "@/lib/crm/stripe-inbox";
 import { leListMadeAt, loadLeConfirmationMails } from "@/lib/crm/le-confirmation-mail";
+import { leStaysInSupplierQueue } from "@/lib/crm/le-queue";
 import { compareLeMadeAt, leMadeDayLabel } from "@/lib/crm/le-made-at";
 import { formatDateFr, formatMoney, isoDateInDays, todayIsoDate } from "@/lib/crm/money";
 import { revolutDebitLine, revolutInboxCopy, revolutInboxVisible } from "@/lib/crm/revolut-inbox";
@@ -1776,6 +1777,7 @@ export async function readLittleEmperorsEnAttente(admin = db(), input: { page?: 
     | "created_at"
   > & { raw?: unknown; booked_at?: string | null })[])
     .map((row) => ({ ...row, booked_on: leListMadeAt(row, mails) }))
+    .filter((row) => leStaysInSupplierQueue({ ...row, status: "unmatched", crm_booking_id: null }))
     .sort((left, right) => compareLeMadeAt(left.booked_on, right.booked_on) || left.id.localeCompare(right.id));
   const window = mcpWindow(input, INBOX_LIMIT);
   const page = mcpSlice(rows, window);

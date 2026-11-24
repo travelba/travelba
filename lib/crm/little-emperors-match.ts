@@ -147,7 +147,10 @@ export function leItemsForHotelStamp(
       const sameName = Boolean(itemName && hotelName && catalogNameAgrees(itemName, hotelName));
       const sameId =
         booking.hotel_id != null && current != null && current !== "" && Number(current) === booking.hotel_id;
-      if (sameDates && (sameId || sameName)) return true;
+      const conflictingRef =
+        Boolean(item.confirmation_ref && booking.confirmation_number) &&
+        !confirmationRefsAlign(item.confirmation_ref, booking.confirmation_number);
+      if (sameDates && (sameId || sameName) && !conflictingRef) return true;
       if (confirmationRefsAlign(item.confirmation_ref, booking.confirmation_number)) return true;
       const rooms = Array.isArray(details.rooms) ? details.rooms : [];
       if (

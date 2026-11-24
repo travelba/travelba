@@ -246,11 +246,7 @@ pour un autre geste) :
   On n’ouvre pas une seconde carte, ni une seconde carte bancaire : la CB déjà
   ouverte sur ce séjour est reprise. Deux cartes au même nom : l’agence choisit ;
 - train : même code, autre jour = une carte nouvelle. On ne réécrit pas le trajet déjà là. Deux billets du même train le même jour restent une carte ;
-- réservation Little Emperors : `64570` et `64570SH046795` sont la même carte
-  (`hotelRefsShareBooking`). Le numéro court ou une ancienne chambre complète
-  la carte active : le nom, la référence complète et les dates restent, les
-  avantages nouveaux s’ajoutent. Une chambre déjà annulée ne revient pas.
-  Deux chambres actives de la même réservation : l’agence choisit ;
+- réservation Little Emperors : deux numéros `…SH…` distincts sont deux cartes, même hôtel et mêmes dates. Le préfixe avant `SH` est le code hôtel, pas la réservation. Un numéro court ne complète une carte que s’il n’y a qu’un seul candidat aux mêmes dates. Le numéro Little Emperors et la confirmation hôtel de la même chambre, dans le même mail, restent une carte. Un hôtel dans une autre ville ouvre un dossier à part, titre = la destination, Non visible ;
 - autre référence, même hôtel ou mêmes nuits : l’ancienne carte passe
   `lifecycle=superseded`, la nouvelle reprend ce prix vendu et reste cachée.
   Le jour de départ ne compte pas : un Crowne Plaza jusqu’au 19 et un Fairmont

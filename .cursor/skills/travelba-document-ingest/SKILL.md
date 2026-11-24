@@ -101,7 +101,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 
 ## Hôtel
 
-**Un item par établissement**, même 2 chambres / 2 Booking name / 2 réf.
+**Une carte par confirmation exacte.** Deux numéros distincts, même hôtel et mêmes dates, restent deux cartes. Le numéro Little Emperors et la confirmation hôtel de la même chambre, dans le même document, restent une carte. Deux numéros `…SH…` ne se rejoignent jamais : les chiffres avant `SH` sont le code hôtel.
 
 - `details.rooms = [{ room, guests, confirmation_ref }, …]` — une ligne par chambre distincte, sans doublon. L’agent peut retirer une chambre en trop à la relecture.
 - `confirmation_ref` = `97620170;97620172` — `findMatchingItem` par **recouvrement** de réf.
@@ -127,7 +127,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 | Kind | Clé |
 |------|-----|
 | flight | `flight_number` + jour, sinon PNR + jour |
-| hotel | recouvrement des réf. `;`, sinon nom + jour |
+| hotel | confirmation exacte. Deux numéros distincts = deux cartes. `…SH…` + confirmation hôtel de la même chambre, mêmes dates, même document = une carte |
 | rail | n° de train + jour, sinon réf. + jour, sinon titre + jour. Un autre jour = une carte nouvelle. Deux billets du même train le même jour = une carte |
 | car / transfer / activity / insurance | réf. sinon titre + jour |
 

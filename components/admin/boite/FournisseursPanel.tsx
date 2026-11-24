@@ -16,6 +16,7 @@ import { CUSTOMER_PICK_LIMIT, CUSTOMER_PICK_SELECT, type PickableCustomer } from
 import { appliedSinceIso } from "@/lib/crm/import-metrics";
 import { readProposalOps, type ProposalOp } from "@/lib/crm/import-proposal";
 import { leListMadeAt, type LeMailStamp } from "@/lib/crm/le-confirmation-mail";
+import { leStaysInSupplierQueue } from "@/lib/crm/le-queue";
 import { sortByLeMadeAt } from "@/lib/crm/le-made-at";
 import { littleEmperorsConfigured, littleEmperorsProductionBlocked, littleEmperorsWebhookConfigured } from "@/lib/crm/little-emperors";
 import { EMAIL_INBOX_QUEUE_STATUSES, type CrmEmailIngest, type CrmLeBooking } from "@/lib/crm/types";
@@ -69,7 +70,7 @@ async function loadLittleEmperors(supabase: SupabaseClient, onlyUnmatched: boole
   ]);
   const mails = mailsResult.error ? [] : ((mailsResult.data || []) as LeMailStamp[]);
   const all = rowsResult.error ? [] : ((rowsResult.data || []) as LeListRow[]);
-  const kept = onlyUnmatched ? all.filter((row) => !row.crm_booking_id && row.status === "unmatched") : all;
+  const kept = onlyUnmatched ? all.filter((row) => leStaysInSupplierQueue(row)) : all;
   const sorted = sortByLeMadeAt(
     kept.map((row) => {
       const booked_on = leListMadeAt(row, mails);

@@ -49,6 +49,7 @@ export type FlightAutoCandidate = {
   start_date?: string | null;
   end_date?: string | null;
   covers_passengers?: boolean;
+  destination?: string | null;
 };
 
 const DAY_MS = 86_400_000;

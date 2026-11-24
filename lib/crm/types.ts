@@ -750,6 +750,7 @@ export type EmailIngestCandidate = {
   start_date?: string | null;
   end_date?: string | null;
   covers_passengers?: boolean;
+  destination?: string | null;
 };
 
 export type LeBookingLinkStatus = "unmatched" | "linked" | "ignored";
