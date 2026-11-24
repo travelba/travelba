@@ -5,6 +5,8 @@ import {
   autonomousDeskLines,
   buildHotelAutoNotice,
   chargeBrowserPlan,
+  isBufferCeiling,
+  nextChargeStep,
   chargeMayStart,
   chargeResultHasPan,
   chargeWorkerAllowed,
@@ -249,13 +251,13 @@ test("la session de paiement ne renvoie pas le numéro et ne saisit pas une page
   assert.equal(JSON.stringify(done).includes("123"), false);
 });
 
-test("le navigateur de paiement ne tourne pas sur Vercel", () => {
+test("le paiement hôtel prend Chrome local ou Chromium empaqueté", () => {
   assert.equal(chargeWorkerAllowed(undefined), false);
   assert.equal(chargeWorkerAllowed("1"), true);
-  const refused = chargeBrowserPlan([]);
+  const refused = chargeBrowserPlan({ localPaths: [], packagedBin: null });
   assert.equal(refused.mode, "refuse");
-  if (refused.mode === "refuse") assert.match(refused.message, /Vercel/);
-  assert.equal(chargeBrowserPlan(["/usr/bin/google-chrome"]).mode, "local");
+  assert.equal(chargeBrowserPlan({ localPaths: ["/usr/bin/google-chrome"], packagedBin: null }).mode, "local");
+  assert.equal(chargeBrowserPlan({ localPaths: [], packagedBin: "/var/task/vendor/chromium" }).mode, "packaged");
 });
 
 test("l’accueil montre l’état du paiement et le bouton manuel", () => {
@@ -354,11 +356,51 @@ test("sans les tables, l’accueil et les réglages restent vides et la réserva
   assert.equal(queued, false);
 });
 
-test("le fichier navigateur ne charge pas Chromium empaqueté", async () => {
+test("seules la 3DS et l’écart de montant arrêtent le paiement", () => {
+  assert.equal(nextChargeStep({ submitted: false, reason: "3ds", attempts: 1, nowMs: 0 }).status, "needs_agent");
+  assert.equal(nextChargeStep({ submitted: false, reason: "montant", attempts: 1, nowMs: 0 }).status, "needs_agent");
+  assert.equal(nextChargeStep({ submitted: false, reason: "devise", attempts: 1, nowMs: 0 }).status, "needs_agent");
+  const retry = nextChargeStep({ submitted: false, reason: "page", attempts: 2, nowMs: 0 });
+  assert.equal(retry.status, "queued");
+  assert.equal(retry.alert, false);
+  assert.ok((retry.nextAttemptMs || 0) > 0);
+  assert.equal(nextChargeStep({ submitted: false, reason: "erreur", attempts: 8, nowMs: 0 }).alert, true);
+  assert.equal(nextChargeStep({ submitted: true, reason: null, attempts: 1, nowMs: 0 }).status, "submitted");
+  assert.equal(isBufferCeiling(73190, 95147), true);
+  assert.equal(isBufferCeiling(73190, 73190), false);
+});
+
+test("une réservation autonome relance encore après deux silences", () => {
+  const again = planHotelArrival(
+    tick({
+      autonomous: true,
+      autoPayRequest: true,
+      status: "link_requested",
+      relanceCount: 3,
+      requestedAtMs: Date.parse("2026-11-02T08:00:00.000Z"),
+      lastRelanceAtMs: Date.parse("2026-11-02T08:00:00.000Z"),
+      parisToday: "2026-11-04",
+    })
+  );
+  assert.equal(again.action, "request");
+  const stopped = planHotelArrival(
+    tick({
+      status: "link_requested",
+      relanceCount: 3,
+      requestedAtMs: Date.parse("2026-11-02T08:00:00.000Z"),
+      lastRelanceAtMs: Date.parse("2026-11-02T08:00:00.000Z"),
+      parisToday: "2026-11-04",
+    })
+  );
+  assert.equal(stopped.action, "task");
+});
+
+test("le cron hôtel embarque Chromium et ne journalise pas la carte", async () => {
   const { readFileSync } = await import("node:fs");
   const browser = readFileSync(new URL("./hotel-charge-browser.ts", import.meta.url), "utf8");
   const worker = readFileSync(new URL("../../scripts/hotel-charge-worker.ts", import.meta.url), "utf8");
-  assert.equal(browser.includes("@sparticuz/chromium"), false);
+  assert.match(browser, /@sparticuz\/chromium/);
+  assert.match(browser, /chooseBrowserLaunch/);
   assert.match(worker, /HOTEL_CHARGE_WORKER/);
   assert.equal(worker.includes("console.log(secrets"), false);
 });

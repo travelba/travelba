@@ -1086,13 +1086,13 @@ function relancePlan(tick: ArrivalTick, holidays: ReadonlySet<string>): ArrivalP
     }
     return { action: "wait" };
   }
-  if (tick.relanceCount === 1) {
-    const fromMs = tick.lastRelanceAtMs ?? tick.requestedAtMs ?? tick.nowMs;
-    const from = parisIsoDate(new Date(fromMs));
-    if (tick.parisToday >= nextBusinessDay(from, holidays)) return paymentAsk(tick, "Relancer l’hôtel autrement.", note, true);
-    return { action: "wait" };
+  if (tick.relanceCount >= 2 && !autonomousLink(tick)) {
+    return { action: "task", note: "L'hôtel n'a pas renvoyé de lien de paiement.", reason: "no_reply" };
   }
-  return { action: "task", note: "L'hôtel n'a pas renvoyé de lien de paiement.", reason: "no_reply" };
+  const fromMs = tick.lastRelanceAtMs ?? tick.requestedAtMs ?? tick.nowMs;
+  const from = parisIsoDate(new Date(fromMs));
+  if (tick.parisToday >= nextBusinessDay(from, holidays)) return paymentAsk(tick, "Relancer l’hôtel autrement.", note, true);
+  return { action: "wait" };
 }
 
 export type StayCardSlot = {
