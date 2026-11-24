@@ -18,6 +18,7 @@ import {
   suggestBoardingPass,
   type CheckinSituation,
 } from "@/lib/crm/boarding-pass-whatsapp";
+import { railTicketFileHint } from "@/lib/crm/rail-ticket";
 import type { CrmBookingDocument, CrmBookingItem, CrmBookingTraveler } from "@/lib/crm/types";
 
 type Draft = {
@@ -31,11 +32,23 @@ type Draft = {
   seat: string;
 };
 
-function draftsFrom(documents: CrmBookingDocument[], items: CrmBookingItem[], travelers: CrmBookingTraveler[]): Draft[] {
-  return documents.filter(isBoardingPassFile).map((doc) => {
-    const suggested = suggestBoardingPass({ doc, items, travelers });
-    return { documentId: doc.id, label: doc.file_name || "PDF", ...suggested };
+function trainDocument(doc: CrmBookingDocument, items: CrmBookingItem[]) {
+  return railTicketFileHint({
+    kind: doc.kind,
+    fileName: doc.file_name,
+    mime: doc.mime_type,
+    itemId: doc.booking_item_id,
+    linkedKind: items.find((item) => item.id === doc.booking_item_id)?.kind || null,
   });
+}
+
+function draftsFrom(documents: CrmBookingDocument[], items: CrmBookingItem[], travelers: CrmBookingTraveler[]): Draft[] {
+  return documents
+    .filter((doc) => isBoardingPassFile(doc) && !trainDocument(doc, items))
+    .map((doc) => {
+      const suggested = suggestBoardingPass({ doc, items, travelers });
+      return { documentId: doc.id, label: doc.file_name || "PDF", ...suggested };
+    });
 }
 
 export function BoardingPassSend({
@@ -74,8 +87,13 @@ export function BoardingPassSend({
   const [markError, setMarkError] = useState<string | null>(null);
   const [marking, setMarking] = useState(false);
   const block = boardingPassChannelBlock({ phone, optInAt, optOutAt });
+  const trainDocs = documents.filter((doc) => trainDocument(doc, items));
+  const trainIds = new Set(trainDocs.map((doc) => doc.id));
   const otherPdfs = documents.filter(
-    (doc) => !isBoardingPassFile(doc) && ((doc.mime_type || "").includes("pdf") || (doc.file_name || "").toLowerCase().endsWith(".pdf"))
+    (doc) =>
+      !trainIds.has(doc.id) &&
+      !isBoardingPassFile(doc) &&
+      ((doc.mime_type || "").includes("pdf") || (doc.file_name || "").toLowerCase().endsWith(".pdf"))
   );
 
   const readyCards = useMemo(
@@ -153,6 +171,21 @@ export function BoardingPassSend({
               ? " Si un passe Apple Wallet correspond au passager, son lien part avec le message."
               : ""}
           </p>
+          {trainDocs.length ? (
+            <div className="space-y-2 rounded-2xl bg-[var(--admin-sky)] p-3">
+              <p className="text-sm font-semibold text-[var(--admin-navy)]">Billets de train</p>
+              <p className="text-sm text-muted">
+                Ces PDF partent seuls sur WhatsApp, une heure avant chaque départ, y compris s’ils restent masqués dans l’espace client. Un même fichier aller-retour repart pour le retour, une seule fois par départ. Le texte parle du train, pas d’un vol.
+              </p>
+              <ul className="space-y-1">
+                {trainDocs.map((doc) => (
+                  <li key={doc.id} className="text-sm text-[var(--admin-navy)]">
+                    {doc.file_name || "PDF"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {rows.length ? (
             rows.map((row) => {
               const fields = boardingPassFields(row);
@@ -190,7 +223,9 @@ export function BoardingPassSend({
               );
             })
           ) : (
-            <p className="text-sm text-muted">Aucune carte d’embarquement sur ce dossier.</p>
+            <p className="text-sm text-muted">
+              {trainDocs.length ? "Aucune carte d’embarquement d’avion sur ce dossier." : "Aucune carte d’embarquement sur ce dossier."}
+            </p>
           )}
           {otherPdfs.length ? (
             <div className="space-y-2">

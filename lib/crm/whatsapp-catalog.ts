@@ -1,6 +1,7 @@
 import { boardingPassContentDrafts, type BoardingPassTemplate } from "./boarding-pass-whatsapp";
 import { visaGrantPreview } from "./visa-grant-whatsapp";
 import { FREE_MESSAGE_SAMPLE_TEXT, freeMessageTemplatePreview } from "./free-message-whatsapp";
+import { railTicketNoticeText, railTicketPreview } from "./rail-ticket";
 import { statementContentDrafts } from "./statement-whatsapp";
 import { siteConfig } from "../site";
 import {
@@ -443,6 +444,52 @@ function statementBubble(): WhatsappBubble {
   };
 }
 
+function railTicketGroup(): WhatsappCatalogGroup {
+  const fields = {
+    firstName: FIRST_NAME,
+    train: "TGV INOUI 6941",
+    route: "Paris Gare de Lyon → Chambéry",
+    when: "20 déc. 2026 à 12h46",
+    place: "voiture 2, place 12",
+  };
+  const body = railTicketPreview(fields) || "";
+  const notice = railTicketNoticeText(fields) || "";
+  const fallback = freeMessageTemplatePreview("message_libre_document", FIRST_NAME, notice) || "";
+  return {
+    id: "billets-train",
+    title: "Billets de train",
+    intro:
+      "Un PDF de train part seul, une heure avant le départ, si le séjour est Visible et si le client a accepté WhatsApp. Le fichier reste masqué dans l’espace client. Un aller-retour repart pour le retour, une seule fois par départ. Sans le modèle billet_train, le message libre avec document prend le relais.",
+    messages: [
+      {
+        id: "billet-train",
+        title: "Billet joint avant le départ",
+        when: "Cron toutes les 10 minutes, dans l’heure qui précède l’heure civile du train. L’exemple est un TGV, voiture 2, place 12.",
+        kind: "modele",
+        wired: true,
+        bubble: {
+          body,
+          button: null,
+          photo: false,
+          image: null,
+          imageAlt: null,
+          modelName: "billet_train",
+        },
+        fallback: {
+          label: "Si billet_train n’est pas encore approuvé",
+          body: fallback,
+          button: null,
+          photo: false,
+          image: null,
+          imageAlt: null,
+          modelName: "message_libre_document",
+        },
+        earlier: null,
+      },
+    ],
+  };
+}
+
 function boardingPassMessages(): WhatsappCatalogMessage[] {
   return [
     message({
@@ -653,6 +700,7 @@ function catalogGroups(): WhatsappCatalogGroup[] {
       intro: "Ces messages partent quand le statut du vol change, si le séjour est publié et si le client a accepté WhatsApp. Ils n’ont pas d’image : le bouton ouvre le séjour. L’exemple est le vol AF 1789, CDG → RAK.",
       messages: flightMessages(),
     },
+    railTicketGroup(),
     {
       id: "embarquement",
       title: "Cartes d’embarquement",

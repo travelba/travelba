@@ -1,5 +1,5 @@
 /**
- * Cadence des 16 crons Vercel. L’heure est UTC.
+ * Cadence des crons Vercel. L’heure est UTC.
  * Les minutes sont décalées : plus rien ne part ensemble à :00, :15, :30 et :45.
  * Le détail de chaque choix est `reason`. Le test compare `schedule` à vercel.json.
  */
@@ -74,6 +74,12 @@ export const CRON_CADENCE: CronCadence[] = [
     schedule: "5,15,25,35,45,55 * * * *",
     reason:
       "Le cron passe toutes les 10 minutes pour les départs proches. pollDue laisse les vols lointains à 12 h puis 4 h, et coupe la relecture rapprochée après le décollage. Décalé à la minute 5 pour ne pas tomber avec les autres.",
+  },
+  {
+    path: "/api/cron/rail-tickets",
+    schedule: "9,19,29,39,49,59 * * * *",
+    reason:
+      "Le billet de train part dans les 75 minutes avant l’heure civile du départ. Toutes les 10 minutes, un passage raté est rattrapé avant le train. Décalé à la minute 9 pour ne pas partir avec le statut des vols.",
   },
   {
     path: "/api/cron/travel-notices",
