@@ -26,6 +26,7 @@ import {
   visaGrantTemplateForHeader,
   type VisaGrantCandidate,
 } from "./visa-grant-whatsapp";
+import { pieceEstRetiree } from "./dossier-piece";
 import { isTravelAuthorization, type CrmBooking, type CrmBookingItem, type CrmBookingTraveler, type CrmTravelDocument } from "./types";
 import type { TripStep } from "./layover";
 import {
@@ -174,6 +175,76 @@ async function saveQueue(admin: Admin, input: {
 
 async function dropQueue(admin: Admin, id: string) {
   await admin.from("crm_whatsapp_messages").delete().eq("id", id).eq("status", "queued");
+}
+
+/** La pièce n’est plus montrable : le cron ne l’envoie pas. */
+export const PIECE_QUEUE_ABANDON = "Pièce cachée ou retirée.";
+
+async function abandonPieceQueue(admin: Admin, id: string) {
+  await admin
+    .from("crm_whatsapp_messages")
+    .update({ status: "failed", error: PIECE_QUEUE_ABANDON })
+    .eq("id", id)
+    .eq("status", "queued");
+}
+
+type PieceRow = {
+  id: string;
+  kind?: string | null;
+  booking_item_id?: string | null;
+  visible_to_client?: boolean | null;
+  extracted?: unknown;
+};
+
+/** Pièces encore là, non retirées, visibles, et dont la carte liée est visible s’il y en a une. */
+async function liveVisiblePieces(admin: Admin, bookingId: string, onlyIds?: string[]) {
+  if (onlyIds && !onlyIds.length) return [] as { id: string; kind: string | null }[];
+  let query = admin
+    .from("crm_booking_documents")
+    .select("id, kind, booking_item_id, visible_to_client, extracted")
+    .eq("booking_id", bookingId)
+    .eq("visible_to_client", true);
+  if (onlyIds?.length) query = query.in("id", onlyIds);
+  const { data } = await query;
+  const docs = ((data || []) as PieceRow[]).filter((doc) => doc.id && doc.visible_to_client === true && !pieceEstRetiree(doc.extracted));
+  const itemIds = [...new Set(docs.map((doc) => doc.booking_item_id).filter((value): value is string => Boolean(value)))];
+  const cards = new Map<string, { kind: string | null; visible: boolean }>();
+  if (itemIds.length) {
+    const { data: items } = await admin.from("crm_booking_items").select("id, kind, visible_to_client").in("id", itemIds);
+    for (const item of (items || []) as { id: string; kind?: string | null; visible_to_client?: boolean | null }[]) {
+      cards.set(item.id, { kind: item.kind || null, visible: item.visible_to_client === true });
+    }
+  }
+  const kept: { id: string; kind: string | null }[] = [];
+  for (const doc of docs) {
+    if (doc.booking_item_id) {
+      const card = cards.get(doc.booking_item_id);
+      if (!card?.visible) continue;
+      kept.push({ id: doc.id, kind: card.kind || doc.kind || null });
+      continue;
+    }
+    kept.push({ id: doc.id, kind: doc.kind || null });
+  }
+  return kept;
+}
+
+async function livePieceStamps(admin: Admin, bookingId: string, stamps: PieceStamp[]) {
+  if (!stamps.length) return [];
+  const live = await liveVisiblePieces(
+    admin,
+    bookingId,
+    stamps.map((stamp) => stamp.id)
+  );
+  const byId = new Map(live.map((row) => [row.id, row]));
+  const kept: PieceStamp[] = [];
+  for (const stamp of stamps) {
+    const row = byId.get(stamp.id);
+    if (!row) continue;
+    const kind = normalizePieceKind(row.kind) || normalizePieceKind(stamp.kind);
+    if (!kind) continue;
+    kept.push({ ...stamp, kind });
+  }
+  return kept;
 }
 
 async function markResult(
@@ -580,6 +651,11 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
     const pieces = row.payload?.pieces || [];
     const first = Date.parse(pieces[0]?.at || "");
     if (!pieces.length || !Number.isFinite(first) || now.getTime() - first < PIECES_WINDOW_MS) return;
+    const kept = await livePieceStamps(admin, booking.id, pieces);
+    if (!kept.length) {
+      await abandonPieceQueue(admin, row.id);
+      return;
+    }
     const plans = planPiecesNotices({
       published: true,
       reference: booking.reference,
@@ -587,7 +663,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       title: booking.title,
       items: steps,
       homeCity,
-      pieces,
+      pieces: kept,
     });
     const plan = plans[0];
     if (!plan) {
@@ -604,7 +680,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       reference: booking.reference,
       variable: plan.variable,
       card: pieceCardTemplate(plan),
-      sentDedupe: `pieces-sent:${booking.id}:${pieces[0].at}`,
+      sentDedupe: `pieces-sent:${booking.id}:${kept[0].at}`,
     });
     return;
   }
@@ -783,26 +859,35 @@ export async function notifyStayPublished(bookingId: string, admin: Admin = crea
 export async function queuePublishedPieces(
   bookingId: string,
   incoming: { id: string; kind: string | null }[],
-  now = new Date()
+  now = new Date(),
+  admin: Admin = createServiceClient()
 ) {
-  const admin = createServiceClient();
   const booking = await loadBooking(admin, bookingId);
   if (!booking?.visible_to_client) return;
   const dedupeKey = `pieces-queue:${booking.id}`;
   const existing = await findByDedupe(admin, dedupeKey);
-  let pieces = [...(existing?.payload?.pieces || [])];
-  const first = Date.parse(pieces[0]?.at || "");
-  if (pieces.length && Number.isFinite(first) && now.getTime() - first >= PIECES_WINDOW_MS && existing) {
-    await deliverRow(admin, existing, now);
-    const after = await findByDedupe(admin, dedupeKey);
-    if (!after || after.status === "sent") pieces = [];
+  const stored = [...(existing?.payload?.pieces || [])];
+  let pieces = await livePieceStamps(admin, booking.id, stored);
+  const firstStored = Date.parse(stored[0]?.at || "");
+  const windowOpen =
+    stored.length > 0 && Number.isFinite(firstStored) && now.getTime() - firstStored >= PIECES_WINDOW_MS;
+  if (windowOpen && existing?.status === "queued") {
+    if (!pieces.length) {
+      await abandonPieceQueue(admin, existing.id);
+    } else {
+      await deliverRow(admin, { ...existing, payload: { ...(existing.payload || {}), pieces } }, now);
+      const after = await findByDedupe(admin, dedupeKey);
+      if (!after || after.status === "sent" || after.status === "failed") pieces = [];
+      else pieces = await livePieceStamps(admin, booking.id, [...(after.payload?.pieces || [])]);
+    }
   }
   const at = now.toISOString();
   for (const piece of incoming) {
-    const kind = normalizePieceKind(piece.kind);
-    if (!kind || pieces.some((row) => row.id === piece.id)) continue;
+    if (!piece.id || pieces.some((row) => row.id === piece.id)) continue;
+    const kind = normalizePieceKind(piece.kind) || "other";
     pieces.push({ id: piece.id, kind, at });
   }
+  pieces = await livePieceStamps(admin, booking.id, pieces);
   if (!pieces.length) return;
   const { data: sent } = await admin
     .from("crm_whatsapp_messages")
@@ -1247,8 +1332,7 @@ export async function remindMissingPieces(bookingId: string, now = new Date(), a
   }
 }
 
-export async function flushConcierge(now = new Date()) {
-  const admin = createServiceClient();
+export async function deliverQueuedConcierge(now: Date, admin: Admin) {
   const { data } = await admin
     .from("crm_whatsapp_messages")
     .select("id, customer_id, booking_id, dedupe_key, template_key, body, status, payload")
@@ -1262,6 +1346,12 @@ export async function flushConcierge(now = new Date()) {
       quiet(err);
     }
   }
+  return (data || []).length;
+}
+
+export async function flushConcierge(now = new Date()) {
+  const admin = createServiceClient();
+  const queued = await deliverQueuedConcierge(now, admin);
   const today = now.toISOString().slice(0, 10);
   const { data: bookings } = await admin
     .from("crm_bookings")
@@ -1279,7 +1369,7 @@ export async function flushConcierge(now = new Date()) {
       quiet(err);
     }
   }
-  return { queued: (data || []).length, reminded };
+  return { queued, reminded };
 }
 
 export async function safeConcierge(task: () => Promise<unknown>) {
