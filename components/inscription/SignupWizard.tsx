@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { PlatinumInviteCard, PlatinumInviteRights } from "@/components/inscription/PlatinumInviteCard";
 import { TRAVEL_CLUB_OFFER } from "@/lib/crm/signup-options";
 
 const fieldClass =
@@ -83,15 +84,16 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
   }
 
   return (
-    <form noValidate onSubmit={step === 0 ? next : submit} className="space-y-3">
+    <form noValidate onSubmit={step === 0 ? next : submit} className="space-y-2">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
-        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-[#0B192C]">Vous êtes invité</h1>
-        <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8A7349]">Étape {step + 1} sur 2</p>
+        <h1 className="mt-1 font-display text-2xl font-extrabold tracking-tight text-[#0B192C]">Vous êtes invité</h1>
+        <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8A7349]">Étape {step + 1} sur 2</p>
       </div>
+      <PlatinumInviteCard firstName={firstName} lastName={lastName} />
       {step === 0 ? (
         <>
-          <p className="text-sm leading-relaxed text-[#0B192C]">{TRAVEL_CLUB_OFFER}</p>
+          <p className="text-[13px] leading-snug text-[#0B192C]">{TRAVEL_CLUB_OFFER}</p>
           <label className="block text-[13px] font-semibold text-[#0B192C]">
             Prénom
             <input className={fieldClass} value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" />
@@ -116,6 +118,7 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
         </>
       ) : (
         <>
+          <PlatinumInviteRights />
           <label className="flex items-start gap-2 text-sm text-[#0B192C]">
             <input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-1 accent-[#0B192C]" />
             <span>

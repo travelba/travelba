@@ -48,8 +48,8 @@ Sans jeton, `/inscription` affiche « Le Travel Club TBA est accessible sur invi
 
 Avec un jeton valable, deux écrans :
 
-1. La phrase Platinum, le prénom, le nom, l’e-mail et le téléphone repris de l’invitation (le téléphone identifie le lien), puis la date de naissance.
-2. Les deux cases (conditions, confidentialité) et le bouton « Déposer ma demande ».
+1. Une carte de membre Platinum (nom repris de l’invitation, période d’un an), la phrase Platinum, le prénom, le nom, l’e-mail et le téléphone repris de l’invitation (le téléphone identifie le lien), puis la date de naissance.
+2. Les avantages déjà affichés sur la carte du club (`HOTEL_ACCESS_LINES`, sans le prix du palier), les deux cases (conditions, confidentialité) et le bouton « Déposer ma demande ».
 
 Les préférences de voyage ne sont pas dans ce parcours. L’origine est l’invitation : agence ou parrainage. Après le dépôt, Benjamin valide à la main.
 
