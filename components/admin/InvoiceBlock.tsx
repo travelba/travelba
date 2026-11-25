@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { InvoiceSendPanel } from "@/components/admin/InvoiceSendPanel";
+import { ConfirmDialog } from "@/components/crm/ConfirmDialog";
 import { StatusChip } from "@/components/crm/ui";
+import { MB3M_CANCEL_KEEPS_LETTERING } from "@/lib/crm/mb3m-unletter";
 import { formatMoney } from "@/lib/crm/money";
 import type { Mb3mActivityChoice } from "@/lib/crm/mb3m-activity";
 import {
@@ -71,6 +73,7 @@ export function InvoiceBlock({
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [confirmPrepare, setConfirmPrepare] = useState(false);
   const reason = unsaved ? "Enregistrez le séjour avant de facturer." : blocker;
   const held = !reason && notice ? notice : null;
 
@@ -169,6 +172,7 @@ export function InvoiceBlock({
   });
   const running = view.preparation.state === "running";
   const failed = view.preparation.state === "failed";
+  const cancelsOpenPiece = Boolean(view.number) && !view.printed;
   const action = mb3mInvoiceActionLabel({
     invoicing,
     number: view.number,
@@ -216,11 +220,22 @@ export function InvoiceBlock({
         </div>
       ) : null}
 
+      {cancelsOpenPiece ? (
+        <p
+          role="note"
+          className="rounded-2xl border border-[var(--admin-gold)] bg-[var(--admin-gold)]/20 px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]"
+        >
+          {MB3M_CANCEL_KEEPS_LETTERING}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           disabled={busy || Boolean(reason) || running}
-          onClick={() => void prepare()}
+          onClick={() => {
+            if (cancelsOpenPiece) setConfirmPrepare(true);
+            else void prepare();
+          }}
           className="admin-tap rounded-full border border-[var(--admin-navy)] bg-white px-4 py-2 text-sm font-semibold text-[var(--admin-navy)] disabled:border-[var(--border)] disabled:opacity-50"
         >
           {action}
@@ -280,6 +295,29 @@ export function InvoiceBlock({
           {error}
         </p>
       ) : null}
+      <ConfirmDialog
+        open={confirmPrepare}
+        title={`Mettre à jour la pro forma n° ${view.number} ?`}
+        question={
+          <span className="block space-y-3">
+            <span className="block">
+              La pro forma ouverte peut être annulée dans MB3M, puis remplacée. Une pièce imprimée ou déjà lettrée n’est pas
+              annulée.
+            </span>
+            <span className="block font-semibold text-[var(--admin-navy)]">{MB3M_CANCEL_KEEPS_LETTERING}</span>
+          </span>
+        }
+        confirmLabel="Continuer"
+        busy={busy}
+        busyLabel="Préparation…"
+        onConfirm={() => {
+          setConfirmPrepare(false);
+          void prepare();
+        }}
+        onClose={() => {
+          if (!busy) setConfirmPrepare(false);
+        }}
+      />
     </section>
   );
 }

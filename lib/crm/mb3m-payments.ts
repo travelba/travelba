@@ -83,6 +83,48 @@ export function mb3mIsPaymentGap(message: string | null | undefined) {
   return (message || "").includes(PAYMENT_GAP_PREFIX);
 }
 
+function joinFrenchAmounts(amounts: string[]) {
+  if (amounts.length <= 1) return amounts[0] || "";
+  if (amounts.length === 2) return `${amounts[0]} et ${amounts[1]}`;
+  return `${amounts.slice(0, -1).join(", ")} et ${amounts[amounts.length - 1]}`;
+}
+
+/**
+ * Crédits écartés parce qu’ils sont déjà lettrés sur une autre pièce.
+ * « 1 700 € et 5 200 € sont lettrés sur la pièce 2258. »
+ */
+export function mb3mLetteredElsewhereWarning(rows: { amount: number; invoice: string }[]) {
+  const groups = new Map<string, number[]>();
+  for (const row of rows) {
+    const invoice = row.invoice.trim();
+    if (!invoice || !(row.amount > CENT)) continue;
+    const list = groups.get(invoice) || [];
+    list.push(row.amount);
+    groups.set(invoice, list);
+  }
+  if (!groups.size) return null;
+  return (
+    [...groups.entries()]
+      .map(([invoice, amounts]) => {
+        const shown = joinFrenchAmounts(amounts.map((amount) => formatMoney(amount)));
+        const verb = amounts.length > 1 ? "sont lettrés" : "est lettré";
+        return `${shown} ${verb} sur la pièce ${invoice}`;
+      })
+      .join(". ") + "."
+  );
+}
+
+function rememberLetteredElsewhere(
+  bucket: { amount: number; invoice: string }[] | undefined,
+  amount: number,
+  invoice: string | null | undefined,
+  currentInvoice: string
+) {
+  const other = (invoice || "").trim();
+  if (!bucket || !other || other === currentInvoice || !(amount > CENT)) return;
+  bucket.push({ amount, invoice: other });
+}
+
 /** Avertissement français : un règlement ou un lettrage en échec ne casse pas la facture groupée. */
 export function groupedMb3mPaymentWarning(reglements: Mb3mReglement[]) {
   const lines: string[] = [];
@@ -231,6 +273,11 @@ export function planMb3mPayments(input: {
   includeWallet?: boolean;
   /** Faux : ne pose pas le dossier sur un crédit du portefeuille. */
   attributeWallet?: boolean;
+  /**
+   * Rempli quand un crédit est écarté parce qu’il est lettré sur une autre pièce.
+   * Le plan lui-même ne change pas : le crédit n’est pas renvoyé.
+   */
+  letteredElsewhere?: { amount: number; invoice: string }[];
 } & Mb3mFolderCreditMatch): Mb3mPlannedPayment[] {
   const linked = new Map(input.links.map((link) => [link.transactionId, link]));
   const taken = new Set(input.links.map((link) => link.paymentNumber));
@@ -305,7 +352,15 @@ export function planMb3mPayments(input: {
       .filter((link) => link.transactionId === credit.id && link.invoiceNumber?.trim() === invoiceNumber)
       .reduce((sum, link) => sum + link.matchedAmount, 0);
     if (remoteLeft && remote && coveredHere + CENT >= Math.min(remote.unmatched, remaining)) continue;
-    if (!remoteLeft && (known?.invoiceNumber || (known && known.matchedAmount > CENT))) continue;
+    if (!remoteLeft && (known?.invoiceNumber || (known && known.matchedAmount > CENT))) {
+      rememberLetteredElsewhere(
+        input.letteredElsewhere,
+        credit.amount,
+        known?.invoiceNumber || remote?.invoiceNumber,
+        invoiceNumber
+      );
+      continue;
+    }
     if (
       !credit.bookingId &&
       !input.includeWallet &&
@@ -335,6 +390,9 @@ export function planMb3mPayments(input: {
       const cap = remote.unmatched == null ? (remote.invoiceNumber ? 0 : remote.amount) : remote.unmatched;
       if (cap <= CENT) {
         const here = remote.invoiceNumber?.trim() === invoiceNumber;
+        if (!here) {
+          rememberLetteredElsewhere(input.letteredElsewhere, credit.amount, remote.invoiceNumber, invoiceNumber);
+        }
         plans.push({
           ...base,
           matched: here ? matched : 0,
@@ -802,6 +860,7 @@ export async function recordMb3mInvoicePayments(
       }
     ),
   ];
+  const letteredElsewhere: { amount: number; invoice: string }[] = [];
   const plans = planMb3mPayments({
     bookingId: stay.id,
     bookingIds,
@@ -819,6 +878,7 @@ export async function recordMb3mInvoicePayments(
     folderCompanyId: stay.billing_company_id,
     folderCompanyName: matchContext.folderCompanyName,
     peers: matchContext.peers,
+    letteredElsewhere,
   });
   const gdsPlans = planMb3mGdsMatchings({
     bookingId: stay.id,
@@ -832,6 +892,7 @@ export async function recordMb3mInvoicePayments(
     folderCompanyName: matchContext.folderCompanyName,
     peers: matchContext.peers,
   });
+  const elsewhereWarning = mb3mLetteredElsewhereWarning(letteredElsewhere);
   const reglements = await applyMb3mPaymentPlans(
     { folderId: input.folderId, invoiceNumber: input.invoiceNumber, plans: [...plans, ...gdsPlans] },
     {
@@ -921,6 +982,15 @@ export async function recordMb3mInvoicePayments(
       },
     }
   );
+  if (elsewhereWarning) {
+    reglements.push({
+      date: "",
+      montant: 0,
+      numero_mb3m: null,
+      statut: "deja_dans_mb3m",
+      avertissement: elsewhereWarning,
+    });
+  }
   const already = cents(
     linkRows
       .filter((link) => link.invoiceNumber?.trim() === input.invoiceNumber.trim())

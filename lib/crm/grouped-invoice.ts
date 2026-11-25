@@ -427,6 +427,16 @@ export function nextGroupedNumber(existing: string[], year: number) {
   return `${prefix}${String(max + 1).padStart(4, "0")}`;
 }
 
+/** Une facture groupée active contient déjà un de ces dossiers. */
+export function groupedInvoiceDuplicateMessage(numbers: string[]) {
+  const unique = [...new Set(numbers.map((number) => number.trim()).filter(Boolean))];
+  if (unique.length <= 1) {
+    const number = unique[0] || "existante";
+    return `Un de ces dossiers est déjà sur la facture groupée ${number}. Mettez à jour cette facture (facture_id) au lieu d’en créer une nouvelle.`;
+  }
+  return `Ces dossiers sont déjà sur les factures groupées ${unique.join(", ")}. Mettez à jour la facture existante (facture_id) au lieu d’en créer une nouvelle.`;
+}
+
 export type GroupedBookingRow = {
   id: string;
   reference: string;
