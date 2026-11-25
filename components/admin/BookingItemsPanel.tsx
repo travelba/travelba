@@ -43,6 +43,7 @@ import { cardHasOnlineCheckin, removalConfirm, type RemovalSignal } from "@/lib/
 import { OnlineCheckinBadge } from "@/components/admin/OnlineCheckinMark";
 import { hasReviewMark, withoutReviewMark, reviewDoubts } from "@/lib/crm/review-doubt";
 import { BrandMark } from "@/components/crm/BrandMark";
+import { brandMarkForItem } from "@/lib/crm/brand-marks";
 import { Icon } from "@/components/crm/icons";
 import { HiddenCardBadge } from "@/components/admin/HiddenCards";
 import { STAY_CURRENCIES } from "@/lib/crm/stay-currency";
@@ -1100,7 +1101,7 @@ export function BookingItemsPanel({
                   className="flex w-full items-start gap-2 rounded-xl text-left lg:gap-3"
                 >
                   <span className="hidden w-16 shrink-0 pt-0.5 text-xs font-semibold text-muted lg:block">{when || "Sans date"}</span>
-                  {item.kind === "flight" || item.kind === "car" ? (
+                  {item.kind === "flight" || item.kind === "car" || (item.kind === "rail" && brandMarkForItem(item)) ? (
                     <BrandMark item={item} className="h-8 w-8 shrink-0" />
                   ) : (
                     <Icon name={kindIcon(item.kind)} className="mt-0.5 h-4 w-4 shrink-0 text-[var(--admin-navy)]" />
