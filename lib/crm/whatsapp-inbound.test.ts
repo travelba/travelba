@@ -496,7 +496,7 @@ test("hors dossier : conseil sans fait inventé, sinon l’agence", () => {
   assert.equal(advice.handoff, null);
 
   const unknown = planConciergeTurn("Comment vont les baleines cette année ?", dossier);
-  assert.match(unknown.text, /Souhaitez-vous que j’en parle à Benjamin/);
+  assert.match(unknown.text, /Souhaitez-vous que j’en parle à l’agence/);
   assert.equal(unknown.text.includes("00h"), false);
   assert.equal(unknown.handoff, null);
 

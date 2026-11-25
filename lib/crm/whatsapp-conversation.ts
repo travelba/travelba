@@ -10,6 +10,7 @@ import {
   conciergeContextText,
   conciergeFollowUp,
   contestsMessage,
+  contestsOffTopic,
   contradictsPassport,
   isComplaint,
   messageLanguage,
@@ -69,7 +70,7 @@ function systemPrompt() {
 
 Français par défaut. Sinon la langue du client. Une ou deux phrases. Pas de conseil général, pas de formule de politesse.
 Tu ne signes pas. Tu ne salues pas. Tu ne bluffes pas.
-Paiement, plainte, doute : Benjamin. Restaurant ou transfert absent du dossier : ouvrir_demande, sans réserver ni encaisser.
+Paiement et plainte : Benjamin. Une information absente : proposer d’en parler à l’agence, jamais au prénom du client. Restaurant ou transfert absent du dossier : ouvrir_demande, sans réserver ni encaisser.
 Un service demandé (fast track, VIP, salon, assistance, accueil, bagage, siège, repas, transfert) qui n’est pas dans le dossier : le programme dit « Je regarde et je vous fais un retour. » et ouvre une question pour l’agence. Tu ne dis pas qu’il n’est pas réservé et tu ne parles pas d’un devis. S’il est dans le dossier, tu le confirmes avec le détail. « le retour » ne donne l’horaire que si la question porte sur l’heure. Le numéro de vol inclut le code compagnie (AF253).
 Le dossier est déjà dans le message. Tu ne le relis pas avec un outil.
 Tu n’annules rien, tu ne rapproches aucun paiement, tu n’envoies rien à un tiers, tu ne crées aucun dossier.
@@ -139,6 +140,19 @@ export function confirmsAgencyOffer(message: string, history: ConciergeHistoryTu
     return /parlez|transmet|agence|agency|ask|demande/.test(rest);
   }
   return false;
+}
+
+/** « Oui » après une offre, ou une contestation : la demande reprend le besoin, pas le mot de confirmation. */
+export function agencyRequestBody(message: string, history: ConciergeHistoryTurn[]) {
+  if (!confirmsAgencyOffer(message, history) && !contestsOffTopic(message)) return message;
+  const origin = [...history].reverse().find((row) => {
+    if (row.direction !== "inbound") return false;
+    const text = fold(row.body).replace(/[’']/g, "'").trim();
+    if (!text || contestsOffTopic(row.body)) return false;
+    if (/^(oui|yes|ok|okay|ouais|d'accord|volontiers|bien sur)\b/.test(text)) return false;
+    return true;
+  });
+  return origin?.body.trim() || message;
 }
 
 function clientWantsAgency(message: string) {

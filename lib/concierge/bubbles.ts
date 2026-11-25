@@ -83,9 +83,30 @@ function lead(text: string, lang: BubbleLang) {
   return text.charAt(0).toLocaleUpperCase(locale) + text.slice(1);
 }
 
-/** La signature ferme la dernière bulle, sur une ligne à elle, jamais une bulle seule. */
+function urlOnly(text: string) {
+  return /^https?:\/\/\S+$/i.test(text.trim());
+}
+
+/**
+ * La signature ferme la dernière bulle, sur une ligne à elle, jamais une bulle seule.
+ * Jamais sur un lien seul : le texte, l’URL et « Le Concierge » tiennent dans la même bulle
+ * tant que le plafond de 220 caractères le permet.
+ */
 function signLast(pieces: string[]) {
+  if (!pieces.length) return pieces;
   const last = pieces.length - 1;
+  if (urlOnly(pieces[last])) {
+    if (last === 0) return pieces;
+    const prev = stripSignature(pieces[last - 1]).trim();
+    const url = pieces[last].trim();
+    const signed = `${prev}\n${url}\n${CONCIERGE_SIGNATURE}`;
+    if (signed.length <= CONCIERGE_MAX_BUBBLE_CHARS) {
+      pieces.splice(last - 1, 2, signed);
+      return pieces;
+    }
+    pieces[last - 1] = `${prev}\n${CONCIERGE_SIGNATURE}`;
+    return pieces;
+  }
   const body = stripSignature(pieces[last]).trim();
   if (!body) return pieces.slice(0, last);
   pieces[last] = `${body}\n${CONCIERGE_SIGNATURE}`;
