@@ -782,9 +782,10 @@ test("l’accueil montre la recherche seulement à l’allowlist, sans nom de fo
   assert.match(css, /\.h-loyalty\[data-card="Silver"\]/);
   assert.match(css, /\.h-loyalty\[data-card="Gold"\]/);
   assert.match(css, /\.h-loyalty\[data-card="Titanium"\]/);
-  assert.match(ui, /\[clubOpen, setClubOpen\] = useState\(true\)/);
+  assert.match(ui, /const clubOpen = clubChoice \?\? !restored/);
   assert.match(ui, /\[pricesOpen, setPricesOpen\] = useState\(false\)/);
-  assert.match(ui, /openedLive \|\| clubOpen \|\| pricesOpen \? null/);
+  assert.match(ui, /clubOpen \|\| pricesOpen \? null/);
+  assert.match(ui, /inert=\{openedLive/);
   assert.match(ui, /highlights\.length/);
   assert.match(css, /\.h-ladder-step \{/);
   assert.match(css, /bottom: calc\(3\.5rem \+ env\(safe-area-inset-bottom, 0px\)\)/);
@@ -903,7 +904,7 @@ test("chaque résultat de recherche est une carte distincte", () => {
   const strip = readFileSync(join(root, "components/account/HotelPhotoStrip.tsx"), "utf8");
   assert.match(strip, /data-hotel-strip="1"/);
   assert.match(strip, /stopPropagation/);
-  assert.match(css, /touch-action: pan-y/);
+  assert.match(css, /touch-action: pan-x pan-y/);
   assert.match(ui, /<div className="space-y-5" aria-live="polite">/);
   assert.doesNotMatch(ui, /article className="hotel-rise -mx-4"/);
   assert.match(css, /\.hotel-theme \.h-result \{[^}]*border: 1px solid var\(--h-line\)/);
