@@ -26,7 +26,8 @@ import {
   flightTerminal,
   flightWatchBadge,
 } from "@/lib/crm/flight-watch";
-import { ticketTravelerNames } from "@/lib/crm/document-passengers";
+import { ticketTravelerFaces } from "@/lib/crm/document-passengers";
+import { TravelerChips } from "@/components/crm/TravelerChips";
 import {
   documentsForItems,
   dayHeading,
@@ -193,7 +194,7 @@ function CardBody({
   const city = detailStr(item, "city");
   const hotelName = item.kind === "hotel" ? hotelDisplayName(item) : "";
   const ticketTravelers =
-    item.kind === "flight" || item.kind === "rail" ? ticketTravelerNames(item.details).join(", ") : "";
+    item.kind === "flight" || item.kind === "rail" ? ticketTravelerFaces(item.details) : [];
   const hotelCity = item.kind === "hotel" ? hotelCityLine(item) : "";
   const photos = item.kind === "hotel" ? hotelPhotos(item) : [];
   const checkInDay = (item.start_at || "").slice(0, 10);
@@ -394,9 +395,7 @@ function CardBody({
               {returnLeg ? (
                 <p className="break-words text-xs leading-snug text-muted">Retour · {flightLegLine(returnLeg)}</p>
               ) : null}
-              {ticketTravelers ? (
-                <p className="break-words text-xs leading-snug text-[var(--admin-navy)]">{ticketTravelers}</p>
-              ) : null}
+              {ticketTravelers.length ? <TravelerChips people={ticketTravelers} /> : null}
               {item.kind === "flight" && (terminal || gate) ? (
                 <p className="break-words text-xs font-semibold leading-snug text-[var(--admin-navy)]">
                   {placeLine(terminal, gate)}

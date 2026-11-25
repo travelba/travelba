@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { guestPerson, peopleNotOnStay, passengersFromDetails, planTravelerInsert, printedStayTravelers, ticketPartyKeys, ticketTravelerNames, uniquePeople } from "./document-passengers";
+import { guestPerson, peopleNotOnStay, passengersFromDetails, planTravelerInsert, printedStayTravelers, ticketPartyKeys, ticketTravelerFaces, ticketTravelerNames, travelerChipLimit, uniquePeople } from "./document-passengers";
 import { roomOccupancyLabel } from "./hotel-party";
 
 test("les passagers du document s’ajoutent s’ils ne sont pas déjà sur le séjour", () => {
@@ -198,4 +198,54 @@ test("un billet affiche les voyageurs concernés et retrouve leur case", () => {
   assert.deepEqual(ticketPartyKeys({ party_keys: ["holder"] }, [{ key: "holder", first_name: "Arnaud", last_name: "Vinciguerra" }]), [
     "holder",
   ]);
+});
+
+test("les pastilles reprennent le siège ou la classe écrits, pas un siège recopié sur le groupe", () => {
+  const party = [
+    ["Camille", "Martin"],
+    ["Inès", "Martin"],
+    ["Léa", "Durand"],
+    ["Noa", "Bernard"],
+    ["Adam", "Petit"],
+    ["Lina", "Robert"],
+    ["Hugo", "Morel"],
+  ].map(([first, last]) => ({ first_name: first, last_name: last }));
+  const faces = ticketTravelerFaces({ passengers: party });
+  assert.deepEqual(
+    faces.map((person) => person.name),
+    ticketTravelerNames({ passengers: party })
+  );
+  assert.deepEqual(faces.map((person) => person.initials), ["CM", "IM", "LD", "NB", "AP", "LR", "HM"]);
+  assert.equal(faces.every((person) => person.detail == null), true);
+
+  const seated = ticketTravelerFaces({
+    passengers: [
+      { first_name: "Camille", last_name: "Martin", seat: "12", voiture: "2", cabin: "2nde" },
+      { first_name: "Inès", last_name: "Martin", seat: "17", voiture: "11" },
+    ],
+  });
+  assert.equal(seated[0]?.detail, "voiture 2 · place 12 · 2nde");
+  assert.equal(seated[1]?.detail, "voiture 11 · place 17");
+
+  const copied = ticketTravelerFaces({
+    seat: "12A",
+    cabin: "Economique (Y)",
+    passengers: [
+      { first_name: "Camille", last_name: "Martin", seat: "12A" },
+      { first_name: "Inès", last_name: "Martin", seat: "12A" },
+    ],
+  });
+  assert.equal(copied[0]?.detail, null);
+  assert.equal(copied[1]?.detail, null);
+
+  const alone = ticketTravelerFaces({
+    seat: "12A",
+    cabin: "Y",
+    passengers: [{ first_name: "Léa", last_name: "Martin" }],
+  });
+  assert.equal(alone[0]?.detail, "12A · Classe Y");
+  assert.equal(travelerChipLimit(320), 4);
+  assert.equal(travelerChipLimit(339), 4);
+  assert.equal(travelerChipLimit(340), 5);
+  assert.equal(travelerChipLimit(900), 5);
 });
