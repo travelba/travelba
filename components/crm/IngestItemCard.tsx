@@ -111,7 +111,7 @@ export function IngestItemCard({
       ...item,
       amount,
       include_in_ledger: forfait || stayLedgerLocked ? false : mode === "avec",
-      details: withCardPriceMode(item.details as Record<string, unknown>, mode),
+      details: withCardPriceMode((item.details || {}) as Record<string, unknown>, mode) as ItemDraft["details"],
     });
   }
   const stampHasClock = (value: string) => {

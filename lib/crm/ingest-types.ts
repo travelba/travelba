@@ -125,6 +125,7 @@ const detailsObjectLoose = z
         })
       )
       .optional(),
+    price_mode: z.enum(["avec", "sans"]).nullable().optional(),
   });
 
 export const detailsSchemaLoose = detailsObjectLoose.optional().default({});

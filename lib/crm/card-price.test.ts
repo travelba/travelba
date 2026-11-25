@@ -125,9 +125,8 @@ test("l’outil choisit avec ou sans prix, et refuse un montant manquant", () =>
   assert.deepEqual(mcpPriceChoice({}), { mode: null });
   assert.deepEqual(mcpPriceChoice({ sans_prix: true }), { mode: "sans" });
   assert.deepEqual(mcpPriceChoice({ prix: 0 }), { mode: "sans" });
-  assert.equal("error" in mcpPriceChoice({ avec_prix: true }) ? mcpPriceChoice({ avec_prix: true }).error : "", "Indiquez le prix de vente.");
-  assert.equal(
-    "error" in mcpPriceChoice({ sans_prix: true, prix: 10 }) ? mcpPriceChoice({ sans_prix: true, prix: 10 }).error : "",
-    "Sans prix ne porte pas de montant."
-  );
+  const missingPrice = mcpPriceChoice({ avec_prix: true });
+  assert.equal("error" in missingPrice ? missingPrice.error : "", "Indiquez le prix de vente.");
+  const pricedSans = mcpPriceChoice({ sans_prix: true, prix: 10 });
+  assert.equal("error" in pricedSans ? pricedSans.error : "", "Sans prix ne porte pas de montant.");
 });

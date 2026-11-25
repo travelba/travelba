@@ -322,7 +322,7 @@ export function stayIncludedInLedger(booking: {
 export function itemIncludedInLedger(
   item: {
     kind?: string | null;
-    amount?: number | null;
+    amount?: number | string | null;
     include_in_ledger?: boolean | null;
     details?: unknown;
     price_mode?: string | null;
@@ -333,10 +333,16 @@ export function itemIncludedInLedger(
   if (isLedgerExpenseKind(item.kind)) return !expenseAwaitsValidation(item);
   if (isExtraItemKind(item.kind)) return Boolean(item.include_in_ledger);
   if (stayMode === "forfait" || clientSettlesStay) return false;
-  if (readCardPriceMode(item as { amount?: number | null; price_mode?: string | null; details?: Record<string, unknown> | null }) !== "avec") {
+  const details =
+    item.details && typeof item.details === "object" && !Array.isArray(item.details)
+      ? (item.details as Record<string, unknown>)
+      : null;
+  const raw = typeof item.amount === "string" ? Number(item.amount) : item.amount;
+  const amount = raw == null || !Number.isFinite(Number(raw)) ? null : Number(raw);
+  if (readCardPriceMode({ amount, price_mode: item.price_mode, details }) !== "avec") {
     return false;
   }
-  return (itemSellingAmount(item) || 0) > 0;
+  return (itemSellingAmount({ kind: item.kind, amount, details }) || 0) > 0;
 }
 
 /** Montant du séjour : toujours la somme des prix vendus. Transfert, greeter, enregistrement, visa, dépense libre et frais de billeterie restent hors total. */

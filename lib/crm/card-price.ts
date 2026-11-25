@@ -53,8 +53,11 @@ export function clientSeesCardPrice(
   return readCardPriceMode(item) === "avec";
 }
 
-export function withCardPriceMode(details: Record<string, unknown> | null | undefined, mode: CardPriceMode) {
-  return { ...(details || {}), price_mode: mode };
+export function withCardPriceMode<T extends Record<string, unknown> | null | undefined>(
+  details: T,
+  mode: CardPriceMode
+): T & { price_mode: CardPriceMode } {
+  return { ...(details || {}), price_mode: mode } as T & { price_mode: CardPriceMode };
 }
 
 /**

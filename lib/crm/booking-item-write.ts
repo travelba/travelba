@@ -175,8 +175,8 @@ export async function addStaffBookingCard(
       amount: nextAmount,
       include_in_ledger: stayCard
         ? readCardPriceMode({ amount: nextAmount, details: nextDetails }) === "avec"
-        : isLedgerExpenseKind(kind) || (kind === "accueil_vip" && nextAmount == null)
-          ? isLedgerExpenseKind(kind)
+        : isLedgerExpenseKind(kind)
+          ? true
           : parseIncludeInLedger(body.include_in_ledger, false),
       sort_order: sortOrder,
       details: nextDetails,

@@ -112,7 +112,7 @@ function prepareStepDraft(
         ...source,
         include_in_ledger: !stayCard ? Boolean(source.include_in_ledger) : forfait ? false : mode === "avec",
         details: stayCard
-          ? withCardPriceMode((source.details || {}) as Record<string, unknown>, mode)
+          ? (withCardPriceMode((source.details || {}) as Record<string, unknown>, mode) as ItemDraft["details"])
           : source.details,
       },
     };
