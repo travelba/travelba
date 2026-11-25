@@ -15,6 +15,7 @@ import { parseTicketCountInput, statedTicketCount } from "@/lib/crm/item-match";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
 import { DateFrInput, Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { BrandMark } from "@/components/crm/BrandMark";
+import { brandMarkForItem } from "@/lib/crm/brand-marks";
 import { applyRoomGuestLabels, guestsLabelFromKeys, type HouseholdMember } from "@/lib/crm/household";
 import { ticketPartyKeys } from "@/lib/crm/document-passengers";
 import { Trash2 } from "lucide-react";
@@ -153,7 +154,9 @@ export function IngestItemCard({
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-2">
-          {item.kind === "flight" || item.kind === "car" ? <BrandMark item={item} className="h-9 w-9 shrink-0" /> : null}
+          {item.kind === "flight" || item.kind === "car" || (item.kind === "rail" && brandMarkForItem(item)) ? (
+            <BrandMark item={item} className="h-9 w-9 shrink-0" />
+          ) : null}
           <select
             value={item.kind}
             onChange={(e) => onChange({ ...item, kind: e.target.value as typeof item.kind })}
