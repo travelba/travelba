@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { HotelPhotoStrip } from "@/components/account/HotelPhotoStrip";
 import { Icon } from "@/components/crm/icons";
 import { hotelMapCaption, hotelPreviewImages } from "@/lib/crm/hotel-map";
 import type { ClientHotel } from "@/lib/crm/hotel-search";
@@ -12,6 +11,61 @@ function stayLabel(nights: number) {
   if (nights > 1) return `${nights} nuits`;
   if (nights === 1) return "1 nuit";
   return "Séjour";
+}
+
+function Photos({ images, name }: { images: string[]; name: string }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const at = useRef(0);
+  const pin = useRef<HTMLParagraphElement>(null);
+  const [failed, setFailed] = useState<string[]>([]);
+  const shown = images.filter((src) => !failed.includes(src));
+
+  function onScroll() {
+    const node = scroller.current;
+    if (!node || node.clientWidth < 1) return;
+    const next = Math.max(0, Math.min(shown.length - 1, Math.round(node.scrollLeft / node.clientWidth)));
+    if (next === at.current) return;
+    at.current = next;
+    if (pin.current) pin.current.textContent = `${next + 1}/${shown.length}`;
+  }
+
+  return (
+    <div className="relative bg-[#0b192c]">
+      <div
+        ref={scroller}
+        onScroll={onScroll}
+        className="hotel-map-photos h-gallery flex snap-x snap-mandatory overflow-x-auto"
+        aria-label={shown.length > 1 ? `Photos de ${name}` : undefined}
+      >
+        {shown.length ? (
+          shown.map((src, index) => (
+            // eslint-disable-next-line @next/next/no-img-element -- photo fournisseur https, hors next/image
+            <img
+              key={`${src}-${index}`}
+              src={src}
+              alt={index === 0 ? name : ""}
+              width={800}
+              height={480}
+              loading={index === 0 ? "eager" : "lazy"}
+              decoding="async"
+              referrerPolicy="no-referrer"
+              className="h-full w-full shrink-0 snap-start object-cover"
+              onError={() => setFailed((current) => (current.includes(src) ? current : [...current, src]))}
+            />
+          ))
+        ) : (
+          <div className="grid h-full w-full shrink-0 place-items-center text-[#C5A880]">
+            <Icon name="hotel" className="h-8 w-8" />
+          </div>
+        )}
+      </div>
+      {shown.length > 1 ? (
+        <p ref={pin} className="h-pin absolute bottom-2 right-2">
+          1/{shown.length}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 /** Feuille du bas : photos, nom, étoiles et lieu, prix du séjour, puis la fiche. */
@@ -60,9 +114,7 @@ export function HotelMapPreview({
       >
         <Icon name="close" className="h-4 w-4" />
       </button>
-      <div className="hotel-map-photos relative">
-        <HotelPhotoStrip images={images} alt={hotel.name} eager />
-      </div>
+      <Photos images={images} name={hotel.name} />
       <div className="px-4 pb-3 pt-3">
         <h3 className="h-serif pr-8 text-[1.15rem] font-semibold leading-tight h-ink">{hotel.name}</h3>
         {caption ? (

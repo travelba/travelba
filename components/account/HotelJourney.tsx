@@ -346,11 +346,11 @@ function RateChoices({
         return (
           <section key={item.name} className="space-y-3">
             {item.images.length > 1 ? (
-              <div className="relative -mx-5 aspect-[16/10] bg-[#0B192C]">
+              <div className="relative aspect-[5/4] overflow-hidden bg-[#eceae6]">
                 <HotelPhotoStrip images={item.images} alt={item.name} />
               </div>
             ) : item.images[0] ? (
-              <span className="relative -mx-5 block aspect-[16/10] overflow-hidden bg-[#0B192C]">
+              <span className="relative block aspect-[5/4] overflow-hidden bg-[#eceae6]">
                 <Photo src={item.images[0]} alt="" />
               </span>
             ) : null}

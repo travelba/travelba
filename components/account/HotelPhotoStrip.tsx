@@ -57,8 +57,7 @@ export function HotelPhotoStrip({
       if (!dot) return;
       const on = dotIndex === index;
       dot.classList.toggle("bg-[#C5A880]", on);
-      dot.classList.toggle("w-4", on);
-      dot.classList.toggle("bg-white/80", !on);
+      dot.classList.toggle("bg-white/75", !on);
       dot.setAttribute("aria-current", on ? "true" : "false");
     });
     if (counter.current) counter.current.textContent = `${index + 1}/${count}`;
@@ -130,8 +129,6 @@ export function HotelPhotoStrip({
     go(indexRef.current + (event.key === "ArrowRight" ? 1 : -1));
   }
 
-  const shownDots = count > 1 && count <= 12;
-
   return (
     <div className="h-photo-frame absolute inset-0" data-hotel-strip="1">
       <div
@@ -168,33 +165,28 @@ export function HotelPhotoStrip({
           <button type="button" className="h-strip-arrow right-2" aria-label="Photo suivante" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => nudge(event, 1)}>
             <Icon name="chevron_right" className="h-5 w-5" />
           </button>
-          <span className="h-strip-hint" aria-hidden>
-            <Icon name="chevron_right" className="h-5 w-5" />
-          </span>
-          {shownDots ? (
-            <div className="h-strip-dots">
-              {photos.map((src, imageIndex) => (
-                <button
-                  key={`${src}-dot-${imageIndex}`}
-                  ref={(node) => {
-                    dots.current[imageIndex] = node;
-                  }}
-                  type="button"
-                  aria-label={`Photo ${imageIndex + 1}`}
-                  aria-current={imageIndex === at ? "true" : "false"}
-                  className={`h-2 rounded-full ${imageIndex === at ? "w-4 bg-[#C5A880]" : "w-2 bg-white/80"}`}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    suppress.current = true;
-                    go(imageIndex);
-                  }}
-                />
-              ))}
-            </div>
-          ) : null}
-          <p ref={counter} className="h-pin pointer-events-none absolute bottom-3 right-3 z-[4]">{at + 1}/{count}</p>
+          <div className="absolute left-0 right-0 top-3 z-[4] flex justify-center gap-1">
+            {photos.map((src, imageIndex) => (
+              <button
+                key={`${src}-dot-${imageIndex}`}
+                ref={(node) => {
+                  dots.current[imageIndex] = node;
+                }}
+                type="button"
+                aria-label={`Photo ${imageIndex + 1}`}
+                aria-current={imageIndex === at ? "true" : "false"}
+                className={`h-2 w-2 rounded-full ${imageIndex === at ? "bg-[#C5A880]" : "bg-white/75"}`}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  suppress.current = true;
+                  go(imageIndex);
+                }}
+              />
+            ))}
+          </div>
+          <p ref={counter} className="h-pin pointer-events-none absolute right-3 top-3">{at + 1}/{count}</p>
         </>
       ) : null}
       {open && photos[at] ? <Lightbox photos={photos} alt={alt} index={at} onShift={(delta) => go(at + delta)} onClose={() => setOpen(false)} /> : null}
@@ -246,16 +238,6 @@ function Lightbox({
       </header>
       <div className="relative min-h-0 flex-1">
         <Photo src={photos[index]} alt={alt} eager />
-        {photos.length > 1 ? (
-          <>
-            <button type="button" className="h-strip-arrow h-strip-arrow-on left-3" aria-label="Photo précédente" onClick={() => onShift(-1)}>
-              <Icon name="chevron_left" className="h-5 w-5" />
-            </button>
-            <button type="button" className="h-strip-arrow h-strip-arrow-on right-3" aria-label="Photo suivante" onClick={() => onShift(1)}>
-              <Icon name="chevron_right" className="h-5 w-5" />
-            </button>
-          </>
-        ) : null}
       </div>
     </div>,
     document.body
@@ -273,7 +255,7 @@ const Photo = memo(function Photo({ src, alt, eager }: { src: string; alt: strin
     );
   }
   return (
-    <div className="relative h-full w-full bg-[#0B192C]">
+    <div className={`h-skel relative h-full w-full ${ready ? "" : "animate-pulse"}`}>
       <Image
         src={src}
         alt={alt}
