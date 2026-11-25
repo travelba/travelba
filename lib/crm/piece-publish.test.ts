@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { setCarnetPublished } from "./bookings";
 import { deliverQueuedConcierge, PIECE_QUEUE_ABANDON, queuePublishedPieces } from "./concierge-send";
-import { stayJustShown } from "./piece-publish";
+import { revealKeptHiddenOnShow, stayJustShown } from "./piece-publish";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const BOOKING = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -154,6 +154,9 @@ test("enregistrer le titre d’un dossier déjà visible n’enfile aucune pièc
   assert.equal(stayJustShown(true, { title: "Tel Aviv" }), false);
   assert.equal(stayJustShown(false, { title: "Tel Aviv", visible_to_client: true }), true);
   assert.equal(stayJustShown(false, { title: "Tel Aviv" }), false);
+  assert.equal(revealKeptHiddenOnShow(true, false), true);
+  assert.equal(revealKeptHiddenOnShow(true, true), false);
+  assert.equal(revealKeptHiddenOnShow(false, false), false);
   const src = readFileSync(join(root, "app/api/admin/bookings/[id]/route.ts"), "utf8");
   assert.match(src, /stayJustShown\(prev\.visible_to_client, body\)/);
   assert.match(src, /revealDocuments: justShown/);
