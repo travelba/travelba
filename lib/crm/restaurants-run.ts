@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { cityPlaceKey } from "./city-names";
 import { phoneFromWhatsapp } from "./whatsapp-inbound";
 import { sendContentTemplate } from "./whatsapp";
+import { copyTravelNoticeToSpouses } from "./travel-whatsapp-fanout";
 import { sendWhatsappSession, sessionAddress } from "./whatsapp-session";
 import { approvedRestaurantContentSid } from "./restaurant-templates-arm";
 import {
@@ -1023,6 +1024,13 @@ export async function sendRestaurantAcceptConfirmation(
   const logged = await db.from("crm_whatsapp_messages").upsert(mirror, { onConflict: "dedupe_key" });
   if (logged.error && logged.error.code !== "23505") logDb("confirmation", logged.error);
   if (!result.ok) return { ok: false, reason: "WhatsApp n’a pas accepté le message." };
+  await copyTravelNoticeToSpouses(db, {
+    bookingId: input.bookingId,
+    kind: "restaurant",
+    body,
+    visible: true,
+    exceptPhones: [phone],
+  });
   return { ok: true, sid: result.sid };
 }
 
@@ -1157,6 +1165,13 @@ export async function sendRestaurantEvening(
     if (opts?.dry) return { ok: true as const, apercu: true as const, messages: [{ partie: "intro", texte: text }] };
     const libre = await sendWhatsappSession({ to: sessionAddress(phone) || phone, body: text });
     if (!libre.ok) return { error: "Aperçu seul. Le modèle n’est pas approuvé et la fenêtre de 24 h n’est pas ouverte." };
+    await copyTravelNoticeToSpouses(db, {
+      bookingId,
+      kind: "restaurant",
+      body: text,
+      visible: true,
+      exceptPhones: [phone],
+    });
     await rememberMessage(db, {
       bookingId,
       customerId: customer.id,
@@ -1195,6 +1210,13 @@ export async function sendRestaurantEvening(
   for (const { part, prepared } of pending) {
     const result = await sendContentTemplate({ phone, contentSid: prepared.contentSid, variables: prepared.variables });
     if (!result.ok) return { error: "WhatsApp n’a pas accepté le message." };
+    await copyTravelNoticeToSpouses(db, {
+      bookingId,
+      kind: "restaurant",
+      body: prepared.text,
+      visible: true,
+      exceptPhones: [phone],
+    });
     await rememberMessage(db, {
       bookingId,
       customerId: customer.id,

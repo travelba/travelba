@@ -1562,3 +1562,93 @@ test("une pièce suit le dossier nommé et reste cachée", async () => {
   });
   assert.deepEqual(attached, [{ bookingId: "stay-ny", travelerId: "trav-1", visible: false }]);
 });
+
+test("le Stop d’un conjoint coupe son numéro, pas celui du titulaire", async () => {
+  let holderStopped = false;
+  let companionStopped = "";
+  const threads: { phone: string | null | undefined }[] = [];
+  const sent: string[] = [];
+  const params = { From: "whatsapp:+33611223344", Body: "Stop", MessageSid: "SMconjointstop" };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store: {
+      ...storeFrom({ writes: [], customers: [] }),
+      async companionByPhone() {
+        return { id: "spouse", customerId: "holder", firstName: "Hugo", bookingIds: ["stay-pub"] };
+      },
+      async optOut() {
+        holderStopped = true;
+      },
+      async optOutCompanion(phone) {
+        companionStopped = phone;
+      },
+      async recentThread(_customerId, phone) {
+        threads.push({ phone });
+        return [];
+      },
+      async conversationHistory(_customerId, phone) {
+        threads.push({ phone });
+        return [];
+      },
+      async loadDossier() {
+        return {
+          bookings: [published],
+          balances: [{ currency: "EUR", balance: -120 }],
+          transactions: [{ booking_id: "stay-pub", direction: "debit", kind: "booking", amount: 120, currency: "EUR", occurred_on: "2026-01-01", label: "séjour", status: "posted" }],
+          travelDocuments: [{ doc_type: "passport", first_name: "Hugo", last_name: "Martin", expires_on: null, number: "SECRET" }],
+        };
+      },
+    },
+    send: async (message) => {
+      sent.push(message.body);
+      return { ok: true, sid: "SMstopconjoint" };
+    },
+  });
+  assert.equal(holderStopped, false);
+  assert.equal(companionStopped, "+33611223344");
+  assert.equal(threads.every((row) => row.phone === "+33611223344"), true);
+  assert.equal(sent.join("\n").includes("mon-compte"), false);
+});
+
+test("une pièce reçue d’un conjoint est signalée, pas déposée sur la fiche", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  let saved = false;
+  const params = {
+    From: "whatsapp:+33611223344",
+    Body: "",
+    NumMedia: "1",
+    MediaUrl0: "https://api.twilio.com/media",
+    MediaContentType0: "image/jpeg",
+    MessageSid: "SMconjointpiece",
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store: {
+      ...storeFrom({
+        writes,
+        customers: [],
+        savePiece: async () => {
+          saved = true;
+          return "saved";
+        },
+      }),
+      async companionByPhone() {
+        return { customerId: "holder", firstName: "Hugo", bookingIds: ["stay-pub"] };
+      },
+      async loadDossier() {
+        return { bookings: [published], balances: [{ currency: "EUR", balance: -40 }], transactions: [], travelDocuments: [] };
+      },
+    },
+    send: async () => ({ ok: true, sid: "SMpiececonjoint" }),
+  });
+  assert.equal(saved, false);
+  const request = writes.find((row) => row.table === "crm_whatsapp_requests");
+  assert.match(String(request?.row?.body || ""), /accompagnant/);
+  assert.equal(String(request?.row?.body || "").includes("SECRET"), false);
+});

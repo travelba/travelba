@@ -33,6 +33,7 @@ import { flightNoticeKey, flightPushCopy } from "./push-copy";
 import { sendCustomerPush } from "./push-notices";
 import { siteConfig } from "../site";
 import { sendContentTemplate } from "./whatsapp";
+import { copyTravelNoticeToSpouses } from "./travel-whatsapp-fanout";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
 import { stayDatesOpen, stayToday } from "./stay-moment";
 
@@ -146,26 +147,46 @@ async function notify(input: {
   contentSid?: string;
 }) {
   if (!input.booking.visible_to_client) return false;
-  if (!input.customer?.email || !proactiveWhatsappAllowed(input.customer)) return false;
-  const contentSid = input.contentSid || flightNoticeSid(input.kind);
-  if (!contentSid) return false;
-  const suffix = await reservationSuffix(input.admin, input.customer.email, input.booking.reference);
-  if (!suffix) return false;
-  const variables = flightNoticeVariables({
-    kind: input.kind,
-    flight: flightNumberLabel(input.item.details),
-    route: flightRouteLabel(input.item.details),
-    when: input.when,
-    place: input.place,
-    buttonSuffix: suffix,
-  });
-  if (!variables) return false;
-  const result = await sendContentTemplate({
-    phone: input.customer.phone,
-    contentSid,
-    variables,
-  });
-  return result.ok;
+  const flight = flightNumberLabel(input.item.details);
+  const route = flightRouteLabel(input.item.details);
+  const text = [flight, route, input.when, input.place].filter((value) => typeof value === "string" && value.trim()).join(" · ");
+  let holderSent = false;
+  if (input.customer?.email && input.customer.phone && proactiveWhatsappAllowed(input.customer)) {
+    const contentSid = input.contentSid || flightNoticeSid(input.kind);
+    const suffix = contentSid ? await reservationSuffix(input.admin, input.customer.email, input.booking.reference) : null;
+    const variables = suffix
+      ? flightNoticeVariables({
+          kind: input.kind,
+          flight,
+          route,
+          when: input.when,
+          place: input.place,
+          buttonSuffix: suffix,
+        })
+      : null;
+    if (contentSid && variables) {
+      const result = await sendContentTemplate({
+        phone: input.customer.phone,
+        contentSid,
+        variables,
+      });
+      holderSent = result.ok;
+    }
+  }
+  if (!text) return holderSent;
+  try {
+    const copied = await copyTravelNoticeToSpouses(input.admin, {
+      bookingId: input.booking.id,
+      kind: "vol",
+      body: text,
+      visible: true,
+      dossierReference: input.booking.reference,
+      exceptPhones: input.customer?.phone ? [input.customer.phone] : [],
+    });
+    return holderSent || copied.sent.length > 0;
+  } catch {
+    return holderSent;
+  }
 }
 
 async function pushNotice(input: {

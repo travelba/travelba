@@ -471,6 +471,15 @@ async function liveFollowupSend(id: string) {
   const phone = toE164(String(row.phone || ""), "FR");
   const to = phone ? sessionAddress(phone) : null;
   if (!to) throw new McpWriteError("Pas de téléphone pour WhatsApp.");
+  if (row.booking_id && phone) {
+    const { ensureSpouseTravelIntro, loadTravelWhatsappAudience } = await import("@/lib/crm/travel-whatsapp-fanout");
+    if (!row.customer_id) {
+      const loaded = await loadTravelWhatsappAudience(admin, String(row.booking_id));
+      const still = loaded?.audience.recipients.some((item) => item.role === "spouse" && item.phone === phone);
+      if (loaded && !still) throw new McpWriteError("Ce numéro ne reçoit plus les infos voyage de ce dossier.");
+    }
+    await ensureSpouseTravelIntro(admin, { bookingId: String(row.booking_id), phone });
+  }
   const text = withConciergeSignature(plain);
   const result = await sendWhatsappSession({ to, body: text });
   if (!result.ok) {

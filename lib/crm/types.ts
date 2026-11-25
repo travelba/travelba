@@ -235,6 +235,10 @@ export type CrmCompanion = {
   phone?: string | null;
   /** Contact seulement. N’ouvre pas de compte. */
   email?: string | null;
+  /** Stop WhatsApp de ce numéro. Ne coupe pas le titulaire. */
+  whatsapp_opt_out_at?: string | null;
+  /** Premier message d’infos voyage déjà envoyé à ce numéro. */
+  whatsapp_intro_sent_at?: string | null;
   /** Numéros de programmes (Flying Blue, Grand Voyageur, Great Members, …). */
   loyalty?: Record<string, string | null> | null;
   created_at: string;
@@ -547,6 +551,10 @@ export type CrmBookingTraveler = {
   first_name: string | null;
   last_name: string | null;
   created_at: string;
+  /** Conjoint : infos voyage WhatsApp de ce dossier. Vrai par défaut. Absent tant que la migration n’est pas jouée. */
+  whatsapp_travel_updates?: boolean | null;
+  whatsapp_travel_updates_at?: string | null;
+  whatsapp_travel_updates_by?: string | null;
 };
 
 export type CrmBookingDocument = {

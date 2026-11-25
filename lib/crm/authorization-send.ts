@@ -19,6 +19,7 @@ import {
 } from "./concierge-notices";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
 import { sendContentTemplate } from "./whatsapp";
+import { copyTravelNoticeToSpouses } from "./travel-whatsapp-fanout";
 import { sendVisaGrantWhatsapp } from "./visa-grant-send";
 import {
   isVisaGrantTemplate,
@@ -29,6 +30,27 @@ import {
 } from "./visa-grant-whatsapp";
 
 type Admin = SupabaseClient;
+
+async function copyAuthorizationSpouses(
+  admin: Admin,
+  input: { bookingId: string; kind: AuthorizationKind; reference?: string | null; place?: string | null },
+  body: string,
+  exceptPhone: string | null
+) {
+  try {
+    await copyTravelNoticeToSpouses(admin, {
+      bookingId: input.bookingId,
+      kind: input.kind === "esta" ? "esta" : "eta",
+      body,
+      visible: true,
+      dossierTitle: input.place,
+      dossierReference: input.reference,
+      exceptPhones: exceptPhone ? [exceptPhone] : [],
+    });
+  } catch {
+    return;
+  }
+}
 
 export function authorizationDedupeKey(kind: AuthorizationKind, bookingId: string, travelerId: string, notice: AuthorizationCase) {
   return `${kind}:${bookingId}:${travelerId}:${authorizationTextTemplate(kind, notice)}`;
@@ -174,6 +196,7 @@ export async function sendAuthorizationWhatsapp(
         .from("crm_whatsapp_messages")
         .update({ status: "sent", twilio_sid: result.sid, error: null, template_key: attempt.template, body: preview })
         .eq("id", rowId);
+      await copyAuthorizationSpouses(admin, input, preview, input.phone);
       return { ok: true };
     }
     if (result.reason === "not_configured") lastError = "Le modèle n’est pas encore approuvé.";
@@ -280,6 +303,7 @@ async function sendApprovedGrant(
       .from("crm_whatsapp_messages")
       .update({ status: "sent", twilio_sid: sent.sid, error: null, template_key: sent.template, body: sent.body })
       .eq("id", rowId);
+    await copyAuthorizationSpouses(admin, input, sent.body || preview, input.phone);
     return { ok: true };
   }
   await admin.from("crm_whatsapp_messages").update({ status: "failed", error: sent.error }).eq("id", rowId);

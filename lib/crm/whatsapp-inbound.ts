@@ -58,6 +58,7 @@ import { classifyClientSpace } from "./client-space-catalog";
 import { customersMatchingShareHint, performClientSpace, shareNameList, sharePersonLabel } from "./concierge-space";
 import { replyClaimsEmptyPromise, type AuthorizationCheckIntent } from "./concierge-authorization";
 import { pieceStayTarget } from "./whatsapp-piece-link";
+import { companionSafeText } from "./travel-whatsapp-audience";
 
 export type WhatsappMessageInsert = {
   customer_id: string | null;
@@ -90,6 +91,8 @@ export type WhatsappCompanion = {
   customerId: string;
   firstName: string | null;
   bookingIds: string[];
+  /** Stop de ce numéro. Absent des anciens branchements. */
+  id?: string;
 };
 
 export type WhatsappCustomer = { id: string; first_name: string | null; email?: string | null };
@@ -112,6 +115,8 @@ export type WhatsappStore = {
   ): Promise<{ id: string } | { duplicate: true }>;
   insertRequest(row: WhatsappRequestInsert): Promise<void>;
   optOut?(customerId: string): Promise<void>;
+  /** Stop du numéro d’un accompagnant. Ne touche pas l’opt-in du titulaire. */
+  optOutCompanion?(phone: string): Promise<void>;
   savePiece?(input: {
     customerId: string;
     bytes: Uint8Array;
@@ -127,9 +132,9 @@ export type WhatsappStore = {
   }): Promise<void>;
   /** Même envoi que le bouton Vérifier l’ESTA ou l’ETA. */
   requestAuthorizationCheck?(input: AuthorizationCheckIntent): Promise<{ ok: boolean }>;
-  recentThread?(customerId: string): Promise<WhatsappThreadRow[]>;
+  recentThread?(customerId: string, phone?: string | null): Promise<WhatsappThreadRow[]>;
   /** Derniers messages des 24 h, pour la mémoire du Concierge. Distinct de la rafale. */
-  conversationHistory?(customerId: string): Promise<WhatsappThreadRow[]>;
+  conversationHistory?(customerId: string, phone?: string | null): Promise<WhatsappThreadRow[]>;
   tagMessage?(id: string, bookingId: string): Promise<void>;
   /** Accompagnateur dont le téléphone n’est pas celui de la fiche. Séjours liés seulement. */
   companionByPhone?(e164: string): Promise<WhatsappCompanion | null>;
@@ -461,8 +466,9 @@ export async function receiveWhatsappWebhook(input: {
   }
   const mediaCount = Number(params.NumMedia || "0");
   const mediaOnly = !(params.Body || "").trim() && Number.isFinite(mediaCount) && mediaCount > 0;
+  const companionPiece = Boolean(companion && mediaCount > 0);
   let piece: WhatsappPieceResult | null = null;
-  if (customer && mediaCount > 0 && input.store.savePiece && input.accountSid && token) {
+  if (!companionPiece && customer && mediaCount > 0 && input.store.savePiece && input.accountSid && token) {
     piece = await storeInboundPieces({
       params,
       customerId: customer.id,
@@ -492,7 +498,7 @@ export async function receiveWhatsappWebhook(input: {
   let linkedBooking: string | null = null;
   if (piece === "saved" && piecePath && customer && input.store.attachHiddenPiece) {
     try {
-      const history = (await input.store.conversationHistory?.(customer.id)) || [];
+      const history = (await input.store.conversationHistory?.(customer.id, e164)) || [];
       const loaded = await input.store.loadDossier(customer.id);
       const raw = companion ? scopeCompanionDossier(loaded, companion.bookingIds) : loaded;
       const target = pieceStayTarget({
@@ -537,6 +543,18 @@ export async function receiveWhatsappWebhook(input: {
   });
   if ("duplicate" in inbound) return done(200);
 
+  if (companionPiece && companion) {
+    await input.store.insertRequest({
+      customer_id: customer?.id || null,
+      phone: e164,
+      booking_id: companion.bookingIds.length === 1 ? companion.bookingIds[0] : null,
+      message_id: inbound.id,
+      kind: "question",
+      body: "Pièce reçue d’un accompagnant. Elle n’est pas déposée sur la fiche du titulaire.",
+      status: "open",
+    });
+  }
+
   if (input.beforeReply) {
     const gate = await input.beforeReply(e164);
     if (gate === "stop") return done(200);
@@ -561,7 +579,7 @@ export async function receiveWhatsappWebhook(input: {
   if (customer && input.store.recentThread) {
     const wait = input.burstWaitMs || 0;
     if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-    const decision = burstReply(sid, await input.store.recentThread(customer.id));
+    const decision = burstReply(sid, await input.store.recentThread(customer.id, e164));
     if (!decision.send) return done(200);
     if (decision.text) said = decision.text;
   }
@@ -599,7 +617,7 @@ export async function receiveWhatsappWebhook(input: {
 
   if (clientWrite) {
     let text = clientWrite.summary;
-    if (clientWrite.access && customer) {
+    if (clientWrite.access && customer && !companion) {
       const url = (await input.openAccess?.(customer)) || null;
       if (url?.startsWith("https://")) text = `${text}\n${url}`;
     }
@@ -633,7 +651,7 @@ export async function receiveWhatsappWebhook(input: {
     if (!content && hadPiece && !stopping) {
       reply = withConciergeSignature(pieceSavedLine(lang));
     } else {
-      const history = input.store.conversationHistory ? await input.store.conversationHistory(customer.id) : [];
+      const history = input.store.conversationHistory ? await input.store.conversationHistory(customer.id, e164) : [];
       prior = history
         .filter((row) => row.twilio_sid !== sid && !row.body.startsWith("Conversation rendue au Concierge"))
         .slice(-16)
@@ -663,9 +681,11 @@ export async function receiveWhatsappWebhook(input: {
       const limited = !allowed && !turn.handoff && !turn.access && !turn.optOut;
       reply = limited
         ? rateLimitedReply(replyLang)
-        : turn.access
+        : turn.access && !companion
           ? accessLinkReply(replyLang, (await input.openAccess?.(customer)) || null)
-          : turn.text;
+          : turn.access && companion
+            ? withConciergeSignature("Je transmets votre message à l’agence. Cet échange reste sur les informations de voyage.")
+            : turn.text;
       if (!limited && !turn.access && turn.messages?.length) turnMessages = turn.messages;
       if (limited) {
         handoff = null;
@@ -685,8 +705,13 @@ export async function receiveWhatsappWebhook(input: {
         if (phase.marks.length) await input.store.insertQuality?.(phase.marks.map((mark) => ({ ...mark, phone: e164 })));
         if (phase.followups.length) await input.store.saveFollowups?.(e164, customer.id, phase.followups);
       }
-      if (stopping) {
-        await input.store.optOut?.(customer.id);
+      if (companionPiece && !content) {
+        reply = withConciergeSignature("J’ai prévenu l’agence. Cette pièce n’est pas déposée sur la fiche.");
+        handoff = "question";
+        tools = ["ouvrir_demande"];
+      } else if (stopping) {
+        if (companion) await input.store.optOutCompanion?.(e164);
+        else await input.store.optOut?.(customer.id);
         if (content && !turn.optOut) {
           const stopLine =
             lang === "en"
@@ -731,6 +756,11 @@ export async function receiveWhatsappWebhook(input: {
     }
   }
 
+  if (companion) {
+    reply = withConciergeSignature(companionSafeText(reply));
+    if (turnMessages) turnMessages = turnMessages.map((line) => companionSafeText(line)).filter((line) => line.trim());
+    if (mediaUrl && /mon-compte|\/e\//i.test(mediaUrl)) mediaUrl = null;
+  }
   if (mediaUrl) mediaUrl = await liveConciergeImage(mediaUrl, input.fetchImpl);
   const planned = turnMessages;
   let bubbles = (planned && reply === planned.join("\n\n") ? planned : [reply]).filter((line) => line.trim()).slice(0, 3);
@@ -1401,27 +1431,36 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         .eq("id", customerId);
       if (error) throw error;
     },
-    async recentThread(customerId) {
+    async optOutCompanion(phone) {
+      const { error } = await admin
+        .from("crm_travel_companions")
+        .update({ whatsapp_opt_out_at: new Date().toISOString() })
+        .eq("phone", phone);
+      if (error && error.code !== "42703" && error.code !== "PGRST204") throw error;
+    },
+    async recentThread(customerId, phone) {
       const since = new Date(Date.now() - 60_000).toISOString();
-      const { data, error } = await admin
+      let query = admin
         .from("crm_whatsapp_messages")
         .select("direction, body, twilio_sid, created_at")
-        .eq("customer_id", customerId)
         .gte("created_at", since)
         .order("created_at", { ascending: true })
         .limit(30);
+      query = phone ? query.eq("phone", phone) : query.eq("customer_id", customerId);
+      const { data, error } = await query;
       if (error) throw error;
       return (data || []) as WhatsappThreadRow[];
     },
-    async conversationHistory(customerId) {
+    async conversationHistory(customerId, phone) {
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const { data, error } = await admin
+      let query = admin
         .from("crm_whatsapp_messages")
         .select("direction, body, twilio_sid, created_at")
-        .eq("customer_id", customerId)
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(17);
+      query = phone ? query.eq("phone", phone) : query.eq("customer_id", customerId);
+      const { data, error } = await query;
       if (error) throw error;
       return ((data || []) as WhatsappThreadRow[]).reverse();
     },
@@ -1442,6 +1481,7 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         .eq("companion_id", companion.id);
       if (linkError) return null;
       return {
+        id: companion.id as string,
         customerId: companion.customer_id,
         firstName: companion.first_name,
         bookingIds: (links || []).map((row) => row.booking_id as string),
