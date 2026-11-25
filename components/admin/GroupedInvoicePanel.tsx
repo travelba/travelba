@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { BusyBar } from "@/components/crm/BusyBar";
+import { ConfirmDialog } from "@/components/crm/ConfirmDialog";
+import { MB3M_CANCEL_KEEPS_LETTERING } from "@/lib/crm/mb3m-unletter";
 
 type Dossier = {
   id: string;
@@ -66,6 +68,9 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
   const [checked, setChecked] = useState<string[]>([]);
   const [factureId, setFactureId] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [confirm, setConfirm] = useState<null | { action: "generer" | "retirer" | "mb3m"; factureId: string; number: string }>(
+    null
+  );
 
   async function load() {
     setLoading(true);
@@ -171,6 +176,20 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
     }
   }
 
+  function editingPiece() {
+    const current = factures.find((row) => row.id === factureId && !row.removed);
+    return current?.numeroMb3m ? current : null;
+  }
+
+  function askLinked(action: "generer" | "retirer" | "mb3m", facture?: Facture) {
+    const linked = action === "generer" ? editingPiece() : facture?.numeroMb3m ? facture : null;
+    if (!linked) {
+      void run(action, facture ? { facture_id: facture.id } : undefined);
+      return;
+    }
+    setConfirm({ action, factureId: linked.id, number: linked.number });
+  }
+
   function reuse(row: Facture) {
     const ids = row.dossiers.map((dossier) => dossier.id);
     const owner = payers.find((group) => group.dossiers.some((dossier) => ids.includes(dossier.id)));
@@ -187,7 +206,10 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
         Facture groupée
       </button>
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#0B192C]/40 p-4 sm:items-center" role="presentation" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#0B192C]/40 p-4 sm:items-center" role="presentation" onClick={() => {
+          setConfirm(null);
+          setOpen(false);
+        }}>
           <div
             role="dialog"
             aria-modal="true"
@@ -202,7 +224,14 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
                   Facture groupée
                 </h2>
               </div>
-              <button type="button" className="text-sm text-muted" onClick={() => setOpen(false)}>
+              <button
+                type="button"
+                className="text-sm text-muted"
+                onClick={() => {
+                  setConfirm(null);
+                  setOpen(false);
+                }}
+              >
                 Fermer
               </button>
             </div>
@@ -263,6 +292,14 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
             ) : loading ? null : (
               <p className="mt-4 text-sm text-muted">Aucun dossier ouvert sur cette fiche.</p>
             )}
+            {editingPiece() ? (
+              <p
+                role="note"
+                className="mt-4 rounded-2xl border border-[var(--admin-gold)] bg-[var(--admin-gold)]/20 px-3 py-2 text-sm font-semibold text-[var(--admin-navy)]"
+              >
+                {MB3M_CANCEL_KEEPS_LETTERING}
+              </p>
+            ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -275,7 +312,7 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
               <button
                 type="button"
                 disabled={checked.length < 2 || Boolean(busy)}
-                onClick={() => void run("generer")}
+                onClick={() => askLinked("generer")}
                 className="rounded-full bg-[var(--admin-navy)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
               >
                 {factureId ? "Mettre à jour la pro forma" : "Générer la pro forma"}
@@ -340,6 +377,14 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
                       </p>
                       {row.numeroMb3m ? <p className="text-xs font-semibold">Pièce MB3M n° {row.numeroMb3m}</p> : null}
                       {row.erreurMb3m ? <p className="text-xs text-red-700">{row.erreurMb3m}</p> : null}
+                      {row.numeroMb3m && !row.removed ? (
+                        <p
+                          role="note"
+                          className="mt-1 rounded-2xl border border-[var(--admin-gold)] bg-[var(--admin-gold)]/20 px-3 py-2 text-xs font-semibold text-[var(--admin-navy)]"
+                        >
+                          {MB3M_CANCEL_KEEPS_LETTERING}
+                        </p>
+                      ) : null}
                       <div className="mt-1 flex flex-wrap gap-2">
                         <a href={row.fichier} className="text-xs font-semibold underline" target="_blank" rel="noreferrer">
                           Voir le PDF
@@ -349,7 +394,7 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
                             type="button"
                             className="text-xs font-semibold underline"
                             disabled={Boolean(busy)}
-                            onClick={() => void run("mb3m", { facture_id: row.id })}
+                            onClick={() => askLinked("mb3m", row)}
                           >
                             {row.numeroMb3m ? "Mettre à jour dans MB3M" : "Créer dans MB3M"}
                           </button>
@@ -363,7 +408,7 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
                             <button type="button" className="text-xs font-semibold underline" onClick={() => reuse(row)}>
                               Mettre à jour
                             </button>
-                            <button type="button" className="text-xs font-semibold underline" onClick={() => void run("retirer", { facture_id: row.id })}>
+                            <button type="button" className="text-xs font-semibold underline" onClick={() => askLinked("retirer", row)}>
                               Retirer
                             </button>
                           </>
@@ -374,6 +419,39 @@ export function GroupedInvoicePanel({ customerId }: { customerId: string }) {
                 </ul>
               </div>
             ) : null}
+            <ConfirmDialog
+              open={Boolean(confirm)}
+              title={
+                confirm?.action === "retirer"
+                  ? `Retirer ${confirm.number} ?`
+                  : confirm?.action === "mb3m"
+                    ? `Mettre à jour la pièce de ${confirm.number} ?`
+                    : `Mettre à jour ${confirm?.number || "la pro forma"} ?`
+              }
+              question={
+                <span className="block space-y-3">
+                  <span className="block">
+                    {confirm?.action === "retirer"
+                      ? "La pro forma est retirée du CRM. Si la pièce MB3M est encore ouverte et sans règlement lettré, elle est annulée."
+                      : "Cette action peut annuler la pro forma ouverte dans MB3M."}
+                  </span>
+                  <span className="block font-semibold text-[var(--admin-navy)]">{MB3M_CANCEL_KEEPS_LETTERING}</span>
+                </span>
+              }
+              confirmLabel={confirm?.action === "retirer" ? "Retirer" : "Continuer"}
+              tone={confirm?.action === "retirer" ? "danger" : "default"}
+              busy={Boolean(busy)}
+              busyLabel="MB3M…"
+              onConfirm={() => {
+                const pending = confirm;
+                setConfirm(null);
+                if (!pending) return;
+                void run(pending.action, { facture_id: pending.factureId });
+              }}
+              onClose={() => {
+                if (!busy) setConfirm(null);
+              }}
+            />
           </div>
         </div>
       ) : null}

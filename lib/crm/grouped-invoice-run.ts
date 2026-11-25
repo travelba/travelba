@@ -16,18 +16,23 @@ import { isActiveItem } from "@/lib/crm/types";
 import type { SaleLedgerRow } from "@/lib/crm/trip-costs";
 import { renderGroupedInvoicePdf } from "@/lib/crm/grouped-invoice-pdf";
 import {
+  detachGroupedMb3mPayments,
   emitGroupedMb3mPiece,
   groupedMb3mDeps,
   groupedMb3mUnstoredMessage,
   readGroupedMb3m,
   readGroupedMb3mForCustomer,
+  releaseGroupedMb3mPiece,
   writeGroupedMb3m,
+  type GroupedMb3mReleaseDeps,
 } from "@/lib/crm/grouped-invoice-mb3m";
+import { MB3M_CANCEL_KEEPS_LETTERING } from "@/lib/crm/mb3m-unletter";
 import {
   assertGroupedSelection,
   composeGroupedSections,
   GROUPED_INVOICE_KIND,
   groupedInvoiceDocument,
+  groupedInvoiceDuplicateMessage,
   nextGroupedNumber,
   payerKey,
   payerRefOf,
@@ -38,7 +43,7 @@ import {
   type GroupedSectionInput,
 } from "@/lib/crm/grouped-invoice";
 import { loadMb3mInvoiceContext } from "@/lib/crm/mb3m-invoice";
-import { mb3mConfigured, mb3mFindPiece, Mb3mError } from "@/lib/crm/mb3m";
+import { mb3mCancelInvoice, mb3mConfigured, mb3mFindPiece, mb3mReadLettrage, Mb3mError } from "@/lib/crm/mb3m";
 
 export const GROUPED_INVOICE_MIGRATION = "supabase/migrations/20261119180000_crm_grouped_invoices.sql";
 
@@ -576,6 +581,61 @@ async function attachDocuments(
   return { ok: true as const };
 }
 
+export async function activeGroupedInvoiceNumbers(
+  admin: SupabaseClient,
+  customerId: string,
+  bookingIds: string[],
+  exceptInvoiceId: string | null
+): Promise<GroupedResult<string[]>> {
+  const wanted = [...new Set(bookingIds.map((id) => id.trim()).filter(Boolean))];
+  if (!wanted.length) return { ok: true, data: [] };
+  const links = await admin
+    .from("crm_grouped_invoice_bookings")
+    .select("grouped_invoice_id, booking_id")
+    .in("booking_id", wanted);
+  if (links.error) return fail(400, asError(links.error, "Les factures groupées ne sont pas lisibles."));
+  const invoiceIds = [
+    ...new Set(
+      ((links.data || []) as { grouped_invoice_id: string }[])
+        .map((row) => row.grouped_invoice_id)
+        .filter((id) => id && id !== exceptInvoiceId)
+    ),
+  ];
+  if (!invoiceIds.length) return { ok: true, data: [] };
+  const invoices = await admin
+    .from("crm_grouped_invoices")
+    .select("id, number, customer_id, removed_at")
+    .in("id", invoiceIds);
+  if (invoices.error) return fail(400, asError(invoices.error, "Les factures groupées ne sont pas lisibles."));
+  const numbers = [
+    ...new Set(
+      ((invoices.data || []) as { id: string; number: string; customer_id: string; removed_at: string | null }[])
+        .filter((row) => row.customer_id === customerId && !row.removed_at && row.id !== exceptInvoiceId)
+        .map((row) => (row.number || "").trim())
+        .filter(Boolean)
+    ),
+  ];
+  return { ok: true, data: numbers };
+}
+
+function defaultMb3mReleaseDeps(): GroupedMb3mReleaseDeps {
+  return {
+    configured: mb3mConfigured,
+    findPiece: (number) => mb3mFindPiece(number),
+    readLettrage: (input) => mb3mReadLettrage(input),
+    cancelInvoice: (folderId, number) => mb3mCancelInvoice(folderId, number),
+  };
+}
+
+async function groupedMb3mCaution(admin: SupabaseClient, invoiceId: string) {
+  try {
+    const stored = await readGroupedMb3m(admin, invoiceId);
+    return stored.pieceNumber ? ` ${MB3M_CANCEL_KEEPS_LETTERING}` : "";
+  } catch {
+    return "";
+  }
+}
+
 export async function generateGroupedInvoice(
   admin: SupabaseClient,
   customerId: string,
@@ -595,6 +655,10 @@ export async function generateGroupedInvoice(
 > {
   const preview = await previewGroupedInvoice(admin, customerId, bookingIds);
   if (!preview.ok) return preview;
+  const exceptId = (invoiceId || "").trim();
+  const clash = await activeGroupedInvoiceNumbers(admin, customerId, bookingIds, exceptId || null);
+  if (!clash.ok) return clash;
+  if (clash.data.length) return fail(400, groupedInvoiceDuplicateMessage(clash.data));
   const now = new Date();
   let id = (invoiceId || "").trim();
   let number = "";
@@ -790,7 +854,8 @@ export async function removeGroupedInvoice(
   admin: SupabaseClient,
   customerId: string,
   invoiceId: string,
-  actor: GroupedActor
+  actor: GroupedActor,
+  releaseDeps: GroupedMb3mReleaseDeps = defaultMb3mReleaseDeps()
 ): Promise<GroupedResult<{ id: string; number: string }>> {
   if (!isUuid(invoiceId)) return fail(400, "Facture introuvable.");
   const existing = await admin
@@ -802,6 +867,29 @@ export async function removeGroupedInvoice(
   const row = existing.data as { id: string; number: string; customer_id: string; removed_at: string | null } | null;
   if (!row || row.customer_id !== customerId) return fail(404, "Facture introuvable.");
   if (row.removed_at) return { ok: true, data: { id: row.id, number: row.number } };
+  let stored;
+  try {
+    stored = await readGroupedMb3m(admin, invoiceId);
+  } catch (error) {
+    return fail(400, error instanceof Error ? error.message : "La référence MB3M n’est pas lisible.");
+  }
+  const released = await releaseGroupedMb3mPiece(stored, releaseDeps);
+  if (!released.ok) return fail(400, released.error);
+  if (released.clear && stored.pieceNumber) {
+    try {
+      await detachGroupedMb3mPayments(admin, stored.pieceNumber);
+      const cleared = await writeGroupedMb3m(admin, invoiceId, {
+        pieceNumber: null,
+        pieceUid: null,
+        folderId: null,
+        customerUid: null,
+        error: null,
+      });
+      if (!cleared) return fail(400, "La référence MB3M n’a pas été effacée. La facture groupée n’est pas retirée.");
+    } catch (error) {
+      return fail(400, error instanceof Error ? error.message : "La référence MB3M n’a pas été effacée.");
+    }
+  }
   const now = new Date().toISOString();
   const links = await admin.from("crm_grouped_invoice_bookings").select("document_id").eq("grouped_invoice_id", invoiceId);
   if (links.error) return fail(400, asError(links.error, "Les justificatifs ne sont pas lisibles."));
@@ -1069,10 +1157,11 @@ export async function factureGroupee(args: {
       if (!bookings.ok) throw new McpWriteError(bookings.error);
       const preview = await previewGroupedInvoice(admin, clientId, bookings.data);
       if (!preview.ok) throw new McpWriteError(preview.error);
+      const caution = await groupedMb3mCaution(admin, factureId);
       return {
         ...groupedPublicPreview(preview.data.document),
         mb3m: false,
-        message: "Aperçu. MB3M n’est pas appelé. confirmer true crée la pro forma sans refaire le PDF.",
+        message: `Aperçu. MB3M n’est pas appelé. confirmer true crée la pro forma sans refaire le PDF.${caution}`,
       };
     }
     const pushed = await pushGroupedInvoiceToMb3m(admin, clientId, factureId, actor);
@@ -1096,6 +1185,7 @@ export async function factureGroupee(args: {
     const factureId = (args.facture_id || "").trim();
     if (!isUuid(factureId)) throw new McpWriteError("facture_id est l’identifiant de la facture groupée.");
     if (args.confirmer !== true) {
+      const caution = action === "retirer" ? await groupedMb3mCaution(admin, factureId) : "";
       return {
         apercu: true,
         ecrit: false,
@@ -1104,7 +1194,7 @@ export async function factureGroupee(args: {
         action,
         message:
           action === "retirer"
-            ? "Le retrait masque les justificatifs. Le fichier reste, on peut restaurer."
+            ? `Le retrait masque les justificatifs. Le fichier reste, on peut restaurer.${caution}`
             : "La restauration remet les justificatifs, toujours masqués. Aucun message.",
       };
     }

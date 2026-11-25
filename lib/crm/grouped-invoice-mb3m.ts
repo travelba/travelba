@@ -10,6 +10,8 @@ import {
 } from "@/lib/crm/mb3m-invoice";
 import { mb3mSendableLines, mb3mSoapLines } from "@/lib/crm/mb3m-conform";
 import { groupedMb3mPaymentWarning, recordMb3mInvoicePayments, type Mb3mReglement } from "@/lib/crm/mb3m-payments";
+import { formatMoney } from "@/lib/crm/money";
+import { MB3M_CANCEL_KEEPS_LETTERING } from "@/lib/crm/mb3m-unletter";
 import { readMb3mParty, writeMb3mParty } from "@/lib/crm/mb3m-party";
 import {
   mb3mAddInvoice,
@@ -18,6 +20,7 @@ import {
   mb3mConfigured,
   mb3mFindPiece,
   mb3mReadLettrage,
+  mb3mRealm,
   mb3mPartnerCode,
   mb3mSaveCompany,
   mb3mSaveFolder,
@@ -60,6 +63,112 @@ export const GROUPED_INVOICE_MB3M_CALLS = [
 
 export function groupedMb3mPrintedMessage(number: string) {
   return `La pièce MB3M n° ${number} est imprimée. Le CRM ne la remplace pas.`;
+}
+
+export function groupedMb3mPrintedRemovalMessage(number: string) {
+  return `La pièce MB3M n° ${number.trim()} est imprimée. Le CRM ne retire pas cette facture groupée.`;
+}
+
+/** Écart TTC − solde, quand la pièce elle-même porte le lettrage. */
+export function groupedPieceLetteredAmount(snap: Mb3mLettrageSnapshot): number | null {
+  if (snap.amount == null || snap.balance == null) return null;
+  const gap = Math.round((snap.amount - snap.balance) * 100) / 100;
+  return gap > 0.005 ? gap : null;
+}
+
+/**
+ * Refus d’annuler une pro forma lettrée. Le délettrage n’existe pas dans l’API :
+ * il se fait dans MB3M.
+ */
+export function groupedMb3mLetteredRefusal(number: string, euros: number | null) {
+  const amount =
+    euros != null ? `porte ${formatMoney(euros)} de règlements lettrés` : "porte des règlements lettrés";
+  return `La pièce MB3M n° ${number.trim()} ${amount} : délettrez-les d'abord dans MB3M. ${MB3M_CANCEL_KEEPS_LETTERING}`;
+}
+
+export type GroupedMb3mReleaseDeps = {
+  configured: () => boolean;
+  findPiece: (number: string) => Promise<"printed" | "open" | "missing">;
+  readLettrage: (input: {
+    number: string;
+    folderId: string | null;
+    customerUid: string | null;
+  }) => Promise<Mb3mLettrageSnapshot>;
+  cancelInvoice: (folderId: string, number: string) => Promise<void>;
+};
+
+export type GroupedMb3mRelease = { ok: true; clear: boolean } | { ok: false; error: string };
+
+function mb3mSpokenError(error: unknown) {
+  const message = (error instanceof Error ? error.message : "MB3M n’a pas répondu.")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 1000);
+  return message || "MB3M n’a pas répondu. La facture groupée n’est pas retirée.";
+}
+
+/**
+ * Relit la pièce avant de retirer la facture groupée.
+ * Imprimée ou lettrée : rien n’est annulé. Sinon CancelInvoice.
+ * `clear` : les colonnes mb3m_* et les traces de règlement peuvent être détachées.
+ */
+export async function releaseGroupedMb3mPiece(
+  stored: { pieceNumber: string | null; folderId: string | null; customerUid: string | null },
+  deps: GroupedMb3mReleaseDeps
+): Promise<GroupedMb3mRelease> {
+  const number = clean(stored.pieceNumber);
+  if (!number) return { ok: true, clear: false };
+  if (!deps.configured()) {
+    return { ok: false, error: "L’accès MB3M n’est pas configuré. La facture groupée n’est pas retirée." };
+  }
+  let state: "printed" | "open" | "missing";
+  try {
+    state = await deps.findPiece(number);
+  } catch (error) {
+    return { ok: false, error: mb3mSpokenError(error) };
+  }
+  if (state === "printed") return { ok: false, error: groupedMb3mPrintedRemovalMessage(number) };
+  if (state === "missing") return { ok: true, clear: true };
+  let snap: Mb3mLettrageSnapshot;
+  try {
+    snap = await deps.readLettrage({
+      number,
+      folderId: clean(stored.folderId) || null,
+      customerUid: clean(stored.customerUid) || null,
+    });
+  } catch (error) {
+    return { ok: false, error: mb3mSpokenError(error) };
+  }
+  if (snap.lettered) {
+    return { ok: false, error: groupedMb3mLetteredRefusal(number, groupedPieceLetteredAmount(snap)) };
+  }
+  const folderId = clean(stored.folderId);
+  if (!folderId) {
+    return {
+      ok: false,
+      error: `Le dossier MB3M de la pièce n° ${number} manque. La facture groupée n’est pas retirée.`,
+    };
+  }
+  try {
+    await deps.cancelInvoice(folderId, number);
+  } catch (error) {
+    return { ok: false, error: mb3mSpokenError(error) };
+  }
+  return { ok: true, clear: true };
+}
+
+/** Le paiement MB3M reste (pas de second SavePayment). Le lien vers cette pièce part. */
+export async function detachGroupedMb3mPayments(admin: SupabaseClient, pieceNumber: string) {
+  const number = clean(pieceNumber);
+  if (!number) return;
+  const matches = await admin.from("crm_mb3m_payment_matches").delete().eq("mb3m_invoice_number", number);
+  if (matches.error) throw new Mb3mError("Les lettrages de la pièce n’ont pas été détachés.", -1);
+  const { error } = await admin
+    .from("crm_mb3m_payments")
+    .update({ mb3m_invoice_number: null, mb3m_matching_id: null, matched_amount: 0 })
+    .eq("realm", mb3mRealm())
+    .eq("mb3m_invoice_number", number);
+  if (error) throw new Mb3mError("Les règlements de la pièce n’ont pas été détachés.", -1);
 }
 
 export function groupedMb3mUnstoredMessage() {
