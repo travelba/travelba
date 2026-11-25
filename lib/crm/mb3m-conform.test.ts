@@ -198,14 +198,16 @@ describe("fournisseur MB3M", () => {
     const cds = resolveMb3mSupplier({ kind: "hotel", activityId: 7, channel: "cds" });
     const ratehawk = resolveMb3mSupplier({ kind: "hotel", activityId: 7, channel: "ratehawk", supplier: "Ratehawk" });
     const booking = resolveMb3mSupplier({ kind: "hotel", activityId: 7, channel: "direct", supplier: "Booking.com" });
+    const ratehawkId = "591abacc-340a-4404-abf3-e6def7be0cbe";
     assert.equal(le.ok && le.provider.name, "LITTLE EMPERORS");
     assert.equal(divers.ok && divers.provider.name, MB3M_HOTEL_DIVERS_PROVIDER_NAME);
     assert.equal(expedia.ok && expedia.provider.name, "EXPEDIA");
     assert.equal(cds.ok && cds.provider.name, "CDS");
-    assert.equal(ratehawk.ok, false);
-    assert.equal(!ratehawk.ok && ratehawk.unknown, "Ratehawk");
+    assert.equal(ratehawk.ok, true);
+    assert.equal(ratehawk.ok && ratehawk.provider.id, ratehawkId);
+    assert.equal(ratehawk.ok && ratehawk.provider.name, "Ratehawk");
     assert.equal(booking.ok && booking.provider.name, MB3M_HOTEL_DIVERS_PROVIDER_NAME);
-    assert.equal(MB3M_RATEHAWK_PROVIDER_ID, null);
+    assert.equal(MB3M_RATEHAWK_PROVIDER_ID, ratehawkId);
     const hotelDiversId = "013428ca-a71c-4d2a-90a7-75c279281f82";
     const lines = conformMb3mAccountLines(
       [
@@ -227,7 +229,7 @@ describe("fournisseur MB3M", () => {
     assert.equal(byId.get("tx-direct")?.providerId, hotelDiversId);
     assert.equal(byId.get("tx-book")?.providerId, hotelDiversId);
     assert.equal(byId.get("tx-book")?.providerName, MB3M_HOTEL_DIVERS_PROVIDER_NAME);
-    assert.equal(byId.get("tx-rh")?.providerId ?? null, null);
+    assert.equal(byId.get("tx-rh")?.providerId, ratehawkId);
     assert.equal(byId.get("tx-rh")?.providerName, "Ratehawk");
     assert.notEqual(byId.get("tx-rh")?.providerName, MB3M_HOTEL_DIVERS_PROVIDER_NAME);
     assert.equal(byId.get("tx-rh")?.supplierReason ?? null, null);
@@ -581,7 +583,10 @@ describe("lignes de facture", () => {
     const bolonLittle = "58c34812-e2d2-4b40-a578-3035cb1b4fa0";
     const bolonDivers = "a328a3a1-3641-41ff-9c30-c17b3e6076b8";
     const bolonAirFrance = "70bdae3f-d8d7-4aa0-8bf3-4209fa426504";
-    assert.equal(MB3M_VERIFIED_PROVIDERS.length, 237);
+    const ratehawkId = "591abacc-340a-4404-abf3-e6def7be0cbe";
+    assert.equal(MB3M_VERIFIED_PROVIDERS.length, 238);
+    assert.equal(mb3mVerifiedProviderId("RATEHAWK"), ratehawkId);
+    assert.equal(mb3mVerifiedProviderId("Ratehawk"), ratehawkId);
     assert.equal(mb3mVerifiedProviderId("Little Emperors"), little);
     assert.equal(mb3mVerifiedProviderId("LITTLE EMPERORS"), little);
     assert.notEqual(mb3mVerifiedProviderId("LITTLE EMPERORS"), bolonLittle);
