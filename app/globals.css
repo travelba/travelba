@@ -383,21 +383,34 @@
   }
 }
 .hotel-theme .h-cover-fade {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 7.25rem;
-  background: linear-gradient(to top, #0b192c 12%, rgba(11, 25, 44, 0.62) 52%, transparent 100%);
-  pointer-events: none;
+  display: none;
 }
 .hotel-theme .h-cover-copy {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  padding: 2.25rem 1rem 0.85rem;
-  color: #f7f4ee;
+  left: 0.7rem;
+  bottom: 0.55rem;
+  z-index: 3;
+  max-width: min(17.5rem, calc(100% - 1.4rem));
+  padding: 0.45rem 0.7rem 0.4rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  pointer-events: none;
+}
+.hotel-theme .h-cover-copy h3 {
+  color: #fff;
+  font-weight: 700;
+}
+.hotel-theme .h-cover-rule {
+  display: block;
+  height: 1px;
+  margin: 0.35rem 0 0.3rem;
+  background: #c5a880;
+}
+.hotel-theme .h-cover-copy p {
+  color: rgba(255, 255, 255, 0.78);
 }
 .hotel-theme .h-pill {
   display: inline-flex;

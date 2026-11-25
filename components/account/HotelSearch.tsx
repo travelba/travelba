@@ -1558,10 +1558,10 @@ function HotelCard({ hotel, first, onOpen, onRates }: { hotel: ClientHotel; firs
     <article className="hotel-rise h-result" data-hotel-card="1">
       <div className="h-cover" data-hotel-cover="1">
         <HotelPhotoStrip photo={hotel.photo} images={hotel.images} alt="" eager={first} onActivate={onOpen} />
-        <div className="h-cover-fade" aria-hidden />
-        <div className="h-cover-copy pointer-events-none z-[3]" data-hotel-title="1">
-          <h3 className="h-serif line-clamp-2 text-[1.2rem] font-semibold leading-tight">{hotel.name}</h3>
-          {hotel.city ? <p className="mt-0.5 text-sm text-white/80">{hotel.city}</p> : null}
+        <div className="h-cover-copy" data-hotel-title="1">
+          <h3 className="h-serif line-clamp-2 text-[1.05rem] font-bold leading-tight">{hotel.name}</h3>
+          <span className="h-cover-rule" aria-hidden />
+          {hotel.city ? <p className="line-clamp-1 text-[13px] leading-tight">{hotel.city}</p> : null}
         </div>
       </div>
       <button type="button" onClick={onOpen} className="block w-full text-left">
