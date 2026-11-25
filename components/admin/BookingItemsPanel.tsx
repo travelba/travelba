@@ -36,7 +36,6 @@ import { bookingStepAnchor } from "@/lib/crm/booking-tabs";
 import { justificatifsRetiresAvec, mentionRetraitJustificatifs } from "@/lib/crm/stay-documents";
 import { DRAFT_STEP_PREFIX, isDraftStepId, stepCommitPlan, type StepSnapshot } from "@/lib/crm/step-draft";
 import { formatMoney } from "@/lib/crm/money";
-import { transferProviderPhone } from "@/lib/crm/transfer-contact";
 import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
 import { localTodayIso } from "@/lib/crm/dates";
 import { hotelStayFromTrip } from "@/lib/crm/hotel-search";
@@ -232,12 +231,8 @@ function stepSubtitle(item: CrmBookingItem) {
     if (room) parts.push(room);
   } else if (item.kind === "accueil_vip") {
     if (item.supplier) parts.push(item.supplier);
-  } else if (item.supplier || (item.kind === "transfer" && transferProviderPhone(item.details))) {
-    if (item.supplier) parts.push(item.supplier);
-    if (item.kind === "transfer") {
-      const phone = transferProviderPhone(item.details);
-      if (phone) parts.push(phone);
-    }
+  } else if (item.supplier) {
+    parts.push(item.supplier);
   }
   const ref = item.confirmation_ref || detailText(item, "pnr");
   if (ref) parts.push(`Réf. ${ref}`);
