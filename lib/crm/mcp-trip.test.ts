@@ -492,6 +492,7 @@ test("ajouter_vol et ajouter_hotel gardent le grand livre d’un séjour caché"
   assert.equal(flightRow.visible_to_client, false);
   assert.equal(flightRow.include_in_ledger, true);
   assert.equal((flightRow.details as Record<string, unknown>).price_mode, "avec");
+  assert.equal(flightRow.price_mode, "avec");
   assert.equal(flightRow.confirmation_ref, "ABC123");
   assert.equal(flightRow.start_at, "2026-11-02T22:10:00");
   assert.equal(flightRow.end_at, "2026-11-03T06:40:00");
@@ -1059,6 +1060,7 @@ test("un vol à 0 € est accepté, et les frais de billeterie ne s’ouvrent pa
     (db.tables.crm_booking_items.find((row) => row.id === flight.id)?.details as Record<string, unknown>).price_mode,
     "sans"
   );
+  assert.equal(db.tables.crm_booking_items.find((row) => row.id === flight.id)?.price_mode, "sans");
   assert.equal(db.tables.crm_bookings[0].total_amount, 0);
   await assert.rejects(
     () =>
@@ -1105,6 +1107,11 @@ test("sans_frais retire les frais déjà créés, et retirer_carte annule le dé
   });
   const cleared = await updateVol({ dossier_id: dossier.id, carte_id: flight.id, sans_prix: true }, client);
   assert.equal(cleared.notifie, false);
+  assert.equal(db.tables.crm_booking_items.find((row) => row.id === flight.id)?.price_mode, "sans");
+  assert.equal(
+    (db.tables.crm_booking_items.find((row) => row.id === flight.id)?.details as Record<string, unknown>).price_mode,
+    "sans"
+  );
   const kept = db.tables.crm_booking_items.find((row) => row.id === "frais-existant");
   assert.equal(kept?.amount, 25);
   assert.equal(db.tables.crm_bookings[0].fee_mode ?? null, null);
@@ -2315,6 +2322,8 @@ test("inclure_transactions coche la case, reprend la même ligne, et garde 492,9
   assert.equal(lines()[0]?.amount, 492.99);
   const flight = db.tables.crm_booking_items.find((item) => item.id === flightId);
   assert.equal(flight?.include_in_ledger, true);
+  assert.equal(flight?.price_mode, "avec");
+  assert.equal((flight?.details as Record<string, unknown>).price_mode, "avec");
   assert.equal(flight?.visible_to_client, false);
   assert.equal((flight?.details as Record<string, unknown>).client_hidden, true);
   const audit = db.tables.crm_audit_events.find((row) => row.action === "transactions_carte");
@@ -2340,6 +2349,7 @@ test("inclure_transactions coche la case, reprend la même ligne, et garde 492,9
   assert.equal(removed.notifie, false);
   assert.equal(removed.grand_livre.compte, false);
   assert.equal(removed.grand_livre.effet, "annule");
+  assert.equal(db.tables.crm_booking_items.find((item) => item.id === flightId)?.price_mode, "sans");
   assert.equal(lines().length, 1);
   assert.equal(lines()[0]?.status, "void");
   assert.equal(db.tables.crm_audit_events.filter((row) => row.action === "transactions_carte").at(-1)?.summary, "Carte retirée des transactions");

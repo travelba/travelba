@@ -468,6 +468,36 @@ describe("carnet", () => {
     assert.equal(clientVisibleItems([hidden, next]).map((row) => row.id).join(","), "next");
   });
 
+  it("suit details.price_mode, puis la colonne, pour l’admin, le client et le lien public", () => {
+    const avecColonneSans = item({
+      kind: "hotel",
+      amount: 900,
+      price_mode: "sans",
+      details: { price_mode: "avec", hotel_name: "The Siam" },
+    });
+    assert.equal(itemPriceLabel(avecColonneSans, "EUR"), formatMoney(900, "EUR"));
+    assert.equal(itemPriceLabel(avecColonneSans, "EUR", null, false), "Prix à la publication");
+    assert.equal(itemPriceLabel(avecColonneSans, "EUR", null, true, "forfait"), null);
+
+    const sansColonneAvec = item({
+      kind: "flight",
+      amount: 450,
+      price_mode: "avec",
+      details: { price_mode: "sans" },
+    });
+    assert.equal(itemPriceLabel(sansColonneAvec, "EUR"), null);
+    assert.equal(itemPriceLabel(sansColonneAvec, "EUR", null, false), null);
+
+    const hotelAncien = item({
+      kind: "hotel",
+      title: "Can Verí",
+      amount: 640,
+      price_mode: "avec",
+      details: {},
+    });
+    assert.equal(itemPriceLabel(hotelAncien, "EUR"), formatMoney(640, "EUR"));
+  });
+
   it("affiche le prix unitaire × billets", () => {
     const flight = item({
       kind: "flight",

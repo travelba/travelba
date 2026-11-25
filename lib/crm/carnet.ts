@@ -6,6 +6,7 @@ import {
   isLedgerExpenseKind,
   visibleServiceCopy,
 } from "@/lib/crm/types";
+import { clientSeesCardPrice } from "@/lib/crm/card-price";
 import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
 import { cityLabel, cityPlaceKey, isOriginHub } from "./city-names";
 import { labelIncludesCity, splitPlaceLabel, tripCityPlan } from "./layover";
@@ -546,8 +547,7 @@ export function itemPriceLabel(
   pricesVisible = true,
   stayMode: "cartes" | "forfait" = "cartes"
 ) {
-  if (stayMode === "forfait") return null;
-  if (item.details?.price_mode === "sans" || item.price_mode === "sans") return null;
+  if (!clientSeesCardPrice(item, stayMode)) return null;
   if (item.amount == null || Number.isNaN(Number(item.amount)) || Number(item.amount) === 0) return null;
   if (onDay) {
     const first = itemFirstDayKey(item);

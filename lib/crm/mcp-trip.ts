@@ -35,6 +35,7 @@ import { defaultBillingCompany, type PayerCompany } from "@/lib/crm/payer";
 import { addedTravelerNames, holderMatchesAddedTraveler, namesReferToSamePerson, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
 import { countRealTickets, realTicketList } from "@/lib/crm/ticket-party";
 import { readStayPriceMode, withCardPriceMode } from "@/lib/crm/card-price";
+import { missingDbColumn } from "@/lib/crm/optional-column";
 import { dossierFace } from "@/lib/crm/dossier-status";
 import { withoutHomeCity } from "@/lib/crm/staff-stay";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
@@ -2021,18 +2022,29 @@ export async function setCarteVisibilite(input: Record<string, unknown>, admin?:
     if (!(Number(item.amount) > 0)) throw new McpWriteError("Indiquez le prix de vente.");
     const details = (patch.details && typeof patch.details === "object" ? patch.details : item.details) || {};
     patch.details = withCardPriceMode(details as Record<string, unknown>, "avec");
+    patch.price_mode = "avec";
     patch.include_in_ledger = true;
   } else if (include === false) {
     const details = (patch.details && typeof patch.details === "object" ? patch.details : item.details) || {};
     patch.details = withCardPriceMode(details as Record<string, unknown>, "sans");
+    patch.price_mode = "sans";
     patch.include_in_ledger = false;
   } else if (ledgerChanged) patch.include_in_ledger = includeNext;
   if (Object.keys(patch).length) {
-    const { error: updateError } = await db
+    let { error: updateError } = await db
       .from("crm_booking_items")
       .update(patch)
       .eq("id", carteId)
       .eq("booking_id", booking.id);
+    if (updateError && "price_mode" in patch && missingDbColumn(updateError, "price_mode")) {
+      const nextPatch = { ...patch };
+      delete nextPatch.price_mode;
+      ({ error: updateError } = await db
+        .from("crm_booking_items")
+        .update(nextPatch)
+        .eq("id", carteId)
+        .eq("booking_id", booking.id));
+    }
     if (updateError) throw new McpWriteError("Carte non mise à jour.");
   }
   const noted: boolean[] = [];

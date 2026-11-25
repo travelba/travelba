@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DbErrorLike } from "@/lib/crm/db-error";
+import { missingDbColumn } from "@/lib/crm/optional-column";
 import {
   planDocumentRelease,
   type DocumentRelease,
@@ -46,6 +47,7 @@ const UPDATE_COLUMNS = [
   "details",
   "visible_to_client",
   "billing_company_id",
+  "price_mode",
 ] as const;
 
 function pickColumns(source: Record<string, unknown>) {
@@ -108,6 +110,8 @@ export async function applyStayCommit(supabase: SupabaseClient, payload: StayCom
       data && typeof data === "object" && "ids" in data && data.ids && typeof data.ids === "object"
         ? (data.ids as Record<string, string>)
         : {};
+    const aligned = await alignPriceModeColumn(supabase, payload, ids);
+    if (aligned) return { ok: false, error: aligned };
     return { ok: true, ids };
   }
   if (!missingCommitFunction(error)) return { ok: false, error };
@@ -169,25 +173,71 @@ async function applyStayCommitDirect(supabase: SupabaseClient, payload: StayComm
   for (const item of payload.updates) {
     const patch = pickColumns(item.patch);
     if (!Object.keys(patch).length) continue;
-    const { data, error } = await supabase
-      .from("crm_booking_items")
-      .update(patch)
-      .eq("id", item.id)
-      .eq("booking_id", payload.bookingId)
-      .select("id")
-      .maybeSingle();
-    if (error) return { ok: false, error };
-    if (!data) return { ok: false, error: { code: "P0002", message: "Carte introuvable" } };
+    const updated = await writeItemRow(supabase, "update", patch, payload.bookingId, item.id);
+    if (updated.error) return { ok: false, error: updated.error };
+    if (!updated.data) return { ok: false, error: { code: "P0002", message: "Carte introuvable" } };
   }
   const ids: Record<string, string> = {};
   for (const item of payload.created) {
-    const { data, error } = await supabase
-      .from("crm_booking_items")
-      .insert({ booking_id: payload.bookingId, ...pickColumns(item.row) })
-      .select("id")
-      .single();
-    if (error || !data) return { ok: false, error: error || { message: "Carte non créée." } };
-    if (item.clientId) ids[item.clientId] = String((data as { id: string }).id);
+    const inserted = await writeItemRow(supabase, "insert", { booking_id: payload.bookingId, ...pickColumns(item.row) }, payload.bookingId);
+    if (inserted.error || !inserted.data) return { ok: false, error: inserted.error || { message: "Carte non créée." } };
+    if (item.clientId) ids[item.clientId] = String((inserted.data as { id: string }).id);
   }
   return { ok: true, ids };
+}
+
+function explicitPriceMode(value: unknown) {
+  return value === "avec" || value === "sans" ? value : null;
+}
+
+/**
+ * La fonction SQL n’écrit pas encore la colonne. On l’aligne ensuite sur le mode des détails.
+ * Sans la colonne, les étapes restent enregistrées.
+ */
+async function alignPriceModeColumn(
+  supabase: SupabaseClient,
+  payload: StayCommitPayload,
+  ids: Record<string, string>
+): Promise<DbErrorLike | null> {
+  const rows: { id: string; price_mode: "avec" | "sans" }[] = [];
+  for (const item of payload.updates) {
+    const mode = explicitPriceMode(item.patch.price_mode);
+    if (mode) rows.push({ id: item.id, price_mode: mode });
+  }
+  for (const item of payload.created) {
+    const mode = explicitPriceMode(item.row.price_mode);
+    const id = item.clientId ? ids[item.clientId] : "";
+    if (mode && id) rows.push({ id, price_mode: mode });
+  }
+  for (const row of rows) {
+    const { error } = await supabase
+      .from("crm_booking_items")
+      .update({ price_mode: row.price_mode })
+      .eq("id", row.id)
+      .eq("booking_id", payload.bookingId);
+    if (!error) continue;
+    if (missingDbColumn(error, "price_mode")) return null;
+    return error;
+  }
+  return null;
+}
+
+async function writeItemRow(
+  supabase: SupabaseClient,
+  action: "insert" | "update",
+  payload: Record<string, unknown>,
+  bookingId: string,
+  itemId?: string
+) {
+  const run = (row: Record<string, unknown>) => {
+    if (action === "insert") return supabase.from("crm_booking_items").insert(row).select("id").single();
+    return supabase.from("crm_booking_items").update(row).eq("id", itemId || "").eq("booking_id", bookingId).select("id").maybeSingle();
+  };
+  const first = await run(payload);
+  if (first.error && "price_mode" in payload && missingDbColumn(first.error, "price_mode")) {
+    const next = { ...payload };
+    delete next.price_mode;
+    return run(next);
+  }
+  return first;
 }
