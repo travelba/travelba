@@ -23,7 +23,6 @@ import { BOOKING_ITEM_KINDS, customerFullName, type BookingItemKind, type CrmBoo
 import { createServiceClient } from "@/lib/supabase/admin";
 import { MCP_BOOKING_COLUMNS } from "@/lib/crm/mcp-columns";
 import { attachBookingDocument } from "@/lib/crm/booking-document-write";
-import { applyTransferContact } from "@/lib/crm/transfer-contact";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -100,8 +99,6 @@ export type DeskDeps = {
     carteId: string
   ) => Promise<{
     id: string;
-    kind?: string | null;
-    supplier?: string | null;
     details: Record<string, unknown> | null;
     visible_to_client: boolean | null;
   }>;
@@ -537,50 +534,10 @@ function cardBody(input: Record<string, unknown>, kind: BookingItemKind) {
   return body;
 }
 
-function contactTouch(input: Record<string, unknown>) {
-  return {
-    setPrestataire: "prestataire" in input,
-    setTelephone: "telephone" in input,
-    setChauffeur: "chauffeur" in input,
-  };
-}
-
-function writeTransferContact(
-  input: Record<string, unknown>,
-  kind: string | null | undefined,
-  supplier: string | null | undefined,
-  details: Record<string, unknown> | null | undefined
-) {
-  const touch = contactTouch(input);
-  const applied = applyTransferContact({
-    kind,
-    supplier,
-    details,
-    prestataire: input.prestataire,
-    telephone: input.telephone,
-    chauffeur: input.chauffeur,
-    ...touch,
-  });
-  if (!applied.ok) throw new McpWriteError(applied.error);
-  return applied;
-}
-
 export async function ajouterCarte(input: Record<string, unknown>, deps: DeskDeps = {}) {
   const kind = kindOf(input.type);
   if (!kind) throw new McpWriteError("Type de carte inconnu.");
   const body = cardBody(input, kind);
-  const contact = writeTransferContact(
-    input,
-    kind,
-    typeof body.supplier === "string" ? body.supplier : null,
-    body.details && typeof body.details === "object" && !Array.isArray(body.details)
-      ? (body.details as Record<string, unknown>)
-      : null
-  );
-  if (contact.changed) {
-    if (contactTouch(input).setPrestataire) body.supplier = contact.supplier;
-    body.details = contact.details;
-  }
   const booking = await bookingOf(input, deps);
   const add = deps.addCard ?? addStaffBookingCard;
   const result = await add(clientOf(deps, Boolean(deps.addCard)), booking.id, body);
@@ -605,18 +562,12 @@ async function storedCard(deps: DeskDeps, bookingId: string, carteId: string) {
   const admin = clientOf(deps, Boolean(deps.patchCard && !deps.admin));
   const { data, error } = await admin
     .from("crm_booking_items")
-    .select("id, kind, supplier, details, visible_to_client")
+    .select("id, details, visible_to_client")
     .eq("id", carteId)
     .eq("booking_id", bookingId)
     .maybeSingle();
   if (error || !data) throw new McpWriteError("Carte introuvable sur ce dossier.");
-  return data as {
-    id: string;
-    kind?: string | null;
-    supplier?: string | null;
-    details: Record<string, unknown> | null;
-    visible_to_client: boolean | null;
-  };
+  return data as { id: string; details: Record<string, unknown> | null; visible_to_client: boolean | null };
 }
 
 export async function modifierCarte(input: Record<string, unknown>, deps: DeskDeps = {}) {
@@ -627,10 +578,8 @@ export async function modifierCarte(input: Record<string, unknown>, deps: DeskDe
   const body = cardBody(input, kind || "fee");
   delete body.kind;
   const erase = boolFlag(input.effacer_avertissement, "Effacer l’avertissement");
-  const touch = contactTouch(input);
-  const needsStored = erase || touch.setPrestataire || touch.setTelephone || touch.setChauffeur;
-  const stored = needsStored ? await storedCard(deps, booking.id, carteId) : null;
-  if (erase && stored) {
+  if (erase) {
+    const stored = await storedCard(deps, booking.id, carteId);
     const incoming =
       body.details && typeof body.details === "object" && !Array.isArray(body.details)
         ? (body.details as Record<string, unknown>)
@@ -640,20 +589,6 @@ export async function modifierCarte(input: Record<string, unknown>, deps: DeskDe
         ? stored.details
         : {};
     body.details = withoutReviewMark({ ...base, ...incoming });
-  }
-  if (touch.setPrestataire || touch.setTelephone || touch.setChauffeur) {
-    const currentDetails =
-      body.details && typeof body.details === "object" && !Array.isArray(body.details)
-        ? (body.details as Record<string, unknown>)
-        : stored?.details;
-    const contact = writeTransferContact(
-      input,
-      kind || stored?.kind,
-      typeof body.supplier === "string" ? body.supplier : stored?.supplier,
-      currentDetails
-    );
-    if (touch.setPrestataire) body.supplier = contact.supplier;
-    body.details = contact.details;
   }
   if ("categorie_mb3m" in input) {
     const chosen = parseMb3mActivityInput(input.categorie_mb3m);

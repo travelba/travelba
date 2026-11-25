@@ -2319,7 +2319,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "ajouter_carte",
     write: true,
     description:
-      "Ajoute une carte au dossier, comme le formulaire d’étape : train, transfert, activité, voiture, bateau, assurance, frais, chauffeur, VIP, visa, enregistrement, dépense, accueil, vol ou hôtel. La carte reste cachée. Le séjour caché ne débite pas. Aucun message. Vol et hôtel détaillés : ajouter_vol et ajouter_hotel. Pas de numéro de pièce ni de carte. Transfert : prestataire (société), telephone (E.164, ex. +33612345678) et chauffeur (facultatif). Ils ne montrent pas la carte.",
+      "Ajoute une carte au dossier, comme le formulaire d’étape : train, transfert, activité, voiture, bateau, assurance, frais, chauffeur, VIP, visa, enregistrement, dépense, accueil, vol ou hôtel. La carte reste cachée. Le séjour caché ne débite pas. Aucun message. Vol et hôtel détaillés : ajouter_vol et ajouter_hotel. Pas de numéro de pièce ni de carte.",
     input: {
       dossier_id: z.string().trim().max(80).optional(),
       reference: z.string().trim().max(80).optional(),
@@ -2332,14 +2332,6 @@ export const MCP_TOOLS: ToolDef[] = [
       prix: z.union([z.number(), z.string()]).optional(),
       inclure_transactions: z.boolean().optional(),
       details: z.record(z.string(), z.unknown()).optional().describe("Champs de la carte, sans numéro de pièce"),
-      prestataire: z.string().trim().max(120).optional().describe("Société du transfert. Vide pour l’effacer"),
-      telephone: z
-        .string()
-        .trim()
-        .max(40)
-        .optional()
-        .describe("Téléphone du prestataire, E.164, ex. +33612345678. Carte transfert. Vide pour l’effacer"),
-      chauffeur: z.string().trim().max(120).optional().describe("Nom du chauffeur, facultatif. Carte transfert. Vide pour l’effacer"),
     },
     run: (args) => ajouterCarte(args),
   },
@@ -2347,7 +2339,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_carte",
     write: true,
     description:
-      "Corrige une carte déjà au dossier (carte_id de fiche_dossier) : titre, fournisseur, confirmation, dates, prix, détails, categorie_mb3m. categorie_mb3m vaut automatique ou divers_terrestres. divers_terrestres facture cette ligne en activité 22, fournisseur DIVERS TERRESTRE, et la sort de la retenue billetterie. Le vol reste un vol : itinéraire, enregistrement, carte d’embarquement. fiche_dossier.cartes d’un vol porte categorie_mb3m. effacer_avertissement retire la lecture douteuse sans remplacer les autres détails : un champ details fourni en même temps est fusionné, pas une réécriture. Ne change pas la visibilité et n’envoie rien. Le séjour caché ne débite pas. Vol et hôtel détaillés : modifier_vol et modifier_hotel. Transfert : prestataire, telephone (E.164) et chauffeur. Le téléphone et le chauffeur fusionnent les détails déjà là.",
+      "Corrige une carte déjà au dossier (carte_id de fiche_dossier) : titre, fournisseur, confirmation, dates, prix, détails, categorie_mb3m. categorie_mb3m vaut automatique ou divers_terrestres. divers_terrestres facture cette ligne en activité 22, fournisseur DIVERS TERRESTRE, et la sort de la retenue billetterie. Le vol reste un vol : itinéraire, enregistrement, carte d’embarquement. fiche_dossier.cartes d’un vol porte categorie_mb3m. effacer_avertissement retire la lecture douteuse sans remplacer les autres détails : un champ details fourni en même temps est fusionné, pas une réécriture. Ne change pas la visibilité et n’envoie rien. Le séjour caché ne débite pas. Vol et hôtel détaillés : modifier_vol et modifier_hotel.",
     input: {
       dossier_id: z.string().trim().max(80).optional(),
       reference: z.string().trim().max(80).optional(),
@@ -2367,14 +2359,6 @@ export const MCP_TOOLS: ToolDef[] = [
         .boolean()
         .optional()
         .describe("Retire la lecture douteuse. Les autres détails restent. Un objet details est fusionné, pas une réécriture"),
-      prestataire: z.string().trim().max(120).optional().describe("Société du transfert. Vide pour l’effacer"),
-      telephone: z
-        .string()
-        .trim()
-        .max(40)
-        .optional()
-        .describe("Téléphone du prestataire, E.164, ex. +33612345678. Carte transfert. Vide pour l’effacer"),
-      chauffeur: z.string().trim().max(120).optional().describe("Nom du chauffeur, facultatif. Carte transfert. Vide pour l’effacer"),
     },
     run: (args) => modifierCarte(args),
   },

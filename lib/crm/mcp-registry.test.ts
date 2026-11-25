@@ -352,8 +352,6 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /effacer_avertissement/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_carte")?.description || "", /effacer_avertissement/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_carte")?.description || "", /fusionné/);
-  assert.match(MCP_TOOLS.find((tool) => tool.name === "ajouter_carte")?.description || "", /prestataire/);
-  assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_carte")?.description || "", /telephone/);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "valider_lecture")?.write, true);
   assert.equal(MCP_TOOLS.find((tool) => tool.name === "valider_lecture")?.selfJournal, true);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "valider_lecture")?.description || "", /Tout valider/);

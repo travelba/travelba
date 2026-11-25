@@ -13,7 +13,7 @@ import { formatMoney, parseMoney } from "@/lib/crm/money";
 import { flightAmountIsGroupTotal } from "@/lib/crm/carnet";
 import { parseTicketCountInput, statedTicketCount } from "@/lib/crm/item-match";
 import { STAY_CURRENCIES, stayCurrency } from "@/lib/crm/stay-currency";
-import { DateFrInput, Field, MoneyInput, PhoneField, fieldControlClass } from "@/components/crm/fields";
+import { DateFrInput, Field, MoneyInput, fieldControlClass } from "@/components/crm/fields";
 import { BrandMark } from "@/components/crm/BrandMark";
 import { applyRoomGuestLabels, guestsLabelFromKeys, type HouseholdMember } from "@/lib/crm/household";
 import { ticketPartyKeys } from "@/lib/crm/document-passengers";
@@ -368,14 +368,12 @@ export function IngestItemCard({
           </span>
         </label>
         )}
-        {item.kind === "transfer" ? null : (
         <Field label="Fournisseur">
           <Text
             value={hotelSupplierFieldValue(item.kind, item.supplier)}
             onChange={(supplier) => onChange({ ...item, supplier: hotelSupplierToStore(item.kind, supplier) })}
           />
         </Field>
-        )}
       </div>
 
       {item.kind === "flight" ? (
@@ -531,20 +529,6 @@ export function IngestItemCard({
           <Field label="Note sans heure (ex. 2 h 30 avant le vol)">
             <Text value={d.pickup_note || ""} onChange={(v) => onChange(patchDetails(item, "pickup_note", v))} />
           </Field>
-          <Field label="Prestataire">
-            <Text value={item.supplier || ""} onChange={(v) => onChange({ ...item, supplier: v })} />
-          </Field>
-          <Field label="Chauffeur">
-            <Text value={d.driver || ""} onChange={(v) => onChange(patchDetails(item, "driver", v))} />
-          </Field>
-          <div className="sm:col-span-2">
-            <PhoneField
-              name="telephone_prestataire"
-              label="Téléphone du prestataire"
-              value={d.phone || ""}
-              onChange={(phone) => onChange(patchDetails(item, "phone", phone))}
-            />
-          </div>
         </div>
       ) : null}
 

@@ -19,7 +19,7 @@ import { HotelReservationCard } from "@/components/crm/HotelReservationCard";
 import { HotelStayFacts } from "@/components/crm/HotelStayFacts";
 import { hotelPhotos, hotelRoomLine } from "@/lib/crm/hotel-gallery";
 import { withoutHotelRoster } from "@/lib/crm/hotel-contact";
-import { transferClientContact } from "@/lib/crm/transfer-contact";
+import { transferDescription } from "@/lib/crm/transfer-contact";
 import {
   BOARDING_PASSES_READY_LABEL,
   boardingPassesReadyStatus,
@@ -181,7 +181,7 @@ function CardBody({
   const occupancy = detailStr(item, "occupancy");
   const special = detailStr(item, "special_requests");
   const pickupNote = detailStr(item, "pickup_note");
-  const transferContact = item.kind === "transfer" ? transferClientContact(item) : null;
+  const transferLine = item.kind === "transfer" ? transferDescription(item) : "";
   const baggage = detailStr(item, "baggage");
   const seat = detailStr(item, "seat");
   const terminal = item.kind === "flight" ? flightTerminal(item) : detailStr(item, "terminal");
@@ -266,32 +266,6 @@ function CardBody({
             {[detailStr(item, "pickup"), detailStr(item, "dropoff")].filter(Boolean).join(" → ")}
           </p>
           {pickupNote ? <p>{pickupNote}</p> : null}
-          {transferContact ? (
-            <div className="space-y-2">
-              {transferContact.name || transferContact.driver ? (
-                <p>
-                  {[transferContact.name, transferContact.driver ? `Chauffeur ${transferContact.driver}` : ""]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              ) : null}
-              <p className="font-semibold">{transferContact.label}</p>
-              <div className="flex flex-wrap gap-2">
-                <a
-                  href={transferContact.tel}
-                  className="inline-flex h-11 items-center justify-center rounded-full bg-[var(--admin-navy)] px-4 text-sm font-semibold text-white"
-                >
-                  Appeler
-                </a>
-                <a
-                  href={transferContact.whatsapp}
-                  className="inline-flex h-11 items-center justify-center rounded-full border border-[var(--admin-navy)] bg-white px-4 text-sm font-semibold text-[var(--admin-navy)]"
-                >
-                  WhatsApp
-                </a>
-              </div>
-            </div>
-          ) : null}
         </>
       ) : null}
       {item.kind === "car" ? (
@@ -452,7 +426,9 @@ function CardBody({
             </p>
           ) : (
             <p className="truncate text-xs text-muted">
-              {[item.supplier, item.confirmation_ref].filter(Boolean).join(" · ")}
+              {item.kind === "transfer"
+                ? transferLine
+                : [item.supplier, item.confirmation_ref].filter(Boolean).join(" · ")}
             </p>
           )}
           {price ? (

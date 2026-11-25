@@ -27,7 +27,6 @@ import { unsplashKeywordMatch } from "./covers";
 import { countryName } from "./countries";
 import { greetingGivenName } from "./identity";
 import { shownClientNote } from "./public-booking";
-import { transferClientContact } from "./transfer-contact";
 import { formatDateFr, formatMoney } from "./money";
 import { siteConfig } from "../site";
 import {
@@ -145,8 +144,6 @@ export type ConciergeItem = {
   endDate: string | null;
   /** Fuseau du segment (départ du vol, sinon Paris). Le « aujourd’hui » s’y lit. */
   timezone: string;
-  /** Transfert visible, seulement si le téléphone du prestataire est renseigné. */
-  contact?: { name: string; driver: string; phone: string; label: string } | null;
 };
 
 export type ConciergePending = {
@@ -479,7 +476,6 @@ function itemLines(item: RawItem, prices: boolean): ConciergeItem {
   lines.push(...spoken);
   const amount =
     prices && item.amount != null && Number.isFinite(Number(item.amount)) ? Number(item.amount) : null;
-  const contact = transferClientContact(item);
   return {
     kind: item.kind,
     label: BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind,
@@ -498,9 +494,6 @@ function itemLines(item: RawItem, prices: boolean): ConciergeItem {
     arrival: endClock,
     endDate: segmentDate(item.end_at),
     timezone: itemTimezone(item.kind, fromCode, card),
-    contact: contact
-      ? { name: contact.name, driver: contact.driver, phone: contact.phone, label: contact.label }
-      : null,
   };
 }
 
@@ -1198,7 +1191,6 @@ export function conciergeBrief(dossier: ConciergeDossier, now: Date = new Date()
     "« jeudi », « prochain » et « mon vol » = le prochain segment à venir, jamais une date passée. Le jour se lit dans le fuseau du trajet. « demain » = le lendemain. « mon dernier voyage » = le séjour terminé le plus récent. « le retour » ne désigne le vol qui ramène que si la question porte sur l’horaire (quand, à quelle heure, décolle). Fast track, VIP, salon, assistance, accueil, bagage, siège, repas ou transfert : répondre sur ce service, même si le message dit aller ou retour.",
     "Un numéro de vol se dit avec le code de la compagnie : AF253, pas 253.",
     "Ne jamais citer un taux d’agence, un prix d’achat, un nom de grossiste, un numéro de pièce ni une zone de lecture.",
-    "Le numéro d’un transfert se donne seulement s’il est écrit sur une carte visible. Pas de prix d’achat, pas de note interne.",
   ];
   if (dossier.firstName) lines.push(`Client : ${dossier.firstName}.`);
   const langue = dossier.language === "en" ? "anglais" : dossier.language === "he" ? "hébreu" : "français";
@@ -1247,12 +1239,8 @@ export function conciergeBrief(dossier: ConciergeDossier, now: Date = new Date()
       const hidden = [item.fromPlace, item.fromCode, airportSpokenName(item.fromCode), item.toPlace && !cityIsStay(item.toPlace, dossier.stays) ? item.toPlace : "", item.toCode]
         .filter(Boolean)
         .join(", ");
-      const contact =
-        item.contact?.phone
-          ? ` Contact : ${[item.contact.name, item.contact.driver ? `chauffeur ${item.contact.driver}` : "", item.contact.label].filter(Boolean).join(", ")}.`
-          : "";
       lines.push(
-        `- ${item.label}${item.flightNumber ? ` ${item.flightNumber}` : ""}${when ? `, ${when}` : ""}${item.lines[0] ? `. Au client : ${item.lines[0]}` : ""}${hidden ? `. Ne pas citer : ${hidden}` : ""}${item.terminal ? `. Terminal ${item.terminal}` : ""}${contact}`
+        `- ${item.label}${item.flightNumber ? ` ${item.flightNumber}` : ""}${when ? `, ${when}` : ""}${item.lines[0] ? `. Au client : ${item.lines[0]}` : ""}${hidden ? `. Ne pas citer : ${hidden}` : ""}${item.terminal ? `. Terminal ${item.terminal}` : ""}`
       );
     }
     for (const formality of stay.formalities) lines.push(`- Formalité ${formality.name} : ${formality.copy}`);
@@ -1366,66 +1354,6 @@ function safeLine(item: ConciergeItem, dossier: ConciergeDossier) {
   const title = (item.lines[0] || "").trim();
   if (!title || replyMentionsForbiddenPlace(title, dossier)) return "";
   return title;
-}
-
-/** Le client demande le numéro du chauffeur ou du transfert, pas seulement l’horaire. */
-export function asksTransferPhone(message: string) {
-  const text = fold(message);
-  const number = /numero|telephone|\btel\b|whatsapp|portable|mobile|\bphone\b|\bnumber\b|\bcall\b|appeler/.test(text);
-  const subject = /chauffeur|conducteur|\bdriver\b|transfert|navette|\btransfer\b|\btaxi\b|\bvtc\b/.test(text);
-  return number && subject;
-}
-
-function transferPhoneSentence(item: ConciergeItem, lang: ReplyLang) {
-  const contact = item.contact;
-  if (!contact?.phone) return "";
-  const title = (item.lines[0] || "").trim();
-  const route = title && !/^transfert$/i.test(title) ? title : "";
-  const phone = contact.label || contact.phone;
-  if (lang === "en") {
-    const head = route ? `Your transfer ${route}` : "Your transfer";
-    const named = contact.name ? `${head} is with ${contact.name}.` : `${head}.`;
-    const driver = contact.driver ? ` The driver is ${contact.driver}.` : "";
-    return `${named}${driver} The number is ${phone}.`.replace(/\s+/g, " ").trim();
-  }
-  if (lang === "he") {
-    return [route || "העברה", contact.name, contact.driver, phone].filter(Boolean).join(" · ");
-  }
-  const head = route ? `Le transfert ${route}` : "Le transfert";
-  const named = contact.name ? `${head} est assuré par ${contact.name}.` : `${head}.`;
-  const driver = contact.driver ? ` Le chauffeur est ${contact.driver}.` : "";
-  return `${named}${driver} Le numéro est le ${phone}.`.replace(/\s+/g, " ").trim();
-}
-
-function transferPhoneText(message: string, dossier: ConciergeDossier, lang: ReplyLang) {
-  const focused = focusStay(message, dossier.stays);
-  const pool = focused ? [focused] : dossier.stays;
-  const rows = pool.flatMap((stay) =>
-    stay.items
-      .filter((item) => item.kind === "transfer" && item.contact?.phone)
-      .map((item) => ({ stay, item }))
-  );
-  if (!focused && new Set(rows.map((row) => row.stay.id)).size > 1) {
-    return { body: whichStayText(dossier.stays, lang), stay: null as ConciergeStay | null };
-  }
-  if (!rows.length) {
-    return {
-      body: say(lang, {
-        fr: "Je n’ai pas le numéro du transfert dans votre dossier.",
-        en: "I don’t have the transfer number in your file.",
-        he: "אין לי את מספר ההעברה בתיק.",
-      }),
-      stay: focused,
-    };
-  }
-  return {
-    body: rows
-      .slice(0, 2)
-      .map((row) => transferPhoneSentence(row.item, lang))
-      .filter(Boolean)
-      .join("\n"),
-    stay: rows[0]?.stay || focused,
-  };
 }
 
 function transferSentence(item: ConciergeItem, lang: ReplyLang, now: Date, dossier: ConciergeDossier) {
@@ -2225,7 +2153,6 @@ export function routerCanAnswerAlone(
   if (contestsMessage(message) || asksCheckIn(message) || recallsRoomChange(message, pending) || asksPublishedResend(message)) {
     return true;
   }
-  if (asksTransferPhone(message)) return true;
   if (openAddonQuestion(message, dossier, now)) return true;
   const when = relativeWhen(message, now, tripZone(dossier, now));
   if (when?.kind === "return" && !asksSchedule(message)) return false;
@@ -2443,10 +2370,6 @@ export function planConciergeTurn(
       he: "אני מעביר את בקשת המסעדה לסוכנות. שום דבר לא הוזמן.",
     });
     answerHandoff = "question";
-  } else if (asksTransferPhone(message)) {
-    const phone = transferPhoneText(message, dossier, lang);
-    body = phone.body;
-    pinned = phone.stay;
   } else if (openAddonQuestion(message, dossier, now)) {
     const addon = addonAnswer(message, dossier, lang, now);
     body = addon.body;
