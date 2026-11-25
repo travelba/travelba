@@ -472,7 +472,12 @@ describe("facture MB3M", () => {
     const hotel = block("Hôtel · Avoriaz");
     assert.equal(hotel.includes("<Note>"), false);
     assert.match(hotel, /<Type>Standard<\/Type>/);
+    assert.match(hotel, /<ActivityId>7<\/ActivityId>/);
+    assert.match(hotel, /<ProviderId>013428ca-a71c-4d2a-90a7-75c279281f82<\/ProviderId>/);
     const grouped = assembleGroupedMb3m([ctx]);
+    const groupedHotel = grouped.lines.find((line) => line.label.includes("Avoriaz"));
+    assert.equal(groupedHotel?.providerId, "013428ca-a71c-4d2a-90a7-75c279281f82");
+    assert.equal(groupedHotel?.activityId, 7);
     const groupedPliant = grouped.lines.find((line) => line.label.includes("Frais hôtel"));
     assert.equal(groupedPliant?.type, "Standard");
     assert.equal(groupedPliant?.activityId, 22);

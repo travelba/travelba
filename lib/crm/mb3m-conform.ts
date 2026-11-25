@@ -5,6 +5,8 @@
  * maritime (9) partent toujours en Divers terrestre (22), sans commission, tant que
  * CommissionId n’est pas utilisé. Un choix `mb3m_activity` sur la carte prime.
  * `MB3M_FLIGHT_COMMISSION=1` reste le chemin CommissionId, non utilisé.
+ * Hôtel (activité 7) : Expedia, Little Emperors, Ratehawk et CDS gardent leur fournisseur.
+ * Tout autre hôtel part sur « Hôtel Divers » du référentiel TBA, jamais sans ProviderId.
  */
 
 import { formatAgencyFeePercent } from "@/lib/crm/agency-fee-rate";
@@ -155,19 +157,51 @@ export type Mb3mSaleChannel =
   | "trainline"
   | "little_emperors"
   | "expedia"
+  | "ratehawk"
   | "cds"
   | "direct";
+
+/**
+ * Nom exact dans `mb3m-verified-providers.json` (export Fournisseur du compte TBA).
+ * Uid lu dans cette table : 013428ca-a71c-4d2a-90a7-75c279281f82. Aucun fournisseur n’est créé.
+ */
+export const MB3M_HOTEL_DIVERS_PROVIDER_NAME = "Hôtel Divers";
+
+/**
+ * Noms cherchés pour une réservation Ratehawk. L’export TBA (237 fournisseurs) n’en a aucun :
+ * l’Uid reste null. On n’en invente pas, et la ligne ne part pas sur Hôtel Divers.
+ */
+export const MB3M_RATEHAWK_PROVIDER_NAMES = ["Ratehawk", "RATEHAWK", "Emerging Travel"] as const;
+
+export const MB3M_RATEHAWK_PROVIDER_ID: string | null =
+  MB3M_RATEHAWK_PROVIDER_NAMES.map((name) => mb3mVerifiedProviderId(name)).find((id): id is string => Boolean(id)) ?? null;
 
 function detailText(details: Record<string, unknown> | null | undefined, key: string) {
   const value = details?.[key];
   return typeof value === "string" ? value.trim() : "";
 }
 
+function mentionsRatehawk(value: string) {
+  return /\bratehawk\b|\brate hawk\b|\bemerging travel\b/.test(value);
+}
+
+function providerFromVerifiedName(name: string): Mb3mCatalogProvider | null {
+  const id = mb3mVerifiedProviderId(name);
+  if (!id) return null;
+  return { id, name, account: true };
+}
+
 /** Canal de réservation. Amadeus est le défaut d’un vol ou d’un train sans mention de site. */
 export function mb3mSaleChannel(item: Mb3mConformItem): Mb3mSaleChannel {
   const details = item.details || {};
   const explicit = foldMb3mName(
-    [detailText(details, "sale_channel"), detailText(details, "booked_on"), detailText(details, "channel"), detailText(details, "source")]
+    [
+      detailText(details, "sale_channel"),
+      detailText(details, "booked_on"),
+      detailText(details, "channel"),
+      detailText(details, "source"),
+      detailText(details, "source_family"),
+    ]
       .filter(Boolean)
       .join(" ")
   );
@@ -186,6 +220,7 @@ export function mb3mSaleChannel(item: Mb3mConformItem): Mb3mSaleChannel {
   if (item.kind === "hotel") {
     if (blob.includes("little emperor")) return "little_emperors";
     if (blob.includes("expedia")) return "expedia";
+    if (mentionsRatehawk(explicit) || mentionsRatehawk(blob)) return "ratehawk";
     if (/(^| )cds( |$)/.test(blob)) return "cds";
     return "direct";
   }
@@ -279,6 +314,22 @@ function found(provider: Mb3mCatalogProvider | null, genericLand = false): Mb3mS
   return { ok: true, provider, genericLand };
 }
 
+/** Hôtel hors Expedia, Little Emperors, Ratehawk et CDS. L’Uid vient seulement du référentiel TBA. */
+function hotelDiversSupplier(): Mb3mSupplierResolution {
+  const provider = providerFromVerifiedName(MB3M_HOTEL_DIVERS_PROVIDER_NAME);
+  if (!provider) return { ok: false, reason: "Hôtel Divers est absent du référentiel MB3M." };
+  return found(provider);
+}
+
+/** Ratehawk garde son fournisseur. Sans ligne dans l’export, aucun Uid n’est inventé. */
+function ratehawkSupplier(): Mb3mSupplierResolution {
+  const id = MB3M_RATEHAWK_PROVIDER_ID;
+  const name = id ? MB3M_RATEHAWK_PROVIDER_NAMES.find((label) => mb3mVerifiedProviderId(label) === id) : "";
+  const provider = name ? providerFromVerifiedName(name) : null;
+  if (provider) return found(provider);
+  return { ok: false, reason: "Ratehawk introuvable dans le référentiel MB3M.", unknown: "Ratehawk" };
+}
+
 function missing(kind: string, name: string): Mb3mSupplierResolution {
   const clean = name.trim();
   const who = clean || "sans nom";
@@ -309,8 +360,11 @@ export function resolveMb3mSupplier(input: {
   if (activity === MB3M_ACTIVITY.hotel) {
     if (input.channel === "little_emperors") return found(mb3mProviderByName("LITTLE EMPERORS"));
     if (input.channel === "expedia") return found(mb3mProviderByName("EXPEDIA"));
+    // « CDS » du catalogue Bolon. Le référentiel TBA a « CDS GROUPE » : les noms ne
+    // coïncident pas, donc le ProviderId reste vide. On ne le remplace pas par Hôtel Divers.
     if (input.channel === "cds") return found(mb3mProviderByName("CDS"));
-    return found(mb3mProviderByName("HOTELS DIVERS"));
+    if (input.channel === "ratehawk") return ratehawkSupplier();
+    return hotelDiversSupplier();
   }
   if (activity === MB3M_ACTIVITY.rail) {
     if (input.channel === "ouigo") return found(mb3mProviderByName("OUIGO direct"));
