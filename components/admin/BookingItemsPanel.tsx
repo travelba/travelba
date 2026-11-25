@@ -14,7 +14,8 @@ import {
 } from "@/lib/crm/types";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { readDocumentAmount } from "@/lib/crm/booking-issues";
-import { ticketTravelerNames } from "@/lib/crm/document-passengers";
+import { ticketTravelerFaces } from "@/lib/crm/document-passengers";
+import { TravelerChips } from "@/components/crm/TravelerChips";
 import {
   cardHiddenFromClient,
   cardVisibilityUpdate,
@@ -976,7 +977,8 @@ export function BookingItemsPanel({
           const exclusifs = justificatifsRetiresAvec(item.id, rows, documents);
           const subtitle = stepSubtitle(item);
           const reading = readingLine(item);
-          const ticketNames = item.kind === "flight" ? ticketTravelerNames(item.details) : [];
+          const ticketTravelers =
+            item.kind === "flight" || item.kind === "rail" ? ticketTravelerFaces(item.details) : [];
           const checkin = checkinByItem.get(item.id);
           const when =
             item.kind === "hotel" ? shortStayRange(item.start_at, item.end_at) : shortStayDay(item.start_at);
@@ -1133,9 +1135,7 @@ export function BookingItemsPanel({
                 <div className="mt-3 space-y-3 border-t border-[var(--border)] pt-3">
                   {doubts.length ? <p className="text-xs font-semibold text-accent">{doubts.join(" ")}</p> : null}
                   {retiredLabel ? <p className="text-xs font-semibold text-muted">{retiredLabel}</p> : null}
-                  {ticketNames.length ? (
-                    <p className="text-sm font-semibold text-[var(--admin-navy)]">{ticketNames.join(", ")}</p>
-                  ) : null}
+                  {ticketTravelers.length ? <TravelerChips people={ticketTravelers} /> : null}
                   {subtitle ? <p className="text-xs text-muted">{subtitle}</p> : null}
                   {checkin ? <OnlineCheckinBadge line={checkin} /> : null}
                   {documentPrice ? <p className="text-xs text-muted">Prix d’achat : {documentPrice}</p> : null}
