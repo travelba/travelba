@@ -102,6 +102,10 @@ export const createTransactionSchema = z.object({
   ),
   booking_id: z.preprocess(blankToUndefined, uuidSchema("Dossier").nullable().optional()),
   billing_company_id: z.preprocess(blankToUndefined, uuidSchema("Compte").nullable().optional()),
+  payer_kind: z.preprocess(
+    blankToUndefined,
+    z.enum(["company", "personal"], { error: "Payeur : société ou particulier." }).optional()
+  ),
   amount: positiveMoney,
   currency: z.preprocess(
     (value) => (typeof value === "string" ? value.trim().toUpperCase() : value) || undefined,
@@ -143,6 +147,10 @@ export const billingCompanyInputSchema = z.object({
 /** Champs du PATCH client hors `customerPatchFromBody`. Le reste du corps passe tel quel. */
 export const patchCustomerSchema = z.object({
   on_hold: z.boolean({ error: "« Compte en veille » : vrai ou faux attendu." }).optional(),
+  hide_client_prices: z
+    .boolean({ error: "« Masquer prix et transactions » : vrai ou faux attendu." })
+    .optional(),
+  zero_fees: z.boolean({ error: "« Zéro frais » : vrai ou faux attendu." }).optional(),
   billing_companies: z
     .array(billingCompanyInputSchema, { error: "Liste de sociétés invalide." })
     .max(20, { error: "20 sociétés maximum." })

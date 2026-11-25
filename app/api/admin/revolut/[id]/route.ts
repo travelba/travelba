@@ -66,7 +66,17 @@ export async function POST(request: Request, ctx: Ctx) {
   }
   if (!customerId) return jsonError("Client requis");
   const billingCompanyId = typeof body?.billing_company_id === "string" ? body.billing_company_id : null;
-  const result = await applyRevolutToCustomer(admin, movement, customerId, billingCompanyId);
+  const bookingId = typeof body?.booking_id === "string" ? body.booking_id : "";
+  const payerKind = body?.payer_kind === "company" || body?.payer_kind === "personal" ? body.payer_kind : null;
+  if (body?.lier === true) {
+    if (!bookingId || !payerKind) return jsonError("Choisissez le dossier et le payeur.");
+    if (payerKind === "company" && !billingCompanyId) return jsonError("Choisissez la société.");
+  }
+  const result = await applyRevolutToCustomer(admin, movement, customerId, billingCompanyId, {
+    bookingId: bookingId || null,
+    payerKind,
+    companyId: payerKind === "company" ? billingCompanyId : null,
+  });
   if (!result.ok) {
     if (result.error === "already_matched") return jsonError("Déjà rapprochée");
     if (result.error === "not_a_credit") {

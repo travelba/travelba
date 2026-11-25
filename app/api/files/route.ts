@@ -10,6 +10,10 @@ import { customerPathScope, isAgencyCardPath, isInlineSafeFile, isSafeCrmPath } 
 import { rasterPdfPages } from "@/lib/crm/pdf-raster";
 import { isTripShareCode } from "@/lib/crm/trip-share";
 import { sharePathAllowed } from "@/lib/crm/trip-share-load";
+import { clientHidesPrices, isClientInvoiceDocument, isClientMoneyFile } from "@/lib/crm/client-price-privacy";
+import { applyClientBookingScope, payerMayReadBilledInvoice } from "@/lib/crm/company-role";
+import { clientBookingScope } from "@/lib/crm/company-peers";
+import { createServiceClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -57,6 +61,33 @@ async function thumbnailRedirect(path: string) {
   }
   thumbReady.add(stored);
   return signedThumb(stored);
+}
+
+/** Facture d’un séjour facturé à ce payeur. Le carnet, les billets et les vouchers restent fermés. */
+async function payerInvoiceFile(viewerId: string, bookingId: string, path: string) {
+  try {
+    const admin = createServiceClient();
+    const [{ data: booking }, { data: doc }] = await Promise.all([
+      admin.from("crm_bookings").select("billing_customer_id").eq("id", bookingId).maybeSingle(),
+      admin
+        .from("crm_booking_documents")
+        .select("kind, file_name, storage_path")
+        .eq("booking_id", bookingId)
+        .eq("storage_path", path)
+        .maybeSingle(),
+    ]);
+    const row = doc as { kind?: string | null; file_name?: string | null; storage_path?: string | null } | null;
+    const payer = booking as { billing_customer_id?: string | null } | null;
+    return payerMayReadBilledInvoice({
+      viewerId,
+      billingCustomerId: payer?.billing_customer_id,
+      kind: row?.kind,
+      fileName: row?.file_name,
+      storagePath: row?.storage_path || path,
+    });
+  } catch {
+    return false;
+  }
 }
 
 async function sendCrmFile(path: string, requestUrl: URL) {
@@ -119,6 +150,7 @@ export async function GET(request: Request) {
 
   const client = await requireCustomer();
   if (client instanceof NextResponse) return client;
+  if (clientHidesPrices(client.customer) && isClientMoneyFile(path)) return jsonError("Document introuvable", 404);
 
   const scope = customerPathScope(path, client.customer.id);
   if (scope.kind === "denied") return jsonError("Accès refusé", 403);
@@ -126,13 +158,14 @@ export async function GET(request: Request) {
 
   if (scope.kind === "booking") {
     const bookingId = scope.bookingId;
-    const { data: booking } = await client.supabase
-      .from("crm_bookings")
-      .select("id, cover_image_path, reference, title, destination")
-      .eq("id", bookingId)
-      .eq("customer_id", client.customer.id)
-      .maybeSingle();
-    if (!booking) return jsonError("Accès refusé", 403);
+    const { data: booking } = await applyClientBookingScope(
+      client.supabase.from("crm_bookings").select("id, cover_image_path, reference, title, destination").eq("id", bookingId),
+      await clientBookingScope(client.customer)
+    ).maybeSingle();
+    if (!booking) {
+      if (await payerInvoiceFile(client.customer.id, bookingId, path)) return sendCrmFile(path, url);
+      return jsonError("Accès refusé", 403);
+    }
     if (booking.cover_image_path === path) {
       return sendCrmFile(path, url);
     }
@@ -144,6 +177,16 @@ export async function GET(request: Request) {
       .eq("visible_to_client", true)
       .maybeSingle();
     if (!doc) return jsonError("Document non publié", 403);
+    if (
+      clientHidesPrices(client.customer) &&
+      isClientInvoiceDocument({
+        kind: typeof doc.kind === "string" ? doc.kind : null,
+        file_name: typeof doc.file_name === "string" ? doc.file_name : null,
+        storage_path: path,
+      })
+    ) {
+      return jsonError("Document introuvable", 404);
+    }
     if (download && typeof doc.id === "string") {
       let itemKind: string | null = null;
       if (typeof doc.booking_item_id === "string") {

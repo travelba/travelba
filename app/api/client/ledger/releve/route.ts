@@ -2,31 +2,49 @@ import { NextResponse } from "next/server";
 import { jsonError, requireCustomer } from "@/lib/crm/auth";
 import { loadClientLedger } from "@/lib/crm/client-ledger-load";
 import { RATE_LIMITED_MESSAGE, rateLimit, rateLimitKey } from "@/lib/crm/rate-limit";
+import { statementExportName } from "@/lib/crm/statement-filename";
 import { buildStatement, statementHolderLines } from "@/lib/crm/statement";
+import { appendSharedStays, loadSharedStatementStays } from "@/lib/crm/twin-statement";
+import { createServiceClient } from "@/lib/supabase/admin";
+import { attachStatementTransfer } from "@/lib/crm/statement-wire";
 import { renderStatementPdf } from "@/lib/crm/statement-pdf";
 import { deliverStatementWhatsapp, statementPdfResponse, statementSendResponse } from "@/lib/crm/statement-send";
 import { customerFullName } from "@/lib/crm/types";
+import { clientHidesPrices } from "@/lib/crm/client-price-privacy";
 
 export const runtime = "nodejs";
 
 async function statementPdf(auth: Exclude<Awaited<ReturnType<typeof requireCustomer>>, NextResponse>) {
+  const issuedAt = new Date();
   const view = await loadClientLedger(auth.supabase, auth.customer, "client");
+  let shared: Awaited<ReturnType<typeof loadSharedStatementStays>> = [];
+  try {
+    shared = await loadSharedStatementStays(createServiceClient(), auth.customer.id);
+  } catch {
+    shared = [];
+  }
   const pdf = await renderStatementPdf(
-    buildStatement({
-      view,
-      holderName: customerFullName(auth.customer),
-      holderLines: statementHolderLines(auth.customer),
-      issuedAt: new Date(),
-    })
+    appendSharedStays(
+      await attachStatementTransfer(
+        buildStatement({
+          view,
+          holderName: customerFullName(auth.customer),
+          holderLines: statementHolderLines(auth.customer),
+          issuedAt,
+        })
+      ),
+      shared
+    )
   );
-  return { view, pdf };
+  return { view, pdf, filename: statementExportName(auth.customer, { issuedAt }) };
 }
 
 export async function GET() {
   const auth = await requireCustomer();
   if (auth instanceof NextResponse) return auth;
-  const { pdf } = await statementPdf(auth);
-  return statementPdfResponse(pdf);
+  if (clientHidesPrices(auth.customer)) return jsonError("Le relevé n’est pas disponible.", 404);
+  const { pdf, filename } = await statementPdf(auth);
+  return statementPdfResponse(pdf, filename);
 }
 
 export async function POST() {
@@ -38,7 +56,8 @@ export async function POST() {
     windowSeconds: 60 * 60,
   });
   if (!allowed) return jsonError(RATE_LIMITED_MESSAGE, 429);
-  const { view, pdf } = await statementPdf(auth);
+  if (clientHidesPrices(auth.customer)) return jsonError("Le relevé n’est pas disponible.", 404);
+  const { view, pdf, filename } = await statementPdf(auth);
   return statementSendResponse(
     await deliverStatementWhatsapp({
       customerId: auth.customer.id,
@@ -46,6 +65,7 @@ export async function POST() {
       firstName: auth.customer.first_name,
       member: view.member,
       pdf,
+      filename,
       audience: "client",
       optOutAt: auth.customer.whatsapp_opt_out_at,
     })

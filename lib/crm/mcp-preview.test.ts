@@ -8,6 +8,7 @@ const GATED = [
   "crediter_virement",
   "crediter_revolut",
   "crediter_stripe",
+  "rattacher_credit",
   "creer_carte_pliant",
   "publier_carnet",
   "inviter_client",
@@ -24,6 +25,17 @@ test("sans confirmer ces outils rendent un aperçu et n’écrivent pas", async 
     const tool = MCP_TOOLS.find((item) => item.name === name);
     assert.ok(tool, name);
     assert.match(tool.description, /Sans confirmer/);
+    if (name === "reprendre_facture_mb3m") {
+      const previous = process.env.MB3M_ALLOW_CREDIT_NOTE;
+      delete process.env.MB3M_ALLOW_CREDIT_NOTE;
+      try {
+        await assert.rejects(() => tool.run({ dossier_id: "11111111-1111-4111-8111-111111111111" }), /n’est pas émis/);
+      } finally {
+        if (previous === undefined) delete process.env.MB3M_ALLOW_CREDIT_NOTE;
+        else process.env.MB3M_ALLOW_CREDIT_NOTE = previous;
+      }
+      continue;
+    }
     const result = (await tool.run({ client_id: "11111111-1111-4111-8111-111111111111", id: "11111111-1111-4111-8111-111111111111", montant: 10 })) as {
       apercu: boolean;
       ecrit: boolean;

@@ -24,17 +24,24 @@ function toMail(row: HotelInboxRow, replyState: DashboardCourrier["replyState"])
   };
 }
 
-/** Même liste que l’onglet Hôtels : paiement, autres réponses, puis les envois sans réponse. */
+/** Même liste que l’onglet Hôtels : paiement, autres réponses, puis les envois sans réponse. Un séjour payé n’y figure pas. */
 export function dashboardMailsFromInbox(inbox: HotelInbox): DashboardMail[] {
+  const quiet = inbox.upcoming.filter(
+    (row) => row.paymentState !== "paid" && row.paymentState !== "authorized" && row.paymentState !== "probable"
+  );
   return [
     ...inbox.payment.map((row) => toMail(row, "treat")),
     ...inbox.replies.map((row) => toMail(row, "treat")),
     ...inbox.unanswered.map((row) => toMail(row, "silent")),
+    ...quiet.map((row) => toMail(row, row.status.startsWith("Sans réponse") ? "silent" : "waiting")),
     ...inbox.waiting.map((row) => toMail(row, "waiting")),
   ];
 }
 
-/** Courriers hôtel encore ouverts. Aucune écriture, aucun appel Gmail. */
+/**
+ * Courriers hôtel encore ouverts. Aucune écriture, aucun appel Gmail.
+ * Le client est le service role : même lecture que la page Hôtels.
+ */
 export async function loadDashboardMails(supabase: SupabaseClient): Promise<DashboardMail[]> {
   return dashboardMailsFromInbox(await loadHotelInbox(supabase));
 }

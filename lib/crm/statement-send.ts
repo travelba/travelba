@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonError } from "./auth";
 import { uploadCrmFile } from "./files";
 import { isVercelPreview } from "./preview-secrets";
+import { statementContentDisposition } from "./statement-filename";
 import { STATEMENT_FILENAME, statementObjectPath, type StatementAudience } from "./statement";
 import { statementSignedPath } from "./statement-link";
 import { runStatementDelivery, STATEMENT_TEMPLATE_ENV } from "./statement-whatsapp";
@@ -13,12 +14,13 @@ import { sendWhatsappSession } from "./whatsapp-session";
 
 export { STATEMENT_FILENAME };
 
-export function statementPdfResponse(pdf: Uint8Array) {
+export function statementPdfResponse(pdf: Uint8Array, filename?: string | null) {
+  const name = (filename || "").trim() || STATEMENT_FILENAME;
   return new NextResponse(Buffer.from(pdf), {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${STATEMENT_FILENAME}"`,
+      "Content-Disposition": statementContentDisposition(name),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },
@@ -76,6 +78,8 @@ export async function deliverStatementWhatsapp(input: {
   firstName: string | null | undefined;
   member: boolean;
   pdf: Uint8Array;
+  /** Nom du PDF joint. Vide : l’ancien nom fixe. */
+  filename?: string | null;
   audience: StatementAudience;
   optOutAt?: string | null;
   staffId?: string | null;
@@ -139,7 +143,7 @@ export async function deliverStatementWhatsapp(input: {
         await uploadCrmFile(path, Buffer.from(pdf), "application/pdf", { upsert: true });
       },
       objectPath: statementObjectPath,
-      mediaPath: (customerId, at) => statementSignedPath(customerId, at.getTime()),
+      mediaPath: (customerId, at) => statementSignedPath(customerId, at.getTime(), input.filename),
       sendSession: async (message) => {
         const sent = await sendWhatsappSession({ to: message.to, body: message.body, mediaUrl: message.mediaUrl });
         if (!sent.ok) return { ok: false, detail: sent.detail };

@@ -244,7 +244,7 @@ test("vingt-cinq questions du carnet, passées et à venir", () => {
     { message: "Pouvez vous me dire à quelle heure je pars jeudi ?", expect: /AF2100/, absent: /AF1876|8 octobre|\bParis\b|11h(?!40)/, handoff: "question" },
     { message: "Je pars demain ?", expect: /21 octobre/, absent: /AF2100/, handoff: "question" },
     { message: "Je pars après-demain", expect: /AF2100/, absent: /\bParis\b|11h(?!40)/, handoff: "question" },
-    { message: "Quel était mon dernier voyage ?", expect: /s’est achevé le 12 octobre/, absent: /AF2100|AF1876|\bCDG\b/, handoff: null },
+    { message: "Quel était mon dernier voyage ?", expect: /s’est achevé le 8 octobre/, absent: /AF2100|AF1876|\bCDG\b/, handoff: null },
     { message: "À quelle heure est mon vol de retour ?", expect: /AF2101/, absent: /\bParis\b|\bCDG\b|Marrakech/, handoff: null },
     { message: "Quel est mon hôtel jeudi ?", expect: /séjournez à La Mamounia du 22 au 29 octobre/, absent: /\bCDG\b|Marrakech|transfert/i, handoff: null },
     { message: "À quelle heure est le transfert jeudi ?", expect: /sera confirmé par l'équipe/, absent: /\bCDG\b|11h(?!40)|Mamounia/, handoff: "question" },
@@ -264,7 +264,7 @@ test("vingt-cinq questions du carnet, passées et à venir", () => {
     { message: "Combien coûte le séjour TB-2026-1022 ?", expect: /n’ai pas ce prix/, absent: /9999/, handoff: null },
     { message: "Je pars jeudi", expect: /22 octobre/, absent: /15h30/, handoff: "question" },
     { message: "À quelle heure part mon vol ?", expect: /n’ai pas l’horaire/, handoff: null },
-    { message: "Comment vont les baleines cette année ?", expect: /Souhaitez-vous que j’en parle à Benjamin/, handoff: null },
+    { message: "Comment vont les baleines cette année ?", expect: /Souhaitez-vous que j’en parle à l’agence/, handoff: null },
     { message: "Je pars jeudi prochain", now: THURSDAY, expect: /AF2101/, absent: /AF2100|\bParis\b/, handoff: null },
   ];
   assert.equal(cases.length, 25);

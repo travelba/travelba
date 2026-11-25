@@ -30,11 +30,35 @@ const buttonClass =
 const quietClass =
   "inline-flex min-h-11 items-center justify-center rounded-full border border-[#0B192C] px-4 text-sm font-semibold text-[#0B192C]";
 
-function HotelLine({ row, ended = false }: { row: HotelInboxRow; ended?: boolean }) {
+const badgeClass = {
+  paid: "inline-block max-w-full break-words rounded-full bg-[#e7f6ee] px-2.5 py-1 text-sm font-semibold leading-snug text-[#0f6b3c] ring-1 ring-[#1f8a4c]/40",
+  unpaid: "inline-block max-w-full break-words rounded-full bg-[#fdecec] px-2.5 py-1 text-sm font-semibold leading-snug text-[#9f1d1d] ring-1 ring-[#c43b3b]/40",
+  authorized:
+    "inline-block max-w-full break-words rounded-full bg-white px-2.5 py-1 text-sm font-semibold leading-snug text-[#0B192C] ring-1 ring-[#0B192C]",
+  probable:
+    "inline-block max-w-full break-words rounded-full bg-[#f8f4ed] px-2.5 py-1 text-sm font-semibold leading-snug text-[#9e7e51] ring-1 ring-[var(--admin-gold)]",
+} as const;
+
+function paymentBadge(row: HotelInboxRow): { text: string; tone: keyof typeof badgeClass } | null {
+  if (row.section === "ended") return null;
+  if (row.paymentState === "paid" && row.paidLabel) return { text: row.paidLabel, tone: "paid" };
+  if (row.paymentState === "authorized") return { text: row.paidLabel || "Paiement autorisé, en attente Pliant", tone: "authorized" };
+  if (row.paymentState === "probable") return { text: row.paidLabel || "Payé probablement, à pointer", tone: "probable" };
+  if (row.paymentState === "unpaid") return { text: "À payer", tone: "unpaid" };
+  return null;
+}
+
+function settledPayment(row: HotelInboxRow) {
+  return row.paymentState === "paid" || row.paymentState === "authorized" || row.paymentState === "probable";
+}
+
+function HotelLine({ row, ended = false, filed = false }: { row: HotelInboxRow; ended?: boolean; filed?: boolean }) {
   const when = formatDateTimeFr(row.activityAt);
   const place = [row.hotel, row.city].filter(Boolean).join(" · ");
   const who = [row.reference, row.clientName].filter(Boolean).join(" · ");
   const stay = [row.stayLabel, row.kindLabel].filter(Boolean).join(" · ");
+  const badge = paymentBadge(row);
+  const quiet = filed || (row.section === "upcoming" && settledPayment(row));
   return (
     <li className="px-4 py-3">
       <div className="flex flex-col gap-0.5 lg:flex-row lg:items-baseline lg:justify-between lg:gap-3">
@@ -46,14 +70,16 @@ function HotelLine({ row, ended = false }: { row: HotelInboxRow; ended?: boolean
       </div>
       {who ? <p className="mt-1 break-words text-sm text-[#3d4654]">{who}</p> : null}
       {stay ? <p className="mt-0.5 text-sm text-[#0B192C]">{stay}</p> : null}
-      <div className="mt-2">
-        <span className={statusClass(row.status)}>{row.status}</span>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {badge ? <span className={badgeClass[badge.tone]}>{badge.text}</span> : null}
+        {badge && row.status === badge.text ? null : <span className={statusClass(row.status)}>{row.status}</span>}
       </div>
       {row.excerpt ? (
         <p className="mt-2 line-clamp-2 whitespace-pre-line text-sm leading-relaxed text-[#0B192C]">{row.excerpt}</p>
       ) : null}
-      {ended ? (
-        <div className="mt-3">
+      {ended || quiet ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {quiet && !ended ? <Classify row={row} /> : null}
           <Link href={row.dossierHref} className={quietClass}>
             Ouvrir le dossier
           </Link>
@@ -69,16 +95,10 @@ function HotelLine({ row, ended = false }: { row: HotelInboxRow; ended?: boolean
 }
 
 function PaymentFacts({ row }: { row: HotelInboxRow }) {
-  const state = row.paymentState === "paid" ? row.paidLabel : row.paymentState === "unpaid" ? "À payer" : null;
   return (
     <div className="mt-2 flex flex-col items-start gap-1.5">
       {row.signal ? <p className="text-xs font-semibold uppercase tracking-wide text-[var(--admin-gold-dark)]">{row.signal}</p> : null}
       {row.amountLabel ? <p className="text-sm font-semibold tabular-nums text-[#0B192C]">{row.amountLabel}</p> : null}
-      {state ? (
-        <span className="inline-block max-w-full break-words rounded-full bg-white px-2.5 py-1 text-xs font-semibold leading-snug text-[#3d4654] ring-1 ring-[#e5e0d4]">
-          {state}
-        </span>
-      ) : null}
       {row.cardLabel ? <p className="text-sm text-[#0B192C]">{row.cardLabel}</p> : <CreateCard row={row} />}
     </div>
   );
@@ -278,11 +298,26 @@ function Block({
   );
 }
 
-/** Une liste : paiement, autres réponses, envois sans réponse, puis le reste. */
+/** Une liste : à traiter, séjours à venir, puis les séjours terminés repliés. */
 export function HotelInbox({ inbox }: { inbox: HotelInboxModel }) {
-  const empty = !inbox.payment.length && !inbox.replies.length && !inbox.unanswered.length && !inbox.waiting.length && !inbox.rest.length && !inbox.endedUnpaid.length;
+  const empty =
+    !inbox.payment.length &&
+    !inbox.replies.length &&
+    !inbox.upcoming.length &&
+    !inbox.unanswered.length &&
+    !inbox.waiting.length &&
+    !inbox.rest.length &&
+    !inbox.paid.length &&
+    !inbox.endedUnpaid.length;
+  const failed = Boolean(inbox.loadError);
+  const showSilence = inbox.unanswered.length > 0 || inbox.waiting.length > 0;
   return (
     <div className="space-y-6">
+      {inbox.loadError ? (
+        <p role="alert" className="rounded-2xl border border-[#e5e0d4] bg-[#f8f4ed] px-4 py-3 text-sm font-semibold text-[#0B192C]">
+          {inbox.loadError}
+        </p>
+      ) : null}
       <Block
         id="hotels-paiement"
         title="Paiement Pliant à faire"
@@ -295,33 +330,50 @@ export function HotelInbox({ inbox }: { inbox: HotelInboxModel }) {
         hint="L’hôtel a écrit en dernier. Répondre ouvre le brouillon : il part seulement après confirmation."
         rows={inbox.replies}
       />
-      <section aria-labelledby="hotels-silence">
-        <h2 id="hotels-silence" className="font-display text-lg font-bold text-[#0B192C]">
-          Envoyé sans réponse
-        </h2>
-        <p className="mt-1 text-sm text-[#3d4654]">Relancer ouvre le brouillon. Il part seulement après confirmation.</p>
-        {inbox.unanswered.length ? (
+      {inbox.upcoming.length ? (
+        <section aria-labelledby="hotels-a-venir">
+          <h2 id="hotels-a-venir" className="font-display text-lg font-bold text-[#0B192C]">
+            Séjours à venir et en cours
+          </h2>
+          <p className="mt-1 text-sm text-[#3d4654]">
+            Chaque séjour reste en vue, avec son paiement. Un séjour payé n’appelle pas de relance.
+          </p>
           <ul className="mt-3 divide-y divide-[#e5e0d4] overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
-            {inbox.unanswered.map((row) => (
+            {inbox.upcoming.map((row) => (
               <HotelLine key={row.id} row={row} />
             ))}
           </ul>
-        ) : null}
-        {inbox.waiting.length ? (
-          <details className="group/wait mt-3 overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-[#0B192C] [&::-webkit-details-marker]:hidden [&::marker]:content-none">
-              <span>{waitingHeading(inbox.waiting.length)}</span>
-              <Icon name="expand_more" className="h-4 w-4 shrink-0 transition-transform group-open/wait:rotate-180" />
-            </summary>
-            <ul className="divide-y divide-[#e5e0d4] border-t border-[#e5e0d4]">
-              {inbox.waiting.map((row) => (
+        </section>
+      ) : null}
+      {showSilence ? (
+        <section aria-labelledby="hotels-silence">
+          <h2 id="hotels-silence" className="font-display text-lg font-bold text-[#0B192C]">
+            Envoyé sans réponse
+          </h2>
+          <p className="mt-1 text-sm text-[#3d4654]">Relancer ouvre le brouillon. Il part seulement après confirmation.</p>
+          {inbox.unanswered.length ? (
+            <ul className="mt-3 divide-y divide-[#e5e0d4] overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
+              {inbox.unanswered.map((row) => (
                 <HotelLine key={row.id} row={row} />
               ))}
             </ul>
-          </details>
-        ) : null}
-        {!inbox.unanswered.length && !inbox.waiting.length ? <p className="mt-2 text-sm text-[#3d4654]">Aucun envoi en attente.</p> : null}
-      </section>
+          ) : null}
+          {inbox.waiting.length ? (
+            <details className="group/wait mt-3 overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-[#0B192C] [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+                <span>{waitingHeading(inbox.waiting.length)}</span>
+                <Icon name="expand_more" className="h-4 w-4 shrink-0 transition-transform group-open/wait:rotate-180" />
+              </summary>
+              <ul className="divide-y divide-[#e5e0d4] border-t border-[#e5e0d4]">
+                {inbox.waiting.map((row) => (
+                  <HotelLine key={row.id} row={row} />
+                ))}
+              </ul>
+            </details>
+          ) : null}
+          {!inbox.unanswered.length && !inbox.waiting.length ? <p className="mt-2 text-sm text-[#3d4654]">Aucun envoi en attente.</p> : null}
+        </section>
+      ) : null}
       {inbox.rest.length ? (
         <details className="group/rest overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-[#0B192C] [&::-webkit-details-marker]:hidden [&::marker]:content-none">
@@ -331,6 +383,22 @@ export function HotelInbox({ inbox }: { inbox: HotelInboxModel }) {
           <ul className="divide-y divide-[#e5e0d4] border-t border-[#e5e0d4]">
             {inbox.rest.map((row) => (
               <HotelLine key={row.id} row={row} />
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      {inbox.paid.length ? (
+        <details className="group/paid overflow-hidden rounded-2xl border border-[#e5e0d4] bg-white">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-[#0B192C] [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+            <span>
+              {inbox.paid.length === 1 ? "1 séjour terminé payé" : `${inbox.paid.length} séjours terminés payés`}
+            </span>
+            <Icon name="expand_more" className="h-4 w-4 shrink-0 transition-transform group-open/paid:rotate-180" />
+          </summary>
+          <p className="border-t border-[#e5e0d4] px-4 py-2 text-sm text-[#3d4654]">Le départ est passé. Le paiement est vu.</p>
+          <ul className="divide-y divide-[#e5e0d4] border-t border-[#e5e0d4]">
+            {inbox.paid.map((row) => (
+              <HotelLine key={row.id} row={row} filed />
             ))}
           </ul>
         </details>
@@ -347,7 +415,7 @@ export function HotelInbox({ inbox }: { inbox: HotelInboxModel }) {
           </ul>
         </details>
       ) : null}
-      {empty ? <p className="text-sm text-[#3d4654]">Rien à traiter pour le moment.</p> : null}
+      {empty && !failed ? <p className="text-sm text-[#3d4654]">Rien à traiter pour le moment.</p> : null}
     </div>
   );
 }

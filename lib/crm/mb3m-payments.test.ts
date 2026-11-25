@@ -5,6 +5,7 @@ import { mb3mReglementNote } from "./mb3m-prep";
 import {
   MB3M_PAYMENT_LOOKUP_HOLD,
   applyMb3mPaymentPlans,
+  mb3mBilledCustomerKind,
   mb3mIsPaymentGap,
   mb3mPaymentGapMessage,
   mb3mCreditCustomerIds,
@@ -395,6 +396,162 @@ describe("plan des règlements MB3M", () => {
     assert.equal(rows[0]?.alreadyMatched, false);
   });
 
+  it("donne le virement Beelynq à la facture 2203 et le refuse à Lynq", () => {
+    const label =
+      "Virement Revolut Beelynq L.l.c. — Pagese e fatures N:002203 -Business traveling Kim Atias";
+    const beelynq = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const lynq = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const taken = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2203",
+      invoiceAmount: 2767.61,
+      credits: [credit({ amount: 2767.61, label })],
+      otherOpenBookings: 1,
+      folderCompanyId: beelynq,
+      folderCompanyName: "BEELYNQ LLC",
+      peers: [{ invoiceNumbers: ["2147"], billingCompanyId: lynq, companyName: "LYNQ CONSULTING" }],
+    });
+    assert.equal(taken.length, 1);
+    assert.equal(taken[0]?.matched, 2767.61);
+    assert.equal(taken[0]?.attributeBooking, true);
+    assert.equal(taken[0]?.existingNumber, null);
+    const refused = plan({
+      bookingId: "autre-sejour",
+      invoiceNumber: "2147",
+      invoiceAmount: 2767.61,
+      credits: [credit({ amount: 2767.61, label })],
+      otherOpenBookings: 1,
+      folderCompanyId: lynq,
+      folderCompanyName: "LYNQ CONSULTING",
+      peers: [{ invoiceNumbers: ["2203"], billingCompanyId: beelynq, companyName: "BEELYNQ LLC" }],
+    });
+    assert.equal(refused.length, 0);
+  });
+
+  it("prend un crédit au numéro de facture seul, ou à la société seule", () => {
+    const beelynq = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const lynq = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const byNumber = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2203",
+      invoiceAmount: 100,
+      credits: [credit({ amount: 100, label: "Encaissement 002203" })],
+      otherOpenBookings: 1,
+      folderCompanyId: beelynq,
+      folderCompanyName: "BEELYNQ LLC",
+      peers: [{ invoiceNumbers: ["2147"], billingCompanyId: lynq, companyName: "LYNQ CONSULTING" }],
+    });
+    assert.equal(byNumber[0]?.matched, 100);
+    const byCompany = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2203",
+      invoiceAmount: 400,
+      credits: [credit({ amount: 400, label: "Virement Revolut Beelynq L.l.c.", billingCompanyId: null })],
+      otherOpenBookings: 1,
+      folderCompanyId: beelynq,
+      folderCompanyName: "BEELYNQ LLC",
+      peers: [{ invoiceNumbers: ["2147"], billingCompanyId: lynq, companyName: "LYNQ CONSULTING" }],
+    });
+    assert.equal(byCompany[0]?.matched, 400);
+    const posted = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2203",
+      invoiceAmount: 400,
+      credits: [credit({ amount: 400, label: "Virement reçu", billingCompanyId: beelynq })],
+      otherOpenBookings: 1,
+      folderCompanyId: beelynq,
+      folderCompanyName: "BEELYNQ LLC",
+      peers: [{ invoiceNumbers: ["2147"], billingCompanyId: lynq, companyName: "LYNQ CONSULTING" }],
+    });
+    assert.equal(posted[0]?.matched, 400);
+    const otherCompany = plan({
+      bookingId: "autre-sejour",
+      invoiceNumber: "2147",
+      invoiceAmount: 400,
+      credits: [credit({ amount: 400, label: "Virement Revolut Beelynq L.l.c." })],
+      otherOpenBookings: 1,
+      folderCompanyId: lynq,
+      folderCompanyName: "LYNQ CONSULTING",
+      peers: [{ invoiceNumbers: ["2203"], billingCompanyId: beelynq, companyName: "BEELYNQ LLC" }],
+    });
+    assert.equal(otherCompany.length, 0);
+  });
+
+  it("ignore les faux numéros et une société partagée", () => {
+    const beelynq = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const lynq = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const peers = [{ invoiceNumbers: ["2147"], billingCompanyId: lynq, companyName: "LYNQ CONSULTING" }];
+    for (const label of ["22030", "ref 220", "AB2203", "2203B", "2203,50", "départ 22/03/2026", "Virement 2203"]) {
+      const rows = plan({
+        bookingId: BOOKING,
+        invoiceNumber: "2203",
+        invoiceAmount: 2203,
+        credits: [credit({ amount: 2203, label })],
+        otherOpenBookings: 1,
+        folderCompanyId: beelynq,
+        folderCompanyName: "BEELYNQ LLC",
+        peers,
+      });
+      assert.equal(rows.length, 0, label);
+    }
+    const shared = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2203",
+      invoiceAmount: 400,
+      credits: [credit({ amount: 400, label: "Virement Beelynq LLC", billingCompanyId: beelynq })],
+      otherOpenBookings: 1,
+      folderCompanyId: beelynq,
+      folderCompanyName: "BEELYNQ LLC",
+      peers: [{ invoiceNumbers: ["2147"], billingCompanyId: beelynq, companyName: "Beelynq L.l.c." }],
+    });
+    assert.equal(shared.length, 0);
+  });
+
+  it("sans liste des autres séjours, laisse le crédit de côté", () => {
+    const rows = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2203",
+      invoiceAmount: 2767.61,
+      credits: [
+        credit({
+          amount: 2767.61,
+          label: "Virement Revolut Beelynq L.l.c. — Pagese e fatures N:002203 -Business traveling Kim Atias",
+        }),
+      ],
+      otherOpenBookings: 1,
+    });
+    assert.equal(rows.length, 0);
+  });
+
+  it("ne reprend ni un crédit d’un autre dossier, ni un règlement déjà envoyé", () => {
+    const beelynq = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const lynq = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const label = "N:002203";
+    const elsewhere = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2203",
+      invoiceAmount: 100,
+      credits: [credit({ amount: 100, label, bookingId: "11111111-2222-4333-8444-555555555555" })],
+      otherOpenBookings: 1,
+      folderCompanyId: beelynq,
+      folderCompanyName: "BEELYNQ LLC",
+      peers: [{ invoiceNumbers: ["2147"], billingCompanyId: lynq, companyName: "LYNQ CONSULTING" }],
+    });
+    assert.equal(elsewhere.length, 0);
+    const sent = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2203",
+      invoiceAmount: 2767.61,
+      credits: [credit({ amount: 2767.61, label: `Virement ${label}` })],
+      otherOpenBookings: 1,
+      folderCompanyId: beelynq,
+      folderCompanyName: "BEELYNQ LLC",
+      peers: [{ invoiceNumbers: ["2147"], billingCompanyId: lynq, companyName: "LYNQ CONSULTING" }],
+      links: [{ transactionId: CREDIT_ID, paymentNumber: "8801", invoiceNumber: "2203", matchedAmount: 2767.61 }],
+    });
+    assert.equal(sent.length, 0);
+  });
+
   it("garde un crédit sans société sur un séjour société", () => {
     const rows = mb3mWalletCreditRows("f9e5b60d-8731-40fb-bb62-d8bdb6dfc658", [
       {
@@ -456,6 +613,38 @@ describe("lettrage Amadeus après la facture CRM", () => {
       [
         ["3001", 200, null],
       ]
+    );
+  });
+
+  it("lettre le reste sur Amadeus quand le crédit cite la facture du séjour", () => {
+    const credits = [credit({ amount: 300, label: "N:002203" })];
+    const peers = [{ invoiceNumbers: ["2147"], billingCompanyId: "societe-b", companyName: "Autre SAS" }];
+    const primary = plan({
+      bookingId: BOOKING,
+      invoiceNumber: "2203",
+      invoiceAmount: 100,
+      credits,
+      otherOpenBookings: 1,
+      folderCompanyId: "societe-a",
+      folderCompanyName: "BEELYNQ LLC",
+      peers,
+    });
+    const extra = planMb3mGdsMatchings({
+      bookingId: BOOKING,
+      crmInvoiceNumber: "2203",
+      credits,
+      primary,
+      links: [],
+      gdsInvoices: [{ number: "3001", amount: 250 }],
+      otherOpenBookings: 1,
+      folderCompanyId: "societe-a",
+      folderCompanyName: "BEELYNQ LLC",
+      peers,
+    });
+    assert.equal(primary[0]?.matched, 100);
+    assert.deepEqual(
+      extra.map((row) => [row.targetInvoice, row.matched]),
+      [["3001", 200]]
     );
   });
 });
@@ -586,6 +775,19 @@ describe("envoi des règlements", () => {
     assert.equal(rows[0]?.statut, "erreur");
     assert.match(rows[0]?.erreur || "", /n’ont pas pu être lus/);
     assert.equal(rows[1]?.statut, "envoye");
+  });
+});
+
+describe("type du client facturé", () => {
+  it("société si le dossier, le payer ou la fiche est une société ; personne sinon ; inconnu sans signal", () => {
+    assert.equal(mb3mBilledCustomerKind({ billingCompanyId: "co-1" }), "company");
+    assert.equal(mb3mBilledCustomerKind({ payerKind: "company" }), "company");
+    assert.equal(mb3mBilledCustomerKind({ company: true }), "company");
+    assert.equal(mb3mBilledCustomerKind({ payerKind: "personal" }), "person");
+    assert.equal(mb3mBilledCustomerKind({ company: false }), "person");
+    assert.equal(mb3mBilledCustomerKind({ payerKind: "personal", billingCompanyId: "co-1" }), "company");
+    assert.equal(mb3mBilledCustomerKind({}), null);
+    assert.equal(mb3mBilledCustomerKind({ payerKind: null, billingCompanyId: null, company: null }), null);
   });
 });
 

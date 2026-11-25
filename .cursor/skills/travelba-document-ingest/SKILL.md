@@ -75,6 +75,7 @@ Pièces iOS parfois absentes du VM : le dire, demander le trombone desktop, ou l
 | The Leela / lettre EN | `14-SEP-26`, RESERVATION CONFIRMATION | `parseHotelConfirmationLetter` — date only, TENTATIVE → `needs_review` |
 | TAAP / Talixo | TRANSFER CONFIRMATION, DROPOFF, Itinéraire | `parseTransferConfirmation` |
 | SIXT | Pickup on / Return on / catégorie | `parseSixtCar` — `kind=car` |
+| Expedia TAAP voiture | « Location de voiture », « Prise en charge et restitution » | `parseExpediaTaapCar` — `kind=car`, pas un hôtel. Prix payé = coût, prix de vente null |
 | Passion Collection | Devis, NET, options | quote — **pas** de NET |
 | Toucan Discovery | étapes du cadre + excursions | `activity` — les étapes **ne sont pas** des hôtels |
 | Maeva / Pierre & Vacances | maeva.com + N° DE DOSSIER / VOS OPTIONS | `parseMaevaStay` — **1 hôtel** + forfaits / matériel / cours (`activity`) + assurance. Réf. dossier **sur l’hôtel seulement**. Dates only. Pas de frais de dossier, PAN, totaux à 0 |
@@ -86,7 +87,9 @@ IATA **8 chiffres** (20287864, 20255270, 96020293, 20289905) = code agence, **ja
 ## Vol
 
 - Aller + retour **imprimés** (même PDF) = **deux** cartes. Correspondance = deux. Pas de retour fantôme.
-- 10 e-tickets passagers du **même n° + jour** = **une** carte. Noms → `travelers`. `details.ticket_count` = nombre de billets. Prix vendu = **prix du billet pour l’aller-retour** (aller simple : le prix de ce vol).
+- 10 e-tickets passagers du **même n° + jour** = **une** carte. Noms → `travelers`. `details.ticket_count` = nombre de **vrais numéros de billet** (13 chiffres). Prix vendu = **prix du billet pour l’aller-retour** (aller simple : le prix de ce vol).
+- « Référence du dossier compagnie AF/ZLFJIN, LY/ZLFJIN » n’est pas un passager. Un code à 2 caractères / PNR à 6 caractères est ignoré. Un prénom ou un nom égal au PNR, ou un nom qui est le code compagnie du reçu, n’est pas un voyageur.
+- Chaque PDF de ces passagers reste **un fichier**. `details.source_files` retient tous les noms fusionnés sur le segment. L’affichage le montre sur **chaque** vol du même PNR (et sur les segments lus), sans seconde copie. Une carte d’embarquement ne suit pas l’autre segment. Skill `travelba-carnet`.
 - `confirmation_ref` = PNR GDS. `details.pnr` = réf. compagnie (`AF/AB12CD`).
 - `details.airline` = **opérant**. `supplier` = émetteur (Hahn Air ≠ Air Panama).
 - `details.from` / `to` = IATA (souvent absent du PDF) ; `city_from` / `city_to` = villes.
@@ -99,7 +102,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 
 ## Hôtel
 
-**Un item par établissement**, même 2 chambres / 2 Booking name / 2 réf.
+**Une carte par confirmation exacte.** Deux numéros distincts, même hôtel et mêmes dates, restent deux cartes. Le numéro Little Emperors et la confirmation hôtel de la même chambre, dans le même document, restent une carte. Deux numéros `…SH…` ne se rejoignent jamais : les chiffres avant `SH` sont le code hôtel.
 
 - `details.rooms = [{ room, guests, confirmation_ref }, …]` — une ligne par chambre distincte, sans doublon. L’agent peut retirer une chambre en trop à la relecture.
 - `confirmation_ref` = `97620170;97620172` — `findMatchingItem` par **recouvrement** de réf.
@@ -125,7 +128,7 @@ Aéroports déjà mappés (`inferAirportIata`) : Gelabert/Albrook `PAC`, Isla Co
 | Kind | Clé |
 |------|-----|
 | flight | `flight_number` + jour, sinon PNR + jour |
-| hotel | recouvrement des réf. `;`, sinon nom + jour |
+| hotel | confirmation exacte. Deux numéros distincts = deux cartes. `…SH…` + confirmation hôtel de la même chambre, mêmes dates, même document = une carte |
 | rail | n° de train + jour, sinon réf. + jour, sinon titre + jour. Un autre jour = une carte nouvelle. Deux billets du même train le même jour = une carte |
 | car / transfer / activity / insurance | réf. sinon titre + jour |
 
@@ -143,7 +146,7 @@ Réimport même clé = **remplace** la carte. Dans un même extract, 10 duplicat
 - Dropzone : progression par fichier, Annuler, retry des erreurs, succès partiel. Filtre cartes par `source_file_name`.
 - Sous-fiche par `kind`. Bandeau devis. Bandeau **À vérifier** (`needs_review`) : on **enregistre**, on ne refuse pas tout le lot. Le bandeau et la carte disent quelle étape et pourquoi (`review_reason`, sinon fichier option ou nom égal à la ville).
 - **Montant du séjour** = somme des prix vendus des cartes, affiché en lecture seule. `parseExtractPayload` ne copie pas le PDF dans `item.amount`.
-- **Prix document** : montant imprimé, devise du PDF, sur chaque carte. Hôtel, vol, transfert sans ce montant : l’enregistrement du dossier est refusé tant qu’il n’est pas saisi. On n’invente pas un prix absent. Formalité sans prix, passeport et pièce d’identité : pas d’exigence de prix document.
+- **Prix d’achat** : montant imprimé, devise du PDF, sur chaque carte. Hôtel, vol, transfert sans ce montant : l’enregistrement du dossier est refusé tant qu’il n’est pas saisi. On n’invente pas un prix absent. Formalité sans prix, passeport et pièce d’identité : pas d’exigence de prix d’achat.
 - Hôtel : `normalizeHotelExtractItem` force `title = hotel_name`.
 - Confirmation → dossier **confirmé** (inédit client) + `total_amount` + transactions. Devis → `quoted` sans débit.
 - Cartes manuelles OK. Drag `sort_order` après persist.

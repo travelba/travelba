@@ -32,6 +32,7 @@ import { cancelOrphanSepaIntents, claimSepaLock, releaseSepaLock, syncSepaIntent
 import type { PayerKind } from "@/lib/crm/payer";
 import type { StayPayMethod } from "@/lib/crm/stripe-pay";
 import type Stripe from "stripe";
+import { clientHidesPrices } from "@/lib/crm/client-price-privacy";
 
 function acceptIp(request: Request) {
   return clientAcceptIp(request.headers.get("x-forwarded-for")) || clientAcceptIp(request.headers.get("x-real-ip"));
@@ -50,7 +51,7 @@ async function notePay(input: {
   customerId: string;
   authUserId: string;
   method: StayPayMethod;
-  payer: PayerKind;
+  payer: PayerKind | "total";
   amount: number;
   currency: string;
   ok: boolean;
@@ -77,22 +78,31 @@ export async function POST(request: Request) {
   if (isCompanyMember(auth.customer)) {
     return jsonError("Le règlement se fait depuis le compte qui porte l’encours.", 403);
   }
+  if (clientHidesPrices(auth.customer)) {
+    return jsonError("Le règlement se fait avec l’agence.", 403);
+  }
 
   const body = await request.json().catch(() => null);
   const method = stayPayMethodOf(body?.method);
+  const settlement = body?.settlement === "total" ? "total" : null;
   const payer = payerKindOf(body?.payerKind);
   /** Nonce du formulaire : deux règlements du même montant dans la journée ne se confondent plus. */
   const nonce =
     typeof body?.nonce === "string" && /^[A-Za-z0-9-]{8,64}$/.test(body.nonce) ? body.nonce : null;
   if (!method) return jsonError("Choisissez un moyen de règlement.");
-  if (!payer) return jsonError("Choisissez la part société ou la part particulier.");
 
   const view = await loadClientLedger(auth.supabase, auth.customer, "client");
   const funding = fundingKindOf(body?.funding);
   const requestedCompany = typeof body?.companyId === "string" ? body.companyId : "";
-  let amount = payer === "company" ? view.owed.company : view.owed.personal;
+  const pooled = settlement === "total" && view.owed.pooled;
+  if (!pooled && !payer) return jsonError("Choisissez la part société ou la part particulier.");
+  if (settlement === "total" && !view.owed.pooled) {
+    return jsonError("Le reste se règle par part : particulier ou société.");
+  }
+  if (pooled && method === "sepa_debit") return jsonError(PAY_COPY.sepaPersonal);
+  let amount = pooled ? view.owed.total : payer === "company" ? view.owed.company : view.owed.personal;
   let companyId: string | null = null;
-  let mention = encoursPartLabel(payer, payer === "company" ? view.soleCompanyName : null);
+  let mention = pooled ? "Reste à régler" : encoursPartLabel(payer || "personal", payer === "company" ? view.soleCompanyName : null);
 
   if (view.pockets?.length && (funding || payer === "company")) {
     if (!funding) return jsonError("Choisissez le compte à régler.");
@@ -113,15 +123,15 @@ export async function POST(request: Request) {
       }
       return jsonError(PAY_COPY.pocketEmpty);
     }
-  } else {
+  } else if (!pooled) {
     const blocked = ledgerPayBlock({
-      payer,
+      payer: payer || "personal",
       method,
       owed: view.owed,
       currency: view.currency,
     });
     if ("error" in blocked) {
-      const held = holdsForPart(view.sepaHolds || [], payer, requestedCompany || null);
+      const held = holdsForPart(view.sepaHolds || [], payer || "personal", requestedCompany || null);
       if (held.length && blocked.error === PAY_COPY.nothingDue) {
         return jsonError(sepaCoversMessage(formatMoney(held.reduce((sum, hold) => sum + hold.amount, 0), view.currency)), 409);
       }
@@ -129,6 +139,7 @@ export async function POST(request: Request) {
     }
     amount = blocked.amount;
   }
+  if (pooled && amount < 0.5) return jsonError(PAY_COPY.nothingDue);
 
   const ledgerCustomerId = auth.customer.id;
   const { data: txs, error: txError } = await auth.supabase
@@ -137,6 +148,8 @@ export async function POST(request: Request) {
     .eq("customer_id", ledgerCustomerId)
     .eq("status", "posted");
   if (txError) return dbError(txError, 500);
+  const partPayer: PayerKind = payer ?? "personal";
+  const activityPayer = pooled ? "total" : partPayer;
   if (!companyId && payer === "company") {
     companyId = anchorBillingCompanyId((txs || []) as CrmTransaction[], view.currency);
   }
@@ -144,12 +157,14 @@ export async function POST(request: Request) {
   const cents = amountToCents(amount);
   const amountLabel = payActivityDetail(amount, view.currency) || "";
   const savedLast4 = ibanLast4(auth.customer.iban);
-  const partHolds = holdsForPart(view.sepaHolds || [], payer, companyId);
+  const partHolds = pooled ? [] : holdsForPart(view.sepaHolds || [], partPayer, companyId);
   if (method === "sepa_debit" && partHolds.length) {
     const reserved = formatMoney(partHolds.reduce((sum, hold) => sum + hold.amount, 0), view.currency);
     return jsonError(sepaAlreadyMessage(reserved), 409);
   }
-  const partFailure = (view.sepaFailures || []).find((failure) => holdMatchesPart(failure, payer, companyId));
+  const partFailure = pooled
+    ? undefined
+    : (view.sepaFailures || []).find((failure) => holdMatchesPart(failure, partPayer, companyId));
   if (method === "sepa_debit" && partFailure && sameIbanBlocked(partFailure, savedLast4)) {
     return jsonError(partFailure.message);
   }
@@ -168,7 +183,7 @@ export async function POST(request: Request) {
           customerId: auth.customer.id,
           authUserId: auth.user.id,
           method,
-          payer,
+          payer: activityPayer,
           amount,
           currency: view.currency,
           ok: false,
@@ -191,7 +206,7 @@ export async function POST(request: Request) {
         customerId: auth.customer.id,
         authUserId: auth.user.id,
         method,
-        payer,
+        payer: activityPayer,
         amount,
         currency: view.currency,
         ok: true,
@@ -220,7 +235,7 @@ export async function POST(request: Request) {
         customerId: auth.customer.id,
         authUserId: auth.user.id,
         method,
-        payer,
+        payer: activityPayer,
         amount,
         currency: view.currency,
         ok: false,
@@ -231,13 +246,13 @@ export async function POST(request: Request) {
   }
 
   if (method === "sepa_debit") {
-    const saved = savedSepaIban(payer, auth.customer.iban);
+    const saved = savedSepaIban(partPayer, auth.customer.iban);
     if ("error" in saved) {
       await notePay({
         customerId: auth.customer.id,
         authUserId: auth.user.id,
         method,
-        payer,
+        payer: activityPayer,
         amount,
         currency: view.currency,
         ok: false,
@@ -260,7 +275,7 @@ export async function POST(request: Request) {
         customerId: auth.customer.id,
         authUserId: auth.user.id,
         method,
-        payer,
+        payer: activityPayer,
         amount,
         currency: view.currency,
         ok: false,
@@ -284,7 +299,7 @@ export async function POST(request: Request) {
       (payer === "company" ? view.soleCompanyName : null) || customerFullName(auth.customer) || "Client";
     const locked = await claimSepaLock(admin, {
       customerId: ledgerCustomerId,
-      payer,
+      payer: partPayer,
       companyId: companyId || "",
       amount,
       currency: view.currency,
@@ -300,7 +315,7 @@ export async function POST(request: Request) {
         email,
         cents,
         customerId: ledgerCustomerId,
-        payer,
+        payer: partPayer,
         companyId: companyId || "",
         mention,
         reference,
@@ -350,7 +365,7 @@ export async function POST(request: Request) {
           customerId: auth.customer.id,
           authUserId: auth.user.id,
           method,
-          payer,
+          payer: activityPayer,
           amount,
           currency: view.currency,
           ok: true,
@@ -379,7 +394,7 @@ export async function POST(request: Request) {
         customerId: auth.customer.id,
         authUserId: auth.user.id,
         method,
-        payer,
+        payer: activityPayer,
         amount,
         currency: view.currency,
         ok: false,
@@ -397,7 +412,7 @@ export async function POST(request: Request) {
       );
       return jsonError(message, 502);
     } finally {
-      await releaseSepaLock(admin, { customerId: ledgerCustomerId, payer, companyId: companyId || "" });
+      await releaseSepaLock(admin, { customerId: ledgerCustomerId, payer: partPayer, companyId: companyId || "" });
     }
   }
 
@@ -422,14 +437,14 @@ export async function POST(request: Request) {
         description: `Encours ${mention}`,
         metadata: {
           crm_customer_id: ledgerCustomerId,
-          payer_kind: payer,
-          billing_company_id: companyId || "",
+          payer_kind: pooled ? "" : partPayer,
+          billing_company_id: pooled ? "" : companyId || "",
           pay_method: method,
           pay_mention: mention,
           reference,
         },
       },
-      { idempotencyKey: `ledger-${auth.customer.id}-${companyId || payer}-${method}-${cents}${nonce ? `-${nonce}` : ""}` }
+      { idempotencyKey: `ledger-${auth.customer.id}-${companyId || activityPayer}-${method}-${cents}${nonce ? `-${nonce}` : ""}` }
     );
 
     if (intent.status === "succeeded") {
@@ -440,7 +455,7 @@ export async function POST(request: Request) {
       customerId: auth.customer.id,
       authUserId: auth.user.id,
       method,
-      payer,
+      payer: activityPayer,
       amount,
       currency: view.currency,
       ok: true,

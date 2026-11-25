@@ -3,6 +3,7 @@ import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings
 import { resolveCountryCode, resolveNationality } from "@/lib/crm/countries";
 import { safeFileName, uploadCrmFile } from "@/lib/crm/files";
 import { stayPriceWithExpenses } from "@/lib/crm/ledger-display";
+import { formatMoney } from "@/lib/crm/money";
 import { stayCurrency } from "@/lib/crm/stay-currency";
 import { staffStayFacts } from "@/lib/crm/staff-stay";
 import { chargeableTicketingFee } from "@/lib/crm/ticketing-fee";
@@ -29,12 +30,15 @@ type PayerCustomer = Pick<
 import {
   mb3mDossierLines,
   mb3mFactureHref,
+  withCommercialDiscountLine,
+  withCommercialDiscountLines,
   mb3mLedgerMention,
   mb3mLineSignature,
   mb3mPieceStale,
   type Mb3mAccountLine,
   type Mb3mLedgerRow,
 } from "@/lib/crm/mb3m-account";
+import type { DiscountCut } from "@/lib/crm/commercial-discount";
 import { chargesWithoutGdsFlights, finishMb3mGds, readMb3mGdsPlan, type Mb3mGdsPlan } from "@/lib/crm/mb3m-gds";
 import { mb3mIsPaymentGap, recordMb3mInvoicePayments, type Mb3mReglement } from "@/lib/crm/mb3m-payments";
 import {
@@ -57,21 +61,27 @@ import {
   conformMb3mAccountLines,
   MB3M_FLIGHT_HOLD_MESSAGE,
   mb3mInvoiceNotice,
+  mb3mSupplierWarnings,
   mb3mInvoiceRefCommand,
   mb3mSendableLines,
   mb3mSoapLines,
   mb3mSupplierAlertMail,
   mb3mSupplierBlock,
 } from "@/lib/crm/mb3m-conform";
+import { loadStayPricedDiscounts, stayDiscountEuros } from "@/lib/crm/displayed-stay";
 import { deliverServiceRequestMail } from "@/lib/crm/service-request-mail";
 import {
+  assertMb3mCreditNoteAllowed,
   Mb3mError,
+  type Mb3mCustomerKind,
   mb3mAddCreditNote,
   mb3mAddInvoice,
   mb3mCancelInvoice,
   type Mb3mLine,
   mb3mConfigured,
   mb3mFindPiece,
+  mb3mReadLettrage,
+  type Mb3mLettrageSnapshot,
   mb3mPartnerCode,
   mb3mPrestationActivityId,
   mb3mRealm,
@@ -204,6 +214,11 @@ export type Mb3mInvoiceResult = {
   }[];
   suggestionsAmadeus?: { label: string; invoiceNumber: string }[];
   avertissement?: string | null;
+  /**
+   * bloque_lettrage : un règlement est lettré, rien n’est écrit.
+   * avertissement : la lecture du lettrage a échoué, rien n’est écrit.
+   */
+  statut?: "bloque_lettrage" | "avertissement" | null;
 };
 
 type PiecePatch = {
@@ -233,7 +248,10 @@ type PiecePatch = {
  * facture »), et ses types Fees / Note ne conviennent pas (non supporté / ligne absente du PDF).
  * Une ligne de marge pure (frais, prestation sans coût pointé) part donc avec un net plancher
  * d’un centime et la marge qui complète : la pièce imprime le bon montant, la marge varie de 0,01 €.
- * Un frais d’agence part en ligne Custom, sans marge. Un vol garde son activité (2, 1001 ou 27).
+ * Un frais d’agence (10 %, 7,5 % ou 5 %) part en ligne Custom « Frais agence », sans marge.
+ * Une dépense de dossier part en Standard, activité 22. Un vol garde son activité (2, 1001 ou 27).
+ * Le train et le maritime partent toujours en 22, tant que CommissionId n’est pas utilisé.
+ * `MB3M_FLIGHT_EURO_COMMISSION` ne concerne que la commission de 1 € des vols.
  */
 export const MB3M_MIN_NET = 0.01;
 
@@ -254,7 +272,7 @@ export function mb3mInvoiceLine(line: Mb3mAccountLine): Mb3mLine {
     activityId: mb3mPrestationActivityId(line.activityId),
     type: "Standard" as const,
     marginUnit: margin,
-    note: line.note ?? null,
+    note: (line.note || "").trim().startsWith("Pliant : ") ? (line.note || "").trim() : null,
     providerId: line.providerId ?? null,
     refPiece: line.refPiece ?? null,
     refCommand: line.refCommand ?? null,
@@ -287,6 +305,20 @@ export type Mb3mInvoiceDeps = {
   saveFolder: typeof mb3mSaveFolder;
   addInvoice: typeof mb3mAddInvoice;
   findPiece: typeof mb3mFindPiece;
+  /**
+   * Solde et règlements de la pièce à remplacer. Absent : la lecture MB3M.
+   * Un échec ou un lettrage empêche AddPieces et CancelInvoice.
+   */
+  readLettrage?: (input: {
+    number: string;
+    folderId: string | null;
+    customerUid: string | null;
+  }) => Promise<Mb3mLettrageSnapshot>;
+  /**
+   * Dernière facture imprimée, non créditée, du dossier. `claim` ne la renvoie jamais : l’index
+   * unique ne couvre que les pièces ouvertes, donc claim crée une ligne vide à la place.
+   */
+  printedInvoice?: (bookingId: string) => Promise<Mb3mStoredPiece | null>;
   cancelInvoice: typeof mb3mCancelInvoice;
   renderPiece: (number: string) => Promise<{ bytes: Buffer }>;
   /** Agence unique de la base, posée sur le dossier et la pièce. Absente : le serveur prend celle du compte. */
@@ -307,11 +339,19 @@ export type Mb3mInvoiceDeps = {
     bookingId: string;
     folderId: string;
     customerUid: string;
+    customerKind: Mb3mCustomerKind | null;
     invoiceNumber: string;
     invoiceAmount: number;
     gdsInvoices?: { number: string; amount: number }[];
   }) => Promise<Mb3mReglement[]>;
 };
+
+/** Société si le séjour est facturé à une société, personne sinon. */
+function invoiceCustomerKind(ctx: Mb3mInvoiceContext): Mb3mCustomerKind | null {
+  if (ctx.payerKind === "company" || ctx.company) return "company";
+  if (ctx.payerKind === "personal") return "person";
+  return null;
+}
 
 /** Même chiffre que l’onglet Argent, à partir des cartes déjà enregistrées. */
 export function dossierStayAmount(input: {
@@ -424,7 +464,8 @@ export function buildMb3mInvoiceContext(input: {
     | "visible_to_client"
     | "payer_kind"
     | "billing_company_id"
-  >;
+  > &
+    Partial<Pick<CrmBooking, "total_amount" | "fee_mode" | "agency_fee_rate" | "remise_type" | "remise_value">>;
   items: StayItem[];
   travelers: { first_name: string | null; last_name: string | null }[];
   payer: PayerCustomer | null;
@@ -433,6 +474,10 @@ export function buildMb3mInvoiceContext(input: {
   coveredIds?: string[];
   /** Coûts rattachés (Pliant, Revolut) : la marge de chaque ligne. */
   costs?: TripCost[];
+  /** Euros de remise déjà calculés sur le total du carnet. Absent : recalcul sur les cartes. */
+  discountEuros?: number;
+  /** Une ligne par remise. Présent : remplace le montant unique. */
+  discountCuts?: DiscountCut[];
 }): Mb3mInvoiceContext {
   const facts = staffStayFacts({
     items: input.items,
@@ -466,10 +511,50 @@ export function buildMb3mInvoiceContext(input: {
       )
     : null;
   const posted = mb3mDossierLines(input.charges || [], input.items, margins);
-  const lines = conformMb3mAccountLines(
+  const inEuros = stayCurrency(input.booking.currency) === "EUR";
+  const pricedItems = input.items.map((item) => ({
+    ...item,
+    amount: item.amount == null || item.amount === "" ? null : Number(item.amount),
+  }));
+  const discountEuros = !inEuros
+    ? 0
+    : input.discountEuros != null
+      ? input.discountEuros
+      : stayDiscountEuros(
+          {
+            status: input.booking.status,
+            total_amount: input.booking.total_amount ?? bookingTotalFromItems(pricedItems),
+            agency_commission: input.booking.agency_commission,
+            fee_mode: input.booking.fee_mode,
+            remise_type: input.booking.remise_type,
+            remise_value: input.booking.remise_value,
+          },
+          pricedItems,
+          input.travelers.length,
+          input.booking.agency_fee_rate == null || input.booking.agency_fee_rate === ""
+            ? undefined
+            : Number(input.booking.agency_fee_rate)
+        );
+  const agencyFeeRate =
+    input.booking.agency_fee_rate == null || input.booking.agency_fee_rate === ""
+      ? null
+      : Number(input.booking.agency_fee_rate);
+  const conformed = conformMb3mAccountLines(
     posted.filter((line) => !covered.has(line.transactionId)),
-    input.items
+    input.items,
+    input.booking.reference,
+    (input.costs || []).map((cost) => ({
+      source: cost.source,
+      sourceId: cost.sourceId,
+      bookingItemId: cost.bookingItemId,
+      amountEur: cost.amountEur,
+      originalCurrency: cost.originalCurrency,
+    })),
+    agencyFeeRate
   );
+  const lines = input.discountCuts
+    ? withCommercialDiscountLines(conformed, input.discountCuts)
+    : withCommercialDiscountLine(conformed, discountEuros);
   const sendable = mb3mSendableLines(lines);
   return {
     bookingId: input.booking.id,
@@ -521,7 +606,7 @@ export function buildMb3mInvoiceContext(input: {
     visibleToClient: input.booking.visible_to_client === true,
     configured: mb3mConfigured(),
     lines,
-    notice: mb3mInvoiceNotice(lines),
+    notice: [mb3mInvoiceNotice(lines), mb3mSupplierWarnings(lines)].filter(Boolean).join(" ") || null,
     hadExpenses: posted.length > 0,
   };
 }
@@ -597,6 +682,7 @@ async function attachReglements(
       bookingId: ctx.bookingId,
       folderId: folder,
       customerUid: customerUid || ctx.gdsPlan?.customerUid || "",
+      customerKind: invoiceCustomerKind(ctx),
       invoiceNumber: result.number,
       invoiceAmount,
       gdsInvoices: ctx.gdsPlan?.invoices,
@@ -630,9 +716,127 @@ function withNotice(ctx: Mb3mInvoiceContext, result: Mb3mInvoiceResult): Mb3mInv
   return { ...result, avertissement };
 }
 
+const LETTRAGE_CENT = 0.005;
+
+/** Écart entre le montant qui aurait été envoyé et le montant déjà sur la pièce. */
+function mb3mLettrageGap(nextAmount: number, currentAmount: number | null) {
+  if (currentAmount == null || !Number.isFinite(currentAmount) || !Number.isFinite(nextAmount)) return "";
+  const gap = Math.round((nextAmount - currentAmount) * 100) / 100;
+  if (Math.abs(gap) < LETTRAGE_CENT) return "";
+  return ` Écart non reporté : ${formatMoney(gap, "EUR")}.`;
+}
+
+export function mb3mLettrageWarning(input: {
+  number: string;
+  kind: "lettered" | "unread";
+  nextAmount: number;
+  currentAmount: number | null;
+}) {
+  const number = input.number.trim();
+  const base =
+    input.kind === "lettered"
+      ? `La pro forma n° ${number} a déjà un règlement lettré dans MB3M. Elle n’est pas remplacée. Délettrez le règlement dans MB3M si vous voulez la refaire.`
+      : `La vérification du lettrage est impossible. La pro forma n° ${number} n’est pas remplacée.`;
+  return `${base}${mb3mLettrageGap(input.nextAmount, input.currentAmount)}`;
+}
+
+/** Rien à écrire si la pièce est lettrée, ou si le solde n’a pas pu être lu. */
+export async function mb3mReplacementHold(
+  read: NonNullable<Mb3mInvoiceDeps["readLettrage"]>,
+  input: {
+    number: string;
+    folderId: string | null;
+    customerUid: string | null;
+    nextAmount: number;
+    currentAmount: number | null;
+  }
+): Promise<{ statut: "bloque_lettrage" | "avertissement"; avertissement: string } | null> {
+  try {
+    const snap = await read({
+      number: input.number,
+      folderId: input.folderId,
+      customerUid: input.customerUid,
+    });
+    if (!snap.lettered) return null;
+    return {
+      statut: "bloque_lettrage",
+      avertissement: mb3mLettrageWarning({
+        number: input.number,
+        kind: "lettered",
+        nextAmount: input.nextAmount,
+        currentAmount: snap.amount ?? input.currentAmount,
+      }),
+    };
+  } catch {
+    return {
+      statut: "avertissement",
+      avertissement: mb3mLettrageWarning({
+        number: input.number,
+        kind: "unread",
+        nextAmount: input.nextAmount,
+        currentAmount: input.currentAmount,
+      }),
+    };
+  }
+}
+
+async function releasePreparing(deps: Mb3mInvoiceDeps, piece: Mb3mStoredPiece) {
+  if (piece.attemptStatus !== "preparing") return;
+  try {
+    await deps.save(piece.id, { attemptStatus: null, attemptError: null });
+  } catch (error) {
+    console.error("[mb3m] lettrage", error instanceof Error ? error.message : error);
+  }
+}
+
+function lettrageStop(
+  ctx: Mb3mInvoiceContext,
+  piece: Mb3mStoredPiece,
+  number: string,
+  hold: { statut: "bloque_lettrage" | "avertissement"; avertissement: string }
+): Mb3mInvoiceResult {
+  return {
+    number,
+    documentId: piece.documentId,
+    created: false,
+    replaced: false,
+    printed: Boolean(piece.printedAt),
+    visibleToClient: ctx.visibleToClient,
+    reglements: [],
+    avertissement: hold.avertissement,
+    statut: hold.statut,
+  };
+}
+
 export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceDeps): Promise<Mb3mInvoiceResult> {
+  if (!ctx.lines.length && deps.recordPayments && deps.printedInvoice) {
+    // Tout est déjà sur une facture imprimée : pas de nouvelle pièce, seulement les règlements en attente.
+    const printed = await deps.printedInvoice(ctx.bookingId);
+    if (printed?.pieceNumber && printed.printedAt) {
+      const sent = await attachReglements(
+        ctx,
+        deps,
+        {
+          number: printed.pieceNumber,
+          documentId: printed.documentId,
+          created: false,
+          replaced: false,
+          printed: true,
+          visibleToClient: ctx.visibleToClient,
+        },
+        printed.amount ?? ctx.amount,
+        printed.folderId,
+        printed.customerUid
+      );
+      if (printed.attemptStatus || printed.attemptError) {
+        await deps.save(printed.id, { attemptStatus: null, attemptError: null });
+      }
+      return withNotice(ctx, sent);
+    }
+  }
   const sendable = mb3mSendableLines(ctx.lines);
   const signature = mb3mLineSignature(sendable);
+  const invoiceAmount = Math.round(sendable.reduce((sum, line) => sum + line.amount, 0) * 100) / 100;
   const claimed = await deps.claim(ctx.bookingId, ctx.amount);
   let piece = claimed.piece;
   const created = Boolean(claimed.created);
@@ -642,6 +846,35 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
   }
   let rememberFailure = true;
   try {
+    if (!ctx.lines.length && piece.pieceNumber && deps.recordPayments) {
+      // Facture déjà imprimée qui couvre tout : plus rien à facturer, mais les règlements en attente partent.
+      const state = piece.printedAt ? "printed" : await deps.findPiece(piece.pieceNumber);
+      if (state === "printed") {
+        let documentId = piece.documentId;
+        if (!piece.printedAt) {
+          documentId = await attachPdf(ctx, deps, piece, piece.pieceNumber);
+          await deps.save(piece.id, { printedAt: new Date().toISOString(), documentId });
+        }
+        const sent = await attachReglements(
+          ctx,
+          deps,
+          {
+            number: piece.pieceNumber,
+            documentId,
+            created: false,
+            replaced: false,
+            printed: true,
+            visibleToClient: ctx.visibleToClient,
+          },
+          piece.amount ?? ctx.amount,
+          piece.folderId,
+          piece.customerUid
+        );
+        // La préparation est finie : on retire un « préparation interrompue » resté d’une reprise.
+        if (piece.attemptStatus || piece.attemptError) await deps.save(piece.id, { attemptStatus: null, attemptError: null });
+        return withNotice(ctx, sent);
+      }
+    }
     if (!ctx.lines.length) {
       if (piece.pieceNumber && !piece.printedAt) {
         const state = await deps.findPiece(piece.pieceNumber);
@@ -682,6 +915,8 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
             piece.customerUid
           ));
         }
+        // Nouvelle pièce pour les dépenses encore hors facture. La facture imprimée n’est pas annulée.
+        // L’avoir, lui, vérifie le lettrage avant d’écrire (reissueMb3mInvoice).
         return await runMb3mInvoice(
           { ...ctx, lines: fresh, amount: Math.round(fresh.reduce((sum, line) => sum + line.amount, 0) * 100) / 100, hadExpenses: true },
           deps
@@ -704,8 +939,22 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
           piece.customerUid
         ));
       }
-      // L’ancienne pro forma s’annule après la nouvelle : un refus de MB3M ne laisse pas le dossier sans pièce.
-      if (state === "open" && piece.folderId) previous = { folderId: piece.folderId, number: piece.pieceNumber };
+      // L’ancienne pro forma s’annule après la nouvelle, sauf si un règlement est déjà lettré.
+      if (state === "open" && piece.signature !== signature) {
+        const hold = await mb3mReplacementHold(deps.readLettrage ?? mb3mReadLettrage, {
+          number: piece.pieceNumber,
+          folderId: piece.folderId,
+          customerUid: piece.customerUid,
+          nextAmount: invoiceAmount,
+          currentAmount: piece.amount,
+        });
+        if (hold) {
+          rememberFailure = false;
+          await releasePreparing(deps, piece);
+          return withNotice(ctx, lettrageStop(ctx, piece, piece.pieceNumber, hold));
+        }
+        if (piece.folderId) previous = { folderId: piece.folderId, number: piece.pieceNumber };
+      }
     }
     const blocker = mb3mInvoiceBlocker(ctx);
     if (blocker && !piece.customerUid) {
@@ -743,7 +992,28 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
     const savedPiece = await ensureFolder(ctx, deps, piece);
     const replaced = Boolean(piece.pieceNumber);
     const soapLines = mb3mSoapLines(sendable, MB3M_MIN_NET);
-    const invoiceAmount = Math.round(sendable.reduce((sum, line) => sum + line.amount, 0) * 100) / 100;
+    if (previous) {
+      const again = await deps.findPiece(previous.number);
+      if (again === "printed") {
+        const hold = await mb3mReplacementHold(deps.readLettrage ?? mb3mReadLettrage, {
+          number: previous.number,
+          folderId: previous.folderId,
+          customerUid: savedPiece.customerUid,
+          nextAmount: invoiceAmount,
+          currentAmount: piece.amount,
+        });
+        if (hold) {
+          rememberFailure = false;
+          await releasePreparing(deps, piece);
+          return withNotice(ctx, lettrageStop(ctx, { ...piece, printedAt: piece.printedAt || new Date().toISOString() }, previous.number, hold));
+        }
+        throw new Mb3mError(
+          `La pièce MB3M n° ${previous.number} est imprimée. Le CRM n’ajoute pas de pièce à la place.`,
+          -1
+        );
+      }
+      if (again !== "open") previous = null;
+    }
     const invoice = await deps.addInvoice({
       folderId: savedPiece.folderId || "",
       customerUid: savedPiece.customerUid || "",
@@ -756,6 +1026,7 @@ export async function runMb3mInvoice(ctx: Mb3mInvoiceContext, deps: Mb3mInvoiceD
       lines: soapLines,
       travelers: ctx.travelers.map((traveler) => ({ firstName: traveler.firstName, name: traveler.lastName })),
       agencyUid: savedPiece.agencyUid,
+      replacesNumber: previous?.number,
     });
     if (previous && previous.number !== invoice.number) {
       try {
@@ -1039,6 +1310,11 @@ export async function loadMb3mInvoiceContext(supabase: SupabaseClient, bookingId
     .limit(1)
     .maybeSingle();
   const folderId = (openFolder.data as { folder_id?: string } | null)?.folder_id || null;
+  const pricedDiscounts = await loadStayPricedDiscounts(supabase, bookingId).catch(() => null);
+  const discountCuts = pricedDiscounts?.lines
+    .filter((line) => line.euros > 0)
+    .map((line) => ({ id: line.id, label: line.label, euros: line.euros }));
+  const discountEuros = pricedDiscounts ? pricedDiscounts.lines.reduce((sum, line) => sum + line.euros, 0) : 0;
   const gdsPlan = await readMb3mGdsPlan(supabase, {
     bookingId,
     payerId,
@@ -1057,6 +1333,8 @@ export async function loadMb3mInvoiceContext(supabase: SupabaseClient, bookingId
       charges: chargesWithoutGdsFlights(inputs.charges, gdsPlan.covered),
       coveredIds: inputs.coveredIds,
       costs: inputs.costs,
+      discountEuros,
+      ...(discountCuts ? { discountCuts } : {}),
     }),
     gdsPlan,
   };
@@ -1106,6 +1384,7 @@ export async function emitMb3mInvoice(
           bookingId,
           folderId: folderId || "",
           customerUid: plan.customerUid || "",
+          customerKind: invoiceCustomerKind(ctx),
           invoiceNumber: plan.covered[0]?.invoiceNumber || "",
           invoiceAmount: 0,
           gdsInvoices: plan.invoices,
@@ -1140,6 +1419,7 @@ export function mb3mStalePieces(printed: Mb3mStoredPiece[], lines: Mb3mAccountLi
  * repart avec la même vente et la marge corrigée. Les deux se valident dans MB3M, à l’impression.
  */
 export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: string, actorName?: string | null) {
+  assertMb3mCreditNoteAllowed();
   const { data: booking } = await supabase.from("crm_bookings").select("*").eq("id", bookingId).maybeSingle();
   if (!booking) throw new Mb3mError("Réservation introuvable.", 0);
   const stay = booking as CrmBooking;
@@ -1147,6 +1427,11 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
     supabase.from("crm_booking_items").select("*").eq("booking_id", bookingId),
     dossierInvoiceInputs(supabase, bookingId),
   ]);
+  const pricedDiscounts = await loadStayPricedDiscounts(supabase, bookingId).catch(() => null);
+  const discountCuts = pricedDiscounts?.lines
+    .filter((line) => line.euros > 0)
+    .map((line) => ({ id: line.id, label: line.label, euros: line.euros }));
+  const discountEuros = pricedDiscounts ? pricedDiscounts.lines.reduce((sum, line) => sum + line.euros, 0) : 0;
   const ctx = buildMb3mInvoiceContext({
     booking: stay,
     items: (items || []) as StayItem[],
@@ -1155,9 +1440,27 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
     companies: [],
     charges: inputs.charges,
     costs: inputs.costs,
+    discountEuros,
+    ...(discountCuts ? { discountCuts } : {}),
   });
   const stale = mb3mStalePieces(inputs.printed, ctx.lines);
   if (!stale.length) throw new Mb3mError("Aucune facture imprimée à corriger.", 0);
+  for (const piece of stale) {
+    if (!piece.pieceNumber) continue;
+    const hold = await mb3mReplacementHold(mb3mReadLettrage, {
+      number: piece.pieceNumber,
+      folderId: piece.folderId,
+      customerUid: piece.customerUid,
+      nextAmount: piece.amount ?? ctx.amount,
+      currentAmount: piece.amount,
+    });
+    if (!hold) continue;
+    return {
+      creditNote: "",
+      ...lettrageStop(ctx, { ...piece, printedAt: piece.printedAt || new Date().toISOString() }, piece.pieceNumber, hold),
+      printed: true,
+    };
+  }
   const agencyUid = await mb3mSingleAgencyUid().catch(() => null);
   const creditNotes: string[] = [];
   for (const piece of stale) {
@@ -1166,7 +1469,20 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
       ? piece.lines
       : ctx.lines
           .filter((line) => piece.transactionIds.includes(line.transactionId))
-          .map((line) => mb3mInvoiceLine({ ...line, margin: line.amount, note: null }));
+          .map((line) =>
+            mb3mInvoiceLine({
+              ...line,
+              margin: line.amount,
+              note: (line.note || "").trim().startsWith("Pliant : ") ? line.note : null,
+            })
+          );
+    const state = await mb3mFindPiece(piece.pieceNumber);
+    if (state !== "printed") {
+      throw new Mb3mError(
+        `La pièce MB3M n° ${piece.pieceNumber} n’est pas imprimée. Le CRM met à jour la pro forma, il n’émet pas d’avoir.`,
+        0
+      );
+    }
     const credit = await mb3mAddCreditNote({
       folderId: piece.folderId,
       customerUid: piece.customerUid,
@@ -1313,6 +1629,22 @@ function supabaseInvoiceDeps(supabase: SupabaseClient, actorName?: string | null
     recordPayments: (input) => recordMb3mInvoicePayments(supabase, input),
     agencyUid: mb3mSingleAgencyUid,
     findPiece: mb3mFindPiece,
+    readLettrage: mb3mReadLettrage,
+    printedInvoice: async (bookingId) => {
+      const { data, error } = await supabase
+        .from("crm_mb3m_pieces")
+        .select("*")
+        .eq("booking_id", bookingId)
+        .eq("kind", "invoice")
+        .eq("realm", mb3mRealm())
+        .not("printed_at", "is", null)
+        .is("credited_at", null)
+        .order("printed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) dbFail(error, "La facture n’a pas pu être préparée.");
+      return data ? mapPiece(data as Record<string, unknown>) : null;
+    },
     cancelInvoice: mb3mCancelInvoice,
     renderPiece: async (number) => mb3mRenderPiece({ number }),
     putPdf: async (input) =>

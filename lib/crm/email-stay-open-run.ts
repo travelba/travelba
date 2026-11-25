@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { depositEmailAttachments, markEmailAttached, resolveEmailCardId } from "@/lib/crm/email-attach-run";
 import { autoAttachMatchedFlight } from "@/lib/crm/email-flight-deposit-run";
 import { hasUsableFlight } from "@/lib/crm/email-flight-deposit";
+import { guardAutomaticExtract } from "@/lib/crm/auto-card-guard-run";
 import { IMPORT_AUTO_NOTE } from "@/lib/crm/email-detach";
 import { parseExtractPayloadSafe, type BookingExtract } from "@/lib/crm/ingest-types";
 import type { CrmEmailIngest } from "@/lib/crm/types";
@@ -19,12 +20,19 @@ export async function autoCreateStayFromMail(admin: SupabaseClient, row: CrmEmai
   const current = row.extract ? parseExtractPayloadSafe(row.extract) : null;
   if (!current) return { wrote: false as const };
   const extract = saleFree(current);
+  const guarded = await guardAutomaticExtract(admin, {
+    bookingId: null,
+    extract,
+    emailIngestId: row.id,
+    customerId,
+  });
+  if (!guarded) return { wrote: false as const };
   const { loadEmailIngestFiles } = await import("@/lib/crm/email-ingest");
   const { persistNewBookingFromExtract } = await import("@/lib/crm/ingest-booking");
   const files = await loadEmailIngestFiles(row);
   const booking = await persistNewBookingFromExtract({
     customerId,
-    extract,
+    extract: guarded,
     files,
     status: "draft",
     visibleToClient: false,
@@ -59,16 +67,25 @@ export async function autoAttachMatchedHotel(
   const current = row.extract ? parseExtractPayloadSafe(row.extract) : null;
   if (!current) return { wrote: false as const };
   const extract = saleFree(current);
+  const guarded = await guardAutomaticExtract(admin, {
+    bookingId: decision.bookingId,
+    extract,
+    emailIngestId: row.id,
+    customerId: decision.customerId,
+  });
+  if (!guarded) return { wrote: false as const };
   const { applyReplacementToBooking } = await import("@/lib/crm/ingest-booking");
   await applyReplacementToBooking({
     bookingId: decision.bookingId,
     customerId: decision.customerId,
-    extract,
+    extract: guarded,
     visibleToClient: false,
     emailIngestId: row.id,
     skipTicketingFee: false,
+    freezeClientVisibility: true,
+    reopenIfCancelled: false,
   });
-  const cardId = await resolveEmailCardId(admin, decision.bookingId, extract);
+  const cardId = await resolveEmailCardId(admin, decision.bookingId, guarded);
   const deposited = await depositEmailAttachments(admin, decision.bookingId, row.id, row.attachments, cardId, {
     subject: row.subject,
     text: row.body_text,

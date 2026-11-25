@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadClientLedger } from "./client-ledger";
 import { dbErrorMessage, type DbErrorLike } from "./db-error";
 import { RATE_LIMITED_MESSAGE, rateLimit, rateLimitKey } from "./rate-limit";
+import { attachStatementTransfer } from "./statement-wire";
+import { statementExportName } from "./statement-filename";
 import { buildStatement, STATEMENT_CUSTOMER_COLUMNS, statementHolderLines, type StatementAudience } from "./statement";
 import { renderStatementPdf } from "./statement-pdf";
 import { deliverStatementWhatsapp } from "./statement-send";
@@ -37,7 +39,7 @@ export type AccountStatementResult = {
 };
 
 export type StatementPdfResult =
-  | { ok: true; customer: CrmCustomer; pdf: Uint8Array; member: boolean }
+  | { ok: true; customer: CrmCustomer; pdf: Uint8Array; member: boolean; filename: string }
   | { ok: false; httpStatus: number; message: string; code: "not_found" | "read" | "prepare" };
 
 export type StatementSendDeps = {
@@ -52,7 +54,7 @@ type StatementCustomerRead =
   | { ok: true; customer: CrmCustomer }
   | { ok: false; httpStatus: number; message: string; code: "not_found" | "read" };
 
-type StatementPdfBuilt = { pdf: Uint8Array; member: boolean };
+type StatementPdfBuilt = { pdf: Uint8Array; member: boolean; filename?: string };
 
 /** `whatsapp` si le canal est vide. `email` est reconnu, puis refusé : la route ne l’envoie pas. */
 export function statementChannelOf(value: string | null | undefined): StatementSendChannel | "invalid" {
@@ -135,14 +137,16 @@ export async function buildCustomerStatementPdf(
   }
   const view = await loadClientLedger(supabase, customer, audience);
   const pdf = await renderStatementPdf(
-    buildStatement({
-      view,
-      holderName: customerFullName(customer),
-      holderLines: statementHolderLines(customer),
-      issuedAt: now,
-    })
+    await attachStatementTransfer(
+      buildStatement({
+        view,
+        holderName: customerFullName(customer),
+        holderLines: statementHolderLines(customer),
+        issuedAt: now,
+      })
+    )
   );
-  return { pdf, member: view.member };
+  return { pdf, member: view.member, filename: statementExportName(customer, { issuedAt: now }) };
 }
 
 /** PDF du relevé, la même lecture que le bouton admin. */
@@ -157,7 +161,13 @@ export async function customerStatementPdf(
   if (!read.ok) return read;
   try {
     const built = await (deps?.buildPdf ?? buildCustomerStatementPdf)(supabase, read.customer, audience, now);
-    return { ok: true, customer: read.customer, pdf: built.pdf, member: built.member };
+    return {
+      ok: true,
+      customer: read.customer,
+      pdf: built.pdf,
+      member: built.member,
+      filename: built.filename || statementExportName(read.customer, { issuedAt: now }),
+    };
   } catch (err) {
     console.error("[releve]", err instanceof Error ? err.message : "error");
     return { ok: false, httpStatus: 502, message: "Le relevé n’a pas pu être préparé.", code: "prepare" };
@@ -280,6 +290,7 @@ export async function sendAccountStatement(
     firstName: read.customer.first_name,
     member: built.member,
     pdf: built.pdf,
+    filename: built.filename || statementExportName(read.customer, { issuedAt: now }),
     audience: input.audience,
     optOutAt: read.customer.whatsapp_opt_out_at,
     staffId: actor.staffId,

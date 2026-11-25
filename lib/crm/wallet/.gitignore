@@ -1,0 +1,3 @@
+# Certificats publics Apple WWDR. Le .gitignore racine ignore *.pem.
+!AppleWWDRCAG4.pem
+!AppleWWDRCAG6.pem

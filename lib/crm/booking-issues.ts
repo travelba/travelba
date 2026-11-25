@@ -38,7 +38,7 @@ const FIELD_LABELS: Record<string, string> = {
   document_status: "Type de document",
   "items.title": "Titre de l’étape",
   "items.kind": "Type d’étape",
-  "items.details.document_amount": "Prix document",
+  "items.details.document_amount": "Prix d’achat",
   email: "E-mail",
   first_name: "Prénom",
   last_name: "Nom",
@@ -81,7 +81,7 @@ export function collectManualCreateIssues(input: {
   return issues;
 }
 
-/** Hôtel, vol, transfert : le champ prix document est proposé. Le montant reste facultatif. */
+/** Hôtel, vol, transfert : le champ prix d’achat est proposé. Le montant reste facultatif. */
 export function itemRequiresDocumentPrice(kind: string | null | undefined) {
   return kind === "flight" || kind === "hotel" || kind === "transfer";
 }

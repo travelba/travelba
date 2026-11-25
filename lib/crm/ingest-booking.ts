@@ -60,9 +60,12 @@ import {
   findHotelExactStay,
   findMatchingItem,
   hotelMatchKeepsStay,
+  isServiceKind,
   keptHotelStayFields,
+  mergeFilledDetails,
   mergeFlightPassengers,
 } from "@/lib/crm/item-match";
+import { planTicketOnExistingCard } from "@/lib/crm/flight-ticket";
 import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { inferAirlineIata } from "@/lib/crm/brand-marks";
@@ -72,14 +75,15 @@ import {
   issuesSummary,
   zodIssuesToBookingIssues,
 } from "@/lib/crm/booking-issues";
-import { printedStayTravelers } from "@/lib/crm/document-passengers";
+import { planTravelerInsert, printedStayTravelers, type StayTravelerRow } from "@/lib/crm/document-passengers";
+import { countRealTickets } from "@/lib/crm/ticket-party";
 import {
   applyRoomGuestLabels,
   attachTravelerToHousehold,
   householdMembers,
 } from "@/lib/crm/household";
 import { MAIL_REVIEW_REASON } from "@/lib/crm/ingest-samples";
-import { isPlaceholderTraveler, sameRecordedTraveler } from "@/lib/crm/person-match";
+import { isPlaceholderTraveler } from "@/lib/crm/person-match";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { foldLetters } from "@/lib/crm/text";
 import {
@@ -339,13 +343,17 @@ async function upsertItemsAndTravelers(
   extract: BookingExtract,
   customer: CrmCustomer,
   companions: CrmCompanion[],
-  existingTravelers: { first_name: string | null; last_name: string | null }[],
+  existingTravelers: StayTravelerRow[],
   existingItems: CrmBookingItem[],
   docs: UploadedDoc[],
   emailIngestId?: string,
   opts?: {
     keepSellingPrice?: boolean;
     replacements?: { itemId: string; kind: string; amount: number | null; includeInLedger: boolean }[];
+    /** Rattachement automatique : seuls ces voyageurs sont créés. Tableau vide : personne. */
+    recordTravelers?: { first_name?: string | null; last_name?: string | null }[];
+    /** Ne pas écrire `visible_to_client`. Une carte nouvelle reste masquée. */
+    freezeClientVisibility?: boolean;
   }
 ) {
   const remaining = [...existingItems];
@@ -406,7 +414,7 @@ async function upsertItemsAndTravelers(
       const passengers = mergeFlightPassengers(match.details, details);
       if (passengers.length) {
         details.passengers = passengers;
-        details.ticket_count = passengers.length;
+        details.ticket_count = countRealTickets(passengers) ?? passengers.length;
       }
     }
     let sameBooking = Boolean(match && hotelMatchKeepsStay(match, probe));
@@ -422,6 +430,25 @@ async function upsertItemsAndTravelers(
       match = findBlankStep(pool, probe);
       sameBooking = Boolean(match);
     }
+    let confirmationRef = emptyToNull(item.confirmation_ref);
+    let flightDetails: Record<string, unknown> | null = null;
+    if (kind === "flight" && match) {
+      const planned = planTicketOnExistingCard(match, { ...probe, details });
+      confirmationRef = planned.confirmationRef;
+      flightDetails = planned.details;
+    }
+    if (match && isServiceKind(kind) && !confirmationRef) {
+      confirmationRef = emptyToNull(match.confirmation_ref);
+    }
+    const serviceDetails =
+      match && isServiceKind(kind)
+        ? mergeFilledDetails(
+            match.details && typeof match.details === "object" && !Array.isArray(match.details)
+              ? (match.details as Record<string, unknown>)
+              : null,
+            details
+          )
+        : details;
     const incomingAmount = parseMoney(item.amount);
     const replacing =
       !match && opts?.replacements
@@ -452,25 +479,33 @@ async function upsertItemsAndTravelers(
     const fromMail = Boolean(emailIngestId) && !match;
     const mailDetails = fromMail
       ? {
-          ...details,
+          ...serviceDetails,
           needs_review: true,
           review_reason:
-            typeof details.review_reason === "string" && details.review_reason.trim()
-              ? details.review_reason
+            typeof serviceDetails.review_reason === "string" && serviceDetails.review_reason.trim()
+              ? serviceDetails.review_reason
               : MAIL_REVIEW_REASON,
           client_hidden: true,
         }
-      : details;
+      : serviceDetails;
+    const freeze = Boolean(opts?.freezeClientVisibility);
+    const visible = freeze ? (match ? null : false) : fromMail ? false : cardStaysShown(match, Boolean(opts?.keepSellingPrice));
     const payload = {
       kind,
       title: kept?.title || title,
-      supplier: kept ? kept.supplier : emptyToNull(item.supplier),
-      confirmation_ref: kept ? kept.confirmation_ref : emptyToNull(item.confirmation_ref),
-      start_at: kept ? kept.start_at : emptyToNull(item.start_at),
-      end_at: kept ? kept.end_at : emptyToNull(item.end_at),
+      supplier: kept
+        ? kept.supplier
+        : emptyToNull(item.supplier) || (match && isServiceKind(kind) ? emptyToNull(match.supplier) : null),
+      confirmation_ref: kept ? kept.confirmation_ref : confirmationRef,
+      start_at: kept
+        ? kept.start_at
+        : emptyToNull(item.start_at) || (match && isServiceKind(kind) ? emptyToNull(match.start_at) : null),
+      end_at: kept
+        ? kept.end_at
+        : emptyToNull(item.end_at) || (match && isServiceKind(kind) ? emptyToNull(match.end_at) : null),
       amount,
-      details: kept?.details || mailDetails,
-      visible_to_client: fromMail ? false : cardStaysShown(match, Boolean(opts?.keepSellingPrice)),
+      details: kept?.details || flightDetails || mailDetails,
+      ...(visible === null ? {} : { visible_to_client: visible }),
       source_document_id: sourceDocId(details, docs),
       ...(replacing
         ? { include_in_ledger: replacing.includeInLedger }
@@ -510,13 +545,21 @@ async function upsertItemsAndTravelers(
         if (error) throw dbFailure(error, "Carte non enregistrée.");
         if (inserted?.id) {
           createdIds.push(inserted.id);
+          if (kind === "hotel") {
+            try {
+              const { scheduleHotelWebEnrichment } = await import("@/lib/crm/hotel-web-schedule");
+              scheduleHotelWebEnrichment(String(inserted.id));
+            } catch (scheduleError) {
+              console.warn("[hotel-web]", scheduleError instanceof Error ? scheduleError.message : "planification");
+            }
+          }
           if (replacing) {
             const { error: retireError } = await supabase
               .from("crm_booking_items")
               .update({
                 lifecycle: "superseded",
                 superseded_by: inserted.id,
-                visible_to_client: false,
+                ...(freeze ? {} : { visible_to_client: false }),
                 include_in_ledger: false,
               })
               .eq("id", replacing.itemId)
@@ -526,7 +569,7 @@ async function upsertItemsAndTravelers(
             if (retired) {
               retired.lifecycle = "superseded";
               retired.include_in_ledger = false;
-              retired.visible_to_client = false;
+              if (!freeze) retired.visible_to_client = false;
             }
           }
           remaining.push({
@@ -556,7 +599,7 @@ async function upsertItemsAndTravelers(
   if (!saved && lastError) throw new Error(lastError);
 
   const printed = printedStayTravelers(extract);
-  const incoming = printed.length ? printed : extract.travelers || [];
+  const incoming = opts?.recordTravelers ?? (printed.length ? printed : extract.travelers || []);
   const skipPlaceholders =
     incoming.some((traveler) => {
       const first = emptyToNull(traveler.first_name);
@@ -575,19 +618,43 @@ async function upsertItemsAndTravelers(
     const last = emptyToNull(linked.last_name);
     if (!first && !last) continue;
     if (skipPlaceholders && isPlaceholderTraveler(first, last)) continue;
-    const recorded = { first_name: first, last_name: last };
-    if (existingTravelers.some((row) => sameRecordedTraveler(row, recorded))) continue;
     const companion =
       linked.companion_id ? companions.find((row) => row.id === linked.companion_id) : null;
-    const { error } = await supabase.from("crm_booking_travelers").insert({
-      booking_id: bookingId,
-      companion_id: companion?.id || null,
-      is_account_holder: Boolean(linked.is_account_holder),
+    const slot: StayTravelerRow = {
       first_name: first || companion?.first_name || null,
       last_name: last || companion?.last_name || null,
-    });
+      companion_id: companion?.id || null,
+      is_account_holder: Boolean(linked.is_account_holder),
+    };
+    const plan = planTravelerInsert(existingTravelers, slot);
+    if (plan.action === "skip") continue;
+    if (plan.action === "reuse") {
+      const { error } = await supabase
+        .from("crm_booking_travelers")
+        .update({ first_name: plan.first_name, last_name: plan.last_name })
+        .eq("id", plan.id)
+        .eq("booking_id", bookingId);
+      if (error) throw dbFailure(error, "Voyageur non enregistré.");
+      const row = existingTravelers.find((item) => item.id === plan.id);
+      if (row) {
+        row.first_name = plan.first_name;
+        row.last_name = plan.last_name;
+      }
+      continue;
+    }
+    const { data: inserted, error } = await supabase
+      .from("crm_booking_travelers")
+      .insert({
+        booking_id: bookingId,
+        companion_id: slot.companion_id,
+        is_account_holder: slot.is_account_holder,
+        first_name: slot.first_name,
+        last_name: slot.last_name,
+      })
+      .select("id")
+      .single();
     if (error) throw dbFailure(error, "Voyageur non enregistré.");
-    existingTravelers.push(recorded);
+    existingTravelers.push({ ...slot, id: inserted?.id });
   }
 
   await reconcileCustomerParty(customer.id, supabase);
@@ -686,7 +753,7 @@ export async function persistNewBookingFromExtract(opts: {
       end_date: stayDates.end,
       currency: bookingCurrencyFromReview(extract.currency, extract.items),
       total_amount: totalAmount,
-      notes_client: notes.notes_client,
+      notes_client: null,
       notes_internal: notes.notes_internal,
       visible_to_client: status === "confirmed",
     })
@@ -750,9 +817,13 @@ export async function applyExtractToBooking(opts: {
   keepSellingPrice?: boolean;
   /** Dépôt d’un billet : ne pas créer les frais de billeterie automatiques. */
   skipTicketingFee?: boolean;
+  /** Rattachement automatique : voyageurs autorisés. Absent : la liste lue. Vide : personne. */
+  recordTravelers?: { first_name?: string | null; last_name?: string | null }[];
   replacements?: { itemId: string; kind: string; amount: number | null; includeInLedger: boolean }[];
   /** Un dossier annulé revient Non visible : le client ne le voit pas tant qu’on ne le montre pas. */
   reopenIfCancelled?: boolean;
+  /** Rattachement automatique : ne pas modifier la visibilité des cartes déjà là. */
+  freezeClientVisibility?: boolean;
 }) {
   const admin = createServiceClient();
   const { data: booking } = await admin
@@ -770,7 +841,10 @@ export async function applyExtractToBooking(opts: {
     await Promise.all([
       admin.from("crm_customers").select("*").eq("id", opts.customerId).maybeSingle(),
       admin.from("crm_travel_companions").select("*").eq("customer_id", opts.customerId),
-      admin.from("crm_booking_travelers").select("first_name, last_name").eq("booking_id", opts.bookingId),
+      admin
+        .from("crm_booking_travelers")
+        .select("id, first_name, last_name, companion_id, is_account_holder")
+        .eq("booking_id", opts.bookingId),
       admin.from("crm_booking_items").select("*").eq("booking_id", opts.bookingId),
     ]);
   if (!customer) throw new BookingIssuesError("Client introuvable", [
@@ -810,11 +884,16 @@ export async function applyExtractToBooking(opts: {
     extract,
     customer as CrmCustomer,
     (companions || []) as CrmCompanion[],
-    (travelers || []) as { first_name: string | null; last_name: string | null }[],
+    (travelers || []) as StayTravelerRow[],
     (items || []) as CrmBookingItem[],
     docs,
     opts.emailIngestId,
-    { keepSellingPrice: opts.keepSellingPrice, replacements: opts.replacements }
+    {
+      keepSellingPrice: opts.keepSellingPrice,
+      replacements: opts.replacements,
+      recordTravelers: opts.recordTravelers,
+      freezeClientVisibility: opts.freezeClientVisibility,
+    }
   );
   const patch: Record<string, unknown> = {};
   const chosenTitle = emptyToNull(extract.title);
@@ -870,6 +949,9 @@ export async function applyReplacementToBooking(opts: {
   automatic?: boolean;
   replaceItemId?: string | null;
   skipTicketingFee?: boolean;
+  recordTravelers?: { first_name?: string | null; last_name?: string | null }[];
+  reopenIfCancelled?: boolean;
+  freezeClientVisibility?: boolean;
 }) {
   const admin = createServiceClient();
   const { data: items } = await admin
@@ -897,7 +979,8 @@ export async function applyReplacementToBooking(opts: {
     importTasks: routed.tasks,
     keepSellingPrice: true,
     replacements: plan.replacements,
-    reopenIfCancelled: true,
+    reopenIfCancelled: opts.reopenIfCancelled !== false,
+    freezeClientVisibility: opts.freezeClientVisibility,
   });
 }
 

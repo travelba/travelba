@@ -14,6 +14,7 @@ import {
   type InvoiceDocument,
   type InvoiceWire,
 } from "./invoice-document";
+import { isPendingSepaRow } from "./sepa-hold";
 import { resolveAgencyContentSid } from "./agency-templates-arm";
 import { whatsappContentApproved } from "./twilio-content-sid";
 
@@ -197,7 +198,7 @@ export async function loadInvoiceSnapshot(
   const payerId = stay.billing_customer_id || stay.customer_id;
   if (!payerId) return null;
   const ids = (piece.transaction_ids || []).filter(Boolean);
-  const [{ data: charges }, { data: credits }, { data: payer }, companyResult, settings, savedUrl] = await Promise.all([
+  const [{ data: charges }, { data: credits }, { data: holds }, { data: payer }, companyResult, settings, savedUrl] = await Promise.all([
     ids.length
       ? admin.from("crm_transactions").select("id, label, amount").in("id", ids)
       : Promise.resolve({ data: [] as { id: string; label: string | null; amount: number | null }[] }),
@@ -207,6 +208,13 @@ export async function loadInvoiceSnapshot(
       .eq("booking_id", bookingId)
       .eq("direction", "credit")
       .eq("status", "posted"),
+    admin
+      .from("crm_transactions")
+      .select("amount, currency, status, direction, source, label, external_id, booking_id, customer_id")
+      .eq("customer_id", payerId)
+      .eq("source", "stripe")
+      .eq("direction", "credit")
+      .eq("status", "pending"),
     admin
       .from("crm_customers")
       .select(
@@ -267,6 +275,11 @@ export async function loadInvoiceSnapshot(
     amount: Number(row.amount) || 0,
     currency: row.currency,
   }));
+  const heldSepa = ((holds || []) as { amount?: number | null; currency?: string | null; booking_id?: string | null }[])
+    .filter((row) => isPendingSepaRow(row))
+    .filter((row) => !row.booking_id || row.booking_id === bookingId)
+    .filter((row) => (row.currency || "EUR").toUpperCase() === "EUR")
+    .reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
   const personName = [person?.first_name, person?.last_name].filter(Boolean).join(" ").trim();
   const billTo = firm
     ? addressLines(
@@ -307,6 +320,7 @@ export async function loadInvoiceSnapshot(
     dueDays: settings.dueDays,
     wire,
     stripeUrl,
+    heldSepa,
     payerFirstName: person?.first_name,
     outsideEu: firm ? businessOutsideEu(firm.billing_country) : false,
   });

@@ -341,7 +341,7 @@ test("une réservation annulée ou en échec, ou déjà liée, est refusée", as
   assert.equal(leImportBlocked("booked"), null);
 });
 
-test("deux hôtels qui se suivent restent sur un seul dossier, Con Dao et non Vung Tau", async () => {
+test("Con Dao n’entre pas dans le dossier Hô Chi Minh : un dossier par destination", async () => {
   const { calls, deps } = harness(
     [
       stay({
@@ -372,17 +372,77 @@ test("deux hôtels qui se suivent restent sur un seul dossier, Con Dao et non Vu
     }
   );
   const result = await importLittleEmperorsReservations({ ids: ["le-con-dao"], customerId: CLIENT }, deps);
-  assert.equal(result.cree, false);
-  assert.equal(result.dossier_id, DOSSIER);
+  assert.equal(result.cree, true);
+  assert.equal(result.dossier_id, "dossier-nouveau");
   assert.equal(result.visible_client, false);
   assert.equal(result.message, false);
-  assert.equal(calls.persist.length, 0);
-  assert.equal(calls.apply.length, 1);
-  assert.equal(calls.apply[0].bookingId, DOSSIER);
-  assert.equal(calls.apply[0].visibleToClient, false);
-  assert.equal(calls.apply[0].extract.items[0]?.details?.city, "Con Dao");
-  assert.equal(calls.apply[0].extract.items[0]?.amount, null);
-  assert.doesNotMatch(calls.apply[0].extract.title || "", /Vung Tau/i);
+  assert.equal(calls.persist.length, 1);
+  assert.equal(calls.persist[0].visibleToClient, false);
+  assert.equal(calls.apply.length, 0);
+  assert.equal(calls.persist[0].extract.items[0]?.details?.city, "Con Dao");
+  assert.equal(calls.persist[0].extract.items[0]?.amount, null);
+  assert.equal(calls.persist[0].extract.title, "Con Dao");
+  assert.equal(calls.persist[0].extract.destination, "Con Dao");
+  assert.doesNotMatch(calls.persist[0].extract.title || "", /Vung Tau|Hô Chi Minh/);
+});
+
+test("deux numéros Alpaga donnent deux cartes, et Nice consécutif reste le même dossier", async () => {
+  const split = harness([
+    stay({
+      id: "le-alpaga",
+      confirmation_number: "71986SH009279;71986SH009280",
+      hotel_name: "L'Alpaga",
+      city: "Megève",
+      check_in: "2026-12-13",
+      check_out: "2026-12-18",
+      hotel_id: 71986,
+    }),
+  ]);
+  const created = await importLittleEmperorsReservations({ ids: ["le-alpaga"], customerId: CLIENT }, split.deps);
+  assert.equal(created.cree, true);
+  assert.equal(created.visible_client, false);
+  assert.equal(split.calls.persist[0].visibleToClient, false);
+  assert.equal(split.calls.persist[0].extract.title, "Megève");
+  const hotels = (split.calls.persist[0].extract.items || []).filter((item) => item.kind === "hotel");
+  assert.equal(hotels.length, 2);
+  assert.deepEqual(
+    hotels.map((item) => item.confirmation_ref).sort(),
+    ["71986SH009279", "71986SH009280"]
+  );
+
+  const again = harness(
+    [
+      stay({
+        id: "le-nice-2",
+        confirmation_number: "6755SH018700",
+        hotel_name: "Le Negresco",
+        city: "Nice",
+        check_in: "2026-11-20",
+        check_out: "2026-11-22",
+      }),
+    ],
+    {
+      crm_bookings: [
+        {
+          id: DOSSIER,
+          reference: "TB-2026-0148",
+          customer_id: CLIENT,
+          status: "draft",
+          visible_to_client: false,
+          start_date: "2026-11-18",
+          end_date: "2026-11-20",
+          title: "Nice",
+          destination: "Nice",
+        },
+      ],
+    }
+  );
+  const joined = await importLittleEmperorsReservations({ ids: ["le-nice-2"], customerId: CLIENT }, again.deps);
+  assert.equal(joined.cree, false);
+  assert.equal(joined.dossier_id, DOSSIER);
+  assert.equal(again.calls.persist.length, 0);
+  assert.equal(again.calls.apply.length, 1);
+  assert.equal(again.calls.apply[0].visibleToClient, false);
 });
 
 test("une réservation supprimée volontairement n’est pas recréée", async () => {

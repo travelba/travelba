@@ -1108,7 +1108,7 @@ export function BookingIngest({
               role="alert"
             >
               <p className="font-semibold">
-                Indiquez le prix du document sur chaque hôtel, vol et transfert. Le prix vendu peut rester vide.
+                Indiquez le prix d’achat sur chaque hôtel, vol et transfert. Le prix de vente peut rester vide.
               </p>
               <ul className="mt-1 list-disc pl-4">
                 {priceIssues.map((issue) => (

@@ -86,7 +86,7 @@ Une correspondance (arrivée et départ en avion en moins de 24 h, sans hôtel n
 
 const PROMPT_FLIGHT = `Vol :
 - Aller et retour = DEUX items si les deux sont imprimés (même PDF). Correspondance = DEUX items. Pas de retour fantôme.
-- Plusieurs e-tickets passagers pour le MÊME vol (même n°, même jour) = UN item. Les noms vont dans travelers. Le nombre de billets est compté à la fusion (details.ticket_count). L’agent saisit le prix du billet pour l’aller-retour (aller simple : le prix de ce vol).
+- Plusieurs e-tickets passagers pour le MÊME vol (même n°, même jour) = UN item. Les noms vont dans travelers. details.ticket_count = nombre de vrais numéros de billet (13 chiffres). « AF/ZLFJIN » (code compagnie / PNR) n’est pas un passager. Un prénom ou un nom égal au PNR, ou un nom qui est un code compagnie, n’est pas un voyageur. L’agent saisit le prix du billet pour l’aller-retour (aller simple : le prix de ce vol).
 - confirmation_ref = PNR GDS 6 lettres. details.pnr = réf. compagnie. Jamais l’IATA 8 chiffres agence (20287864, 20255270, 96020293, 20289905).
 - details.airline = transporteur opérant. details.airline_iata = code IATA 2 lettres s’il est imprimé (AF, CM). Sinon null. supplier = émetteur du billet (Hahn Air ≠ Air Panama ; Copa opérant = Copa).
 - details.from / to = IATA. Souvent absent du PDF : Gelabert/Albrook=PAC, Isla Colón=BOC, Enrique Malek=DAV, Tocumen=PTY, Charles-de-Gaulle=CDG, Orly=ORY, Tel Aviv=TLV, Genève=GVA, Heathrow=LHR, Marseille Provence=MRS, Seychelles=SEZ, Dubaï=DXB (Al Maktoum=DWC). Une ville à plusieurs aéroports (Paris, Londres) reste vide, sauf si le nom d’aéroport est imprimé. Dans un même dossier, l’arrivée d’un segment est le départ du suivant. needs_review pour les codes IATA seulement s’ils restent inconnus. Le titre du vol est « ville → ville ».
@@ -108,6 +108,15 @@ const PROMPT_HOTEL = `Hôtel :
 - Confirmation type The Leela : Check In 14-SEP-26 = date only. Ignorer 14:00/12:00 de politique et Pick Up / Drop Off 00:00. TENTATIVE → details.needs_review.
 - Expedia TAAP : le voyageur imprimé va dans travelers et dans customer_first_name / customer_last_name. confirmation_ref = n° de voyage. Une politique d’annulation ne rend pas le document cancelled. Si une phrase d’annulation est imprimée, details.notes = cette phrase, sinon null.
 - Devis Passion Collection / « none are on hold » : document_status=quote, un item hôtel, rooms = les options. Pas de NET.`;
+
+const PROMPT_TAAP_CAR = `Location de voiture Expedia TAAP :
+- UN item kind=car. Jamais un hôtel, même si le mail dit « Confirmation de voyage ».
+- title = véhicule imprimé (« Peugeot 3008 ou similaire »). supplier = loueur s’il est écrit, sinon Expedia TAAP.
+- confirmation_ref = n° de confirmation ou d’itinéraire. Pas un n° de téléphone.
+- start_at / end_at = prise en charge et restitution, avec l’heure si elle est écrite. details.pickup et details.dropoff = les lieux.
+- details.vehicle, details.driver (conducteur), details.phone (téléphone du loueur), details.notes = conditions d’annulation imprimées. Absent = null.
+- details.document_amount = prix payé ou total imprimé. amount = null : ce n’est pas le prix de vente.
+- Ne pas inventer le loueur, l’heure, le téléphone ou l’annulation.`;
 
 const PROMPT_OTHER = `Toucan Discovery = activités (kind=activity). Les « étapes » du cadre ne sont PAS des réservations hôtel.
 Transfert : details.pickup / dropoff. Si « 2 h 30 avant le vol » sans heure clock → details.pickup_note, pas d’heure inventée.
@@ -144,6 +153,7 @@ const FAMILY_PROMPT: Record<IngestFamily, string> = {
   toucan: PROMPT_OTHER,
   maeva: `${PROMPT_HOTEL}\n${PROMPT_MAEVA}`,
   transavia: `${PROMPT_FLIGHT}\n${PROMPT_TRANSAVIA}`,
+  expedia_taap_car: PROMPT_TAAP_CAR,
   expedia_taap: `${PROMPT_HOTEL}\nExpedia TAAP : recopier le voyageur imprimé sur le client et les voyageurs. Ne pas classer cancelled à cause d’une politique d’annulation.`,
   identity: "C’est une pièce d’identité. document_status=identity. Aucun item de réservation.",
   unknown: `${PROMPT_FLIGHT}\n${PROMPT_HOTEL}\n${PROMPT_OTHER}\n${PROMPT_MAEVA}\n${PROMPT_TRANSAVIA}`,

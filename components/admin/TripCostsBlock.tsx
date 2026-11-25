@@ -21,6 +21,7 @@ import {
 } from "@/lib/crm/trip-cost-lines";
 import {
   TRIP_ACCOUNTING_LABELS,
+  saleLineFigures,
   settlementLabel,
   visibleTripState,
   type OutgoingLine,
@@ -41,8 +42,8 @@ function money(cents: number, currency: string | null) {
   }
 }
 
-function marginTone(margin: number) {
-  return margin < 0 ? "text-[var(--admin-red)]" : "text-[var(--admin-navy)]";
+function signedTone(amount: number) {
+  return amount < 0 ? "text-[var(--admin-red)]" : "text-[var(--admin-navy)]";
 }
 
 function stateTone(state: TripAccountingState): "sky" | "gold" | "green" {
@@ -300,24 +301,27 @@ export function TripCostsBlock({
         <ul className="space-y-3 lg:hidden">
           {view.lines.map((line) => {
             const piece = view.invoice.byTransaction[line.transactionId];
+            const figures = saleLineFigures(line);
             return (
               <li key={line.transactionId} className="rounded-2xl border border-border px-3 py-3 text-sm">
                 <p className="break-words font-medium text-[var(--admin-navy)]">{line.label}</p>
                 <dl className={`mt-2 grid gap-2 ${showMargins ? "grid-cols-3" : "grid-cols-1"}`}>
                   <div>
                     <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Vendu</dt>
-                    <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{eur(line.sale)}</dd>
+                    <dd className={`font-semibold tabular-nums ${signedTone(figures.sale)}`}>{eur(figures.sale)}</dd>
                   </div>
                   {showMargins ? (
                     <div>
                       <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Coût</dt>
-                      <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">{eur(line.cost)}</dd>
+                      <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">
+                        {figures.cost == null ? "—" : eur(figures.cost)}
+                      </dd>
                     </div>
                   ) : null}
                   {showMargins ? (
                     <div>
                       <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Marge</dt>
-                      <dd className={`font-semibold tabular-nums ${marginTone(line.margin)}`}>{eur(line.margin)}</dd>
+                      <dd className={`font-semibold tabular-nums ${signedTone(figures.margin)}`}>{eur(figures.margin)}</dd>
                     </div>
                   ) : null}
                 </dl>
@@ -342,9 +346,9 @@ export function TripCostsBlock({
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  showMargins ? <p className="mt-2 text-xs text-muted">Aucun coût rattaché</p> : null
-                )}
+                ) : showMargins && figures.cost != null ? (
+                  <p className="mt-2 text-xs text-muted">Aucun coût rattaché</p>
+                ) : null}
                 <p className="mt-2 text-xs text-muted">
                   {piece ? `Facture n° ${piece.number} · ${piece.printed ? "imprimée" : "pro forma"}` : "Facture —"}
                 </p>
@@ -367,7 +371,7 @@ export function TripCostsBlock({
               {showMargins ? (
                 <div>
                   <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Marge</dt>
-                  <dd className={`tabular-nums ${marginTone(view.totals.margin)}`}>{eur(view.totals.margin)}</dd>
+                  <dd className={`tabular-nums ${signedTone(view.totals.margin)}`}>{eur(view.totals.margin)}</dd>
                 </div>
               ) : null}
             </dl>
@@ -387,6 +391,7 @@ export function TripCostsBlock({
             <tbody className="divide-y divide-border">
               {view.lines.map((line) => {
                 const piece = view.invoice.byTransaction[line.transactionId];
+                const figures = saleLineFigures(line);
                 return (
                   <tr key={line.transactionId} className="align-top">
                     <td className="py-2 pr-3">
@@ -412,17 +417,19 @@ export function TripCostsBlock({
                             </li>
                           ))}
                         </ul>
-                      ) : (
-                        showMargins ? <p className="mt-1 text-xs text-muted">Aucun coût rattaché</p> : null
-                      )}
+                      ) : showMargins && figures.cost != null ? (
+                        <p className="mt-1 text-xs text-muted">Aucun coût rattaché</p>
+                      ) : null}
                     </td>
-                    <td className="py-2 pr-3 text-right tabular-nums text-[var(--admin-navy)]">{eur(line.sale)}</td>
+                    <td className={`py-2 pr-3 text-right tabular-nums ${signedTone(figures.sale)}`}>{eur(figures.sale)}</td>
                     {showMargins ? (
-                      <td className="py-2 pr-3 text-right tabular-nums text-[var(--admin-navy)]">{eur(line.cost)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums text-[var(--admin-navy)]">
+                        {figures.cost == null ? "—" : eur(figures.cost)}
+                      </td>
                     ) : null}
                     {showMargins ? (
-                      <td className={`py-2 pr-3 text-right font-semibold tabular-nums ${marginTone(line.margin)}`}>
-                        {eur(line.margin)}
+                      <td className={`py-2 pr-3 text-right font-semibold tabular-nums ${signedTone(figures.margin)}`}>
+                        {eur(figures.margin)}
                       </td>
                     ) : null}
                     <td className="py-2 text-xs text-muted">
@@ -438,7 +445,7 @@ export function TripCostsBlock({
                 <td className="py-2 pr-3 text-right tabular-nums">{eur(view.totals.sale)}</td>
                 {showMargins ? <td className="py-2 pr-3 text-right tabular-nums">{eur(view.totals.cost)}</td> : null}
                 {showMargins ? (
-                  <td className={`py-2 pr-3 text-right tabular-nums ${marginTone(view.totals.margin)}`}>
+                  <td className={`py-2 pr-3 text-right tabular-nums ${signedTone(view.totals.margin)}`}>
                     {eur(view.totals.margin)}
                   </td>
                 ) : null}

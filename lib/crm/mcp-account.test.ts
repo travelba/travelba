@@ -759,3 +759,101 @@ test("mettre_a_jour_accompagnant renomme la fiche, le séjour et le passeport, s
   );
   assert.equal(db.tables.crm_travel_companions.find((row) => row.id === COMPANION)?.first_name, "Louis Paul");
 });
+
+test("la fidélité et le lien s’enregistrent sur la fiche, sans dossier et sans message", async () => {
+  assert.throws(() => prepareHolderProfile({ id: CLIENT, lien: "conjoint" }), /accompagnateur/);
+  assert.throws(() => prepareHolderProfile({ id: CLIENT, fidelite: { programme: "AAdvantage", numero: "1" } }), /Programme inconnu/);
+  assert.throws(
+    () => prepareHolderProfile({ id: CLIENT, compagnon_id: COMPANION, lien: "cousin" }),
+    /Lien inconnu/
+  );
+  const lien = prepareHolderProfile({ id: CLIENT, compagnon_id: COMPANION, lien: "Épouse" });
+  assert.equal(lien.customer.relationship, "conjoint");
+  assert.equal("loyalty" in lien.customer, false);
+
+  const db = seed({
+    crm_travel_companions: [
+      {
+        id: COMPANION,
+        customer_id: CLIENT,
+        first_name: "Louis",
+        last_name: "Martin",
+        relationship: "ami",
+        loyalty: { grand_voyageur: "GV1" },
+      },
+    ],
+  });
+  const customer = db.tables.crm_customers.find((row) => row.id === CLIENT)!;
+  customer.loyalty = { miles_more: "MM1" };
+  customer.flying_blue = "fb 12";
+  const booking = db.tables.crm_bookings.find((row) => row.id === BOOKING)!;
+  booking.visible_to_client = true;
+
+  await assert.rejects(
+    () => updateHolderProfile({ id: CLIENT, fidelite: { programme: "AAdvantage", numero: "1" } }, asAdmin(db)),
+    /Programme inconnu/
+  );
+  assert.equal(customer.flying_blue, "fb 12");
+  assert.equal(booking.visible_to_client, true);
+
+  const holder = await updateHolderProfile(
+    { id: CLIENT, fidelite: { programme: "Flying Blue", numero: " fb secret 99 " } },
+    asAdmin(db)
+  );
+  assert.equal(holder.notifie, false);
+  assert.equal(holder.titulaire, true);
+  assert.equal(holder.passeport, false);
+  assert.deepEqual(holder.champs, ["fidelite"]);
+  assert.equal(customer.flying_blue, "FBSECRET99");
+  assert.equal((customer.loyalty as { miles_more?: string }).miles_more, "MM1");
+  assert.equal((customer.loyalty as { flying_blue?: string }).flying_blue, "FBSECRET99");
+  assert.equal(JSON.stringify(holder.fidelite).includes("Miles & More"), true);
+  assert.equal(JSON.stringify(db.tables.crm_audit_events).includes("FBSECRET99"), false);
+  assert.equal(booking.visible_to_client, true);
+
+  const both = await updateHolderProfile(
+    {
+      id: CLIENT,
+      fidelite: [
+        { programme: "Marriott Bonvoy", numero: "b 7" },
+        { programme: "ALL Accor", numero: "accor1" },
+      ],
+    },
+    asAdmin(db)
+  );
+  const map = customer.loyalty as Record<string, string | null>;
+  assert.equal(map.miles_more, "MM1");
+  assert.equal(map.flying_blue, "FBSECRET99");
+  assert.equal(map.bonvoy, "B7");
+  assert.equal(map.all_accor, "ACCOR1");
+  assert.equal(customer.flying_blue, "FBSECRET99");
+  assert.equal(both.notifie, false);
+  assert.equal(booking.visible_to_client, true);
+
+  const companion = await updateHolderProfile(
+    {
+      id: CLIENT,
+      compagnon_id: COMPANION,
+      lien: "Conjoint(e)",
+      fidelite: { programme: "Great Members", numero: "cm 3" },
+    },
+    asAdmin(db)
+  );
+  const person = db.tables.crm_travel_companions.find((row) => row.id === COMPANION)!;
+  assert.equal(person.relationship, "conjoint");
+  assert.equal((person.loyalty as { grand_voyageur?: string }).grand_voyageur, "GV1");
+  assert.equal((person.loyalty as { great_members?: string }).great_members, "CM3");
+  assert.equal("flying_blue" in person && person.flying_blue != null, false);
+  assert.equal(companion.lien, "conjoint");
+  assert.equal(companion.notifie, false);
+  assert.equal(companion.passeport, false);
+  assert.equal(db.tables.crm_audit_events.at(-1)?.action, "fiche_accompagnant");
+  assert.equal(customer.flying_blue, "FBSECRET99");
+  assert.equal(booking.visible_to_client, true);
+
+  const cleared = await updateHolderProfile({ id: CLIENT, compagnon_id: COMPANION, lien: "" }, asAdmin(db));
+  assert.equal(person.relationship, null);
+  assert.equal(cleared.lien, null);
+  assert.equal((person.loyalty as { grand_voyageur?: string }).grand_voyageur, "GV1");
+  assert.equal(cleared.notifie, false);
+});

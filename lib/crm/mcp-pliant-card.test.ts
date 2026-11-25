@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parisIsoDate } from "./hotel-arrival";
+import { PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300 } from "./pliant-controls";
 import { bookingCardValidity } from "./manual-stay-card";
 import { runWithMcpAccess } from "./mcp-auth";
 import { blockPliantCard, createPliantCard, readPliantCard, type CardDeps } from "./mcp-pliant-card";
@@ -614,7 +615,7 @@ test("un refus Pliant ne laisse pas sortir le numéro", async () => {
   assert.equal(state.cards.length, 0);
 });
 
-test("le libellé Pliant porte le client, l’hôtel et la référence, pas le titulaire", async () => {
+test("le libellé Pliant porte le client, le nom saisi et la référence, pas le titulaire", async () => {
   const state = baseState();
   state.bookings[0] = { ...state.bookings[0], reference: "TB-2026-0088" };
   state.customers[0] = { id: CLIENT, first_name: "Andréa", last_name: "Bensaïd" };
@@ -638,8 +639,9 @@ test("le libellé Pliant porte le client, l’hôtel et la référence, pas le t
   assert.equal(body.customLastName, "Dupont");
   assert.equal(body.customFirstName.includes("Bensaid"), false);
   assert.equal(body.customLastName.includes("Phulay"), false);
-  assert.equal(body.label, "Bensaid – Phulay Bay – TB-2026-0088");
-  assert.equal(body.purpose, "Bensaid – Phulay Bay · Visa – TB-2026-0088");
+  assert.equal(body.label, "Bensaid – Visa – TB-2026-0088");
+  assert.equal(body.purpose, "Bensaid – Visa · Phulay Bay – TB-2026-0088");
+  assert.equal(body.label.includes("Phulay"), false);
   assert.equal(body.label.includes("Andr-a"), false);
   assert.equal(body.label.includes("Andrea"), false);
   if (!("cree" in created) || !created.cree) assert.fail("carte non créée");
@@ -795,6 +797,35 @@ test("bloquer_carte_pliant accepte la carte connue seulement par le séjour", as
   );
   assert.equal("introuvable" in byId, false);
   assert.deepEqual(again.locks, ["5057d8a7-02d1-4afd-b792-f936f4e7c3bc"]);
+});
+
+test("trois_ds demande le 3DS frictionless, sans config _CC", async () => {
+  const state = baseState();
+  const value = await runWithMcpAccess(CARDS, () =>
+    createPliantCard(
+      { reference: "TB-2026-0082", nom: "Ryanair", plafond: "80", trois_ds: true },
+      fakeAdmin(state),
+      deps(state)
+    )
+  );
+  if (!("cree" in value) || !value.cree) assert.fail("carte non créée");
+  assert.equal(value.card_config, PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300);
+  const body = state.issued[0] as { cardConfig: string };
+  assert.equal(body.cardConfig, PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300);
+  assert.equal(JSON.stringify(state.issued).includes("_CC"), false);
+
+  const plain = baseState();
+  const fallback = await runWithMcpAccess(CARDS, () =>
+    createPliantCard(
+      { reference: "TB-2026-0082", nom: "Hôtel", plafond: "10", trois_ds: false },
+      fakeAdmin(plain),
+      deps(plain)
+    )
+  );
+  if (!("cree" in fallback) || !fallback.cree) assert.fail("carte non créée");
+  assert.equal(fallback.card_config, "PLIANT_SINGLE_USE");
+  assert.equal(JSON.stringify(plain.issued).includes("_CC"), false);
+  assert.equal(JSON.stringify(plain.issued).includes(PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300), false);
 });
 
 test("creer_carte_pliant renvoie le cardConfig réellement émis", async () => {

@@ -27,6 +27,7 @@ export function CoverPickDialog({
   onPick,
   onFile,
   onRegenerate,
+  onUsePlacePhoto,
 }: {
   open: boolean;
   bookingId: string;
@@ -37,6 +38,8 @@ export function CoverPickDialog({
   onPick: (photoId: string) => void;
   onFile: (file: File) => void;
   onRegenerate: () => void;
+  /** Revient à la photo du lieu. Absent tant qu’une couverture choisie n’est pas posée. */
+  onUsePlacePhoto?: () => void;
 }) {
   const titleId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -211,7 +214,7 @@ export function CoverPickDialog({
             ))}
           </ul>
         </div>
-        <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3">
           <label className="cursor-pointer rounded-full bg-[var(--admin-navy)] px-3 py-1.5 text-xs font-semibold text-white">
             Depuis l’ordinateur
             <input
@@ -230,6 +233,16 @@ export function CoverPickDialog({
           >
             Autre version
           </button>
+          {onUsePlacePhoto ? (
+            <button
+              type="button"
+              onClick={onUsePlacePhoto}
+              disabled={busy}
+              className="text-sm font-semibold text-[var(--admin-navy)] disabled:opacity-50"
+            >
+              Photo du lieu
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}

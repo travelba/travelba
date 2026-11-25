@@ -23,7 +23,7 @@ test("cinq entrées puis Réglages ; les agents n’y voient que les modèles et
   );
   assert.deepEqual(
     agent.find((g) => g.id === "reglages")?.items.map((item) => item.label),
-    ["Modèles WhatsApp", "E-mails au client"]
+    ["Modèles WhatsApp", "E-mails au client", "Frais de billeterie"]
   );
   const admin = adminNavGroups({ role: "admin", showExample: true });
   const reglages = admin.find((g) => g.id === "reglages")!;
@@ -128,6 +128,7 @@ test("le titre court est le libellé du menu, ou le titre de la page à onglets"
   assert.equal(adminPageTitle(groups, "/admin/reservations/abc-123"), "Dossier");
   assert.equal(adminPageTitle(groups, "/admin/clients/abc"), "Fiche client");
   assert.equal(adminPageTitle(groups, "/admin/clients", "?filtre=echeance"), "Clients");
+  assert.equal(adminPageTitle(groups, "/admin/inscriptions"), "Inscriptions");
   assert.equal(adminPageTitle(groups, "/admin/recherche", "?q=x"), "Recherche");
   assert.equal(adminPageTitle(groups, "/admin/inconnu"), "Espace agence");
 });

@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   if (!body?.partner_order_id) return ratehawkJson({ error: "Réservation manquante." }, 400);
   try {
     const isolate = auth.staff.role === "ratehawk_cert";
-    const result = await cancelBooking(body.partner_order_id, undefined, undefined, { touchCrm: !isolate });
+    const result = await cancelBooking(body.partner_order_id, auth.supabase, undefined, { touchCrm: !isolate });
     return ratehawkJson(result, result.ok ? 200 : 409);
   } catch (caught) {
     const message = caught instanceof RatehawkConfigError ? caught.message : "L’annulation Ratehawk a échoué.";

@@ -16,6 +16,7 @@ import { notifyServiceRequest } from "@/lib/crm/service-request-mail";
 import { createServiceClient } from "@/lib/supabase/admin";
 import type { CrmBooking, CrmBookingItem, CrmBookingTraveler, CrmCompanion, CrmCustomer } from "@/lib/crm/types";
 import { recordCustomerActivity, serviceActivitySummary } from "@/lib/crm/customer-activity";
+import { clientHidesPrices, stripClientMoneyValue } from "@/lib/crm/client-price-privacy";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -64,7 +65,7 @@ export async function POST(request: Request, ctx: Ctx) {
           destination: b.destination,
         }),
       });
-      return NextResponse.json(cancelled);
+      return NextResponse.json(clientHidesPrices(auth.customer) ? stripClientMoneyValue(cancelled) : cancelled);
     }
     if (body?.addresses === true) {
       if (extra.kind !== "chauffeur") {
@@ -113,7 +114,7 @@ export async function POST(request: Request, ctx: Ctx) {
         }),
         detail: [extra.depart, extra.arrive].map((part) => (part || "").trim()).filter(Boolean).join(" → ") || null,
       });
-      return NextResponse.json(updated);
+      return NextResponse.json(clientHidesPrices(auth.customer) ? stripClientMoneyValue(updated) : updated);
     }
     if (body?.decline === true) {
       const declined = await declineBookingService(admin, {
@@ -190,7 +191,7 @@ export async function POST(request: Request, ctx: Ctx) {
         destination: b.destination,
       }),
     });
-    return NextResponse.json(created);
+    return NextResponse.json(clientHidesPrices(auth.customer) ? stripClientMoneyValue(created) : created);
   } catch (err) {
     if (err instanceof BookingIssuesError) return jsonIssues(err.issues);
     return jsonError(err instanceof Error ? err.message : "Demande impossible", 400);

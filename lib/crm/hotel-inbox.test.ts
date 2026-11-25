@@ -16,14 +16,19 @@ const inboxView = import("../../components/admin/HotelInbox");
 
 import {
   buildHotelInbox,
+  HOTEL_INBOX_LOAD_ERROR,
+  hotelInboxActionCount,
   hotelInboxExcerpt,
   hotelPaymentAmountCents,
   hotelPaymentSignal,
   matchHotelInboxCard,
+  isNoiseHotelTurn,
+  merchantResemblesHotel,
   pliantCardCaption,
   type HotelInboxCard,
   type HotelInboxRequest,
   type HotelInboxTurn,
+  type HotelPaymentEvidence,
 } from "./hotel-inbox";
 import type { HotelPliantSpend } from "./hotel-courrier-board";
 
@@ -110,10 +115,35 @@ test("un lien dans une demande Upgrade entre dans Paiement, avec le montant", ()
   assert.equal(inbox.replies.length, 0);
 });
 
+function evidence(patch: Partial<HotelPaymentEvidence> & Pick<HotelPaymentEvidence, "place">): HotelPaymentEvidence {
+  return {
+    id: "ev-1",
+    source: "pliant",
+    bookingId: "booking-1",
+    bookingItemId: patch.place === "stay" ? "item-1" : null,
+    status: "BOOKED",
+    type: "PURCHASE",
+    billingCents: 124000,
+    amount: null,
+    currency: "EUR",
+    at: "2026-11-03T09:00:00.000Z",
+    merchant: null,
+    cardLabel: null,
+    confidence: null,
+    ...patch,
+  };
+}
+
 test("un paiement déjà reçu sort de Paiement", () => {
-  const paid = buildHotelInbox([request()], [spend()], true, [], [], NOW);
+  const paid = buildHotelInbox([request()], [spend()], true, [card({ last4: "4242424242421234" })], [], NOW);
   assert.deepEqual(paid.payment, []);
   assert.deepEqual(paid.replies, []);
+  assert.equal(paid.paid.length, 0);
+  assert.equal(paid.upcoming.length, 1);
+  assert.equal(paid.upcoming[0]?.paymentState, "paid");
+  assert.match(paid.upcoming[0]?.status || "", /Payé le 03\/11/);
+  assert.match(paid.upcoming[0]?.status || "", /••1234/);
+  assert.equal(paid.unanswered.length, 0);
   const asked = buildHotelInbox(
     [
       request({
@@ -338,6 +368,8 @@ test("la page groupe, replie l’attente et le reste, et compte le séjour termi
         hotelName: "NoMad",
         status: "sent",
         kind: "precheckin",
+        stayStart: "2026-11-18T15:00:00+01:00",
+        itemEnd: "2026-11-20T11:00:00+01:00",
         sentAt: "2026-11-01T08:00:00.000Z",
         turns: [turn({ id: "quiet-out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Pré-enregistrement", countsAsReply: false })],
       }),
@@ -347,6 +379,8 @@ test("la page groupe, replie l’attente et le reste, et compte le séjour termi
         hotelName: "The Ned",
         status: "sent",
         kind: "concierge",
+        stayStart: "2026-11-22T15:00:00+01:00",
+        itemEnd: "2026-11-24T11:00:00+01:00",
         sentAt: "2026-11-12T08:00:00.000Z",
         turns: [turn({ id: "fresh-out", at: "2026-11-12T08:00:00.000Z", direction: "out", body: "Concierge", countsAsReply: false })],
       }),
@@ -375,21 +409,597 @@ test("la page groupe, replie l’attente et le reste, et compte le séjour termi
     NOW
   );
   assert.equal(inbox.payment.length, 1);
-  assert.equal(inbox.unanswered.some((row) => row.itemId === "quiet"), true);
-  assert.match(inbox.unanswered.find((row) => row.itemId === "quiet")?.status || "", /Sans réponse depuis/);
-  assert.equal(inbox.waiting.some((row) => row.itemId === "fresh"), true);
+  assert.equal(inbox.upcoming.some((row) => row.itemId === "quiet"), true);
+  assert.match(inbox.upcoming.find((row) => row.itemId === "quiet")?.status || "", /Sans réponse depuis/);
+  assert.equal(inbox.upcoming.some((row) => row.itemId === "fresh"), true);
+  assert.equal(inbox.upcoming.find((row) => row.itemId === "fresh")?.status, "En attente");
+  assert.equal(inbox.unanswered.length + inbox.waiting.length, 0);
   assert.equal(inbox.endedUnpaid[0]?.itemId, "ended");
   const { HotelInbox } = await inboxView;
   const html = renderToStaticMarkup(createElement(HotelInbox, { inbox }));
-  assert.ok(html.indexOf("Paiement Pliant à faire") < html.indexOf("Autres réponses à traiter") || !html.includes("Autres réponses à traiter"));
-  assert.ok(html.indexOf("Paiement Pliant à faire") < html.indexOf("Envoyé sans réponse"));
-  assert.ok(html.indexOf("Envoyé sans réponse") < html.indexOf("1 en attente"));
+  assert.ok(html.indexOf("Paiement Pliant à faire") < html.indexOf("Séjours à venir et en cours"));
+  assert.ok(html.indexOf("NoMad") < html.indexOf("The Ned"));
+  assert.equal(html.includes("<details"), true);
+  assert.equal(/<section aria-labelledby="hotels-a-venir"/.test(html), true);
   assert.match(html, /séjour terminé avec un lien de paiement jamais réglé/);
   assert.match(html, /TB-2026-0142/);
   assert.match(html, /Camille Martin/);
   assert.match(html, /Répondre/);
   assert.match(html, /Relancer/);
   assert.match(html, /Ouvrir le dossier/);
+});
+
+test("Bangkok Marriott : à venir et payé, visible avec le badge, sans masquer le fil", () => {
+  const inbox = buildHotelInbox(
+    [
+      request({
+        hotelName: "Bangkok Marriott",
+        reference: "TB-2026-0137",
+        stayStart: "2026-12-01T15:00:00+07:00",
+        itemEnd: "2026-12-05T11:00:00+07:00",
+        turns: [
+          turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Le lien ?", countsAsReply: false }),
+          turn({
+            id: "link",
+            at: "2026-11-02T09:00:00.000Z",
+            direction: "in",
+            body: "Payment link enclosed.",
+            link: "https://pay.hotel.test/bkk",
+          }),
+          turn({ id: "file", at: "2026-11-04T09:00:00.000Z", direction: "in", body: "Please kindly see the attached file." }),
+        ],
+      }),
+    ],
+    [spend({ bookedAt: "2026-11-03T09:00:00.000Z" })],
+    true,
+    [],
+    [],
+    NOW
+  );
+  assert.equal(inbox.payment.length, 0);
+  assert.equal(inbox.replies.length, 0);
+  assert.equal(inbox.rest.length, 0);
+  assert.equal(inbox.paid.length, 0);
+  assert.equal(inbox.upcoming.length, 1);
+  assert.equal(inbox.upcoming[0]?.paymentState, "paid");
+  assert.match(inbox.upcoming[0]?.paidLabel || "", /Payé le/);
+  assert.match(inbox.upcoming[0]?.status || "", /Payé le/);
+});
+
+test("Fairmont Singapore : en cours du 19 au 22/11, classé et payé, reste visible", () => {
+  const during = Date.parse("2026-11-20T12:00:00+01:00");
+  const inbox = buildHotelInbox(
+    [
+      request({
+        hotelName: "Fairmont Singapore",
+        reference: "TB-2026-0079",
+        classifiedAt: "2026-11-18T09:00:00.000Z",
+        stayStart: "2026-11-19T15:00:00+08:00",
+        itemEnd: "2026-11-22T11:00:00+08:00",
+        bookingEnd: "2026-11-22",
+        turns: [
+          turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({
+            id: "in",
+            at: "2026-11-02T09:00:00.000Z",
+            direction: "in",
+            body: "Payment link enclosed.",
+            link: "https://pay.hotel.test/fm",
+          }),
+        ],
+      }),
+    ],
+    [spend()],
+    true,
+    [],
+    [],
+    during
+  );
+  assert.equal(inbox.payment.length, 0);
+  assert.equal(inbox.replies.length, 0);
+  assert.equal(inbox.rest.length, 0);
+  assert.equal(inbox.paid.length, 0);
+  assert.equal(inbox.upcoming.length, 1);
+  assert.equal(inbox.upcoming[0]?.paymentState, "paid");
+  assert.match(inbox.upcoming[0]?.status || "", /Payé le/);
+  assert.match(inbox.upcoming[0]?.stayLabel || "", /19/);
+  assert.match(inbox.upcoming[0]?.stayLabel || "", /22/);
+});
+
+test("Park Hyatt Saigon : PENDING proposé en confiance haute, sans carte du dossier", () => {
+  assert.equal(merchantResemblesHotel("ONEPAYJ*PARK HYATT SAI", "Park Hyatt Saigon"), true);
+  assert.equal(merchantResemblesHotel("ONEPAYJ*PARK HYATT SAI", "Park Hyatt Phu Quoc"), false);
+  assert.equal(merchantResemblesHotel("ONEPAYJ*PARK HYATT PHU", "Park Hyatt Phu Quoc"), true);
+  assert.equal(merchantResemblesHotel("ONEPAYJ*PARK HYATT PHU", "Park Hyatt Saigon"), false);
+  assert.equal(merchantResemblesHotel("HYATT", "Park Hyatt Saigon"), false);
+  assert.equal(merchantResemblesHotel("PARK HYATT", "Park Hyatt Phu Quoc"), false);
+  const proposal = evidence({
+    id: "onepay",
+    place: "proposal",
+    status: "PENDING",
+    merchant: "ONEPAYJ*PARK HYATT SAI",
+    confidence: "haute",
+    billingCents: 2500000,
+    cardLabel: null,
+  });
+  const inbox = buildHotelInbox(
+    [
+      request({
+        hotelName: "Park Hyatt Saigon",
+        reference: "TB-2026-0148",
+        turns: [
+          turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({
+            id: "in",
+            at: "2026-11-02T09:00:00.000Z",
+            direction: "in",
+            body: "Please complete the payment link.",
+            link: "https://pay.hotel.test/sgn",
+          }),
+        ],
+      }),
+    ],
+    [],
+    true,
+    [],
+    [],
+    NOW,
+    [proposal]
+  );
+  assert.equal(inbox.payment.length, 0);
+  assert.equal(inbox.unanswered.length, 0);
+  assert.equal(inbox.paid.length, 0);
+  assert.equal(inbox.upcoming[0]?.paymentState, "probable");
+  assert.equal(inbox.upcoming[0]?.status, "Payé probablement, à pointer");
+  const low = buildHotelInbox(
+    [
+      request({
+        hotelName: "Park Hyatt Saigon",
+        turns: [
+          turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({
+            id: "in",
+            at: "2026-11-02T09:00:00.000Z",
+            direction: "in",
+            body: "Payment link enclosed.",
+            link: "https://pay.hotel.test/sgn",
+          }),
+        ],
+      }),
+    ],
+    [],
+    true,
+    [],
+    [],
+    NOW,
+    [{ ...proposal, confidence: "moyenne" }]
+  );
+  assert.equal(low.payment.length, 1);
+  assert.equal(low.paid.length, 0);
+  assert.equal(low.upcoming.length, 0);
+});
+
+test("Park Hyatt Phu Quoc : ONEPAYJ*PARK HYATT PHU en confiance haute, à pointer", async () => {
+  const proposal = evidence({
+    id: "phu-quoc",
+    place: "proposal",
+    status: "PENDING",
+    merchant: "ONEPAYJ*PARK HYATT PHU",
+    confidence: "haute",
+    billingCents: 346595800,
+    currency: "VND",
+    cardLabel: null,
+    last4: "6438",
+  });
+  const inbox = buildHotelInbox(
+    [
+      request({
+        hotelName: "Park Hyatt Phu Quoc",
+        reference: "TB-2026-0148",
+        kind: "payment_link",
+        itemId: "8fbc496a",
+        stayStart: "2026-12-24T15:00:00+07:00",
+        itemEnd: "2026-12-31T11:00:00+07:00",
+        turns: [
+          turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({
+            id: "in",
+            at: "2026-11-02T09:00:00.000Z",
+            direction: "in",
+            body: "Please complete the payment link.",
+            link: "https://pay.hotel.test/pqc",
+          }),
+        ],
+      }),
+      request({
+        id: "letter-sgn",
+        hotelName: "Park Hyatt Saigon",
+        itemId: "6f30388b",
+        kind: "payment_link",
+        stayStart: "2026-12-31T15:00:00+07:00",
+        itemEnd: "2027-01-01T11:00:00+07:00",
+        turns: [
+          turn({ id: "out-sgn", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({
+            id: "in-sgn",
+            at: "2026-11-02T09:00:00.000Z",
+            direction: "in",
+            body: "Please complete the payment link.",
+            link: "https://pay.hotel.test/sgn",
+          }),
+        ],
+      }),
+    ],
+    [],
+    true,
+    [],
+    [],
+    NOW,
+    [proposal]
+  );
+  const phu = inbox.upcoming.find((row) => row.hotel === "Park Hyatt Phu Quoc");
+  const saigon = inbox.payment.find((row) => row.hotel === "Park Hyatt Saigon") || inbox.upcoming.find((row) => row.hotel === "Park Hyatt Saigon");
+  assert.equal(phu?.paymentState, "probable");
+  assert.equal(phu?.status, "Payé probablement, à pointer");
+  assert.notEqual(saigon?.paymentState, "probable");
+  assert.equal(saigon?.paymentState, "unpaid");
+  const { HotelInbox } = await inboxView;
+  const html = renderToStaticMarkup(createElement(HotelInbox, { inbox }));
+  assert.match(html, /Payé probablement, à pointer/);
+  assert.match(html, /Park Hyatt Phu Quoc/);
+  assert.equal(html.includes("Park Hyatt Phu Quoc") && html.slice(html.indexOf("Park Hyatt Phu Quoc"), html.indexOf("Park Hyatt Phu Quoc") + 800).includes(">À payer<"), false);
+});
+
+test("une newsletter World of Hyatt n’est pas une réponse à traiter", async () => {
+  const newsletter = turn({
+    id: "news",
+    at: "2026-11-19T04:18:00.000Z",
+    direction: "in",
+    from: "World of Hyatt <worldofhyatt@loyalty.hyatt.com>",
+    body: `${"https://click.loyalty.hyatt.com/track/pixel?u=1 ".repeat(40)}\nYou're receiving this email. Updates Coming to World of Hyatt in 2027.`,
+    countsAsReply: true,
+  });
+  assert.equal(isNoiseHotelTurn(newsletter), true);
+  const inbox = buildHotelInbox(
+    [
+      request({
+        hotelName: "Park Hyatt Phu Quoc",
+        kind: "payment_link",
+        status: "sent",
+        turns: [
+          turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          newsletter,
+        ],
+      }),
+    ],
+    [],
+    true,
+    [],
+    [],
+    NOW
+  );
+  assert.equal(inbox.replies.length, 0);
+  assert.equal(inbox.payment.length, 0);
+  const { HotelInbox } = await inboxView;
+  const html = renderToStaticMarkup(createElement(HotelInbox, { inbox }));
+  assert.equal(html.includes("Réponse à traiter"), false);
+});
+
+test("Park Hyatt Phu Quoc : seulement nos envois, le paiement est quand même lu", () => {
+  const inbox = buildHotelInbox(
+    [
+      request({
+        hotelName: "Park Hyatt Phu Quoc",
+        status: "sent",
+        kind: "payment_link",
+        turns: [turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false })],
+      }),
+    ],
+    [spend()],
+    true,
+    [],
+    [],
+    NOW
+  );
+  assert.equal(inbox.payment.length, 0);
+  assert.equal(inbox.unanswered.length, 0);
+  assert.equal(inbox.waiting.length, 0);
+  assert.equal(inbox.paid.length, 0);
+  assert.match(inbox.upcoming[0]?.status || "", /Payé le/);
+});
+
+test("Park Hyatt Phu Quoc : sans dépense, le badge À payer", async () => {
+  const inbox = buildHotelInbox(
+    [
+      request({
+        hotelName: "Park Hyatt Phu Quoc",
+        status: "sent",
+        kind: "payment_link",
+        stayStart: "2026-12-02T15:00:00+07:00",
+        itemEnd: "2026-12-06T11:00:00+07:00",
+        turns: [turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false })],
+      }),
+    ],
+    [],
+    true,
+    [],
+    [],
+    NOW
+  );
+  assert.equal(inbox.payment.length, 0);
+  assert.equal(inbox.paid.length, 0);
+  assert.equal(inbox.upcoming[0]?.paymentState, "unpaid");
+  assert.equal(inbox.upcoming[0]?.status.startsWith("Sans réponse") || inbox.upcoming[0]?.status === "En attente", true);
+  const { HotelInbox } = await inboxView;
+  const html = renderToStaticMarkup(createElement(HotelInbox, { inbox }));
+  assert.match(html, /Séjours à venir et en cours/);
+  assert.match(html, /À payer/);
+  assert.match(html, /text-\[#9f1d1d\]/);
+  assert.equal(html.includes("Paiement Pliant à faire"), false);
+});
+
+test("un coût Revolut rattaché au séjour paie le fil, même sans mot de paiement", () => {
+  const inbox = buildHotelInbox(
+    [
+      request({
+        status: "sent",
+        turns: [turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false })],
+      }),
+    ],
+    [],
+    true,
+    [],
+    [],
+    NOW,
+    [evidence({ source: "revolut", place: "stay", status: null, billingCents: null, amount: 980, currency: "EUR" })]
+  );
+  assert.equal(inbox.unanswered.length, 0);
+  assert.equal(inbox.paid.length, 0);
+  assert.match(inbox.upcoming[0]?.status || "", /Payé le/);
+  assert.match(inbox.upcoming[0]?.status || "", /980/);
+});
+
+test("une dépense du dossier sur la carte dédiée paie l’hôtel", () => {
+  const inbox = buildHotelInbox(
+    [
+      request({
+        hotelName: "Fairmont Singapore",
+        turns: [
+          turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({
+            id: "in",
+            at: "2026-11-02T09:00:00.000Z",
+            direction: "in",
+            body: "Payment link enclosed.",
+            link: "https://pay.hotel.test/fm",
+          }),
+        ],
+      }),
+    ],
+    [],
+    true,
+    [],
+    [],
+    NOW,
+    [
+      evidence({
+        place: "dossier",
+        merchant: "ADYEN NV",
+        cardLabel: "Martin – Fairmont Singapore",
+        billingCents: 210000,
+      }),
+    ]
+  );
+  assert.equal(inbox.payment.length, 0);
+  assert.equal(inbox.paid.length, 0);
+  assert.match(inbox.upcoming[0]?.status || "", /Payé le/);
+  const elsewhere = buildHotelInbox(
+    [
+      request({
+        turns: [
+          turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({
+            id: "in",
+            at: "2026-11-02T09:00:00.000Z",
+            direction: "in",
+            body: "Payment link enclosed.",
+            link: "https://pay.hotel.test/rw",
+          }),
+        ],
+      }),
+    ],
+    [spend({ bookingItemId: "autre-hotel" })],
+    true,
+    [],
+    [],
+    NOW
+  );
+  assert.equal(elsewhere.payment.length, 1);
+  assert.equal(elsewhere.paid.length, 0);
+});
+
+test("Park Hyatt Saigon : un PENDING non nul affiche le badge autorisé", () => {
+  const pending = buildHotelInbox(
+    [
+      request({
+        hotelName: "Park Hyatt Saigon",
+        reference: "TB-2026-0148",
+        status: "sent",
+        turns: [turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false })],
+      }),
+    ],
+    [spend({ status: "PENDING", billingCents: 50000 })],
+    true,
+    [],
+    [],
+    NOW
+  );
+  assert.equal(pending.payment.length, 0);
+  assert.equal(pending.unanswered.length, 0);
+  assert.equal(pending.paid.length, 0);
+  assert.equal(pending.upcoming[0]?.paymentState, "authorized");
+  assert.equal(pending.upcoming[0]?.status, "Paiement autorisé, en attente Pliant");
+  assert.equal(pending.upcoming[0]?.paidLabel, "Paiement autorisé, en attente Pliant");
+  const declined = buildHotelInbox(
+    [
+      request({
+        turns: [
+          turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({
+            id: "in",
+            at: "2026-11-02T09:00:00.000Z",
+            direction: "in",
+            body: "Payment link enclosed.",
+            link: "https://pay.hotel.test/no",
+          }),
+        ],
+      }),
+    ],
+    [spend({ status: "DECLINED" })],
+    true,
+    [],
+    [],
+    NOW
+  );
+  assert.equal(declined.payment.length, 1);
+  assert.equal(declined.paid.length, 0);
+});
+
+test("une facture d’un autre montant rouvre le fil, pas vers Paiement à faire", () => {
+  const other = buildHotelInbox(
+    [
+      request({
+        turns: [
+          turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({
+            id: "bill",
+            at: "2026-11-04T09:00:00.000Z",
+            direction: "in",
+            body: "Please find the invoice for 2 400,00 €.",
+          }),
+        ],
+      }),
+    ],
+    [spend({ bookedAt: "2026-11-03T09:00:00.000Z" })],
+    true,
+    [],
+    [],
+    NOW
+  );
+  assert.equal(other.payment.length, 0);
+  assert.equal(other.replies.length, 1);
+  const same = buildHotelInbox(
+    [
+      request({
+        turns: [
+          turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({ id: "bill", at: "2026-11-04T09:00:00.000Z", direction: "in", body: "Invoice 1 240,00 €." }),
+        ],
+      }),
+    ],
+    [spend({ bookedAt: "2026-11-03T09:00:00.000Z", billingCents: 124000 })],
+    true,
+    [],
+    [],
+    NOW
+  );
+  assert.equal(same.payment.length, 0);
+  assert.equal(same.replies.length, 0);
+  assert.equal(same.paid.length, 0);
+  assert.equal(same.upcoming.length, 1);
+  assert.equal(same.upcoming[0]?.paymentState, "paid");
+});
+
+test("un séjour payé à venir ne propose pas de relance, un séjour passé et payé est replié", async () => {
+  const open = buildHotelInbox(
+    [
+      request({
+        status: "sent",
+        stayStart: "2026-12-01T15:00:00+01:00",
+        itemEnd: "2026-12-04T11:00:00+01:00",
+        turns: [turn({ id: "out", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false })],
+      }),
+    ],
+    [spend()],
+    true,
+    [],
+    [],
+    NOW
+  );
+  const { HotelInbox } = await inboxView;
+  const openHtml = renderToStaticMarkup(createElement(HotelInbox, { inbox: open }));
+  const visible = openHtml.split("Séjours à venir et en cours")[1] || "";
+  assert.match(openHtml, /Payé le/);
+  assert.equal(open.upcoming.length, 1);
+  assert.equal(open.paid.length, 0);
+  assert.equal(visible.includes("Relancer"), false);
+  assert.equal(visible.includes("Répondre"), false);
+  assert.equal(openHtml.includes("Paiement Pliant à faire"), false);
+  assert.equal(/<section aria-labelledby="hotels-a-venir"/.test(openHtml), true);
+
+  const past = buildHotelInbox(
+    [
+      request({
+        status: "sent",
+        stayStart: "2026-10-01T15:00:00+01:00",
+        itemEnd: "2026-10-04T11:00:00+01:00",
+        bookingEnd: "2026-10-04",
+        turns: [turn({ id: "out", at: "2026-09-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false })],
+      }),
+    ],
+    [spend({ bookedAt: "2026-09-02T09:00:00.000Z" })],
+    true,
+    [],
+    [],
+    NOW
+  );
+  assert.equal(past.upcoming.length, 0);
+  assert.equal(past.paid.length, 1);
+  assert.match(past.paid[0]?.status || "", /Payé le/);
+  const pastHtml = renderToStaticMarkup(createElement(HotelInbox, { inbox: past }));
+  assert.match(pastHtml, /séjour terminé payé/);
+  assert.equal(/<details class="group\/paid[^"]*" open/.test(pastHtml), false);
+  assert.equal(pastHtml.includes("Séjours à venir et en cours"), false);
+  const folded = pastHtml.split("séjour terminé payé")[1] || "";
+  assert.equal(folded.includes("Relancer"), false);
+});
+
+test("l’agence a écrit en dernier après une vraie réponse : Le reste, replié", async () => {
+  const inbox = buildHotelInbox(
+    [
+      request({
+        hotelName: "Park Hyatt Saigon",
+        turns: [
+          turn({ id: "out-1", at: "2026-11-01T08:00:00.000Z", direction: "out", body: "Bonjour", countsAsReply: false }),
+          turn({ id: "in-1", at: "2026-11-02T09:00:00.000Z", direction: "in", body: "Nous avons bien noté votre demande.", link: null }),
+          turn({ id: "out-2", at: "2026-11-03T10:00:00.000Z", direction: "out", body: "Merci, c’est noté.", countsAsReply: false }),
+        ],
+      }),
+    ],
+    [],
+    true,
+    [],
+    [],
+    NOW
+  );
+  assert.equal(inbox.rest.length, 1);
+  assert.equal(inbox.rest[0]?.lastWriter, "L'agence");
+  assert.equal(inbox.payment.length + inbox.replies.length + inbox.unanswered.length + inbox.waiting.length, 0);
+  assert.equal(hotelInboxActionCount(inbox), 0);
+  const { HotelInbox } = await inboxView;
+  const html = renderToStaticMarkup(createElement(HotelInbox, { inbox }));
+  assert.match(html, /Le reste · 1/);
+  assert.match(html, /Park Hyatt Saigon/);
+  assert.equal(/<details class="group\/rest[^"]*" open/.test(html), false);
+});
+
+test("une lecture impossible montre le bandeau et n’annonce pas une boîte vide", async () => {
+  const inbox = { ...buildHotelInbox([], [], true, [], [], NOW), loadError: HOTEL_INBOX_LOAD_ERROR };
+  const { HotelInbox } = await inboxView;
+  const html = renderToStaticMarkup(createElement(HotelInbox, { inbox }));
+  assert.match(html, /Lecture des courriers impossible, réessayez/);
+  assert.equal(html.includes("Rien à traiter pour le moment"), false);
+  assert.equal(html.includes("Aucun envoi en attente"), false);
 });
 
 test("un fil classé reste dans Le reste", () => {

@@ -1,5 +1,5 @@
 /**
- * Cadence des 15 crons Vercel. L’heure est UTC.
+ * Cadence des crons Vercel. L’heure est UTC.
  * Les minutes sont décalées : plus rien ne part ensemble à :00, :15, :30 et :45.
  * Le détail de chaque choix est `reason`. Le test compare `schedule` à vercel.json.
  */
@@ -70,10 +70,28 @@ export const CRON_CADENCE: CronCadence[] = [
       "L’arrivée à l’hôtel et le ménage des cartes peuvent attendre 30 minutes. Les fils d’hôtel sont déjà relus par l’ingestion Gmail, toutes les 5 minutes.",
   },
   {
+    path: "/api/cron/hotel-charge",
+    schedule: "9,24,39,54 * * * *",
+    reason:
+      "Un seul lien hôtel par passage, avec Chromium. Toutes les 15 minutes, à la minute 9, à l’écart des autres lectures.",
+  },
+  {
     path: "/api/cron/flight-status",
     schedule: "5,15,25,35,45,55 * * * *",
     reason:
       "Le cron passe toutes les 10 minutes pour les départs proches. pollDue laisse les vols lointains à 12 h puis 4 h, et coupe la relecture rapprochée après le décollage. Décalé à la minute 5 pour ne pas tomber avec les autres.",
+  },
+  {
+    path: "/api/cron/rail-tickets",
+    schedule: "9,19,29,39,49,59 * * * *",
+    reason:
+      "Le billet de train part dans les 75 minutes avant l’heure civile du départ. Toutes les 10 minutes, un passage raté est rattrapé avant le train. Décalé à la minute 9 pour ne pas partir avec le statut des vols.",
+  },
+  {
+    path: "/api/cron/travel-notices",
+    schedule: "8 * * * *",
+    reason:
+      "Rappels d’enregistrement, de porte, de départ et de solde. Une fois par heure suffit : la clé empêche un second envoi, et les heures calmes de Paris sont décidées dans le plan, pas dans la cadence.",
   },
   {
     path: "/api/cron/esta",
@@ -95,5 +113,11 @@ export const CRON_CADENCE: CronCadence[] = [
     path: "/api/cron/ratehawk-content",
     schedule: "10 3 * * *",
     reason: "Le catalogue Ratehawk reste nocturne, une fois par jour, à 3 h 10 UTC, avant la matinée de l’agence.",
+  },
+  {
+    path: "/api/cron/club-new-year",
+    schedule: "30 23 31 12 *",
+    reason:
+      "Une fois par an : 31 décembre 23 h 30 UTC, soit le 1er janvier à 0 h 30, heure de Paris. Sans NEW_YEAR_EXTENSION_ENABLED=1, le passage ne fait que lister.",
   },
 ];

@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import { emptyBookingExtract, type BookingExtract } from "./ingest-types";
 import {
   cancellationApplyPlan,
+  confirmationLookupTokens,
+  confirmationRefsAlign,
   clientIsMailTraveler,
   decideEmailIngestAction,
   destinationsOverlap,
@@ -12,7 +14,6 @@ import {
   lastNamesClose,
   mergeBookingSuggestions,
   referenceTokens,
-  HOTEL_STAY_REASON,
   suggestBookingByDestination,
   suggestBookingByHotelStay,
   suggestBookingByReference,
@@ -312,6 +313,33 @@ describe("suggestBookingByReference", () => {
     const res = suggestBookingByReference(extract, bookings, itemsByBooking);
     assert.equal(res.autoBookingId, "b2");
     assert.equal(res.candidates[0].reason, "Référence fournisseur");
+  });
+
+  it("ne propose pas le dossier d’une autre chambre du même hôtel", () => {
+    const extract = extractWith({
+      items: [
+        {
+          kind: "hotel",
+          title: "Le Negresco",
+          supplier: "Little Emperors",
+          confirmation_ref: "6755SH018675",
+          start_at: "2026-11-18",
+          end_at: "2026-11-20",
+          amount: null,
+          details: { city: "Nice", hotel_name: "Le Negresco" },
+        },
+      ],
+    });
+    const res = suggestBookingByReference(
+      extract,
+      bookings,
+      new Map([["b1", [{ confirmation_ref: "6755SH018666" }]]])
+    );
+    assert.equal(res.autoBookingId, null);
+    assert.equal(res.candidates.length, 0);
+    assert.equal(confirmationRefsAlign("6755SH018675", "6755SH018666"), false);
+    assert.deepEqual(confirmationLookupTokens("6755SH018675"), ["6755sh018675"]);
+    assert.equal(confirmationLookupTokens("6755SH018675").includes("6755"), false);
   });
 
   it("prend 64570 et 64570SH046795 pour la même confirmation", () => {
@@ -1199,30 +1227,20 @@ describe("suggestBookingByHotelStay", () => {
     ],
   });
 
-  it("relie le dossier quand le numéro diffère mais l’hôtel, les dates et le voyageur sont les mêmes", () => {
+  it("ne relie pas le dossier quand le numéro diffère, même hôtel, mêmes dates et même voyageur", () => {
     const suggestion = suggestBookingByHotelStay(mail, [nobu], [card], customers);
-    assert.equal(suggestion.autoBookingId, "b1");
-    assert.equal(suggestion.candidates[0]?.reason, HOTEL_STAY_REASON);
-    assert.equal(suggestion.candidates[0]?.score, 91);
-    const decision = decideEmailIngestAction({
-      extract: mail,
-      suggestedCustomerId: "c1",
-      suggestedBookingId: suggestion.autoBookingId,
-      candidates: suggestion.candidates.map((row) => ({
-        customer_id: row.customer_id || "",
-        booking_id: row.booking_id,
-        label: row.label,
-        reason: row.reason,
-        score: row.score,
-      })),
-    });
-    assert.equal(decision.kind, "apply");
+    assert.equal(suggestion.autoBookingId, null);
+    assert.equal(suggestion.candidates.length, 0);
   });
 
   it("laisse en relecture deux dossiers du même séjour", () => {
     const other = { ...nobu, id: "b2", reference: "TB-2" };
+    const sameNumber = extractWith({
+      ...mail,
+      items: [{ ...mail.items[0], confirmation_ref: "HTL99881" }],
+    });
     const suggestion = suggestBookingByHotelStay(
-      mail,
+      sameNumber,
       [nobu, other],
       [card, { ...card, booking_id: "b2" }],
       customers
@@ -1272,17 +1290,21 @@ describe("suggestBookingByHotelStay", () => {
   });
 
   it("reconnaît le voyageur sur la carte ou le nom d’usage", () => {
+    const same = extractWith({
+      ...mail,
+      items: [{ ...mail.items[0], confirmation_ref: "HTL99881" }],
+    });
     const guestCard = {
       ...card,
       details: { ...card.details, guests: "Jean Martin" },
     };
     const marieBooking = { ...nobu, customer_id: "c2" };
     assert.equal(
-      suggestBookingByHotelStay(mail, [marieBooking], [guestCard], customers).autoBookingId,
+      suggestBookingByHotelStay(same, [marieBooking], [guestCard], customers).autoBookingId,
       "b1"
     );
     const usage = suggestBookingByHotelStay(
-      mail,
+      same,
       [nobu],
       [card],
       [{ id: "c1", first_name: "Jean", last_name: "Dupont", usage_name: "Martin", company_name: null, email: "" }]

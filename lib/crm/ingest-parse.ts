@@ -4,6 +4,13 @@ import { redactIngestText } from "./ingest-redact";
 import { detectCancellationDocument, detectRemovedPassengers, joinAgencyNotes, parseRefundAmount, type BookingExtract } from "./ingest-types";
 import { isPlaceholderTraveler } from "./person-match";
 import { findMatchingItem, mergeExtractItems } from "./item-match";
+import {
+  collectTicketTokens,
+  countRealTickets,
+  isAirlinePnrPair,
+  passengerIsInvented,
+  realTicketList,
+} from "./ticket-party";
 import { tripCityPlan } from "./layover";
 import { TENTATIVE_REVIEW_REASON } from "./review-doubt";
 
@@ -45,8 +52,9 @@ const MONTHS: Record<string, string> = {
   march: "03",
   mars: "03",
   apr: "04",
-  april: "04",
   avril: "04",
+  avr: "04",
+  april: "04",
   may: "05",
   mai: "05",
   jun: "06",
@@ -254,7 +262,9 @@ function parseAmadeusSegment(
   const cabin = block.match(/([A-Za-z]+) \(([A-Z])\)\s*Classe/i);
   const bags = block.match(/Bagages autoris[eé]s\s+(\d+PC)/i);
   const terminal = (dep?.[2] || "").match(/Terminal\s*:\s*([A-Z0-9]+)/i);
-  const seat = block.match(/Si[eè]ge\s+(\d{1,2}[A-Z])\b/i);
+  const flightAt = block.search(new RegExp(`\\b${operated[2]}\\s+${operated[3]}\\b`));
+  const afterFlight = flightAt >= 0 ? block.slice(flightAt) : block;
+  const seat = afterFlight.match(/Si[eè]ge\s+(\d{1,2}[A-Z])\b/i);
   const depText = `${dep?.[1] || ""} ${dep?.[2] || ""}`;
   const arrText = `${arr?.[1] || ""} ${arr?.[2] || ""}`;
   const fromApt = inferAirportIata(depText);
@@ -322,8 +332,18 @@ export function parseAmadeusReceipt(text: string): ParsedAmadeusFlight | null {
 }
 
 function stripCourtesy(value: string) {
-  return value
+  const spaced = value
     .replace(/\b(MR|MRS|MS|MISS|MSTR|CHD|INF|MME|MLLE)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return spaced
+    .split(" ")
+    .map((token) => {
+      const glued = token.match(/^(.*?)(MISS|MSTR|MME|MLLE|MRS|CHD|INF|MR)$/i);
+      if (glued?.[1] && glued[1].length >= 2) return glued[1];
+      return token;
+    })
+    .join(" ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -331,7 +351,9 @@ function stripCourtesy(value: string) {
 export type TicketPassenger = {
   first_name: string;
   last_name: string;
-  /** Quatre derniers chiffres seulement. Le numéro complet n’est pas conservé. */
+  /** Treize chiffres du billet électronique. Pas un numéro de fidélité. */
+  ticket_number?: string;
+  /** Quatre derniers chiffres, en plus du numéro complet. */
   ticket_last4?: string;
 };
 
@@ -340,26 +362,38 @@ function rememberPassenger(
   seen: Set<string>,
   lastRaw: string,
   firstRaw: string,
-  last4?: string
+  ticket?: string
 ) {
   const last = titleCasePerson(stripCourtesy(lastRaw));
   const first = titleCasePerson(stripCourtesy(firstRaw));
   if (!first || !last) return;
+  if (/^(mr|mrs|ms|miss|mstr|mme|mlle|chd|inf)$/i.test(first) || /^(mr|mrs|ms|miss|mstr|mme|mlle|chd|inf)$/i.test(last)) {
+    return;
+  }
   const key = `${first.toLowerCase()}|${last.toLowerCase()}`;
   const previous = out.find((row) => `${row.first_name.toLowerCase()}|${row.last_name.toLowerCase()}` === key);
   if (previous) {
-    if (!previous.ticket_last4 && last4) previous.ticket_last4 = last4;
+    if (!previous.ticket_number && ticket) {
+      previous.ticket_number = ticket;
+      previous.ticket_last4 = ticket.slice(-4);
+    }
     return;
   }
   if (seen.has(key)) return;
   seen.add(key);
-  out.push(last4 ? { first_name: first, last_name: last, ticket_last4: last4 } : { first_name: first, last_name: last });
+  out.push(
+    ticket
+      ? { first_name: first, last_name: last, ticket_number: ticket, ticket_last4: ticket.slice(-4) }
+      : { first_name: first, last_name: last }
+  );
 }
 
-/** Derniers chiffres d’un numéro de billet à 13 chiffres. Rien d’autre n’est gardé. */
-function ticketLast4(line: string) {
-  const match = line.match(/\b\d{3}[-\s]?(\d{10})\b/);
-  return match ? match[1].slice(-4) : undefined;
+/** Numéro de billet électronique : 3 + 10 chiffres. Un code agence ou une carte fidélité ne comptent pas. */
+function ticketNumber(line: string) {
+  const match = line.match(/\b(\d{3})[-\s]?(\d{10})\b/);
+  if (!match) return undefined;
+  const full = `${match[1]}${match[2]}`;
+  return full.length === 13 ? full : undefined;
 }
 
 /** Tableau « Passager / Numéro De Billet » : nom, et seulement les 4 derniers chiffres. */
@@ -377,21 +411,46 @@ function parsePassengerTicketTable(text: string, out: TicketPassenger[], seen: S
       if (out.length) break;
       continue;
     }
-    rememberPassenger(out, seen, match[1] || "", match[2] || "", ticketLast4(line));
+    if (isAirlinePnrPair(match[1] || "", match[2] || "")) continue;
+    rememberPassenger(out, seen, match[1] || "", match[2] || "", ticketNumber(line));
   }
 }
 
-/** Passager d’un e-ticket : « BERDA/DAVID MR », le tableau du billet, ou « Passager : BERDA/DAVID ». */
+const TITLED_NAME =
+  /(?:^|[\s-])(MR|MRS|MS|MISS|MSTR|MME|MLLE)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{1,40})\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{1,40})\s+(\d{3})[-\s]?(\d{10})\b/gi;
+
+/** « Mr Lea Martin 057-2123456789 » ou « Numéro de billet : 057-… Mr Lea Martin ». */
+function parseTitledPassengers(text: string, out: TicketPassenger[], seen: Set<string>) {
+  for (const match of text.matchAll(TITLED_NAME)) {
+    rememberPassenger(out, seen, match[3] || "", match[2] || "", `${match[4]}${match[5]}`);
+  }
+  const afterTicket =
+    /num[eé]ro de billet\s*:\s*(\d{3})[-\s]?(\d{10})\s+(MR|MRS|MS|MISS|MSTR|MME|MLLE)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{1,40})\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]{1,40})/gi;
+  for (const match of text.matchAll(afterTicket)) {
+    rememberPassenger(out, seen, match[5] || "", match[4] || "", `${match[1]}${match[2]}`);
+  }
+}
+
+/** « MARTIN/LEA MRS », « MARTIN/LEAMRS », ou « Passager : MARTIN/LEA ». */
+function parseSlashPassengers(text: string, out: TicketPassenger[], seen: Set<string>) {
+  const re =
+    /\b([A-Z]{2,40})\/([A-Z]{2,40})(?![A-Z0-9])(?:\s+(MISS|MSTR|MME|MLLE|MRS|CHD|INF|MR|MS))?(?:\s+(\d{3})[-\s]?(\d{10}))?/g;
+  for (const match of text.matchAll(re)) {
+    if (isAirlinePnrPair(match[1] || "", match[2] || "")) continue;
+    const ticket = match[4] && match[5] ? `${match[4]}${match[5]}` : ticketNumber(match[0]);
+    rememberPassenger(out, seen, match[1] || "", match[2] || "", ticket);
+  }
+}
+
+/** Passager d’un e-ticket : « MARTIN/LEA MRS », « Mr Lea Martin 057-… », ou le tableau du billet. */
 export function parseTicketPassengers(text: string): TicketPassenger[] {
   const out: TicketPassenger[] = [];
   const seen = new Set<string>();
   parsePassengerTicketTable(text, out, seen);
-  const re =
-    /(?:passager|passenger|voyageur|billet [eé]lectronique)\s*:?\s*([A-Z][A-Z' -]{1,40})\/([A-Z][A-Z' -]{1,40})/gi;
-  for (const match of text.matchAll(re)) {
-    rememberPassenger(out, seen, match[1] || "", match[2] || "");
-  }
-  return out;
+  parseTitledPassengers(text, out, seen);
+  parseSlashPassengers(text, out, seen);
+  const { locators, airlines } = collectTicketTokens(text);
+  return out.filter((row) => !passengerIsInvented(row, locators, airlines));
 }
 
 function titleCasePerson(value: string) {
@@ -960,6 +1019,7 @@ export function parseExpediaTaap(text: string): {
   currency: string | null;
 } | null {
   if (!/(\btaap\b|\bexpedia\b)/i.test(text)) return null;
+  if (isExpediaTaapCar(text)) return null;
   if (/Reservation Details/i.test(text) && /Booking Reference/i.test(text)) return null;
   const blocks = readStayBlocks(text);
   const ref =
@@ -1014,6 +1074,134 @@ export function parseExpediaTaap(text: string): {
     printed_cancellation,
     amount: money?.amount ?? null,
     currency: money?.currency ?? null,
+  };
+}
+
+/** Location de voiture Expedia TAAP : pas un hôtel. */
+export function isExpediaTaapCar(text: string) {
+  if (!/(\btaap\b|\bexpedia\b)/i.test(text)) return false;
+  return /location de voiture|car rental|prise en charge et restitution/i.test(text);
+}
+
+function parseTaapMoment(chunk: string): string | null {
+  const numeric = chunk.match(
+    /(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})(?:\s*(?:à|a|,)?\s*(\d{1,2})[:h](\d{2}))?/i
+  );
+  if (numeric) {
+    const iso = `${numeric[3]}-${numeric[2].padStart(2, "0")}-${numeric[1].padStart(2, "0")}`;
+    if (!numeric[4]) return iso;
+    return `${iso}T${numeric[4].padStart(2, "0")}:${numeric[5]}:00`;
+  }
+  const named = parseFrEnDate(chunk);
+  if (!named) return null;
+  if (named.includes("T")) return named;
+  const clock = chunk.match(/(\d{1,2})[:h](\d{2})\s*$/);
+  if (!clock) return named;
+  return `${named.slice(0, 10)}T${clock[1].padStart(2, "0")}:${clock[2]}:00`;
+}
+
+function taapMoneyLine(text: string): { amount: number; currency: string } | null {
+  for (const line of text.split(/\n/)) {
+    if (!/pay[eé]|prix|total/i.test(line)) continue;
+    if (/annul/i.test(line)) continue;
+    const hit = line.match(/(\d{1,3}(?:[\s\u00a0.]\d{3})*,\d{2}|\d+[.,]\d{2})/);
+    if (!hit) continue;
+    const amount = parsePrintedAmount(hit[1]);
+    if (!amount) continue;
+    const currency = /£|\bGBP\b/.test(line) ? "GBP" : /\$|\bUSD\b/.test(line) ? "USD" : "EUR";
+    return { amount, currency };
+  }
+  return null;
+}
+
+const TAAP_SECTION_STOP =
+  /^(loueur|t[eé]l[eé]phone|prix|total|pay[eé]|conditions|politique|conducteur|location de voiture|n[°ºo]?\s*de)\b/i;
+
+function taapMoments(block: string) {
+  const moments: { place: string | null; at: string }[] = [];
+  let place: string | null = null;
+  for (const raw of block.split(/\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (TAAP_SECTION_STOP.test(line) && moments.length) break;
+    const inline = line.match(/^([^:：]{0,40})[:：]\s*(.+)$/);
+    const candidate = inline && /prise|restitution|retour|d[eé]part/i.test(inline[1]) ? inline[2] : line;
+    const at = parseTaapMoment(candidate);
+    if (at) {
+      const placePart = candidate
+        .replace(/(\d{1,2}[\/.]\d{1,2}[\/.]\d{4}.*|\d{1,2}\s+[A-Za-zàâéèêëïîôùûüç.]+\s+20\d{2}.*)/, "")
+        .replace(/[,;]\s*$/, "")
+        .trim();
+      moments.push({ place: placePart || place, at });
+      place = null;
+      continue;
+    }
+    if (/^prise en charge\b|^restitution\b|^retour\b/i.test(line)) continue;
+    place = place ? `${place}, ${line}` : line;
+  }
+  return moments;
+}
+
+export type ParsedTaapCar = ParsedCar & {
+  driver: string | null;
+  phone: string | null;
+  cancellation: string | null;
+  amount: number | null;
+  currency: string | null;
+  travelers: BookingExtract["travelers"];
+};
+
+/** Location Expedia TAAP : véhicule, conducteur, prise et restitution. Jamais un hôtel. */
+export function parseExpediaTaapCar(text: string): ParsedTaapCar | null {
+  if (!isExpediaTaapCar(text)) return null;
+  const similar = text.match(/([A-Za-z0-9ÉÈÀÂÊÎÔÛéèàùâêîôû][^\n]{0,80}ou similaire)/i);
+  const afterHeading = text.match(/location de voiture\s*\n+\s*([^\n]+)/i);
+  let vehicle = (similar?.[1] || afterHeading?.[1] || "").replace(/\s+/g, " ").trim();
+  if (/prise en charge|conducteur|confirmation|loueur|itin[eé]raire/i.test(vehicle)) vehicle = "";
+  const driver = text.match(/conducteur\s*[:：]\s*([^\n]+)/i)?.[1]?.replace(/\s+/g, " ").trim() || null;
+  const ref =
+    text.match(/(?:confirmation|itin[eé]raire)\s*[:：n°º\s]*(\d{6,12})/i)?.[1] ||
+    text.match(/n[°ºo]?\s*de voyage\s*[:：]\s*(\d{6,12})/i)?.[1] ||
+    null;
+  const combined = text.split(/prise en charge et restitution/i)[1] || "";
+  let moments = combined ? taapMoments(combined) : [];
+  if (moments.length < 2) {
+    const pickupBlock = text.split(/prise en charge(?!\s+et\s+restitution)/i)[1] || "";
+    const returnBlock = text.split(/restitution|drop[\s-]?off/i)[1] || "";
+    const pickup = taapMoments(pickupBlock).slice(0, 1);
+    const back = taapMoments(returnBlock).slice(0, 1);
+    if (pickup.length || back.length) moments = [...pickup, ...back];
+  }
+  const loueur = text.match(/loueur\s*[:：]\s*([^\n]+)/i)?.[1]?.replace(/\s+/g, " ").trim() || null;
+  const phone =
+    text.match(/t[eé]l[eé]phone(?:\s+du\s+loueur)?\s*[:：]\s*([+\d][\d\s().-]{5,})/i)?.[1]?.replace(/\s+/g, " ").trim() ||
+    null;
+  const money = taapMoneyLine(text);
+  const cancellation =
+    text
+      .match(/(?:conditions|politique)\s+d['’]annulation\s*[:：]?\s*([\s\S]{0,400})/i)?.[1]
+      ?.split(/\n{2,}/)[0]
+      ?.replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 400) || null;
+  const start_at = moments[0]?.at || null;
+  const end_at = moments[1]?.at || null;
+  if (!ref && !vehicle && !start_at) return null;
+  const person = driver ? splitPersonName(driver) : null;
+  return {
+    confirmation_ref: ref,
+    supplier: loueur || "Expedia TAAP",
+    vehicle: vehicle || null,
+    pickup: moments[0]?.place || null,
+    dropoff: moments[1]?.place || moments[0]?.place || null,
+    start_at,
+    end_at,
+    driver,
+    phone,
+    cancellation,
+    amount: money?.amount ?? null,
+    currency: money?.currency ?? null,
+    travelers: person ? [person] : [],
   };
 }
 
@@ -1536,6 +1724,7 @@ export const INGEST_FAMILIES = [
   "toucan",
   "maeva",
   "transavia",
+  "expedia_taap_car",
   "expedia_taap",
   "identity",
   "unknown",
@@ -1562,6 +1751,7 @@ export function classifyIngestFamily(text: string, filename = ""): IngestFamily 
     return "transavia";
   }
   if (/\bSIXT\b/i.test(text) && /Pickup on/i.test(text)) return "sixt";
+  if (isExpediaTaapCar(text)) return "expedia_taap_car";
   if (
     (/TRANSFER CONFIRMATION/i.test(text) || /DROPOFF/i.test(text)) &&
     /Itin[eé]raire/i.test(text)
@@ -1618,9 +1808,13 @@ export function parserItemsComplete(
         Boolean(item.start_at)
     );
   }
-  if (family === "sixt") {
+  if (family === "sixt" || family === "expedia_taap_car") {
     return items.some(
-      (item) => item.kind === "car" && Boolean(item.confirmation_ref) && Boolean(item.start_at)
+      (item) =>
+        item.kind === "car" &&
+        Boolean(item.confirmation_ref) &&
+        Boolean(item.start_at) &&
+        Boolean(item.details?.vehicle || item.details?.pickup || item.title)
     );
   }
   if (family === "transfer") {
@@ -1667,10 +1861,31 @@ export function structuredHintFromPdfText(text: string): string {
   for (const flight of flights) bits.push(`VOL ${JSON.stringify(flight)}`);
   if (flights.length) {
     bits.push(
-      "Plusieurs e-tickets du même vol (même n°, même jour) = UN item, details.ticket_count = nombre de billets. Prix saisi par l’agent = aller-retour (aller simple : ce vol). Aller-retour dans UN PDF = DEUX items. IATA 8 chiffres = code agence, pas un PNR. « Scan for check-in » n’est pas un hôtel. Ne pas extraire la carte fidélité."
+      "Plusieurs e-tickets du même vol (même n°, même jour) = UN item, details.ticket_count = nombre de vrais numéros de billet (13 chiffres). Prix saisi par l’agent = aller-retour (aller simple : ce vol). Aller-retour dans UN PDF = DEUX items. IATA 8 chiffres = code agence, pas un PNR. « AF/ZLFJIN » (code compagnie / PNR) n’est pas un passager. Un prénom ou un nom égal au PNR, ou un nom qui est un code compagnie, n’est pas un voyageur. « Scan for check-in » n’est pas un hôtel. Ne pas extraire la carte fidélité."
     );
   }
-  const expedia = parseExpediaTaap(clean);
+  const taapCar = parseExpediaTaapCar(clean);
+  if (taapCar) {
+    bits.push(
+      `VOITURE ${JSON.stringify({
+        vehicle: taapCar.vehicle,
+        driver: taapCar.driver,
+        pickup: taapCar.pickup,
+        dropoff: taapCar.dropoff,
+        start_at: taapCar.start_at,
+        end_at: taapCar.end_at,
+        confirmation_ref: taapCar.confirmation_ref,
+        supplier: taapCar.supplier,
+        phone: taapCar.phone,
+        total: taapCar.amount,
+        currency: taapCar.currency,
+      })}`
+    );
+    bits.push(
+      "Expedia TAAP location de voiture = UN item kind=car. Pas d’hôtel. amount = null. details.document_amount = prix payé. details.driver, details.phone, details.notes = conditions d’annulation imprimées, sinon null."
+    );
+  }
+  const expedia = taapCar ? null : parseExpediaTaap(clean);
   const hotel =
     expedia?.hotel ||
     parseLittleEmperorsHotel(clean) ||
@@ -1826,6 +2041,24 @@ function transferToItem(transfer: ParsedTransfer): ExtractItem {
       pickup: transfer.pickup,
       dropoff: transfer.dropoff,
       vehicle: transfer.vehicle,
+    },
+  };
+}
+
+function taapCarToItem(car: ParsedTaapCar): ExtractItem {
+  const item = carToItem(car);
+  return {
+    ...item,
+    title: car.vehicle || item.title,
+    amount: null,
+    details: {
+      ...(item.details || {}),
+      driver: car.driver || undefined,
+      phone: car.phone || undefined,
+      notes: car.cancellation || undefined,
+      document_amount: car.amount ?? undefined,
+      document_currency: car.currency || undefined,
+      source_family: "expedia_taap_car",
     },
   };
 }
@@ -1992,12 +2225,18 @@ export function parsedItemsFromText(text: string): {
   if (amadeus.length && !travelers.length) {
     travelers = parseTicketPassengers(clean);
   }
+  const taapCar = parseExpediaTaapCar(clean);
+  if (taapCar) {
+    items.push(taapCarToItem(taapCar));
+    if (!travelers.length && taapCar.travelers.length) travelers = taapCar.travelers;
+    status = status || "confirmed";
+  }
   const maeva = parseMaevaStay(clean);
   if (maeva) {
     items.push(withDocumentPrice(hotelToItem(maeva.hotel), money));
     for (const extra of maeva.extras) items.push(maevaExtraToItem(extra));
     if (maeva.confirmed) status = status || "confirmed";
-  } else {
+  } else if (!taapCar) {
     const expedia = parseExpediaTaap(clean);
     const hotel =
       expedia?.hotel ||
@@ -2047,19 +2286,28 @@ export function parsedItemsFromText(text: string): {
     );
   }
   if (travelers.length) {
-    const passengers = travelers.map((row) => {
-      const last4 = (row as { ticket_last4?: unknown }).ticket_last4;
-      return {
-        first_name: row.first_name,
-        last_name: row.last_name,
-        ...(typeof last4 === "string" && last4 ? { ticket_last4: last4 } : {}),
-      };
-    });
     for (const item of items) {
       if (item.kind !== "flight") continue;
+      const seat = typeof item.details?.seat === "string" ? item.details.seat.trim() : "";
+      const passengers = travelers.map((row) => {
+        const ticket = (row as { ticket_number?: unknown }).ticket_number;
+        const last4 = (row as { ticket_last4?: unknown }).ticket_last4;
+        const number = typeof ticket === "string" && /^\d{13}$/.test(ticket) ? ticket : "";
+        return {
+          first_name: row.first_name,
+          last_name: row.last_name,
+          ...(number ? { ticket_number: number, ticket_last4: number.slice(-4) } : {}),
+          ...(!number && typeof last4 === "string" && last4 ? { ticket_last4: last4 } : {}),
+          ...(seat ? { seat } : {}),
+        };
+      });
+      const numbers = realTicketList(passengers);
+      const ticketCount = countRealTickets(passengers);
       item.details = {
         ...(item.details || {}),
         passengers,
+        ...(numbers.length ? { ticket_numbers: numbers } : {}),
+        ...(ticketCount != null ? { ticket_count: ticketCount } : {}),
         ...(removedPassengers.length ? { removed_passengers: removedPassengers } : {}),
         ...(refund != null ? { refund_amount: refund } : {}),
       };

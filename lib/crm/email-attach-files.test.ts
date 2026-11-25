@@ -8,6 +8,7 @@ import {
   isDepositableAttachment,
   mailBodyFile,
   planEmailAttachmentCopies,
+  planEmailCardCopies,
 } from "./email-attach-files";
 
 describe("dépôt des pièces", () => {
@@ -18,6 +19,13 @@ describe("dépôt des pièces", () => {
     );
     assert.deepEqual(plan.copy, [0]);
     assert.deepEqual(plan.skipped, [1, 2, 3]);
+    const cards = planEmailCardCopies(
+      [{ sha256: "aaa" }],
+      [{ sha256: "aaa", itemId: "aller" }],
+      ["aller", "retour"]
+    );
+    assert.deepEqual(cards.copies, [{ itemId: "retour", index: 0 }]);
+    assert.deepEqual(cards.skipped, []);
   });
 
   it("laisse les images de signature et garde un PDF", () => {
@@ -100,8 +108,7 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
     const end = route.indexOf('if (action === "apply_cards"');
     const block = route.slice(start, end);
     assert.ok(start > 0 && end > start);
-    assert.match(block, /depositFlightsOnBooking/);
-    assert.match(block, /hasUsableFlight/);
+    assert.match(block, /depositCardsOnBooking/);
     assert.match(block, /cartes !== false/);
     assert.match(block, /depositEmailAttachments/);
     assert.match(block, /cards: false/);
@@ -139,7 +146,7 @@ describe("le rattachement par défaut ne touche pas aux cartes", () => {
     assert.match(block, /body_text/);
     assert.match(block, /cartes: false/);
     assert.match(block, /action\.cartes/);
-    assert.match(block, /depositFlightsOnBooking/);
+    assert.match(block, /depositCardsOnBooking/);
     assert.equal(/applyReplacementToBooking/.test(block), false);
   });
 

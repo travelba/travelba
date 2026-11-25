@@ -25,6 +25,16 @@ function isInetAddress(value: string) {
   return Boolean(mapped && IPV4.test(mapped[1]));
 }
 
+/**
+ * Plafonds demandés à ETG, pas un limiteur dans l’application.
+ * `/search/hp` : un appel par ouverture de fiche. `/hotel/prebook` : un appel par clic Pré-réserver.
+ * Rien ne les parallélise. 60 et 30 sont la marge pour quelques agents, pas un métamoteur.
+ */
+export const RATEHAWK_REQUESTED_RPM = {
+  hotelPage: 60,
+  prebook: 30,
+} as const;
+
 export const RATEHAWK_LIMITS = {
   maxRooms: 9,
   maxAdultsPerRoom: 6,
@@ -178,6 +188,40 @@ export function bookingUser(email: string, phone: string) {
 export function bookingUserIp(value: string | null | undefined): string | null {
   const ip = (value || "").trim();
   return isInetAddress(ip) ? ip : null;
+}
+
+/**
+ * Un adulte réel par chambre suffit. Un enfant sans prénom et sans nom ne part pas.
+ * Un nom incomplet ou fictif reste refusé, tout de suite.
+ */
+export function assembleFinishGuests(
+  searched: RoomGuests[],
+  readName: (roomIndex: number, personIndex: number, field: "first" | "last") => string
+): { ok: true; rooms: { guests: FinishGuest[] }[] } | { ok: false; error: string } {
+  const rooms: { guests: FinishGuest[] }[] = [];
+  for (let index = 0; index < searched.length; index += 1) {
+    const room = searched[index];
+    const guests: FinishGuest[] = [];
+    const adultFirst = readName(index, 0, "first").trim();
+    const adultLast = readName(index, 0, "last").trim();
+    if (!validPersonName(adultFirst) || !validPersonName(adultLast)) {
+      return { ok: false, error: "Indiquez le vrai prénom et le vrai nom d’un adulte par chambre." };
+    }
+    guests.push({ first_name: adultFirst, last_name: adultLast });
+    for (let childIndex = 0; childIndex < room.children.length; childIndex += 1) {
+      const first = readName(index, childIndex + 1, "first").trim();
+      const last = readName(index, childIndex + 1, "last").trim();
+      if (!first && !last) continue;
+      if (!validPersonName(first) || !validPersonName(last)) {
+        return { ok: false, error: "Un enfant nommé doit avoir son vrai prénom et son vrai nom, ou être omis." };
+      }
+      guests.push({ first_name: first, last_name: last, is_child: true, age: room.children[childIndex] });
+    }
+    rooms.push({ guests });
+  }
+  const error = validateBookingGuests(rooms, searched);
+  if (error) return { ok: false, error };
+  return { ok: true, rooms };
 }
 
 export function guestsPayload(rooms: { guests: FinishGuest[] }[]) {

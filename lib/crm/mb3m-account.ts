@@ -1,3 +1,4 @@
+import { COMMERCIAL_DISCOUNT_LABEL, COMMERCIAL_DISCOUNT_LINE_ID, type DiscountCut } from "@/lib/crm/commercial-discount";
 import { MB3M_ACTIVITY, mb3mChooseActivity, type Mb3mFeeCode } from "@/lib/crm/mb3m-conform";
 import { mb3mActivityId, mb3mConfigured, mb3mRealm } from "@/lib/crm/mb3m";
 import { isAutoTicketingExpense } from "@/lib/crm/ticketing-fee";
@@ -48,6 +49,8 @@ export type Mb3mAccountLine = {
   /** Vol 2, 1001 ou 27 : pas envoyé tant que l’API n’accepte pas CommissionId. */
   held?: boolean;
   supplierReason?: string | null;
+  /** Fournisseur absent du catalogue MB3M : la ligne n’est pas bloquée, la page avertit. */
+  supplierWarning?: string | null;
   /** Montant global du séjour : hors pièce dès qu’une prestation est détaillée. */
   rollup?: boolean;
 };
@@ -116,6 +119,57 @@ export function withChargeKinds(
         }),
     };
   });
+}
+
+function discountAccountId(id: string) {
+  return id === COMMERCIAL_DISCOUNT_LINE_ID ? id : `discount:${id}`;
+}
+
+function isDiscountAccountLine(line: Mb3mAccountLine) {
+  return line.transactionId === COMMERCIAL_DISCOUNT_LINE_ID || line.transactionId.startsWith("discount:");
+}
+
+/** Ligne Custom code 4, montant négatif. Les actions SOAP restent celles déjà autorisées. */
+export function commercialDiscountAccountLine(euros: number, label = COMMERCIAL_DISCOUNT_LABEL, id = COMMERCIAL_DISCOUNT_LINE_ID): Mb3mAccountLine {
+  return {
+    transactionId: discountAccountId(id),
+    label: label.trim() || COMMERCIAL_DISCOUNT_LABEL,
+    amount: -Math.round(Math.abs(euros) * 100) / 100,
+    activityId: null,
+    margin: null,
+    customCode: "4",
+    agencyProvider: true,
+    chargeKind: "fee",
+    held: false,
+    rollup: false,
+    supplierReason: null,
+  };
+}
+
+/** Une ligne négative par remise, sans faire passer le total sous zéro. */
+export function withCommercialDiscountLines(lines: Mb3mAccountLine[], cuts: DiscountCut[]) {
+  const rest = lines.filter((line) => !isDiscountAccountLine(line));
+  let room =
+    Math.round(
+      rest.filter((line) => !line.held && !line.rollup && line.amount > 0).reduce((sum, line) => sum + line.amount, 0) * 100
+    ) / 100;
+  const added: Mb3mAccountLine[] = [];
+  for (const cut of cuts) {
+    const take = Math.min(Math.max(0, Number(cut.euros) || 0), room);
+    const euros = Math.round(take * 100) / 100;
+    room = Math.round((room - euros) * 100) / 100;
+    if (!(euros > 0)) continue;
+    added.push(commercialDiscountAccountLine(euros, cut.label, cut.id));
+  }
+  return [...rest, ...added];
+}
+
+/** Ajoute la remise unique sans faire passer le total des lignes sous zéro. */
+export function withCommercialDiscountLine(lines: Mb3mAccountLine[], euros: number) {
+  if (!(Number(euros) > 0)) return lines.filter((line) => !isDiscountAccountLine(line));
+  return withCommercialDiscountLines(lines, [
+    { id: COMMERCIAL_DISCOUNT_LINE_ID, label: COMMERCIAL_DISCOUNT_LABEL, euros },
+  ]);
 }
 
 /** Dépenses postées du dossier, avec l’activité de chaque ligne. */

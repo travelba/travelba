@@ -1,9 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BookingIssuesError } from "@/lib/crm/booking-issues";
-import { carnetVisible, clientVisibleItems } from "@/lib/crm/carnet";
+import { carnetVisible } from "@/lib/crm/carnet";
+import { clientStayFace } from "@/lib/crm/client-stay-face";
 import { pickShareCompanions, type SpaceDeps, type SpacePerformInput } from "@/lib/crm/concierge-space";
 import { RATE_LIMITED_MESSAGE, rateLimit, rateLimitKey } from "@/lib/crm/rate-limit";
-import { stayTitleFromItems } from "@/lib/crm/staff-stay";
 import { planTripShareSend, tripShareUrl } from "@/lib/crm/trip-share";
 import { deliverTripShareWhatsapp } from "@/lib/crm/trip-share-send";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-code";
@@ -83,21 +83,26 @@ async function sendStatement(customerId: string) {
   if (!allowed) return { ok: false, message: RATE_LIMITED_MESSAGE };
   const { createServiceClient } = await import("@/lib/supabase/admin");
   const { loadClientLedger } = await import("@/lib/crm/client-ledger-load");
+  const { statementExportName } = await import("@/lib/crm/statement-filename");
   const { buildStatement, statementHolderLines } = await import("@/lib/crm/statement");
+  const { attachStatementTransfer } = await import("@/lib/crm/statement-wire");
   const { renderStatementPdf } = await import("@/lib/crm/statement-pdf");
   const { deliverStatementWhatsapp } = await import("@/lib/crm/statement-send");
   const admin = createServiceClient();
   const { data } = await admin.from("crm_customers").select("*").eq("id", customerId).maybeSingle();
   const customer = data as CrmCustomer | null;
   if (!customer) return { ok: false, message: "Le relevé part depuis Transactions. Je vous ouvre l’espace." };
+  const issuedAt = new Date();
   const view = await loadClientLedger(admin, customer, "client");
   const pdf = await renderStatementPdf(
-    buildStatement({
-      view,
-      holderName: customerFullName(customer),
-      holderLines: statementHolderLines(customer),
-      issuedAt: new Date(),
-    })
+    await attachStatementTransfer(
+      buildStatement({
+        view,
+        holderName: customerFullName(customer),
+        holderLines: statementHolderLines(customer),
+        issuedAt,
+      })
+    )
   );
   const sent = await deliverStatementWhatsapp({
     customerId: customer.id,
@@ -105,6 +110,7 @@ async function sendStatement(customerId: string) {
     firstName: customer.first_name,
     member: view.member,
     pdf,
+    filename: statementExportName(customer, { issuedAt }),
     audience: "client",
     optOutAt: customer.whatsapp_opt_out_at,
   });
@@ -212,13 +218,15 @@ async function shareStay(admin: SupabaseClient, input: SpacePerformInput, stayId
     companionId: who.companionId,
     phone: plan.ok ? plan.phone : null,
     firstName: plan.ok ? plan.firstName : who.label,
-    title: stayTitleFromItems(
-      stay.booking.title,
-      stay.booking.destination,
-      clientVisibleItems(stay.items),
-      "Séjour",
-      typeof customer?.city === "string" ? customer.city : null
-    ),
+    title: clientStayFace({
+      title: stay.booking.title,
+      destination: stay.booking.destination,
+      startDate: stay.booking.start_date,
+      endDate: stay.booking.end_date,
+      items: stay.items,
+      homeCity: typeof customer?.city === "string" ? customer.city : null,
+      fallback: "Séjour",
+    }).title,
     url: tripShareUrl(siteConfig.url, code),
     mediaUrl,
     audience: input.staff ? "staff" : "client",

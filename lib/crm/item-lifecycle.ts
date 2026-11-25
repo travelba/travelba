@@ -192,17 +192,37 @@ function choiceRow(row: LifecycleCard) {
   return { id: row.id, kind: row.kind, title: (row.title || "").trim() || "Carte" };
 }
 
+function maskedConfirmation(value: string) {
+  const compact = value.replace(/\s+/g, "");
+  return compact.length > 0 && /^[•·*.‧∙…]+$/.test(compact);
+}
+
+function hotelHasName(item: { title?: string | null; details?: Record<string, unknown> | null }) {
+  const generic = /^(h[oô]tel|hotel)$/i;
+  const fromDetails = typeof item.details?.hotel_name === "string" ? item.details.hotel_name.trim() : "";
+  const title = (item.title || "").trim();
+  if (fromDetails && !generic.test(fromDetails)) return true;
+  if (title && !generic.test(title)) return true;
+  return false;
+}
+
 /**
  * Hôtel cité sans numéro et sans date d’arrivée.
+ * Une confirmation masquée (« ••• »), sans date ni nom d’hôtel, est la même carte creuse.
  * Ce n’est pas un autre séjour : le même mail a souvent déjà la vraie carte.
  */
 export function hollowHotelCard(item: {
   kind?: string | null;
   confirmation_ref?: string | null;
   start_at?: string | null;
+  title?: string | null;
+  details?: Record<string, unknown> | null;
 }) {
   if ((item.kind || "") !== "hotel") return false;
-  return !(item.confirmation_ref || "").trim() && !(item.start_at || "").trim();
+  const ref = (item.confirmation_ref || "").trim();
+  const start = (item.start_at || "").trim();
+  if (!ref && !start) return true;
+  return maskedConfirmation(ref) && !start && !hotelHasName(item);
 }
 
 /**
@@ -275,10 +295,18 @@ export function replacementPlan(
       adds += group.length;
       continue;
     }
-    // Un vol ou un train qui ne correspond à aucune carte s’ajoute.
-    // Il ne remplace pas un autre trajet du séjour, et le rattachement n’attend pas un choix.
+    // Un vol, un train, une voiture, un transfert ou une activité qui ne correspond à aucune carte s’ajoute.
+    // Il ne remplace pas une autre carte du séjour, et le rattachement n’attend pas un choix.
     // Une carte choisie explicitement reste un remplacement.
-    if (kind === "flight" || kind === "rail") {
+    if (
+      kind === "flight" ||
+      kind === "rail" ||
+      kind === "car" ||
+      kind === "transfer" ||
+      kind === "activity" ||
+      kind === "cruise" ||
+      kind === "insurance"
+    ) {
       const picked = chosenId ? targets.find((row) => row.id === chosenId) || null : null;
       if (picked) {
         replacements.push({
@@ -294,7 +322,9 @@ export function replacementPlan(
     }
     const incoming = group[0];
     const stayTargets =
-      kind === "hotel" ? targets.filter((row) => hotelSameStay(row, incoming)) : targets;
+      kind === "hotel"
+        ? targets.filter((row) => hotelSameStay(row, incoming) || row.id === chosenId)
+        : targets;
     if (!stayTargets.length) {
       adds += 1;
       continue;

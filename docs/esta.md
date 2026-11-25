@@ -146,6 +146,7 @@ En-tête : `ESTA_WEBHOOK_KEY_HEADER` (défaut `Authorization`). Si le nom est `A
 | `ESTA_WEBHOOK_KEY` | Secret. Vide sur une preview Vercel (`productionOnlySecret`). |
 | `ESTA_WEBHOOK_KEY_HEADER` | Nom de l’en-tête. Défaut `Authorization`. |
 | `ESTA_CLIENT_AUTO_SEND` | `1`, `true` ou `oui` : le message client part seul. Sinon l’agence clique « Envoyer au client ». |
+| `ESTA_AUTO_WHATSAPP` | `1`, `true` ou `oui` : le Concierge envoie le court message WhatsApp (approuvé, introuvable, refusé). **Éteint par défaut.** Hors fenêtre de 24 h, le texte part dans `message_libre_texte`. |
 | `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Déjà utilisés pour les e-mails. |
 | `CRON_SECRET` | Déjà utilisé. Le passage est `GET /api/cron/esta` toutes les 15 minutes. |
 
@@ -167,6 +168,21 @@ Le badge envoie le cas connu par WhatsApp, au clic « Envoyer au client ». `EST
 Sans téléphone, sans acceptation WhatsApp, sans le fichier, ou sans SID approuvé, le badge dit pourquoi. Le cas approuvé joint le document. Les autres cas gardent la photo `/whatsapp/visa.jpg` et le bouton vers le séjour.
 
 Le cas approuvé se dépose avec `deposer_modeles_autorisation_whatsapp` (administrateurs). Le SID est écrit dans `crm_whatsapp_content_sids`. `statut_modeles_autorisation_whatsapp` lit le statut Meta. L’envoi lit ce réglage, puis la variable. Pas de redéploiement.
+
+## Concierge WhatsApp
+
+Le brief du Concierge lit le dernier statut de `crm_esta_checks` (et `crm_uk_eta_checks`) : statut, date de validité, date du contrôle. Pas de numéro de passeport, pas de numéro de dossier.
+
+S’il faut un nouveau contrôle, le Concierge appelle le même geste que le bouton « Vérifier l’ESTA » : la ligne passe en `a_verifier`, puis le webhook existant (`ESTA_WEBHOOK_URL`, corps `{ id, booking_id, traveler_id, departure_date, kind }`). Pas d’autre URL, pas d’autre secret.
+
+Les messages au client restent derrière `ESTA_AUTO_WHATSAPP`, éteint tant qu’il n’est pas posé à `1`, `true` ou `oui`. Les alertes agence, elles, partent sans ce réglage.
+
+- `approuve`, réglage ouvert : « Bonne nouvelle, votre ESTA est approuvée, valable jusqu’au JJ/MM/AAAA. » Pas d’alerte.
+- `introuvable` : le client (si le réglage est ouvert) est invité à vérifier s’il a fait une demande, et avec quel passeport, sinon à en faire une. L’agence peut aider. Alerte CRM « ESTA introuvable », priorité normale (`question`).
+- `refuse` : le client (si le réglage est ouvert) apprend que l’agence recontacte pour la suite, notamment une demande de visa. Alerte CRM « ESTA refusée », prioritaire (`urgent`).
+- aucun résultat deux heures après l’envoi du webhook : alerte « ESTA sans résultat », aucun message au client.
+
+Un seul message par contrôle (`client_message_sent_at`). Dans la fenêtre de 24 h, le texte part tel quel. Hors fenêtre, le modèle approuvé `message_libre_texte` ajoute « Bonjour » et « Le Concierge ».
 
 ## RLS
 

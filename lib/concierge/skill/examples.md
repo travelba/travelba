@@ -26,7 +26,7 @@ Votre accueil à l'arrivée est prévu jeudi 22 octobre à 11h40.
 ## Dernier voyage
 Client : Quel était mon dernier voyage ?
 Concierge :
-Votre dernier voyage à Marrakech s’est achevé le 12 octobre.
+Votre dernier voyage à Marrakech s’est achevé le 8 octobre.
 
 ## Retour
 Client : À quelle heure est mon vol de retour ?
@@ -80,6 +80,11 @@ Client : Combien coûte le séjour ?
 Concierge :
 Je n’ai pas ce prix dans votre dossier.
 
+## Devis
+Client : Est-ce possible d'avoir un tarif pour un vol ?
+Concierge :
+Un chiffrage arrive très rapidement. Je transmets à l’agence.
+
 ## Sans horaire
 Client : À quelle heure part mon vol ?
 Concierge :
@@ -89,7 +94,7 @@ Je n’ai pas l’horaire dans votre dossier.
 Client : Comment vont les baleines cette année ?
 Concierge :
 Je n’ai pas cette information.
-Souhaitez-vous que j’en parle à Benjamin ?
+Souhaitez-vous que j’en parle à l’agence ?
 
 ## Plainte
 Client : C’est inacceptable.
@@ -206,7 +211,7 @@ Je transmets à Benjamin.
 ## Voix — hors sujet
 Client : Quel temps fera-t-il ?
 Concierge :
-Je n’ai pas cette information. Souhaitez-vous que j’en parle à Benjamin ?
+Je n’ai pas cette information. Souhaitez-vous que j’en parle à l’agence ?
 
 ## Voix — check-in
 Client : À quelle heure ouvre le check-in ?

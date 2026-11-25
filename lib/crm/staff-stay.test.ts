@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   clientStayAction,
+  PRIMARY_STAY_LABEL,
+  primaryStayButton,
   staffBlockingChips,
   staffLedgerCaption,
   staffStayFacts,
@@ -152,6 +154,55 @@ test("le grand livre suit la visibilité, une annulation ne débite pas", () => 
     staffLedgerCaption({ status: "cancelled", visible_to_client: true, include_in_ledger: true }),
     "Pas de débit"
   );
+});
+
+test("lieu et dates suit les étapes en attente", () => {
+  const saved = [
+    {
+      id: "aller",
+      kind: "flight",
+      start_at: "2026-12-04T09:00:00",
+      details: { city_from: "Paris", city_to: "Milan", from: "CDG", to: "MXP" },
+    },
+    {
+      id: "retour",
+      kind: "flight",
+      start_at: "2026-12-13T16:00:00",
+      details: { city_from: "Milan", city_to: "Paris", from: "MXP", to: "CDG" },
+    },
+  ];
+  const live = [
+    saved[0],
+    {
+      id: "hotel",
+      kind: "hotel",
+      title: "Casa Monti",
+      start_at: "2026-12-04",
+      end_at: "2026-12-08",
+      details: { hotel_name: "Casa Monti", city: "Rome" },
+    },
+  ];
+  const facts = staffStayFacts({
+    items: live,
+    savedItems: saved,
+    destination: "Milan",
+    startDate: "2026-12-04",
+    endDate: "2026-12-13",
+  });
+  assert.equal(facts.draft, true);
+  assert.equal(facts.segments.find((segment) => segment.place === "Casa Monti")?.pending, true);
+  assert.equal(facts.segments.find((segment) => segment.place === "Paris → Milan")?.pending, false);
+  assert.equal(facts.removed.some((segment) => segment.place === "Milan → Paris" && segment.removed), true);
+  assert.equal(facts.placeLine.includes("Rome"), true);
+});
+
+test("le bouton principal enregistre puis montre quand des changements attendent", () => {
+  assert.equal(primaryStayButton({ visible: false, unsaved: true }), "enregistrer-montrer");
+  assert.equal(PRIMARY_STAY_LABEL["enregistrer-montrer"], "Enregistrer et montrer au client");
+  assert.equal(primaryStayButton({ visible: true, unsaved: true }), "enregistrer-mettre-a-jour");
+  assert.equal(PRIMARY_STAY_LABEL["enregistrer-mettre-a-jour"], "Enregistrer et mettre à jour le carnet");
+  assert.equal(primaryStayButton({ visible: false, unsaved: false }), "montrer");
+  assert.equal(primaryStayButton({ visible: true, unsaved: false }), "cacher");
 });
 
 test("lieu et dates suivent toutes les étapes, pas un seul champ figé", () => {

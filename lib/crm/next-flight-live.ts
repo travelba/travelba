@@ -31,11 +31,58 @@ export type LiveFlight = {
 
 export type LivePhase = "before" | "airborne" | "landed" | "cancelled" | "diverted";
 
+export type CountdownUnit = "j" | "h" | "min" | "s";
+
+export type CountdownPart = {
+  value: number;
+  unit: CountdownUnit;
+};
+
 export type LiveCaption =
-  | { kind: "countdown"; clock: string }
-  | { kind: "airborne"; minutes: number | null }
+  | { kind: "countdown"; parts: CountdownPart[] }
+  | { kind: "airborne"; parts: CountdownPart[] | null }
   | { kind: "landed"; clock: string }
   | { kind: "plain"; text: string };
+
+const UNIT_WORDS: Record<CountdownUnit, [string, string]> = {
+  j: ["jour", "jours"],
+  h: ["heure", "heures"],
+  min: ["minute", "minutes"],
+  s: ["seconde", "secondes"],
+};
+
+/** Au-delà de 24 h : jours, heures, minutes. En dessous : heures, minutes, secondes. */
+export function countdownParts(ms: number): CountdownPart[] {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (total >= 86400) {
+    return [
+      { value: days, unit: "j" },
+      { value: hours, unit: "h" },
+      { value: minutes, unit: "min" },
+    ];
+  }
+  return [
+    { value: hours, unit: "h" },
+    { value: minutes, unit: "min" },
+    { value: seconds, unit: "s" },
+  ];
+}
+
+/** Phrase lue : les unités à zéro tombent, « 1 jour » reste au singulier. */
+export function countdownSpeech(parts: CountdownPart[]) {
+  const spoken = parts.filter((part) => part.value > 0);
+  const used = spoken.length ? spoken : parts.slice(-1);
+  const words = used.map((part) => {
+    const [one, many] = UNIT_WORDS[part.unit];
+    return `${part.value} ${part.value === 1 ? one : many}`;
+  });
+  if (words.length <= 1) return words[0] || "";
+  return `${words.slice(0, -1).join(", ")} et ${words[words.length - 1]}`;
+}
 
 /** Terminal de départ avant l’envol, terminal d’arrivée ensuite. */
 export function liveFlightPlace(flight: LiveFlight, nowMs: number) {
@@ -72,28 +119,18 @@ function airborneShare(flight: LiveFlight, nowMs: number) {
   return ratio;
 }
 
-export function formatCountdown(ms: number) {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const seconds = total % 60;
-  return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-}
-
 export function liveFlightCaption(flight: LiveFlight, nowMs: number): LiveCaption {
   const phase = liveFlightPhase(flight, nowMs);
   if (phase === "cancelled") return { kind: "plain", text: "Vol annulé" };
   if (phase === "diverted") return { kind: "plain", text: "Vol dérouté" };
   if (phase === "landed") return { kind: "landed", clock: flight.landedClock };
   if (phase === "airborne") {
-    const minutes =
-      flight.arrivalAt != null && flight.arrivalAt > nowMs
-        ? Math.max(1, Math.ceil((flight.arrivalAt - nowMs) / 60000))
-        : null;
-    return { kind: "airborne", minutes };
+    const parts =
+      flight.arrivalAt != null && flight.arrivalAt > nowMs ? countdownParts(flight.arrivalAt - nowMs) : null;
+    return { kind: "airborne", parts };
   }
   if (flight.departureAt != null && flight.departureAt > nowMs) {
-    return { kind: "countdown", clock: formatCountdown(flight.departureAt - nowMs) };
+    return { kind: "countdown", parts: countdownParts(flight.departureAt - nowMs) };
   }
   const clock = flight.departure.revised || flight.departure.scheduled;
   return clock ? { kind: "plain", text: `Décollage à ${clock}` } : { kind: "plain", text: "" };

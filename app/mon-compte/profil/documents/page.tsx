@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ensureCustomerForUser } from "@/lib/crm/auth";
 import { readVerifiedUser } from "@/lib/crm/verified-user";
 import { DocumentsManager } from "@/components/account/DocumentsManager";
+import { RememberEspace } from "@/components/account/RememberEspace";
 import { AccountPage } from "@/components/account/AccountPage";
 import type { CrmCompanion, CrmTravelDocument } from "@/lib/crm/types";
 
@@ -17,15 +18,21 @@ export default async function DocumentsPage() {
     supabase.from("crm_travel_companions").select("*").eq("customer_id", customer.id),
   ]);
 
+  const rows = (documents || []) as CrmTravelDocument[];
+
   return (
     <AccountPage motion="fade">
+    <RememberEspace
+      userId={customer.id}
+      documents={rows.map((doc) => ({ id: doc.id, name: doc.file_name || "Pièce", type: doc.doc_type }))}
+    />
     <div className="space-y-4">
       <div>
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">Coffre</p>
         <h2 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Pièces</h2>
       </div>
       <DocumentsManager
-        documents={(documents || []) as CrmTravelDocument[]}
+        documents={rows}
         companions={(companions || []) as CrmCompanion[]}
         holder={{ first_name: customer.first_name, last_name: customer.last_name }}
       />

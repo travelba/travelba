@@ -1,34 +1,64 @@
-import { browserAuthCookieNames, browserCookieDeletion, signOutRedirectPath } from "@/lib/crm/sign-out";
+import type { SignOutScope } from "@/lib/crm/sign-out";
+import { clearClientShellCache } from "@/lib/client/stay-cache";
+
+/** Au-delà, la page part quand même. Un plugin qui ne répond pas ne bloque plus le bouton. */
+export const SIGN_OUT_NATIVE_DEADLINE_MS = 1200;
+
+let started = false;
 
 /**
  * Déconnexion agence et client.
  * Le cookie client est HttpOnly : seul le serveur peut l’effacer.
- * Le cookie agence est lisible : on l’expire ici aussi, juste avant la navigation,
- * pour qu’un rafraîchissement du navigateur ne le repose pas.
+ * On envoie un formulaire. La réponse 303 retire le cookie puis ouvre la connexion.
+ * Un fetch suivi d’un changement de page laisse parfois le cookie dans la webview iOS,
+ * et le site renvoie alors dans le compte.
  */
-export async function signOutAccount(scope: "local" | "global" = "local", next?: string) {
-  const response = await fetch("/api/auth/sign-out", {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify(next ? { scope, next } : { scope }),
-    cache: "no-store",
-    credentials: "same-origin",
-  });
-  if (!response.ok) return { ok: false as const };
-  const data = (await response.json().catch(() => null)) as { redirect?: unknown } | null;
-  const redirect = signOutRedirectPath({
-    requested: typeof data?.redirect === "string" ? data.redirect : next || null,
-    audience: "unknown",
-  });
-  clearVisibleAuthCookies();
-  if (typeof window !== "undefined") window.location.replace(redirect);
-  return { ok: true as const, redirect };
+export async function signOutAccount(
+  scope: SignOutScope = "local",
+  next?: string,
+  options?: { keepUnlock?: boolean }
+) {
+  if (typeof window === "undefined") return { ok: false as const };
+  if (started) return { ok: true as const, redirect: next || "/connexion" };
+  started = true;
+  await Promise.race([
+    prepareSignOut(scope, options).catch(() => {}),
+    new Promise<void>((resolve) => {
+      window.setTimeout(resolve, SIGN_OUT_NATIVE_DEADLINE_MS);
+    }),
+  ]);
+  try {
+    submitSignOutForm(scope, next);
+  } catch {
+    started = false;
+    return { ok: false as const };
+  }
+  return { ok: true as const, redirect: next || "/connexion" };
 }
 
-function clearVisibleAuthCookies() {
-  if (typeof document === "undefined") return;
-  for (const name of browserAuthCookieNames(document.cookie)) {
-    const deletion = browserCookieDeletion(name);
-    if (deletion) document.cookie = deletion;
-  }
+async function prepareSignOut(scope: SignOutScope, options?: { keepUnlock?: boolean }) {
+  await clearClientShellCache().catch(() => {});
+  const native = await import("@/lib/native/end-session");
+  await native.endNativeSession(scope, options);
 }
+
+/** Navigation réelle. Le serveur répond 303 et efface le cookie dans cette réponse. */
+export function submitSignOutForm(scope: SignOutScope, next?: string) {
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = "/api/auth/sign-out";
+  form.hidden = true;
+  append(form, "scope", scope);
+  if (next) append(form, "next", next);
+  document.body.appendChild(form);
+  form.submit();
+}
+
+function append(form: HTMLFormElement, name: string, value: string) {
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.name = name;
+  input.value = value;
+  form.appendChild(input);
+}
+

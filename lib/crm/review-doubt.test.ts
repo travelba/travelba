@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { reviewDoubts, reviewStepLabel, storedReviewReason } from "./review-doubt";
+import { hasReviewMark, reviewDoubts, reviewStepLabel, storedReviewReason, verifiedJournalSummary, withoutReviewMark } from "./review-doubt";
 
 test("une carte sans drapeau ne dit rien", () => {
   assert.deepEqual(
@@ -74,4 +74,24 @@ test("un drapeau sans indice le dit", () => {
     reviewDoubts({ kind: "flight", title: "Rome → Paris", details: { needs_review: true } }),
     ["La lecture est marquée douteuse, sans préciser le champ."]
   );
+});
+
+test("vérifier retire le marqueur et garde le reste", () => {
+  const details = withoutReviewMark({
+    needs_review: true,
+    review_reason: "À vérifier avant de montrer au client.",
+    hotel_name: "Mondrian",
+    city: "Bordeaux",
+  });
+  assert.equal(hasReviewMark(details), false);
+  assert.equal("needs_review" in details, false);
+  assert.equal("review_reason" in details, false);
+  assert.equal(details.hotel_name, "Mondrian");
+  assert.equal(details.city, "Bordeaux");
+  assert.deepEqual(
+    reviewDoubts({ kind: "hotel", title: "Mondrian", details }),
+    []
+  );
+  assert.equal(verifiedJournalSummary(["Rome → Paris"]), "Carte vérifiée : Rome → Paris.");
+  assert.equal(verifiedJournalSummary(["Mondrian", "Transfert"]), "Cartes vérifiées : Mondrian, Transfert.");
 });

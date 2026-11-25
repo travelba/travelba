@@ -26,8 +26,22 @@ export const PLIANT_VIRTUAL = "PLIANT_VIRTUAL";
  * Carte voyage, exemptée de 3DS. Uniquement si elle est émissible sur le compte.
  * Jamais une variante Commercial Choice (`_CC`) : elle refuse des commerçants.
  * Sans `maxTransactionCount`, Pliant pose 3 ou 5 achats : le nombre est toujours envoyé.
+ * Repli si Visa Travel 3 % sans 3DS n’est pas émissible.
  */
 export const PLIANT_VIRTUAL_TRAVEL = "PLIANT_VIRTUAL_TRAVEL";
+
+/**
+ * Visa Travel 3 %, catalogue `VIRTUAL`, pas enrôlée 3DS.
+ * Défaut pour les hôtels, le GDS et la plupart des commerçants voyage.
+ * Le champ `type` n’est pas envoyé.
+ */
+export const PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D = "PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D";
+
+/**
+ * Visa Travel 3 %, 3DS frictionless. Seulement si le commerçant l’exige (ex. Ryanair).
+ * Le nom sans `_N3D` n’est pas le défaut.
+ */
+export const PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300 = "PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300";
 
 /** Repli lisible quand le compte n’a pas les cartes voyage. */
 export const PLIANT_TRAVEL_WARNING = "Cartes voyage non activées sur le compte Pliant : 3DS possible.";
@@ -44,9 +58,22 @@ export function pliantConfigIsSingleUse(cardConfig: string) {
   return /SINGLE_USE$/i.test(cardConfig.trim());
 }
 
-/** Exactement la carte voyage, pas une Commercial Choice. */
+/**
+ * Carte voyage : Visa Travel sans 3DS, 3DS frictionless, ou l’ancienne `PLIANT_VIRTUAL_TRAVEL`.
+ * Pas une Commercial Choice. Le nom `_N3D` n’est pas la variante 3DS.
+ */
 export function pliantConfigIsTravel(cardConfig: string) {
-  return cardConfig.trim() === PLIANT_VIRTUAL_TRAVEL;
+  const name = cardConfig.trim();
+  return (
+    name === PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D ||
+    name === PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300 ||
+    name === PLIANT_VIRTUAL_TRAVEL
+  );
+}
+
+/** 3DS frictionless. Le défaut sans 3DS ne correspond pas : les deux noms se distinguent en entier. */
+export function pliantConfigIsTravel3ds(cardConfig: string) {
+  return cardConfig.trim() === PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300;
 }
 
 /** `PLIANT_VIRTUAL_TRAVEL_CC` et `PLIANT_VIRTUAL_TRAVEL_CC_150` : jamais émises. */

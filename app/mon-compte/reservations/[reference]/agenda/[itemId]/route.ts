@@ -5,7 +5,8 @@ import { readVerifiedUser } from "@/lib/crm/verified-user";
 import { calendarHttpResponse } from "@/lib/crm/calendar-http";
 import { calendarItemIdFromSegment } from "@/lib/crm/calendar-ics";
 import { carnetVisible, clientVisibleItems } from "@/lib/crm/carnet";
-import { clientTripOwnerIds } from "@/lib/crm/company-peers";
+import { applyClientBookingScope } from "@/lib/crm/company-role";
+import { clientBookingScope } from "@/lib/crm/company-peers";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 
 type Ctx = { params: Promise<{ reference: string; itemId: string }> };
@@ -20,12 +21,10 @@ export async function GET(request: Request, ctx: Ctx) {
   const customer = await ensureCustomerForUser(user);
   if (!customer) return new NextResponse("Connexion requise", { status: 401 });
 
-  const { data: booking } = await supabase
-    .from("crm_bookings")
-    .select("*")
-    .in("customer_id", await clientTripOwnerIds(customer))
-    .eq("reference", reference)
-    .maybeSingle();
+  const { data: booking } = await applyClientBookingScope(
+    supabase.from("crm_bookings").select("*").eq("reference", reference),
+    await clientBookingScope(customer)
+  ).maybeSingle();
   if (!booking) return new NextResponse("Introuvable", { status: 404 });
   const b = booking as CrmBooking;
 

@@ -5,6 +5,7 @@ import { pliantDesignation } from "./eta-il-fee";
 import { parisIsoDate } from "./hotel-arrival";
 import { bookingCardValidity, manualStayCardDraft, sameCardNameCount } from "./manual-stay-card";
 import { rememberPliantCard } from "./pliant-card-run";
+import { PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300 } from "./pliant-controls";
 import { isActiveItem, type CrmBookingItem } from "./types";
 import {
   issuePliantCard,
@@ -28,6 +29,7 @@ export async function issueBookingCard(
     designation?: string | null;
     transactionAmount?: string;
     transactionCount?: string;
+    troisDs?: boolean;
   }
 ) {
   const { data: bookingData } = await admin
@@ -75,7 +77,8 @@ export async function issueBookingCard(
   if ("error" in draft) throw new Error(draft.error);
   if (!pliantConfigured()) throw new Error("Pliant n'est pas branché.");
 
-  const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", draft.body);
+  const body = input.troisDs ? { ...draft.body, cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300 } : draft.body;
+  const issued = await issuePliantCard(process.env.PLIANT_CARDHOLDER_ID || "", body);
   if (!issued.cardId) throw new Error("Pliant n'a pas créé la carte.");
   const last4 = (await readPliantCardFace(issued.cardId)).last4;
 

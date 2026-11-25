@@ -5,6 +5,7 @@ import { carnetVisible } from "@/lib/crm/carnet";
 import { publicChauffeurQuote, quoteChauffeurOffer } from "@/lib/crm/chauffeur-quote";
 import { isExtraLeg, isServicePlace } from "@/lib/crm/extras";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
+import { clientHidesPrices, stripClientMoneyValue } from "@/lib/crm/client-price-privacy";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -38,7 +39,10 @@ export async function POST(request: Request, ctx: Ctx) {
       arrive: String(body?.arrive || ""),
       currency: b.currency || "EUR",
     });
-    return NextResponse.json({ vehicles: vehicles.map(publicChauffeurQuote) });
+    const quotes = vehicles.map(publicChauffeurQuote);
+    return NextResponse.json({
+      vehicles: clientHidesPrices(auth.customer) ? quotes.map((quote) => stripClientMoneyValue(quote)) : quotes,
+    });
   } catch (error) {
     if (error instanceof BookingIssuesError) return jsonIssues(error.issues);
     return jsonError(error instanceof Error ? error.message : "Devis impossible", 400);

@@ -162,6 +162,7 @@ test("an email leaves the queue only with an explicit action", () => {
     id: WIRE,
     dossierId: "",
     cartes: false,
+    forcer: false,
   });
   assert.equal(prepareEmailAction({ id: WIRE, action: "rattacher", dossier_id: BOOKING, cartes: true }).cartes, true);
   assert.equal(prepareEmailAction({ id: WIRE, action: "rattacher", dossier_id: BOOKING }).dossierId, BOOKING);
@@ -193,6 +194,11 @@ test("a client is created with an email and a name, and updated by id", () => {
   assert.equal(prepareClientUpdate({ id: CLIENT, commission_agence: "defaut" }).patch.agency_fee_rate, null);
   assert.throws(() => prepareClientUpdate({ id: CLIENT, commission_agence: "8" }), /7,5/);
   assert.equal(prepareClientUpdate({ id: CLIENT, supprimer_societe_id: BOOKING }).removeCompanyId, BOOKING);
+  assert.equal(prepareClientUpdate({ id: CLIENT, masquer_prix: true }).patch.hide_client_prices, true);
+  assert.equal(prepareClientUpdate({ id: CLIENT, zero_frais: true }).patch.zero_fees, true);
+  assert.equal(prepareClientUpdate({ id: CLIENT, zero_frais: false }).patch.zero_fees, false);
+  assert.equal(prepareClientUpdate({ id: CLIENT, masquer_prix: false }).patch.hide_client_prices, false);
+  assert.throws(() => prepareClientUpdate({ id: CLIENT, masquer_prix: "oui" }), /masquer_prix/);
   assert.throws(() => prepareClientUpdate({ id: CLIENT }), /Rien à modifier/);
   const dubai = prepareClientUpdate({
     id: CLIENT,

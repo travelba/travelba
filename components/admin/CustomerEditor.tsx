@@ -37,6 +37,8 @@ import { SectionFold } from "@/components/crm/SectionFold";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
+import { CompanyDossierPrompt, type PersonalDossierChoice } from "@/components/admin/CompanyDossierPrompt";
+import { fold } from "@/lib/crm/text";
 import { type ScanResult } from "@/components/crm/IdentityScan";
 import { primaryIdentityDoc, vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
@@ -102,6 +104,8 @@ function ficheSnapshot(values: {
   billingParentId: string;
   spendingAllowance: string;
   onHold: boolean;
+  hidePrices: boolean;
+  zeroFees: boolean;
   companyDrafts: unknown;
   feeChoice: string;
 }) {
@@ -114,12 +118,14 @@ export function CustomerEditor({
   documents,
   companyAdmins = [],
   billingCompanies = [],
+  personalDossiers = [],
 }: {
   customer: CrmCustomer;
   companions: CrmCompanion[];
   documents: CrmTravelDocument[];
   companyAdmins?: PickableCustomer[];
   billingCompanies?: CrmBillingCompany[];
+  personalDossiers?: PersonalDossierChoice[];
 }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState(customer.first_name);
@@ -154,9 +160,13 @@ export function CustomerEditor({
     })
   );
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [dossierChoices, setDossierChoices] = useState<Record<string, string>>({});
+  const [askingDossiers, setAskingDossiers] = useState(false);
   const [saving, setSaving] = useState(false);
   const savingLock = useRef(false);
   const [onHold, setOnHold] = useState(Boolean(customer.on_hold));
+  const [hidePrices, setHidePrices] = useState(Boolean(customer.hide_client_prices));
+  const [zeroFees, setZeroFees] = useState(Boolean(customer.zero_fees));
   const storedFeeKey = agencyFeeRateKey(parseStoredAgencyFeeRate(customer.agency_fee_rate) ?? 0.1);
   const [feeChoice, setFeeChoice] = useState(storedFeeKey);
   const hasPassport = vaultDocumentsForPerson(documents, null).length > 0;
@@ -196,6 +206,8 @@ export function CustomerEditor({
     billingParentId,
     spendingAllowance,
     onHold,
+    hidePrices,
+    zeroFees,
     companyDrafts,
     feeChoice,
   });
@@ -231,6 +243,22 @@ export function CustomerEditor({
       setSaveError(err);
       return;
     }
+    const freshCompanies = companyDrafts
+      .filter((draft) => !draft.id && draft.values.companyName.trim())
+      .map((draft) => ({ key: draft.key, name: draft.values.companyName.trim() }));
+    if (freshCompanies.length && personalDossiers.length) {
+      const missing = personalDossiers.some((dossier) => !dossierChoices[dossier.id]);
+      if (!askingDossiers || missing) {
+        setAskingDossiers(true);
+        setOpenBilling(true);
+        setSaveError(
+          askingDossiers && missing
+            ? "Indiquez, pour chaque dossier, s’il passe sur la société ou reste en particulier."
+            : null
+        );
+        return;
+      }
+    }
     savingLock.current = true;
     setSaving(true);
     setSaveError(null);
@@ -259,6 +287,8 @@ export function CustomerEditor({
           billing_parent_id: companyRole === "member" ? billingParentId || null : null,
           spending_allowance: companyRole ? spendingAllowance : null,
           on_hold: onHold,
+          hide_client_prices: hidePrices,
+          zero_fees: zeroFees,
           billing_companies: billingCompaniesPayload(companyDrafts, profileAddress),
           ...(feeChoice === storedFeeKey ? {} : { agency_fee_rate: Number(feeChoice) }),
         }),
@@ -272,6 +302,27 @@ export function CustomerEditor({
         ? billingCompanyDrafts(json.billing_companies, customer, profileAddress)
         : companyDrafts;
       if (Array.isArray(json.billing_companies)) setCompanyDrafts(nextDrafts);
+      const previousIds = new Set(billingCompanies.map((company) => company.id));
+      const created = (Array.isArray(json.billing_companies) ? json.billing_companies : []) as CrmBillingCompany[];
+      const createdIds = created.filter((company) => !previousIds.has(company.id));
+      for (const dossier of personalDossiers) {
+        const choice = dossierChoices[dossier.id];
+        if (!choice || choice === "personal") continue;
+        const draft = freshCompanies.find((company) => company.key === choice);
+        const match = createdIds.find((company) => fold(company.company_name) === fold(draft?.name));
+        if (!match) continue;
+        const moved = await fetch(`/api/admin/bookings/${dossier.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payer_kind: "company", billing_company_id: match.id }),
+        });
+        if (!moved.ok) {
+          const movedJson = await moved.json().catch(() => ({}));
+          setSaveError(movedJson.error || `Le dossier ${dossier.reference} n’a pas changé de payeur.`);
+        }
+      }
+      setAskingDossiers(false);
+      setDossierChoices({});
       setInitial(
         ficheSnapshot({
           firstName,
@@ -293,6 +344,8 @@ export function CustomerEditor({
           billingParentId,
           spendingAllowance,
           onHold,
+          hidePrices,
+          zeroFees,
           companyDrafts: nextDrafts,
           feeChoice,
         })
@@ -309,6 +362,8 @@ export function CustomerEditor({
     birthCaption(birthDate, sex),
     pieceSummary(documents, null),
     onHold ? "En veille" : "",
+    hidePrices ? "Prix masqués au client" : "",
+    zeroFees ? "Zéro frais" : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -351,6 +406,37 @@ export function CustomerEditor({
           <span>
             <span className="font-semibold">Compte en veille</span>
             <span className="mt-0.5 block text-xs text-muted">Badge interne. Aucun changement pour le client.</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)]">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={hidePrices}
+            onChange={(e) => setHidePrices(e.target.checked)}
+          />
+          <span>
+            <span className="font-semibold">Masquer prix et transactions dans l’espace client</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              L’espace client, le carnet, l’aperçu et les partages de ce client ne reçoivent plus aucun montant. L’itinéraire
+              et les documents de voyage restent. L’agence continue de tout voir.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)]">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={zeroFees}
+            onChange={(e) => setZeroFees(e.target.checked)}
+          />
+          <span>
+            <span className="font-semibold">Zéro frais</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Aucun frais de billeterie ni commission d’agence automatique sur les dossiers de cette fiche. En cochant,
+              les frais déjà présents sont retirés des dossiers qui ne sont pas facturés. Un dossier partagé avec un
+              compte jumeau suit la fiche qui le possède. Les frais retirés ne reviennent pas.
+            </span>
           </span>
         </label>
 
@@ -535,6 +621,18 @@ export function CustomerEditor({
               profileAddress={profileAddress}
             />
           </SectionFold>
+          {askingDossiers ? (
+            <CompanyDossierPrompt
+              companies={companyDrafts
+                .filter((draft) => !draft.id && draft.values.companyName.trim())
+                .map((draft) => ({ key: draft.key, name: draft.values.companyName.trim() }))}
+              dossiers={personalDossiers}
+              choices={dossierChoices}
+              onChoose={(dossierId, choice) =>
+                setDossierChoices((current) => ({ ...current, [dossierId]: choice }))
+              }
+            />
+          ) : null}
         </div>
 
         {saveError ? <p className="text-sm text-accent">{saveError}</p> : null}
@@ -547,7 +645,7 @@ export function CustomerEditor({
         >
           <BusyBar active={saving} label="Enregistrement…" />
           <button className="admin-af-btn admin-tap w-full rounded-full px-4 py-2 text-sm" disabled={saving}>
-            {saving ? "Enregistrement…" : "Enregistrer"}
+            {saving ? "Enregistrement…" : askingDossiers ? "Enregistrer la société" : "Enregistrer"}
           </button>
         </div>
         </div>

@@ -11,9 +11,9 @@ export const CLIENT_ONBOARDING_STEPS = [
   {
     id: "connexion",
     image: "/onboarding/04-connexion.webp",
-    title: "Un espace client privé, ouvert sur invitation",
+    title: "Bienvenue au Travel Club TBA",
     legend:
-      "Chaque voyageur reçoit son accès par e-mail ou sur WhatsApp. Il retrouve ses voyages sur son téléphone comme sur son ordinateur, sans application à installer.",
+      "Le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum jusqu’au 31 décembre 2026. Cette adhésion est nominative et réservée à vos propres réservations.",
   },
   {
     id: "accueil",

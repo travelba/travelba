@@ -1,7 +1,9 @@
 import "server-only";
 
 import { Resend } from "resend";
-import { recordClientPayAlert } from "@/lib/crm/agency-log";
+import { recordAgencyJournal, recordClientPayAlert } from "@/lib/crm/agency-log";
+import { STRIPE_SYSTEM_ACTOR } from "@/lib/crm/agency-journal";
+import { sepaConfirmedByStripe, sepaSystemReceivedSummary } from "@/lib/crm/sepa-hold";
 import { agencyEmailHtml, escapeHtml } from "@/lib/crm/email-html";
 import { formatMoney } from "@/lib/crm/money";
 import { AGENCY_MAIL_COPY } from "@/lib/crm/outbound-mail";
@@ -18,6 +20,8 @@ import { payerKindOf } from "@/lib/crm/payer";
 import { scoreRevolutMatches, suggestedCustomerId, type RevolutMatchCustomer } from "@/lib/crm/revolut-match";
 import { stayPayMethodOf } from "@/lib/crm/stripe-pay";
 import type { StripeIntentInput } from "@/lib/crm/stripe-inbox";
+import { paymentPushCopy } from "@/lib/crm/push-copy";
+import { sendCustomerPush } from "@/lib/crm/push-notices";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
 import { siteConfig } from "@/lib/site";
 
@@ -36,6 +40,8 @@ export type ClientPayNotice = {
   bookingId?: string | null;
   paymentIntentId: string;
   result: "reçu" | "refusé" | "abandonné";
+  /** Identifiant de requête Stripe. Vide : événement système (prélèvement confirmé plus tard). */
+  requestId?: string | null;
 };
 
 function hrefFor(input: ClientPayNotice) {
@@ -51,25 +57,37 @@ export async function notifyClientPayment(admin: NoticeDb, input: ClientPayNotic
   const intentId = input.paymentIntentId.trim();
   if (!intentId || !input.customerId) return;
   const amount = Math.round(input.amountCents) / 100;
-  const summary = paySettledSummary({
-    payer: input.payer,
-    method: input.method,
-    wallet: input.wallet,
-    amount,
-    currency: input.currency,
-    reference: input.reference,
-    result: input.result,
-  });
+  const money = formatMoney(amount, input.currency);
+  const system = input.result === "reçu" && sepaConfirmedByStripe(input.method, input.requestId);
+  const who = input.customerName.trim() || "Un client";
+  const systemSummary = system ? sepaSystemReceivedSummary(who, money) : "";
+  const summary = system
+    ? systemSummary
+    : paySettledSummary({
+        payer: input.payer,
+        method: input.method,
+        wallet: input.wallet,
+        amount,
+        currency: input.currency,
+        reference: input.reference,
+        result: input.result,
+      });
   const path = payIntentPath(intentId);
   if (await paymentKeySeen(admin, stripeNoticeKey(intentId))) return;
-  const detail = input.result === "reçu" ? "Paiement reçu" : input.result === "abandonné" ? "Paiement abandonné" : "Paiement refusé";
+  const detail = system
+    ? STRIPE_SYSTEM_ACTOR
+    : input.result === "reçu"
+      ? "Paiement reçu"
+      : input.result === "abandonné"
+        ? "Paiement abandonné"
+        : "Paiement refusé";
   let already = false;
   try {
     const existing = await admin
       .from("crm_customer_activity")
       .select("id")
       .eq("customer_id", input.customerId)
-      .eq("action", "pay_settled")
+      .in("action", ["pay_settled", "stripe_sepa"])
       .eq("path", path)
       .limit(1)
       .maybeSingle();
@@ -77,7 +95,7 @@ export async function notifyClientPayment(admin: NoticeDb, input: ClientPayNotic
     if (!already) {
       await admin.from("crm_customer_activity").insert({
         customer_id: input.customerId,
-        action: "pay_settled",
+        action: system ? "stripe_sepa" : "pay_settled",
         summary: redactPaymentSecrets(summary),
         detail,
         path,
@@ -89,16 +107,16 @@ export async function notifyClientPayment(admin: NoticeDb, input: ClientPayNotic
   }
   if (already) return;
 
-  const who = input.customerName.trim() || "Un client";
   const how = payMethodPhrase(input.method, input.wallet);
-  const money = formatMoney(amount, input.currency);
   const where = (input.reference || "").trim() ? ` · ${input.reference}` : "";
   const alert = redactPaymentSecrets(
-    input.result === "reçu"
-      ? `${who} a réglé ${money} par ${how}${where}.`
-      : input.result === "abandonné"
-        ? `${who} : paiement abandonné · ${money} · ${how}${where}.`
-        : `${who} : paiement refusé · ${money} · ${how}${where}.`
+    system
+      ? systemSummary
+      : input.result === "reçu"
+        ? `${who} a réglé ${money} par ${how}${where}.`
+        : input.result === "abandonné"
+          ? `${who} : paiement abandonné · ${money} · ${how}${where}.`
+          : `${who} : paiement refusé · ${money} · ${how}${where}.`
   );
   const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const prior = await admin
@@ -111,6 +129,26 @@ export async function notifyClientPayment(admin: NoticeDb, input: ClientPayNotic
     .limit(1)
     .maybeSingle();
   await recordClientPayAlert({ customerId: input.customerId, summary: alert });
+  if (system) {
+    await recordAgencyJournal({
+      staffId: null,
+      action: "create",
+      entityType: input.bookingId ? "dossier" : "client",
+      entityId: input.bookingId || input.customerId,
+      summary: alert,
+      diff: { acteur: STRIPE_SYSTEM_ACTOR },
+    });
+    if (input.bookingId) {
+      await recordAgencyJournal({
+        staffId: null,
+        action: "create",
+        entityType: "client",
+        entityId: input.customerId,
+        summary: alert,
+        diff: { acteur: STRIPE_SYSTEM_ACTOR },
+      });
+    }
+  }
   if (!prior.data && input.result === "reçu") {
     await sendPayMail({
       name: who,
@@ -118,27 +156,53 @@ export async function notifyClientPayment(admin: NoticeDb, input: ClientPayNotic
       method: how,
       reference: input.reference,
       href: hrefFor(input),
+      system: system ? alert : null,
+    });
+  }
+  if (input.result === "reçu") {
+    const copy = paymentPushCopy(money, input.reference);
+    const ref = (input.reference || "").trim();
+    const url = /^TB-[A-Za-z0-9-]{4,32}$/i.test(ref)
+      ? `/mon-compte/reservations/${ref}`
+      : "/mon-compte/transactions";
+    await sendCustomerPush({
+      customerId: input.customerId,
+      kind: "payment",
+      title: copy.title,
+      body: copy.body,
+      url,
+      idempotencyKey: `pay:${intentId}`,
+      bookingId: input.bookingId,
     });
   }
 }
 
-async function sendPayMail(input: { name: string; money: string; method: string; reference?: string | null; href: string }) {
+async function sendPayMail(input: {
+  name: string;
+  money: string;
+  method: string;
+  reference?: string | null;
+  href: string;
+  system?: string | null;
+}) {
   const apiKey = productionOnlySecret(process.env.RESEND_API_KEY);
   if (!apiKey) return;
   const from = process.env.CONTACT_FROM_EMAIL || siteConfig.contactEmail;
   const where = (input.reference || "").trim();
-  const body = where
-    ? `${input.name} a réglé ${input.money} par ${input.method} pour le dossier ${where}.`
-    : `${input.name} a réglé ${input.money} par ${input.method}.`;
+  const body =
+    input.system ||
+    (where
+      ? `${input.name} a réglé ${input.money} par ${input.method} pour le dossier ${where}.`
+      : `${input.name} a réglé ${input.money} par ${input.method}.`);
   try {
     const resend = new Resend(apiKey);
     const origin = (process.env.NEXT_PUBLIC_SITE_URL || "https://travelba.fr").replace(/\/$/, "");
     const { error } = await resend.emails.send({
       from: `${siteConfig.name} <${from}>`,
       to: [AGENCY_MAIL_COPY],
-      subject: `Paiement reçu — ${input.name} — ${input.money}`,
+      subject: input.system || `Paiement reçu — ${input.name} — ${input.money}`,
       html: agencyEmailHtml({
-        title: "Paiement reçu",
+        title: input.system ? "Prélèvement SEPA reçu" : "Paiement reçu",
         preheader: body,
         bodyHtml: `<p style="margin:0;line-height:1.5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:#0B192C">${escapeHtml(body)}</p>`,
         ctaLabel: input.href === ARGENT_QUEUE_HREF ? "Voir À encaisser" : "Ouvrir la fiche",
@@ -157,7 +221,7 @@ async function paymentKeySeen(admin: NoticeDb, key: string) {
     const activity = await admin
       .from("crm_customer_activity")
       .select("id")
-      .eq("action", "pay_settled")
+      .in("action", ["pay_settled", "stripe_sepa"])
       .eq("path", payIntentPath(intentId))
       .limit(1);
     if (activity.data?.length) return true;
@@ -287,19 +351,25 @@ export async function noticeCaughtStripePayments(admin: NoticeDb, intents: Strip
           bookingId: (meta.crm_booking_id || "").trim() || null,
           paymentIntentId: id,
           result: "reçu",
+          requestId: null,
         });
         continue;
       }
+      const amount = Math.round(Number(intent.amount) || 0) / 100;
+      const money = formatMoney(amount, (intent.currency || "eur").toUpperCase());
+      const system = sepaConfirmedByStripe(method, null);
       const summary = redactPaymentSecrets(
-        paySettledSummary({
-          payer: payerKindOf(meta.payer_kind) || "personal",
-          method,
-          wallet,
-          amount: Math.round(Number(intent.amount) || 0) / 100,
-          currency: (intent.currency || "eur").toUpperCase(),
-          reference: meta.reference,
-          result: "reçu",
-        })
+        system
+          ? sepaSystemReceivedSummary(name, money)
+          : paySettledSummary({
+              payer: payerKindOf(meta.payer_kind) || "personal",
+              method,
+              wallet,
+              amount,
+              currency: (intent.currency || "eur").toUpperCase(),
+              reference: meta.reference,
+              result: "reçu",
+            })
       );
       const inserted = await admin.from("crm_agency_alerts").insert({
         kind: "payment",
@@ -311,10 +381,11 @@ export async function noticeCaughtStripePayments(admin: NoticeDb, intents: Strip
       if (inserted.error) continue;
       await sendPayMail({
         name: name || "Un client",
-        money: formatMoney(Math.round(Number(intent.amount) || 0) / 100, (intent.currency || "eur").toUpperCase()),
+        money,
         method,
         reference: (meta.reference || "").trim() || null,
         href: ARGENT_QUEUE_HREF,
+        system: system ? summary : null,
       });
     } catch (err) {
       console.error("[pay] rattrapage", err instanceof Error ? err.message : "avis");

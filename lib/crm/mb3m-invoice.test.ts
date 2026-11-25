@@ -1,18 +1,24 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { mb3mLineSignature } from "./mb3m-account";
-import { Mb3mError } from "./mb3m";
+import { mb3mSoapLines } from "./mb3m-conform";
+import { Mb3mError, MB3M_CREDIT_NOTE_REFUSAL, linesXml, mb3mAddInvoice, mb3mCancelInvoice, mb3mFindPiece, mb3mReadLettrage } from "./mb3m";
 import {
   buildMb3mInvoiceContext,
   mb3mInvoiceBlocker,
   mb3mInvoiceLine,
+  mb3mLettrageWarning,
+  mb3mReplacementHold,
+  reissueMb3mInvoice,
   runMb3mInvoice,
   storeMb3mPdf,
   type Mb3mInvoiceContext,
   type Mb3mInvoiceDeps,
   type Mb3mStoredPiece,
 } from "./mb3m-invoice";
-import { mb3mInvoiceChip, mb3mPreparationView } from "./mb3m-prep";
+import { assembleGroupedMb3m } from "./grouped-invoice-mb3m";
+import { mb3mInvoiceChip, mb3mLettrageHoldNotice, mb3mPreparationView } from "./mb3m-prep";
+import { formatMoney } from "./money";
 
 const previous = {
   user: process.env.MB3M_API_USER,
@@ -54,10 +60,11 @@ describe("mb3mInvoiceLine", () => {
     assert.equal(hotelZero.marginUnit, 0);
   });
 
-  it("vol, train et low cost : net et marge réels, l’activité du fichier, le TTC reste celui du CRM", () => {
+  it("vol, train et low cost : net et marge réels, le train part en 22, le TTC reste celui du CRM", () => {
     const sold = (line: { netPriceUnit: number; marginUnit?: number | null }) =>
       Math.round((line.netPriceUnit + (line.marginUnit || 0)) * 100) / 100;
     for (const activityId of [2, 5, 27, 22]) {
+      const sent = activityId === 5 ? 22 : activityId;
       const priced = mb3mInvoiceLine({
         transactionId: "tx-flight",
         label: "Air France",
@@ -65,7 +72,7 @@ describe("mb3mInvoiceLine", () => {
         activityId,
         margin: 1000.44,
       });
-      assert.equal(priced.activityId, activityId);
+      assert.equal(priced.activityId, sent);
       assert.equal(priced.netPriceUnit, 198);
       assert.equal(priced.netPriceTotal, 198);
       assert.equal(priced.marginUnit, 1000.44);
@@ -77,7 +84,7 @@ describe("mb3mInvoiceLine", () => {
         activityId,
         margin: 0,
       });
-      assert.equal(zero.activityId, activityId);
+      assert.equal(zero.activityId, sent);
       assert.equal(zero.netPriceUnit, 362);
       assert.equal(zero.marginUnit, 0);
       assert.equal(sold(zero), 362);
@@ -245,6 +252,15 @@ describe("facture MB3M", () => {
       ],
     });
     assert.equal(ctx.amount, 1050);
+    assert.equal(ctx.lines.some((line) => line.transactionId === "remise-commerciale"), false);
+    const expense = ctx.lines.find((line) => line.transactionId === "fee-debit");
+    assert.equal(expense?.activityId, 22);
+    assert.equal(expense?.customCode ?? null, null);
+    assert.equal(expense?.agencyProvider ?? false, false);
+    assert.equal(expense?.providerName, "DIVERS TERRESTRE");
+    assert.equal(expense?.amount, 50);
+    assert.equal(expense?.label, "Dépense · Extra — TBA-42");
+    assert.equal(expense?.note ?? null, null);
     assert.deepEqual(
       ctx.lines.map((line) => [line.transactionId, line.amount, line.activityId]),
       [
@@ -256,6 +272,458 @@ describe("facture MB3M", () => {
     assert.equal(ctx.destinationIso, "FR");
     assert.equal(ctx.destination, "France");
     assert.equal(mb3mInvoiceBlocker(ctx), null);
+  });
+
+  it("facture une dépense en activité 22 et laisse la billeterie en 401, sur la pièce simple et la pièce groupée", () => {
+    arm();
+    const hotelFee = {
+      id: "exp-hotel",
+      kind: "expense",
+      title: "Frais hôtel",
+      amount: 15,
+      lifecycle: "active",
+    };
+    const ticketExpense = {
+      id: "exp-ticket",
+      kind: "expense",
+      title: "Frais de billetterie",
+      amount: 25,
+      lifecycle: "active",
+    };
+    const autoTicket = {
+      id: "auto-ticket",
+      kind: "expense",
+      title: "Frais de billeterie (1 billet)",
+      amount: 25,
+      lifecycle: "active",
+      details: { auto_fee: "ticketing" },
+    };
+    const charge = (
+      id: string,
+      amount: number,
+      label: string,
+      itemId: string,
+      booking: string
+    ) => ({
+      id,
+      direction: "debit" as const,
+      status: "posted",
+      currency: "EUR",
+      amount,
+      label,
+      external_id: `booking:${booking}:expense:${itemId}`,
+      booking_id: bookingId,
+    });
+    const first = buildMb3mInvoiceContext({
+      booking: booking({ reference: "TB-2026-0211", destination: "Tel Aviv" }),
+      items: [hotelFee, autoTicket],
+      travelers: [{ first_name: "Camille", last_name: "Martin" }],
+      payer: payer(),
+      companies: [],
+      charges: [
+        charge("hotel-fee", 15, "Dépense · Frais hôtel — TB-2026-0211", "exp-hotel", bookingId),
+        charge("auto-fee", 25, "Frais de billeterie (1 billet)", "auto-ticket", bookingId),
+      ],
+    });
+    const second = buildMb3mInvoiceContext({
+      booking: booking({ reference: "TB-2026-0212", destination: "Tel Aviv" }),
+      items: [ticketExpense],
+      travelers: [{ first_name: "Camille", last_name: "Martin" }],
+      payer: payer(),
+      companies: [],
+      charges: [charge("ticket-fee", 25, "Dépense · Frais de billetterie — TB-2026-0212", "exp-ticket", bookingId)],
+    });
+    const hotel = first.lines.find((line) => line.transactionId === "hotel-fee");
+    const auto = first.lines.find((line) => line.transactionId === "auto-fee");
+    const manual = second.lines.find((line) => line.transactionId === "ticket-fee");
+    assert.equal(hotel?.activityId, 22);
+    assert.equal(hotel?.customCode ?? null, null);
+    assert.equal(hotel?.agencyProvider ?? false, false);
+    assert.equal(hotel?.providerName, "DIVERS TERRESTRE");
+    assert.equal(hotel?.amount, 15);
+    assert.equal(hotel?.label, "Dépense · Frais hôtel — TB-2026-0211");
+    assert.equal(hotel?.note ?? null, null);
+    assert.equal(auto?.customCode, "401");
+    assert.equal(auto?.label, "Frais Agence Billetterie");
+    assert.equal(auto?.amount, 25);
+    assert.equal(manual?.activityId, 22);
+    assert.equal(manual?.customCode ?? null, null);
+    assert.equal(manual?.amount, 25);
+    assert.equal(manual?.label, "Dépense · Frais de billetterie — TB-2026-0212");
+
+    const agency = "ba3e9d2d-c2a5-4872-b5d2-99e74b483831";
+    const simple = linesXml("InvoiceLine", mb3mSoapLines(first.lines, 0.01), agency);
+    const hotelAt = simple.indexOf("<Label>Dépense · Frais hôtel — TB-2026-0211</Label>");
+    const hotelXml = simple.slice(simple.lastIndexOf("<InvoiceLine>", hotelAt), simple.indexOf("</InvoiceLine>", hotelAt));
+    assert.match(hotelXml, /<ActivityId>22<\/ActivityId>/);
+    assert.match(hotelXml, /<Type>Standard<\/Type>/);
+    assert.match(hotelXml, /<Label>Dépense · Frais hôtel — TB-2026-0211<\/Label>/);
+    assert.equal(hotelXml.includes("<Complementary>"), false);
+    assert.equal(hotelXml.includes("<Note>"), false);
+    assert.match(simple, /<Label>Frais Agence Billetterie<\/Label>/);
+    assert.match(simple, /<Complementary>401<\/Complementary>/);
+    assert.equal(simple.includes("<Complementary>12</Complementary>"), false);
+    assert.match(simple, /<NetPriceUnit>25<\/NetPriceUnit>/);
+    assert.equal(simple.includes("<Note>"), false);
+    assert.match(simple, new RegExp(`<ProviderId>${agency}</ProviderId>`));
+
+    const grouped = assembleGroupedMb3m([first, second]);
+    const groupedXml = linesXml("InvoiceLine", grouped.lines, agency);
+    assert.match(groupedXml, /<Label>Dépense · Frais hôtel — TB-2026-0211<\/Label>/);
+    assert.match(groupedXml, /<Label>Dépense · Frais de billetterie — TB-2026-0212<\/Label>/);
+    assert.match(groupedXml, /<ActivityId>22<\/ActivityId>/);
+    assert.match(groupedXml, /Frais Agence Billetterie/);
+    assert.match(groupedXml, /TB-2026-0211/);
+    assert.equal(groupedXml.includes("<Note>"), false);
+    assert.equal(groupedXml.includes("<Complementary>12</Complementary>"), false);
+    assert.equal(grouped.lines.every((line) => !line.note), true);
+    const spent = grouped.lines.filter((line) => line.label.startsWith("Dépense · "));
+    assert.equal(spent.length, 2);
+    assert.equal(
+      spent.every((line) => line.activityId === 22 && line.type === "Standard" && Math.round(((line.netPriceUnit || 0) + (line.marginUnit || 0)) * 100) / 100 > 0),
+      true
+    );
+  });
+
+  it("note seulement la dépense payée par Pliant, sur la facture et l’avoir", () => {
+    arm();
+    const thin = "\u202f";
+    const ctx = buildMb3mInvoiceContext({
+      booking: booking({ reference: "TB-2026-0211" }),
+      items: [
+        {
+          id: "exp-pliant",
+          kind: "expense",
+          title: "Frais hôtel",
+          amount: 15,
+          lifecycle: "active",
+          details: { pliant_transaction_id: "tx-pliant", pliant_amount: 200 },
+        },
+        { id: "exp-libre", kind: "expense", title: "Pourboire", amount: 10, lifecycle: "active" },
+        { id: "hotel-1", kind: "hotel", title: "Avoriaz", amount: 1000, lifecycle: "active" },
+      ],
+      travelers: [{ first_name: "Ada", last_name: "Lovelace" }],
+      payer: payer(),
+      companies: [],
+      costs: [
+        {
+          id: "cost-1",
+          bookingId,
+          bookingItemId: "exp-pliant",
+          source: "pliant",
+          sourceId: "tx-pliant",
+          amountEur: 1245,
+          originalAmount: 1350,
+          originalCurrency: "USD",
+          supplier: "Hôtel",
+          occurredOn: "2026-03-04",
+          instrument: "pliant_card",
+          instrumentDetail: "4242",
+        },
+      ],
+      charges: [
+        {
+          id: "pliant-debit",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 15,
+          label: "Dépense · Frais hôtel — TB-2026-0211",
+          external_id: "booking:b:expense:exp-pliant",
+          booking_id: bookingId,
+        },
+        {
+          id: "free-debit",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 10,
+          label: "Dépense · Pourboire — TB-2026-0211",
+          external_id: "booking:b:expense:exp-libre",
+          booking_id: bookingId,
+        },
+        {
+          id: "hotel-debit",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 1000,
+          label: "Hôtel · Avoriaz",
+          external_id: "booking:b:item:hotel-1",
+          booking_id: bookingId,
+        },
+      ],
+    });
+    const agency = "ba3e9d2d-c2a5-4872-b5d2-99e74b483831";
+    const xml = linesXml("InvoiceLine", mb3mSoapLines(ctx.lines, 0.01), agency);
+    const block = (label: string) => {
+      const at = xml.indexOf(`<Label>${label}</Label>`);
+      return xml.slice(xml.lastIndexOf("<InvoiceLine>", at), xml.indexOf("</InvoiceLine>", at));
+    };
+    const pliant = block("Dépense · Frais hôtel — TB-2026-0211");
+    assert.match(pliant, /<ActivityId>22<\/ActivityId>/);
+    assert.match(pliant, /<Type>Standard<\/Type>/);
+    assert.equal(pliant.includes("<Complementary>"), false);
+    assert.match(pliant, new RegExp(`<Note>Pliant : 1${thin}245,00 €</Note>`));
+    const tip = block("Dépense · Pourboire — TB-2026-0211");
+    assert.equal(tip.includes("<Note>"), false);
+    assert.match(tip, /<ActivityId>22<\/ActivityId>/);
+    assert.equal(tip.includes("<Complementary>"), false);
+    const hotel = block("Hôtel · Avoriaz");
+    assert.equal(hotel.includes("<Note>"), false);
+    assert.match(hotel, /<Type>Standard<\/Type>/);
+    assert.match(hotel, /<ActivityId>7<\/ActivityId>/);
+    assert.match(hotel, /<ProviderId>013428ca-a71c-4d2a-90a7-75c279281f82<\/ProviderId>/);
+    const grouped = assembleGroupedMb3m([ctx]);
+    const groupedHotel = grouped.lines.find((line) => line.label.includes("Avoriaz"));
+    assert.equal(groupedHotel?.providerId, "013428ca-a71c-4d2a-90a7-75c279281f82");
+    assert.equal(groupedHotel?.activityId, 7);
+    const groupedPliant = grouped.lines.find((line) => line.label.includes("Frais hôtel"));
+    assert.equal(groupedPliant?.type, "Standard");
+    assert.equal(groupedPliant?.activityId, 22);
+    assert.equal(groupedPliant?.note, `Pliant : 1${thin}245,00 €`);
+    assert.equal(grouped.lines.filter((line) => line.note).length, 1);
+    const credit = linesXml(
+      "CreditNoteLine",
+      [
+        {
+          label: "Dépense · Frais hôtel — TB-2026-0211",
+          quantity: 1,
+          netPriceUnit: 15,
+          netPriceTotal: 15,
+          activityId: 22,
+          type: "Standard",
+          note: `Pliant : 1${thin}245,00 €`,
+        },
+        {
+          label: "Hôtel · Avoriaz",
+          quantity: 1,
+          netPriceUnit: 1000,
+          netPriceTotal: 1000,
+          activityId: 7,
+          type: "Standard",
+          note: "Fournisseur : RIAD",
+        },
+        {
+          label: "Frais Agence Billetterie",
+          quantity: 1,
+          netPriceUnit: 25,
+          netPriceTotal: 25,
+          type: "Custom",
+          customType: { complementary: "401", lineType: 4 },
+          providerRole: "agency",
+          note: "Pliant : 25,00 €",
+        },
+      ],
+      agency
+    );
+    assert.equal(credit.match(/<Note>/g)?.length, 1);
+    assert.match(credit, new RegExp(`<Note>Pliant : 1${thin}245,00 €</Note>`));
+    assert.match(credit, /<ActivityId>22<\/ActivityId>/);
+    assert.match(credit, /<Label>Dépense · Frais hôtel — TB-2026-0211<\/Label>/);
+    assert.equal(credit.includes("Fournisseur"), false);
+    assert.equal(credit.includes("Débit Pliant"), false);
+    assert.equal(credit.includes("<Complementary>12</Complementary>"), false);
+  });
+
+  it("envoie SEJOUR MONTAGNE et ETA-IL en Dépense, et les 10 % en Frais agence", () => {
+    arm();
+    const charge = (id: string, amount: number, label: string, externalId: string) => ({
+      id,
+      direction: "debit" as const,
+      status: "posted",
+      currency: "EUR",
+      amount,
+      label,
+      external_id: externalId,
+      booking_id: bookingId,
+    });
+    const ctx = buildMb3mInvoiceContext({
+      booking: booking({
+        reference: "TB-2026-0028",
+        payer_kind: "company",
+        billing_company_id: "co-1",
+        agency_commission: true,
+        agency_fee_rate: 0.1,
+        destination: "Courchevel",
+      }),
+      items: [
+        { id: "montagne", kind: "expense", title: "SEJOUR MONTAGNE", amount: 1200, lifecycle: "active" },
+        {
+          id: "eta",
+          kind: "expense",
+          title: "ETA-IL ELETRONIC TRAVE",
+          amount: 40,
+          lifecycle: "active",
+          details: { pliant_transaction_id: "tx-eta", pliant_amount: 40 },
+        },
+        {
+          id: "auto-ticket",
+          kind: "expense",
+          title: "Frais de billeterie (1 billet)",
+          amount: 25,
+          lifecycle: "active",
+          details: { auto_fee: "ticketing" },
+        },
+      ],
+      travelers: [{ first_name: "Ada", last_name: "Lovelace" }],
+      payer: payer(),
+      companies: [
+        {
+          id: "co-1",
+          sort_order: 1,
+          company_name: "Travelba",
+          siret: null,
+          billing_email: null,
+          billing_address_line: "1 rue du Test",
+          billing_postal_code: "75001",
+          billing_city: "Paris",
+          billing_country: "France",
+        },
+      ],
+      costs: [
+        {
+          id: "cost-eta",
+          bookingId,
+          bookingItemId: "eta",
+          source: "pliant",
+          sourceId: "tx-eta",
+          amountEur: 40,
+          originalAmount: 40,
+          originalCurrency: "EUR",
+          supplier: "ETA",
+          occurredOn: "2026-03-04",
+          instrument: "pliant_card",
+          instrumentDetail: "4242",
+        },
+      ],
+      charges: [
+        charge("montagne", 1200, "Dépense · SEJOUR MONTAGNE — TB-2026-0028", "booking:b:expense:montagne"),
+        charge("eta", 40, "Dépense · ETA-IL ELETRONIC TRAVE — TB-2026-0028", "booking:b:expense:eta"),
+        charge("billets", 25, "Frais de billeterie (1 billet)", "booking:b:expense:auto-ticket"),
+        charge("commission", 126.5, "Commission d’agence", "booking:b:agency-commission"),
+      ],
+    });
+    const montagne = ctx.lines.find((line) => line.transactionId === "montagne");
+    const eta = ctx.lines.find((line) => line.transactionId === "eta");
+    const tickets = ctx.lines.find((line) => line.transactionId === "billets");
+    const fee = ctx.lines.find((line) => line.transactionId === "commission");
+    assert.equal(montagne?.label, "Dépense · SEJOUR MONTAGNE — TB-2026-0028");
+    assert.equal(montagne?.activityId, 22);
+    assert.equal(montagne?.customCode ?? null, null);
+    assert.equal(montagne?.providerName, "DIVERS TERRESTRE");
+    assert.equal(montagne?.note ?? null, null);
+    assert.equal(eta?.label, "Dépense · ETA-IL ELETRONIC TRAVE — TB-2026-0028");
+    assert.equal(eta?.activityId, 22);
+    assert.equal(eta?.note, "Pliant : 40,00 €");
+    assert.equal(tickets?.customCode, "401");
+    assert.equal(tickets?.label, "Frais Agence Billetterie");
+    assert.equal(tickets?.note ?? null, null);
+    assert.equal(fee?.customCode, "12");
+    assert.equal(fee?.agencyProvider, true);
+    assert.equal(fee?.label, "Frais agence 10 % · TB-2026-0028");
+    assert.equal(fee?.note ?? null, null);
+    assert.equal(fee?.activityId ?? null, null);
+
+    const reduced = buildMb3mInvoiceContext({
+      booking: booking({ reference: "TB-2026-0028", agency_fee_rate: "0.0750" }),
+      items: [],
+      travelers: [],
+      payer: payer(),
+      companies: [],
+      charges: [charge("commission", 90, "Commission d’agence", "booking:b:agency-commission")],
+    });
+    assert.equal(reduced.lines[0]?.label, "Frais agence 7,5 % · TB-2026-0028");
+    assert.equal(reduced.lines[0]?.customCode, "12");
+
+    const agency = "ba3e9d2d-c2a5-4872-b5d2-99e74b483831";
+    const xml = linesXml("InvoiceLine", mb3mSoapLines(ctx.lines, 0.01), agency);
+    const block = (label: string) => {
+      const at = xml.indexOf(`<Label>${label}</Label>`);
+      return xml.slice(xml.lastIndexOf("<InvoiceLine>", at), xml.indexOf("</InvoiceLine>", at));
+    };
+    const montagneXml = block("Dépense · SEJOUR MONTAGNE — TB-2026-0028");
+    assert.match(montagneXml, /<ActivityId>22<\/ActivityId>/);
+    assert.match(montagneXml, /<Type>Standard<\/Type>/);
+    assert.equal(montagneXml.includes("<Note>"), false);
+    assert.equal(montagneXml.includes("<Complementary>"), false);
+    const etaXml = block("Dépense · ETA-IL ELETRONIC TRAVE — TB-2026-0028");
+    assert.match(etaXml, /<ActivityId>22<\/ActivityId>/);
+    assert.match(etaXml, /<Note>Pliant : 40,00 €<\/Note>/);
+    assert.equal(etaXml.includes("Fournisseur"), false);
+    const feeXml = block("Frais agence 10 % · TB-2026-0028");
+    assert.match(feeXml, /<Complementary>12<\/Complementary>/);
+    assert.match(feeXml, /<LineType>4<\/LineType>/);
+    assert.match(feeXml, /<Type>Custom<\/Type>/);
+    assert.equal(feeXml.includes("<Note>"), false);
+    assert.equal(feeXml.includes("<ActivityId>"), false);
+    assert.equal(feeXml.includes("<MarginUnit>"), false);
+    const ticketXml = block("Frais Agence Billetterie");
+    assert.match(ticketXml, /<Complementary>401<\/Complementary>/);
+    assert.equal(ticketXml.includes("<Note>"), false);
+    assert.equal(xml.match(/<Note>/g)?.length, 1);
+
+    const grouped = assembleGroupedMb3m([ctx]);
+    assert.equal(
+      grouped.lines.find((line) => line.label.startsWith("Dépense · SEJOUR"))?.activityId,
+      22
+    );
+    assert.equal(grouped.lines.find((line) => line.label.includes("ETA-IL"))?.note, "Pliant : 40,00 €");
+    assert.equal(grouped.lines.find((line) => line.customType?.complementary === "12")?.label, "Frais agence 10 % · TB-2026-0028");
+    const ticketsGrouped = grouped.lines.find((line) => line.customType?.complementary === "401");
+    assert.equal(ticketsGrouped?.label.startsWith("Frais Agence Billetterie"), true);
+    assert.equal(ticketsGrouped?.note ?? null, null);
+    const credit = linesXml("CreditNoteLine", mb3mSoapLines(ctx.lines, 0.01), agency);
+    assert.equal(credit.match(/<Note>/g)?.length, 1);
+    assert.match(credit, /<Note>Pliant : 40,00 €<\/Note>/);
+    assert.match(credit, /<Label>Dépense · SEJOUR MONTAGNE — TB-2026-0028<\/Label>/);
+    assert.match(credit, /<Label>Frais agence 10 % · TB-2026-0028<\/Label>/);
+    assert.match(credit, /<Complementary>401<\/Complementary>/);
+  });
+
+  it("porte la remise en ligne négative Custom, avec les actions déjà autorisées", () => {
+    arm();
+    const ctx = buildMb3mInvoiceContext({
+      booking: booking({ remise_type: "percent", remise_value: 10 }),
+      items: [
+        { id: "hotel-1", kind: "hotel", amount: 1000, lifecycle: "active" },
+        { id: "fee-1", kind: "expense", amount: 50, lifecycle: "active" },
+      ],
+      travelers: [{ first_name: "Ada", last_name: "Lovelace" }],
+      payer: payer(),
+      companies: [],
+      charges: [
+        {
+          id: "hotel-debit",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 1000,
+          label: "Hôtel · Avoriaz",
+          external_id: "booking:b:item:hotel-1",
+          booking_id: bookingId,
+        },
+        {
+          id: "fee-debit",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 50,
+          label: "Dépense · Extra",
+          external_id: "booking:b:expense:fee-1",
+          booking_id: bookingId,
+        },
+      ],
+    });
+    const remise = ctx.lines.find((line) => line.transactionId === "remise-commerciale");
+    assert.equal(remise?.amount, -105);
+    assert.equal(remise?.customCode, "4");
+    assert.equal(ctx.amount, 945);
+    const soap = mb3mSoapLines(ctx.lines, 0.01).find((line) => line.customType?.complementary === "4");
+    assert.equal(soap?.type, "Custom");
+    assert.equal(soap?.label, "Remise commerciale");
+    assert.equal(soap?.netPriceUnit, -105);
+    assert.equal(soap?.customType?.lineType, 4);
   });
 
   it("n’invente pas un pays à partir d’une station et reprend l’adresse du domicile", () => {
@@ -513,6 +981,7 @@ describe("facture MB3M", () => {
       addInvoice,
       agencyUid: async () => null,
       findPiece: async () => "open",
+      readLettrage: async () => ({ lettered: false, amount: 1050, balance: 1050, seen: true }),
       cancelInvoice: async (_folder, number) => {
         calls.push(`cancel ${number}`);
       },
@@ -600,6 +1069,300 @@ describe("facture MB3M", () => {
     assert.equal(result.replaced, false);
     assert.equal(added, 0);
     assert.equal(cancelled, 0);
+  });
+
+  it("facture imprimée sans nouvelle ligne : n’échoue pas et envoie les règlements en attente", async () => {
+    const printed = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "01-0002010",
+      folderUid: "folder-uid",
+      pieceNumber: "2203",
+      amount: 2767.61,
+      printedAt: "2026-11-17T13:01:49.000Z",
+      signature: "sig",
+      transactionIds: ["tx-1"],
+      attemptStatus: "preparing",
+    });
+    const saved: Parameters<Mb3mInvoiceDeps["save"]>[1][] = [];
+    const received: Parameters<NonNullable<Mb3mInvoiceDeps["recordPayments"]>>[0][] = [];
+    const calls: string[] = [];
+    const deps: Mb3mInvoiceDeps = {
+      now: () => Date.now(),
+      claim: async () => ({ piece: { ...printed }, created: false, owned: true }),
+      save: async (_id, patch) => {
+        saved.push(patch);
+      },
+      remove: async () => {
+        calls.push("remove");
+      },
+      savePerson: async () => {
+        calls.push("person");
+        return { uid: "customer-uid", partnerId: "11111111222243" };
+      },
+      saveCompany: async () => {
+        throw new Error("fiche société");
+      },
+      saveFolder: async () => {
+        calls.push("folder");
+        return { id: "01-0002010", uid: "folder-uid" };
+      },
+      addInvoice: async () => {
+        calls.push("addInvoice");
+        return { number: "9999", uid: "x" };
+      },
+      findPiece: async () => "printed",
+      cancelInvoice: async () => {
+        calls.push("cancel");
+      },
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+      recordPayments: async (input) => {
+        received.push(input);
+        return [{ date: "2026-11-17", montant: 2767.61, numero_mb3m: "2300", statut: "envoye" }];
+      },
+    };
+    const result = await runMb3mInvoice(context({ lines: [], amount: 0, hadExpenses: true }), deps);
+    assert.equal(result.number, "2203");
+    assert.equal(result.created, false);
+    assert.equal(result.replaced, false);
+    assert.equal(result.printed, true);
+    assert.equal(result.reglements[0]?.numero_mb3m, "2300");
+    assert.equal(received.length, 1);
+    assert.equal(received[0]?.invoiceNumber, "2203");
+    assert.equal(received[0]?.invoiceAmount, 2767.61);
+    assert.equal(received[0]?.folderId, "01-0002010");
+    assert.equal(received[0]?.customerUid, "customer-uid");
+    assert.equal(received[0]?.customerKind, "person");
+    assert.deepEqual(calls, []);
+    assert.deepEqual(saved, [{ attemptStatus: null, attemptError: null }]);
+  });
+
+  it("facture imprimée sans nouvelle ligne : une erreur de règlement reste une erreur, sans nouvelle pièce", async () => {
+    const printed = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "01-0002010",
+      pieceNumber: "2203",
+      amount: 2767.61,
+      printedAt: "2026-11-17T13:01:49.000Z",
+      transactionIds: ["tx-1"],
+    });
+    let added = 0;
+    const deps: Mb3mInvoiceDeps = {
+      now: () => Date.now(),
+      claim: async () => ({ piece: { ...printed }, created: false, owned: true }),
+      save: async () => undefined,
+      remove: async () => undefined,
+      savePerson: async () => ({ uid: "customer-uid", partnerId: "11111111222243" }),
+      saveCompany: async () => {
+        throw new Error("fiche société");
+      },
+      saveFolder: async () => ({ id: "01-0002010", uid: "folder-uid" }),
+      addInvoice: async () => {
+        added += 1;
+        return { number: "9999", uid: "x" };
+      },
+      findPiece: async () => "printed",
+      cancelInvoice: async () => undefined,
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+      recordPayments: async () => {
+        throw new Mb3mError("Le règlement n’a pas abouti.", -1);
+      },
+    };
+    await assert.rejects(
+      () => runMb3mInvoice(context({ lines: [], amount: 0, hadExpenses: true }), deps),
+      (error: unknown) => error instanceof Mb3mError && /règlement/.test(error.message)
+    );
+    assert.equal(added, 0);
+  });
+
+  it("facture imprimée : claim crée une ligne vide, les règlements partent quand même sur la facture imprimée", async () => {
+    const printed = blankPiece({
+      id: "printed-piece",
+      customerUid: "customer-uid",
+      folderId: "01-0002010",
+      folderUid: "folder-uid",
+      pieceNumber: "2203",
+      amount: 2767.61,
+      printedAt: "2026-11-17T13:01:49.000Z",
+      transactionIds: ["tx-1"],
+      attemptStatus: "preparing",
+    });
+    const saved: { id: string; patch: Parameters<Mb3mInvoiceDeps["save"]>[1] }[] = [];
+    const received: Parameters<NonNullable<Mb3mInvoiceDeps["recordPayments"]>>[0][] = [];
+    const calls: string[] = [];
+    const deps: Mb3mInvoiceDeps = {
+      now: () => Date.now(),
+      claim: async () => {
+        calls.push("claim");
+        return { piece: blankPiece({ id: "fresh" }), created: true, owned: true };
+      },
+      printedInvoice: async () => ({ ...printed }),
+      save: async (id, patch) => {
+        saved.push({ id, patch });
+      },
+      remove: async () => {
+        calls.push("remove");
+      },
+      savePerson: async () => {
+        calls.push("person");
+        return { uid: "customer-uid", partnerId: "11111111222243" };
+      },
+      saveCompany: async () => {
+        throw new Error("fiche société");
+      },
+      saveFolder: async () => {
+        calls.push("folder");
+        return { id: "01-0002010", uid: "folder-uid" };
+      },
+      addInvoice: async () => {
+        calls.push("addInvoice");
+        return { number: "9999", uid: "x" };
+      },
+      findPiece: async () => {
+        calls.push("findPiece");
+        return "printed";
+      },
+      cancelInvoice: async () => {
+        calls.push("cancel");
+      },
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+      recordPayments: async (input) => {
+        received.push(input);
+        return [{ date: "2026-11-17", montant: 2767.61, numero_mb3m: "2300", statut: "envoye" }];
+      },
+    };
+    const result = await runMb3mInvoice(
+      context({
+        lines: [],
+        amount: 0,
+        hadExpenses: true,
+        payerKind: "company",
+        company: { id: "co-beelynq", name: "BEELYNQ", email: null, countryCode: "FR", address: null },
+      }),
+      deps
+    );
+    assert.equal(result.number, "2203");
+    assert.equal(result.printed, true);
+    assert.equal(result.created, false);
+    assert.equal(received.length, 1);
+    assert.equal(received[0]?.invoiceNumber, "2203");
+    assert.equal(received[0]?.invoiceAmount, 2767.61);
+    assert.equal(received[0]?.folderId, "01-0002010");
+    assert.equal(received[0]?.customerUid, "customer-uid");
+    assert.equal(received[0]?.customerKind, "company");
+    assert.deepEqual(calls, []);
+    assert.deepEqual(saved, [{ id: "printed-piece", patch: { attemptStatus: null, attemptError: null } }]);
+  });
+
+  it("facture imprimée : une erreur de règlement reste une erreur, sans ligne vide ni nouvelle pièce", async () => {
+    const printed = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "01-0002010",
+      pieceNumber: "2203",
+      amount: 2767.61,
+      printedAt: "2026-11-17T13:01:49.000Z",
+      transactionIds: ["tx-1"],
+    });
+    let claimed = 0;
+    let added = 0;
+    const deps: Mb3mInvoiceDeps = {
+      now: () => Date.now(),
+      claim: async () => {
+        claimed += 1;
+        return { piece: blankPiece(), created: true, owned: true };
+      },
+      printedInvoice: async () => ({ ...printed }),
+      save: async () => undefined,
+      remove: async () => undefined,
+      savePerson: async () => ({ uid: "customer-uid", partnerId: "11111111222243" }),
+      saveCompany: async () => {
+        throw new Error("fiche société");
+      },
+      saveFolder: async () => ({ id: "01-0002010", uid: "folder-uid" }),
+      addInvoice: async () => {
+        added += 1;
+        return { number: "9999", uid: "x" };
+      },
+      findPiece: async () => "printed",
+      cancelInvoice: async () => undefined,
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+      recordPayments: async () => {
+        throw new Mb3mError("Le règlement n’a pas abouti.", -1);
+      },
+    };
+    await assert.rejects(
+      () => runMb3mInvoice(context({ lines: [], amount: 0, hadExpenses: true }), deps),
+      (error: unknown) => error instanceof Mb3mError && /règlement/.test(error.message)
+    );
+    assert.equal(claimed, 0);
+    assert.equal(added, 0);
+  });
+
+  it("sans facture imprimée, plus de ligne garde l’ancien refus et le claim reste utilisé", async () => {
+    let payments = 0;
+    let removed = 0;
+    const deps: Mb3mInvoiceDeps = {
+      now: () => Date.now(),
+      claim: async () => ({ piece: blankPiece({ id: "fresh" }), created: true, owned: true }),
+      printedInvoice: async () => null,
+      save: async () => undefined,
+      remove: async () => {
+        removed += 1;
+      },
+      savePerson: async () => ({ uid: "customer-uid", partnerId: "11111111222243" }),
+      saveCompany: async () => {
+        throw new Error("fiche société");
+      },
+      saveFolder: async () => ({ id: "01-0002010", uid: "folder-uid" }),
+      addInvoice: async () => ({ number: "9999", uid: "x" }),
+      findPiece: async () => "open",
+      cancelInvoice: async () => undefined,
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+      recordPayments: async () => {
+        payments += 1;
+        return [];
+      },
+    };
+    await assert.rejects(
+      () => runMb3mInvoice(context({ lines: [], amount: 0, hadExpenses: true }), deps),
+      (error: unknown) => error instanceof Mb3mError && /déjà sur une facture validée/.test(error.message)
+    );
+    assert.equal(payments, 0);
+    assert.equal(removed, 1);
+  });
+
+  it("sans pièce imprimée, plus de ligne garde l’ancien refus", async () => {
+    const open = blankPiece({ customerUid: "customer-uid", folderId: "01-0002010", pieceNumber: "2203", amount: 100, transactionIds: ["tx-1"] });
+    let payments = 0;
+    const deps: Mb3mInvoiceDeps = {
+      now: () => Date.now(),
+      claim: async () => ({ piece: { ...open }, created: false, owned: true }),
+      save: async () => undefined,
+      remove: async () => undefined,
+      savePerson: async () => ({ uid: "customer-uid", partnerId: "11111111222243" }),
+      saveCompany: async () => {
+        throw new Error("fiche société");
+      },
+      saveFolder: async () => ({ id: "01-0002010", uid: "folder-uid" }),
+      addInvoice: async () => ({ number: "9999", uid: "x" }),
+      findPiece: async () => "open",
+      cancelInvoice: async () => undefined,
+      renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+      putPdf: async () => "doc-1",
+      recordPayments: async () => {
+        payments += 1;
+        return [];
+      },
+    };
+    await assert.rejects(
+      () => runMb3mInvoice(context({ lines: [], amount: 0, hadExpenses: true }), deps),
+      (error: unknown) => error instanceof Mb3mError && /déjà sur une facture validée/.test(error.message)
+    );
+    assert.equal(payments, 0);
   });
 
   it("écrit l’erreur quand la reprise de 2157 échoue au rangement", async () => {
@@ -1083,5 +1846,161 @@ describe("facture MB3M", () => {
     assert.equal(stored.customerUid, null);
     assert.equal(stored.attemptStatus, "failed");
     assert.match(stored.attemptError || "", /Plusieurs sociétés/);
+  });
+
+  it("refuse l’avoir tant que MB3M_ALLOW_CREDIT_NOTE n’est pas true", async () => {
+    const previous = process.env.MB3M_ALLOW_CREDIT_NOTE;
+    delete process.env.MB3M_ALLOW_CREDIT_NOTE;
+    try {
+      await assert.rejects(
+        () => reissueMb3mInvoice({ from() { throw new Error("base"); } } as never, "dossier"),
+        (error: unknown) => error instanceof Mb3mError && error.message === MB3M_CREDIT_NOTE_REFUSAL
+      );
+    } finally {
+      if (previous === undefined) delete process.env.MB3M_ALLOW_CREDIT_NOTE;
+      else process.env.MB3M_ALLOW_CREDIT_NOTE = previous;
+    }
+  });
+
+  it("ne remplace pas une pro forma lettrée, la remplace sinon, et s’arrête si la lecture échoue", async () => {
+    arm();
+    const gap = mb3mLettrageWarning({
+      number: "2217",
+      kind: "lettered",
+      nextAmount: 5391.65,
+      currentAmount: 5404.15,
+    });
+    assert.match(gap, /pro forma n° 2217/);
+    assert.match(gap, /pas remplacée/);
+    assert.match(gap, /Délettrez le règlement/);
+    assert.equal(gap.replace(/\s/g, " ").includes(formatMoney(-12.5).replace(/\s/g, " ")), true);
+    assert.equal(
+      mb3mLettrageHoldNotice({ statut: "bloque_lettrage", avertissement: gap }),
+      gap.replace(/\s+/g, " ").trim()
+    );
+    assert.equal(mb3mLettrageHoldNotice({ avertissement: "facture Amadeus" }), null);
+
+    const next = context({
+      amount: 5391.65,
+      lines: [{ transactionId: "tx-1", label: "Hôtel", amount: 5391.65, activityId: 3 }],
+    });
+    const open = blankPiece({
+      customerUid: "customer-uid",
+      folderId: "01-0002217",
+      folderUid: "folder-uid",
+      pieceNumber: "2217",
+      amount: 5404.15,
+      signature: "ancienne",
+      transactionIds: ["tx-1"],
+      attemptStatus: "preparing",
+      attemptError: "ancienne erreur",
+    });
+
+    const run = async (mode: "lettered" | "open" | "unread" | "printed") => {
+      const actions: string[] = [];
+      const saves: Parameters<Mb3mInvoiceDeps["save"]>[1][] = [];
+      let finds = 0;
+      let paymentReads = 0;
+      const fetchImpl: typeof fetch = async (_url, init) => {
+        const action = String(new Headers(init?.headers).get("SOAPAction"));
+        actions.push(action);
+        const body = String(init?.body || "");
+        if (action.includes("AddPieces")) {
+          return new Response(
+            `<FolderOperationResponse><ResultCode>1</ResultCode><Invoices><Invoice><Number>2218</Number><Uid>new</Uid></Invoice></Invoices></FolderOperationResponse>`
+          );
+        }
+        if (action.includes("CancelInvoice")) {
+          return new Response(`<FolderOperationResponse><ResultCode>1</ResultCode></FolderOperationResponse>`);
+        }
+        if (mode === "unread" && body.includes("IncludePayments")) {
+          return new Response(`<s:Fault><faultstring>lecture impossible</faultstring></s:Fault>`, { status: 500 });
+        }
+        if (body.includes("IncludePayments")) {
+          paymentReads += 1;
+          const balance = mode === "lettered" || (mode === "printed" && paymentReads > 1) ? "0.00" : "5404.15";
+          return new Response(
+            `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>2</TotalCount><Piece><Amount>5404.15</Amount><Balance>${balance}</Balance><Folder><Id>01-0002217</Id></Folder><Identity><Number>2217</Number></Identity><IsPayment>false</IsPayment></Piece><Piece><Amount>5404.15</Amount><Balance>${balance}</Balance><Folder><Id>01-0002217</Id></Folder><Identity><Number>2216</Number></Identity><IsPayment>true</IsPayment><DateCreation>2026-11-18T00:00:00</DateCreation></Piece></FindAllPiecesResponse>`
+          );
+        }
+        finds += 1;
+        const printed = mode === "printed" && finds > 1;
+        return new Response(
+          `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>1</TotalCount><Invoice><Number>2217</Number>${printed ? "<DatePrint>2026-11-18T10:00:00</DatePrint>" : ""}</Invoice></FindAllPiecesResponse>`
+        );
+      };
+      const deps: Mb3mInvoiceDeps = {
+        now: () => Date.now(),
+        claim: async () => ({ piece: { ...open }, created: false, owned: true }),
+        save: async (_id, patch) => {
+          saves.push(patch);
+        },
+        remove: async () => undefined,
+        savePerson: async () => ({ uid: "customer-uid", partnerId: "11111111222243" }),
+        saveCompany: async () => {
+          throw new Error("fiche société");
+        },
+        saveFolder: async () => {
+          actions.push("Save");
+          return { id: "01-0002217", uid: "folder-uid" };
+        },
+        addInvoice: (input) => mb3mAddInvoice(input, fetchImpl),
+        findPiece: (number) => mb3mFindPiece(number, fetchImpl),
+        readLettrage: (input) => mb3mReadLettrage(input, fetchImpl),
+        cancelInvoice: (folder, number) => mb3mCancelInvoice(folder, number, fetchImpl),
+        renderPiece: async () => ({ bytes: Buffer.from("%PDF-1.4") }),
+        putPdf: async () => "doc-1",
+      };
+      return { actions, saves, result: await runMb3mInvoice(next, deps) };
+    };
+
+    const blocked = await run("lettered");
+    assert.equal(blocked.actions.some((action) => action.includes("AddPieces") || action.includes("CancelInvoice") || action === "Save"), false);
+    assert.equal(blocked.result.statut, "bloque_lettrage");
+    assert.equal(blocked.result.number, "2217");
+    assert.equal(blocked.result.created, false);
+    assert.equal(blocked.result.replaced, false);
+    assert.match(blocked.result.avertissement || "", /2217/);
+    assert.match(blocked.result.avertissement || "", /pas remplacée/);
+    assert.equal((blocked.result.avertissement || "").replace(/\s/g, " ").includes(formatMoney(-12.5).replace(/\s/g, " ")), true);
+    assert.equal(blocked.saves.some((patch) => patch.attemptStatus === "failed"), false);
+    assert.deepEqual(blocked.saves, [{ attemptStatus: null, attemptError: null }]);
+
+    const replaced = await run("open");
+    const writes = replaced.actions.filter((action) => action.includes("AddPieces") || action.includes("CancelInvoice"));
+    assert.deepEqual(
+      writes.map((action) => (action.includes("AddPieces") ? "AddPieces" : "CancelInvoice")),
+      ["AddPieces", "CancelInvoice"]
+    );
+    assert.equal(replaced.result.replaced, true);
+    assert.equal(replaced.result.number, "2218");
+    assert.equal(replaced.result.statut, undefined);
+    assert.equal(replaced.saves.some((patch) => patch.pieceNumber === "2218"), true);
+    assert.equal(replaced.saves.some((patch) => patch.attemptStatus === "failed"), false);
+
+    const unread = await run("unread");
+    assert.equal(unread.actions.some((action) => action.includes("AddPieces") || action.includes("CancelInvoice")), false);
+    assert.equal(unread.result.statut, "avertissement");
+    assert.match(unread.result.avertissement || "", /vérification du lettrage est impossible/);
+    assert.match(unread.result.avertissement || "", /2217/);
+    assert.equal(unread.saves.some((patch) => patch.attemptStatus === "failed"), false);
+
+    const printed = await run("printed");
+    assert.equal(printed.actions.some((action) => action.includes("AddPieces") || action.includes("CancelInvoice")), false);
+    assert.equal(printed.result.statut, "bloque_lettrage");
+    assert.equal(printed.result.printed, true);
+    assert.equal(printed.saves.some((patch) => patch.attemptStatus === "failed"), false);
+
+    const credit = await mb3mReplacementHold((input) => mb3mReadLettrage(input, async () => new Response(
+      `<FindAllPiecesResponse><ResultCode>1</ResultCode><Piece><Amount>100</Amount><Balance>0</Balance><Identity><Number>2217</Number></Identity><IsPayment>false</IsPayment></Piece></FindAllPiecesResponse>`
+    )), {
+      number: "2217",
+      folderId: null,
+      customerUid: null,
+      nextAmount: 100,
+      currentAmount: 100,
+    });
+    assert.equal(credit?.statut, "bloque_lettrage");
+    assert.match(credit?.avertissement || "", /2217/);
   });
 });

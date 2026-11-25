@@ -364,6 +364,9 @@ export type StaySegment = {
   id: string;
   place: string;
   when: string;
+  /** Ligne absente du séjour enregistré, ou retirée et pas encore enregistrée. */
+  pending?: boolean;
+  removed?: boolean;
 };
 
 const STAY_NAME_NOISE = new Set(["hotel", "hotels"]);
@@ -437,18 +440,20 @@ function segmentLine(item: Step, index: number): StaySegment {
  * Une ligne par séjour et par trajet.
  * Le même hôtel aux mêmes dates, ou le même trajet le même jour, n’apparaît qu’une fois.
  */
-export function staySegmentsFromSteps(items: Step[]): StaySegment[] {
+function keyedSegments(items: Step[]) {
   const seen = new Set<string>();
-  const lines: StaySegment[] = [];
+  const lines: { key: string; segment: StaySegment }[] = [];
   for (const [index, item] of carnetSteps(items).entries()) {
-    const key = segmentLineKey(item);
-    if (key) {
-      if (seen.has(key)) continue;
-      seen.add(key);
-    }
-    lines.push(segmentLine(item, index));
+    const key = segmentLineKey(item) || `id|${item.id || index}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push({ key, segment: segmentLine(item, index) });
   }
   return lines;
+}
+
+export function staySegmentsFromSteps(items: Step[]): StaySegment[] {
+  return keyedSegments(items).map((line) => line.segment);
 }
 
 export function staySpanFromSteps(items: Step[]) {
@@ -464,15 +469,26 @@ export function staySpanFromSteps(items: Step[]) {
   return { start: start || end, end: end || start };
 }
 
-/** En-tête : dates et villes lues sur les étapes, sinon le dossier. */
+/** En-tête : dates et villes lues sur les étapes, sinon le dossier. `savedItems` marque ce qui n’est pas encore enregistré. */
 export function staffStayFacts(input: {
   items: Step[];
+  savedItems?: Step[];
   destination?: string | null;
   startDate?: string | null;
   endDate?: string | null;
 }) {
   const cities = stayCitiesFromSteps(input.items);
-  const segments = staySegmentsFromSteps(input.items);
+  const live = keyedSegments(input.items);
+  const saved = input.savedItems ? keyedSegments(input.savedItems) : null;
+  const savedKeys = new Set((saved || []).map((line) => line.key));
+  const liveKeys = new Set(live.map((line) => line.key));
+  const segments = live.map(({ key, segment }) => ({
+    ...segment,
+    pending: Boolean(saved) && !savedKeys.has(key),
+  }));
+  const removed = (saved || [])
+    .filter((line) => !liveKeys.has(line.key))
+    .map(({ segment }) => ({ ...segment, pending: true, removed: true }));
   const span = staySpanFromSteps(input.items);
   const start = span?.start || input.startDate || null;
   const end = span?.end || input.endDate || null;
@@ -482,6 +498,8 @@ export function staffStayFacts(input: {
   return {
     cities,
     segments,
+    removed,
+    draft: segments.some((segment) => segment.pending) || removed.length > 0,
     dates,
     nights,
     placeLine,
@@ -490,3 +508,22 @@ export function staffStayFacts(input: {
     fromSteps: Boolean(span),
   };
 }
+
+export type PrimaryStayButton = "enregistrer-montrer" | "enregistrer-mettre-a-jour" | "montrer" | "cacher";
+
+/**
+ * Libellé du geste qui change le carnet.
+ * L’en-tête n’affiche « Enregistrer et mettre à jour le carnet » que sur un séjour déjà Visible.
+ * Un séjour encore caché garde Enregistrer, qui n’écrit pas la visibilité, à côté de Montrer au client.
+ */
+export function primaryStayButton(input: { visible: boolean; unsaved: boolean }): PrimaryStayButton {
+  if (input.unsaved) return input.visible ? "enregistrer-mettre-a-jour" : "enregistrer-montrer";
+  return input.visible ? "cacher" : "montrer";
+}
+
+export const PRIMARY_STAY_LABEL: Record<PrimaryStayButton, string> = {
+  "enregistrer-montrer": "Enregistrer et montrer au client",
+  "enregistrer-mettre-a-jour": "Enregistrer et mettre à jour le carnet",
+  montrer: "Montrer au client",
+  cacher: "Cacher au client",
+};

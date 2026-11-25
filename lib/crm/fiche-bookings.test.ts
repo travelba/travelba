@@ -58,10 +58,25 @@ test("le nom du voyageur n’apparaît que pour un collaborateur", () => {
   );
 });
 
-test("la fiche client agence charge les dossiers facturés sur le compte", () => {
+test("la fiche client agence ne montre pas le voyage d’un collaborateur", () => {
   const src = readFileSync(join(root, "app/admin/clients/[id]/page.tsx"), "utf8");
   assert.match(src, /\.eq\("billing_customer_id", id\)/);
+  assert.match(src, /bookingIdsWhereClientTravels/);
+  assert.match(src, /Les voyages des collaborateurs facturés sur ce compte ne figurent pas ici/);
+  assert.equal(src.includes("Les séjours facturés sur ce compte figurent ici"), false);
   assert.equal(src.includes("otherAdminIds"), false);
   assert.match(src, /mergeFicheBookings/);
   assert.match(src, /ficheBookingTravelerLine/);
+});
+
+test("la migration ferme le carnet collaborateur sans toucher à la visibilité", () => {
+  const sql = readFileSync(
+    join(root, "supabase/migrations/20261124203000_payer_hides_collaborator_trips.sql"),
+    "utf8"
+  );
+  assert.match(sql, /drop policy if exists crm_bookings_admin_collaborator/);
+  assert.match(sql, /travels_on_booking/);
+  assert.match(sql, /crm_bookings_as_traveler/);
+  assert.equal(/update\s+public\.crm_bookings/i.test(sql), false);
+  assert.equal(/set\s+visible_to_client/i.test(sql), false);
 });

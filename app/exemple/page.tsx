@@ -2,17 +2,19 @@ import { toPublicBooking } from "@/lib/crm/public-booking";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { AccountPage } from "@/components/account/AccountPage";
+import { TravelNotices } from "@/components/account/TravelNotices";
 import { BookingHero } from "@/components/crm/BookingHero";
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { chosenCalendarHref, googleCalendarHref, itemCalendarHref } from "@/lib/crm/calendar-ics";
 import { Icon } from "@/components/crm/icons";
 import { BoardingPass } from "@/components/account/BoardingPass";
 import type { ClientBoardingCard } from "@/lib/crm/client-boarding-pass";
-import { clientVisibleItems, nextTimelineFlight, tripPlaceLine } from "@/lib/crm/carnet";
+import { clientVisibleItems, nextTimelineFlight, stayHeroPlace } from "@/lib/crm/carnet";
+import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { buildLiveFlight } from "@/lib/crm/next-flight-model";
-import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { destinationWeather } from "@/lib/crm/destination-weather";
-import { EXAMPLE_BASE } from "@/lib/crm/example-session";
+import { EXAMPLE_BASE, exampleStayStart } from "@/lib/crm/example-session";
+import { formatDateFr } from "@/lib/crm/money";
 import { readExample } from "@/lib/crm/example-store";
 
 const examplePasses: ClientBoardingCard[] = [
@@ -23,7 +25,7 @@ const examplePasses: ClientBoardingCard[] = [
     firstName: "Camille",
     flight: "EX 100",
     route: "Paris → New York",
-    when: "12 nov. 2026 à 13h50",
+    when: `${formatDateFr(exampleStayStart())} à 13h50`,
     seat: "12A",
     terminal: "2E",
     gate: "K42",
@@ -38,7 +40,7 @@ const examplePasses: ClientBoardingCard[] = [
     firstName: "Inès",
     flight: "EX 100",
     route: "Paris → New York",
-    when: "12 nov. 2026 à 13h50",
+    when: `${formatDateFr(exampleStayStart())} à 13h50`,
     seat: "12B",
     terminal: "2E",
     gate: "K42",
@@ -54,21 +56,23 @@ import { encoursCaption, formatDateRangeShort, formatMoney, jMinusLabel } from "
 
 export default async function ExampleHomePage() {
   const session = readExample();
-  const nextTrip = session.booking;
+  const face = clientStayFace({
+    title: session.booking.title,
+    destination: session.booking.destination,
+    startDate: session.booking.start_date,
+    endDate: session.booking.end_date,
+    items: session.items,
+    homeCity: session.customer.city,
+    fallback: "Prochain séjour",
+  });
+  const nextTrip = applyClientStayFace(session.booking, face);
   const balance = session.ledger.balanceValue;
   const firstName = greetingGivenName(session.customer.first_name) || "Camille";
   const countdown = jMinusLabel(nextTrip.start_date);
-  const labels = nextStayLabels(
-    nextTrip.title,
-    nextTrip.destination,
-    clientVisibleItems(session.items),
-    "Prochain séjour",
-    session.customer.city
-  );
-  const tripName = labels.title || "Prochain séjour";
-  const tripPlace = tripPlaceLine(tripName, labels.destination);
+  const tripName = face.title || "Prochain séjour";
+  const tripPlace = stayHeroPlace(tripName, face.destination, face.items);
   const tripHref = `${EXAMPLE_BASE}/reservations/${nextTrip.reference}`;
-  const weather = await destinationWeather(nextTrip.destination, nextTrip.title);
+  const weather = await destinationWeather(face.destination, face.title);
   const visibleItems = clientVisibleItems(session.items);
   const homeFlight = nextTimelineFlight(visibleItems);
   const flightItem = visibleItems.find((row) => row.id === homeFlight?.itemId) || null;
@@ -86,13 +90,30 @@ export default async function ExampleHomePage() {
     <AccountPage>
     <div className="space-y-3">
       <section className="flex flex-col gap-1 pt-1">
-        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">
-          Travel Business Agency · Espace membre
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9e7e51]">Travel Club TBA</p>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">Bonjour {firstName}</h1>
+        <p className="text-sm leading-relaxed text-muted">
+          Le Travel Club TBA a le plaisir de vous offrir l’adhésion Platinum jusqu’au 31 décembre 2026. Cette adhésion est
+          nominative et réservée à vos propres réservations.
         </p>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--admin-navy)]">
-          Bonjour {firstName}
-        </h1>
       </section>
+
+      <TravelNotices
+        preview={[
+          {
+            id: "porte",
+            title: "Porte d’embarquement",
+            message: "Votre vol EX 100 Paris → New York embarque à la porte K42.",
+            url: `${EXAMPLE_BASE}/reservations/${nextTrip.reference}`,
+          },
+          {
+            id: "depart",
+            title: "Départ demain",
+            message: "Votre départ Paris → New York est demain. Le transfert Maison est à 10h30.",
+            url: `${EXAMPLE_BASE}/reservations/${nextTrip.reference}`,
+          },
+        ]}
+      />
 
       {balance < 0 ? (
         <Link
@@ -124,7 +145,8 @@ export default async function ExampleHomePage() {
       <article className="account-press overflow-hidden rounded-2xl border border-[#e5e3dc] shadow-xl">
         <BookingHero
           booking={toPublicBooking(nextTrip)}
-          items={session.items}
+          places={face.places}
+          items={face.items}
           priority
           frameClassName="relative h-[22rem] w-full"
           transitionName={stayTransitionName(nextTrip.reference)}

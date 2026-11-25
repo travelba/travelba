@@ -32,6 +32,7 @@ import { collapseSharedTicketPrice } from "@/lib/crm/item-match";
 import { collapseInboxRows } from "@/lib/crm/email-thread";
 import { proposalLine, type ProposalOp } from "@/lib/crm/import-proposal";
 import { planFlightDeposit } from "@/lib/crm/email-flight-deposit";
+import { planServiceDeposit } from "@/lib/crm/email-service-deposit";
 
 type ExtractItem = {
   kind?: string;
@@ -450,6 +451,7 @@ export function EmailIngestInbox({
       confirmer?: boolean;
       cartes?: boolean;
       repartir?: boolean;
+      forcer?: boolean;
     },
     opts?: { refresh?: boolean }
   ) {
@@ -808,7 +810,7 @@ export function EmailIngestInbox({
                       ) : needsPrice ? (
                         <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_7.5rem]">
                           <Field
-                            label="Prix imprimé sur le document"
+                            label="Prix d’achat"
                             hint={
                               ticketTotalOnce && item.kind === "flight"
                                 ? "Total du billet, une fois pour ces vols."
@@ -818,7 +820,7 @@ export function EmailIngestInbox({
                             <MoneyInput
                               value={amount}
                               onChange={(next) => patchItem(row, index, { document_amount: next })}
-                              aria-label={`Prix document ${itemLabel(item.kind)}`}
+                              aria-label={`Prix d’achat ${itemLabel(item.kind)}`}
                               placeholder="Montant imprimé"
                             />
                           </Field>
@@ -842,7 +844,7 @@ export function EmailIngestInbox({
                         </div>
                       ) : amount != null ? (
                         <p className="mt-1 text-xs text-muted">
-                          Prix imprimé sur le document : {formatDocumentPrice(amount, currency)}
+                          Prix d’achat : {formatDocumentPrice(amount, currency)}
                         </p>
                       ) : null}
                     </li>
@@ -946,6 +948,11 @@ export function EmailIngestInbox({
                       items: (viewOf(row).items || []).map((item) => ({ ...item, kind: item.kind || "" })),
                     });
                     const withFlights = flightPlan.cartes.length > 0;
+                    const servicePlan = planServiceDeposit({
+                      items: (viewOf(row).items || []).map((item) => ({ ...item, kind: item.kind || "" })),
+                    });
+                    const withServices = servicePlan.cartes.length > 0;
+                    const withCards = withFlights || withServices;
                     return (
                       <>
                         <div className="flex flex-wrap gap-2 sm:col-span-2">
@@ -963,7 +970,7 @@ export function EmailIngestInbox({
                                       booking_id: depositBookingId,
                                       item_id: undefined,
                                       title: cardTitle.trim(),
-                                      cartes: withFlights,
+                                      cartes: true,
                                       ...(repartir ? { repartir: true } : {}),
                                       ...(drafts[row.id]
                                         ? {
@@ -975,7 +982,7 @@ export function EmailIngestInbox({
                                   : {
                                       action: "attach_booking",
                                       booking_id: depositBookingId,
-                                      cartes: withFlights,
+                                      cartes: true,
                                       ...(repartir ? { repartir: true } : {}),
                                     }
                               )
@@ -987,7 +994,24 @@ export function EmailIngestInbox({
                                 ? "Déposer aussi sur un autre dossier"
                                 : "Déposer les pièces"}
                           </button>
-                          {withFlights ? (
+                          {sameStay ? (
+                            <button
+                              type="button"
+                              disabled={isBusy || !depositBookingId}
+                              className="admin-af-btn admin-tap rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+                              onClick={() =>
+                                act(row.id, {
+                                  action: "attach_booking",
+                                  booking_id: depositBookingId,
+                                  cartes: true,
+                                  forcer: true,
+                                })
+                              }
+                            >
+                              {withFlights ? "Rejouer le billet" : "Rejouer les cartes"}
+                            </button>
+                          ) : null}
+                          {(withCards || !sameStay) ? (
                             <button
                               type="button"
                               disabled={isBusy || !depositBookingId || sameStay}
@@ -1048,7 +1072,7 @@ export function EmailIngestInbox({
                           >
                             {rowNotice[row.id]}
                           </p>
-                        ) : withFlights ? (
+                        ) : withCards ? (
                           <div className="sm:col-span-2 text-xs text-muted">
                             <ul className="space-y-1">
                               {flightPlan.cartes.map((card, index) => (
@@ -1058,20 +1082,35 @@ export function EmailIngestInbox({
                                   {card.cout != null ? ` · coût imprimé ${card.cout}` : " · sans coût imprimé"}
                                 </li>
                               ))}
+                              {servicePlan.cartes.map((card, index) => (
+                                <li key={`${card.type}-${card.titre}-${card.dates}-${index}`}>
+                                  {BOOKING_ITEM_LABELS[card.type as BookingItemKind] || "Prestation"} · {card.titre}
+                                  {card.dates ? ` · ${card.dates}` : ""}
+                                  {card.confirmation ? ` · ${card.confirmation}` : ""} · carte cachée · 0 €
+                                  {card.cout != null ? ` · coût ${card.cout}` : " · sans coût imprimé"}
+                                </li>
+                              ))}
                             </ul>
                             <p className="mt-1">
                               {repartir
-                                ? "Déposer aussi copie les pièces sur l’autre dossier. Le premier dossier les garde. Aucun message."
-                                : "Déposer les pièces ajoute ces vols. Déposer seulement laisse les cartes inchangées."}
-                              {sameStay ? " Choisissez un autre dossier." : ""}
+                                ? "Déposer aussi copie les pièces sur l’autre dossier et crée ou complète ces cartes. Le premier dossier les garde. Aucun message."
+                                : withFlights
+                                  ? "Déposer les pièces ajoute ces vols. Déposer seulement laisse les cartes inchangées."
+                                  : "Déposer les pièces crée ou complète ces cartes, cachées. Le prix fournisseur va en coût. Le prix de vente reste 0 s’il n’est pas déjà saisi. Déposer seulement ne dépose que les fichiers."}
+                              {withServices
+                                ? " Les autres cartes lues sont créées ou complétées, cachées. Le prix fournisseur va en coût. Le prix de vente reste 0 s’il n’est pas déjà saisi."
+                                : ""}
+                              {sameStay
+                                ? " Rejouer complète les cartes de ce dossier, sans recopier les pièces. Un PNR déjà présent n’est pas écrasé."
+                                : ""}
                             </p>
                           </div>
                         ) : (
                           <p className="text-xs text-muted sm:col-span-2">
                             {repartir
                               ? "Le mail est déjà traité. Les pièces sont copiées sur l’autre dossier. Le premier dossier les garde. Aucun message."
-                              : "Les fichiers sont copiés sur le dossier, sur l’étape qui correspond. Aucune étape n’est créée ni modifiée."}
-                            {sameStay ? " Choisissez un autre dossier." : ""}
+                              : "Déposer les pièces crée ou complète les cartes lues dans le mail (voiture, hôtel, transfert, train, activité), cachées, prix de vente 0. Déposer seulement ne dépose que les fichiers."}
+                            {sameStay ? " Rejouer les cartes relit le mail sur ce dossier, sans recopier les pièces." : ""}
                           </p>
                         )}
                       </>

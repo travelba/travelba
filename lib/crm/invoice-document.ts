@@ -27,6 +27,8 @@ export type InvoiceInput = {
   dueDays?: number | null;
   wire?: InvoiceWire | null;
   stripeUrl?: string | null;
+  /** Prélèvement SEPA déjà lancé sur ce dossier. Réduit le reste et retire le lien de la même somme. */
+  heldSepa?: number | null;
   payerFirstName?: string | null;
   /** Société établie hors Union européenne. La mention de marge ne change pas de régime. */
   outsideEu?: boolean;
@@ -49,6 +51,7 @@ export type InvoiceDocument = {
   balanceLabel: string;
   surplus: number;
   surplusLabel: string | null;
+  heldLabel: string | null;
   foreignDeposits: boolean;
   issuedOn: string;
   issuedLabel: string;
@@ -211,8 +214,12 @@ export function invoiceDocument(input: InvoiceInput): InvoiceDocument {
   const total = roundMoney(lines.reduce((sum, line) => sum + line.amount, 0));
   const paid = depositSums(input.deposits || []);
   const rawBalance = roundMoney(total - paid.eur);
-  const balance = rawBalance > 0 ? rawBalance : 0;
+  const open = rawBalance > 0 ? rawBalance : 0;
+  const held = roundMoney(Math.max(0, Number(input.heldSepa) || 0));
+  const covered = roundMoney(Math.min(open, held));
+  const balance = roundMoney(open - covered);
   const surplus = rawBalance < 0 ? roundMoney(-rawBalance) : 0;
+  const hideStripeLink = held >= 0.5;
   const vat = vatBreakdown(rawLines);
   const vatMode = vat ? "detail" : "marge";
   const iban = validIban(input.wire?.iban);
@@ -230,7 +237,8 @@ export function invoiceDocument(input: InvoiceInput): InvoiceDocument {
         bic ? `BIC ${bic}` : "",
         wireRef ? `Référence ${wireRef}` : "",
       ].filter(Boolean);
-  const stripeUrl = stripePayUrlOf(input.stripeUrl);
+  const stripeUrl = hideStripeLink ? null : stripePayUrlOf(input.stripeUrl);
+  const heldLabel = covered >= 0.5 ? money(covered) : null;
   const missing: string[] = [];
   if (paymentMissing) missing.push("RIB (IBAN) : Revolut ne le fournit pas et le réglage Facture est vide.");
   if (paid.foreign) missing.push("Un acompte hors euros n’est pas converti.");
@@ -254,6 +262,7 @@ export function invoiceDocument(input: InvoiceInput): InvoiceDocument {
     balanceLabel: money(balance),
     surplus,
     surplusLabel: surplus > 0 ? money(surplus) : null,
+    heldLabel,
     foreignDeposits: paid.foreign,
     issuedOn,
     issuedLabel: formatDateFr(issuedOn),
@@ -313,6 +322,7 @@ export function invoiceMessage(doc: InvoiceDocument) {
     `Montant : ${doc.totalLabel}`,
     `Acomptes déjà versés : ${doc.depositsLabel}`,
     `Reste à payer : ${doc.balanceLabel}`,
+    doc.heldLabel ? `Prélèvement SEPA en cours : ${doc.heldLabel} — ne pas repayer.` : "",
     doc.surplusLabel ? `Trop-perçu : ${doc.surplusLabel}` : "",
     `Échéance : ${doc.dueLabel}`,
     "",

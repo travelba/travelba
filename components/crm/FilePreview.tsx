@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AddToAppleWallet } from "@/components/account/AddToAppleWallet";
+import { useOfflineDocument } from "@/components/account/OfflineDocuments";
 import { fileDownloadHref, fileInlineHref, fileThumbHref } from "@/lib/crm/file-href";
 import { isPreviewImage, isPreviewPdf, type FilePreviewModel } from "@/lib/crm/preview-files";
 import { siteConfig } from "@/lib/site";
@@ -93,6 +94,8 @@ export function FilePreviewTile({
   aside?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const cachedOffline = useOfflineDocument(file.id);
+  const offline = Boolean(file.offline) || cachedOffline;
   const direct = Boolean(file.href) && !file.path;
   const pdfHref = file.href && file.href !== file.walletHref ? file.href : null;
   if (direct) {
@@ -100,6 +103,7 @@ export function FilePreviewTile({
       <div className="flex w-full items-center gap-2 rounded-2xl bg-[#f6f5f2] px-3 py-2">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-[var(--admin-navy)]">{file.label}</p>
+          {offline ? <p className="text-[10px] font-semibold text-[#8c7352]">Disponible hors ligne</p> : null}
           {pdfHref ? (
             <a
               href={pdfHref}
@@ -149,6 +153,9 @@ export function FilePreviewTile({
         <span className="mt-1.5 line-clamp-2 text-center text-xs font-semibold leading-snug text-[#0B192C]">
           {file.label}
         </span>
+        {offline ? (
+          <span className="block text-center text-[10px] font-semibold text-[#8c7352]">Disponible hors ligne</span>
+        ) : null}
       </button>
       {onRemove ? (
         <ConfirmAction
@@ -238,7 +245,23 @@ function FilePreviewDialog({
   const [notice, setNotice] = useState<string | null>(null);
   const image = isPreviewImage(file.mimeType, file.fileName);
   const pdf = isPreviewPdf(file.mimeType, file.fileName);
-  const href = openHref(file);
+  const [localHref, setLocalHref] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.onLine) return;
+    let cancelled = false;
+    let url = "";
+    void import("@/lib/native/offline-docs").then(async (mod) => {
+      const next = await mod.offlineObjectUrl(file.id, file.mimeType);
+      if (cancelled || !next) return;
+      url = next;
+      setLocalHref(next);
+    });
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [file.id, file.mimeType]);
+  const href = localHref || openHref(file);
   const downloadHref = saveHref(file);
   const sealed = Boolean(file.sealed);
   const [raster, setRaster] = useState(sealed && (image || pdf));

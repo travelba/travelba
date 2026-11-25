@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { authorizationNoticeTitle } from "@/lib/crm/authorization-client-message";
+import { flushAuthorizationWhatsapp } from "@/lib/crm/authorization-auto-run";
 import { addIsoDays } from "@/lib/crm/dates";
 import {
   UK_ETA_APPLY_URL,
@@ -294,7 +296,7 @@ async function loadStay(admin: Admin, bookingId: string) {
   if (error || !booking) return null;
   const row = booking as StayBooking & { customer_id: string; reference: string };
   const [items, travelers, documents, customer] = await Promise.all([
-    admin.from("crm_booking_items").select("kind, lifecycle, title, details, start_at, end_at").eq("booking_id", bookingId),
+    admin.from("crm_booking_items").select("kind, lifecycle, title, details, start_at, end_at, visible_to_client").eq("booking_id", bookingId),
     admin.from("crm_booking_travelers").select("*").eq("booking_id", bookingId),
     admin.from("crm_travel_documents").select("*").eq("customer_id", row.customer_id),
     admin
@@ -404,10 +406,15 @@ export async function loadOpenUkEtaNotices(admin: Admin): Promise<UkEtaNoticeLin
   return rows.map((row) => {
     const name = names.get(row.traveler_id) || "Un voyageur";
     const reference = references.get(row.booking_id) || "Dossier";
-    const label =
-      row.kind === "valable"
-        ? `${name} · ${reference} · ETA Royaume-Uni valable`
-        : `${name} · ${reference} · ETA Royaume-Uni à traiter`;
+    const title =
+      row.status === "refuse"
+        ? `${authorizationNoticeTitle(row.status, "uk_eta")} · prioritaire`
+        : row.status === "introuvable"
+          ? authorizationNoticeTitle(row.status, "uk_eta")
+          : row.kind === "valable"
+            ? "ETA Royaume-Uni valable"
+            : "ETA Royaume-Uni à traiter";
+    const label = `${name} · ${reference} · ${title}`;
     return { id: row.id, href: `/admin/reservations/${row.booking_id}`, label };
   });
 }
@@ -676,5 +683,11 @@ export async function runUkEtaCron(admin: Admin) {
   }
   const mailed = await flushUkEtaNotices(admin);
   const clients = await flushUkEtaClientMails(admin);
-  return { synced, mailed, clients };
+  let auto = { sent: 0, alerts: 0 };
+  try {
+    auto = await flushAuthorizationWhatsapp(admin, "uk_eta");
+  } catch {
+    console.info("[uk-eta] whatsapp ignoré");
+  }
+  return { synced, mailed, clients, autoSent: auto.sent, autoAlerts: auto.alerts };
 }

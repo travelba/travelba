@@ -28,8 +28,12 @@ import {
   type FlightCard,
   type FlightNoticeKind,
 } from "./flight-watch";
+import { pushFlightLiveActivity } from "./live-activity-run";
+import { flightNoticeKey, flightPushCopy } from "./push-copy";
+import { sendCustomerPush } from "./push-notices";
 import { siteConfig } from "../site";
 import { sendContentTemplate } from "./whatsapp";
+import { copyTravelNoticeToSpouses } from "./travel-whatsapp-fanout";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
 import { stayDatesOpen, stayToday } from "./stay-moment";
 
@@ -143,26 +147,77 @@ async function notify(input: {
   contentSid?: string;
 }) {
   if (!input.booking.visible_to_client) return false;
-  if (!input.customer?.email || !proactiveWhatsappAllowed(input.customer)) return false;
-  const contentSid = input.contentSid || flightNoticeSid(input.kind);
-  if (!contentSid) return false;
-  const suffix = await reservationSuffix(input.admin, input.customer.email, input.booking.reference);
-  if (!suffix) return false;
-  const variables = flightNoticeVariables({
+  const flight = flightNumberLabel(input.item.details);
+  const route = flightRouteLabel(input.item.details);
+  const text = [flight, route, input.when, input.place].filter((value) => typeof value === "string" && value.trim()).join(" · ");
+  let holderSent = false;
+  if (input.customer?.email && input.customer.phone && proactiveWhatsappAllowed(input.customer)) {
+    const contentSid = input.contentSid || flightNoticeSid(input.kind);
+    const suffix = contentSid ? await reservationSuffix(input.admin, input.customer.email, input.booking.reference) : null;
+    const variables = suffix
+      ? flightNoticeVariables({
+          kind: input.kind,
+          flight,
+          route,
+          when: input.when,
+          place: input.place,
+          buttonSuffix: suffix,
+        })
+      : null;
+    if (contentSid && variables) {
+      const result = await sendContentTemplate({
+        phone: input.customer.phone,
+        contentSid,
+        variables,
+      });
+      holderSent = result.ok;
+    }
+  }
+  if (!text) return holderSent;
+  try {
+    const copied = await copyTravelNoticeToSpouses(input.admin, {
+      bookingId: input.booking.id,
+      kind: "vol",
+      body: text,
+      visible: true,
+      dossierReference: input.booking.reference,
+      exceptPhones: input.customer?.phone ? [input.customer.phone] : [],
+    });
+    return holderSent || copied.sent.length > 0;
+  } catch {
+    return holderSent;
+  }
+}
+
+async function pushNotice(input: {
+  booking: BookingRow;
+  customer: CustomerRow | undefined;
+  itemId: string;
+  startAt: string | null;
+  details: Record<string, unknown>;
+  kind: FlightNoticeKind;
+  when?: string | null;
+  place?: string | null;
+}) {
+  if (!input.booking.visible_to_client || !input.customer) return;
+  if (!REFERENCE.test(input.booking.reference)) return;
+  const copy = flightPushCopy({
     kind: input.kind,
-    flight: flightNumberLabel(input.item.details),
-    route: flightRouteLabel(input.item.details),
+    flight: flightNumberLabel(input.details),
+    route: flightRouteLabel(input.details),
     when: input.when,
     place: input.place,
-    buttonSuffix: suffix,
   });
-  if (!variables) return false;
-  const result = await sendContentTemplate({
-    phone: input.customer.phone,
-    contentSid,
-    variables,
+  if (!copy) return;
+  await sendCustomerPush({
+    customerId: input.customer.id,
+    kind: "travel",
+    title: copy.title,
+    body: copy.body,
+    url: `/mon-compte/reservations/${input.booking.reference}`,
+    idempotencyKey: flightNoticeKey(input.itemId, input.kind, input.startAt),
+    bookingId: input.booking.id,
   });
-  return result.ok;
 }
 
 function missingTable(error: { code?: string } | null) {
@@ -360,15 +415,26 @@ export async function runFlightWatch(
           kind === "horaire" || kind === "retard" ? flightClockLabel(patch.start_at) : null;
         if ((kind === "horaire" || kind === "retard") && !when) continue;
         if (kind === "arrivee" && !place) continue;
+        const customer = customers.get(booking.customer_id);
         const sent = await notify({
           admin,
           item: { ...item, start_at: patch.start_at, details },
           booking,
-          customer: customers.get(booking.customer_id),
+          customer,
           kind,
           when,
           place,
           contentSid: noticeSids[kind],
+        });
+        await pushNotice({
+          booking,
+          customer,
+          itemId: item.id,
+          startAt: patch.start_at,
+          details,
+          kind,
+          when,
+          place,
         });
         if (sent) {
           details = markFlightNotified(details, kind, patch.start_at, now);
@@ -380,7 +446,20 @@ export async function runFlightWatch(
         .update({ start_at: patch.start_at, end_at: patch.end_at, details, updated_at: now.toISOString() })
         .eq("id", item.id);
       if (writeError) quiet(writeError);
-      else updated += 1;
+      else {
+        updated += 1;
+        if (booking.visible_to_client) {
+          await pushFlightLiveActivity({
+            admin,
+            customerId: booking.customer_id,
+            bookingId: booking.id,
+            itemId: item.id,
+            visible: true,
+            item: { start_at: patch.start_at, end_at: patch.end_at, details },
+            now,
+          });
+        }
+      }
       item.start_at = patch.start_at;
       item.end_at = patch.end_at;
       item.details = details;
@@ -421,6 +500,14 @@ export async function runFlightWatch(
       customer,
       kind: "enregistrement",
       contentSid: noticeSids.enregistrement,
+    });
+    await pushNotice({
+      booking,
+      customer,
+      itemId: item.id,
+      startAt: item.start_at,
+      details: item.details,
+      kind: "enregistrement",
     });
     const details = sent
       ? markFlightNotified(item.details, "enregistrement", item.start_at, now)

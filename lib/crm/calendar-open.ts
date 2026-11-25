@@ -22,10 +22,21 @@ export function isAppleMobileBrowser(ua: string) {
 }
 
 /**
+ * Application iOS (Capacitor, WKWebView) : l’agent n’a pas le jeton `Safari/`.
+ * Chrome iOS le garde (`CriOS` … `Safari/`). Un fichier inline s’affiche alors comme du texte dans la vue.
+ */
+export function isIosWebView(ua: string) {
+  if (!isAppleMobileBrowser(ua)) return false;
+  if (/Capacitor/i.test(ua)) return true;
+  return /AppleWebKit/i.test(ua) && !/Safari\//.test(ua);
+}
+
+/**
  * Safari affiche la feuille Calendrier quand le fichier est inline.
- * Chrome affiche le texte brut : on force le téléchargement.
+ * Chrome et la webview iOS affichent le texte brut : on force le téléchargement.
  */
 export function calendarFileDisposition(ua: string): "inline" | "attachment" {
+  if (isIosWebView(ua)) return "attachment";
   if (isAppleMobileBrowser(ua)) return "inline";
   if (
     /Macintosh/i.test(ua) &&
@@ -103,14 +114,9 @@ function leaveIosStandalone(opts: {
   displayModeStandalone?: boolean;
 }) {
   if (isAndroidUa(opts.ua)) return false;
+  if (isIosWebView(opts.ua)) return true;
   if (opts.navigatorStandalone) return true;
   return Boolean(opts.displayModeStandalone && isAppleMobileBrowser(opts.ua));
-}
-
-/** Lien secondaire, quand le bouton principal n’ouvre pas déjà Google Agenda. */
-export function showGoogleCalendarFallback(opts: { href: string; googleHref?: string | null; ua: string }) {
-  if (!opts.googleHref || opts.googleHref === opts.href) return false;
-  return !isAndroidUa(opts.ua);
 }
 
 /** Lien d’une carte : l’URL se termine par .ics, sans query, pour que le téléphone l’ouvre comme un événement. */

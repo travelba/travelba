@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { siteConfig } from "@/lib/site";
+import { clientStayFace, shownStayDestination } from "@/lib/crm/client-stay-face";
 import { cityCoverCached, ensureCityCover } from "@/lib/crm/cover-generate";
 import { cityCoverAuthFailed } from "@/lib/crm/cover-retouch";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
@@ -10,6 +11,7 @@ import { entryForFrenchPassport } from "./visa-fr";
 import { frenchPassportRequired, frenchPassportTrip } from "./visa-trip";
 import { toE164 } from "./phone";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
+import { copyTravelNoticeToSpouses } from "./travel-whatsapp-fanout";
 import { sendContentTemplate, type WhatsappSendResult } from "./whatsapp";
 import { resolveVisaGrantContentSid, sendVisaGrantWhatsapp } from "./visa-grant-send";
 import {
@@ -25,6 +27,7 @@ import {
   visaGrantTemplateForHeader,
   type VisaGrantCandidate,
 } from "./visa-grant-whatsapp";
+import { pieceEstRetiree } from "./dossier-piece";
 import { isTravelAuthorization, type CrmBooking, type CrmBookingItem, type CrmBookingTraveler, type CrmTravelDocument } from "./types";
 import type { TripStep } from "./layover";
 import {
@@ -173,6 +176,76 @@ async function saveQueue(admin: Admin, input: {
 
 async function dropQueue(admin: Admin, id: string) {
   await admin.from("crm_whatsapp_messages").delete().eq("id", id).eq("status", "queued");
+}
+
+/** La pièce n’est plus montrable : le cron ne l’envoie pas. */
+export const PIECE_QUEUE_ABANDON = "Pièce cachée ou retirée.";
+
+async function abandonPieceQueue(admin: Admin, id: string) {
+  await admin
+    .from("crm_whatsapp_messages")
+    .update({ status: "failed", error: PIECE_QUEUE_ABANDON })
+    .eq("id", id)
+    .eq("status", "queued");
+}
+
+type PieceRow = {
+  id: string;
+  kind?: string | null;
+  booking_item_id?: string | null;
+  visible_to_client?: boolean | null;
+  extracted?: unknown;
+};
+
+/** Pièces encore là, non retirées, visibles, et dont la carte liée est visible s’il y en a une. */
+async function liveVisiblePieces(admin: Admin, bookingId: string, onlyIds?: string[]) {
+  if (onlyIds && !onlyIds.length) return [] as { id: string; kind: string | null }[];
+  let query = admin
+    .from("crm_booking_documents")
+    .select("id, kind, booking_item_id, visible_to_client, extracted")
+    .eq("booking_id", bookingId)
+    .eq("visible_to_client", true);
+  if (onlyIds?.length) query = query.in("id", onlyIds);
+  const { data } = await query;
+  const docs = ((data || []) as PieceRow[]).filter((doc) => doc.id && doc.visible_to_client === true && !pieceEstRetiree(doc.extracted));
+  const itemIds = [...new Set(docs.map((doc) => doc.booking_item_id).filter((value): value is string => Boolean(value)))];
+  const cards = new Map<string, { kind: string | null; visible: boolean }>();
+  if (itemIds.length) {
+    const { data: items } = await admin.from("crm_booking_items").select("id, kind, visible_to_client").in("id", itemIds);
+    for (const item of (items || []) as { id: string; kind?: string | null; visible_to_client?: boolean | null }[]) {
+      cards.set(item.id, { kind: item.kind || null, visible: item.visible_to_client === true });
+    }
+  }
+  const kept: { id: string; kind: string | null }[] = [];
+  for (const doc of docs) {
+    if (doc.booking_item_id) {
+      const card = cards.get(doc.booking_item_id);
+      if (!card?.visible) continue;
+      kept.push({ id: doc.id, kind: card.kind || doc.kind || null });
+      continue;
+    }
+    kept.push({ id: doc.id, kind: doc.kind || null });
+  }
+  return kept;
+}
+
+async function livePieceStamps(admin: Admin, bookingId: string, stamps: PieceStamp[]) {
+  if (!stamps.length) return [];
+  const live = await liveVisiblePieces(
+    admin,
+    bookingId,
+    stamps.map((stamp) => stamp.id)
+  );
+  const byId = new Map(live.map((row) => [row.id, row]));
+  const kept: PieceStamp[] = [];
+  for (const stamp of stamps) {
+    const row = byId.get(stamp.id);
+    if (!row) continue;
+    const kind = normalizePieceKind(row.kind) || normalizePieceKind(stamp.kind);
+    if (!kind) continue;
+    kept.push({ ...stamp, kind });
+  }
+  return kept;
 }
 
 async function markResult(
@@ -348,20 +421,41 @@ async function deliverTemplate(admin: Admin, input: {
  * Photo du lieu déjà là, ou à générer.
  * `generate` reste faux au moment où l’on montre le dossier : la requête admin ne lance pas l’image.
  */
+function clientCoverBooking(
+  booking: { destination: string | null; title: string | null; cover_image_path: string | null },
+  items?: Parameters<typeof clientStayFace>[0]["items"],
+  homeCity?: string | null
+) {
+  const face = clientStayFace({
+    title: booking.title,
+    destination: booking.destination,
+    items,
+    homeCity,
+  });
+  return {
+    destination: shownStayDestination(face, booking.destination),
+    title: face.title || booking.title,
+    cover_image_path: booking.cover_image_path,
+  };
+}
+
 async function openStayNotice(
   booking: { destination: string | null; title: string | null; cover_image_path: string | null },
   waits: number,
-  generate: boolean
+  generate: boolean,
+  items?: Parameters<typeof clientStayFace>[0]["items"],
+  homeCity?: string | null
 ) {
-  if (!stayHasPublishedCover(booking)) return "text" as const;
-  const photo = generatedStayPhotoId(booking);
+  const shown = clientCoverBooking(booking, items, homeCity);
+  if (!stayHasPublishedCover(shown)) return "text" as const;
+  const photo = generatedStayPhotoId(shown);
   let coverReady = !photo || (await cityCoverCached(photo));
   if (photo && !coverReady && generate) {
     const made = await ensureCityCover(photo);
     coverReady = Boolean(made?.byteLength);
     if (!coverReady && cityCoverAuthFailed()) return "text" as const;
   }
-  if (booking.cover_image_path) coverReady = true;
+  if (shown.cover_image_path) coverReady = true;
   return stayNoticeDispatch({
     hasCover: true,
     coverReady,
@@ -379,7 +473,7 @@ async function noteCoverWait(admin: Admin, row: QueueRow) {
 async function loadStaySteps(admin: Admin, bookingId: string) {
   const { data } = await admin
     .from("crm_booking_items")
-    .select("kind, title, start_at, end_at, sort_order, details, lifecycle")
+    .select("kind, title, start_at, end_at, sort_order, details, lifecycle, visible_to_client")
     .eq("booking_id", bookingId);
   return (data || []) as TripStep[];
 }
@@ -466,6 +560,30 @@ async function deliverTravellerPlain(admin: Admin, row: QueueRow, booking: CrmBo
     return;
   }
   await deliverGrant(admin, row, booking, handset.phone, handset.firstName);
+  await copySpouses(admin, booking, "formalite", row.body, handset.phone ? [handset.phone] : []);
+}
+
+async function copySpouses(
+  admin: Admin,
+  booking: { id: string; title?: string | null; reference?: string | null; visible_to_client?: boolean | null },
+  kind: string,
+  body: string,
+  exceptPhones: string[] = []
+) {
+  if (!booking.visible_to_client || !body.trim()) return;
+  try {
+    await copyTravelNoticeToSpouses(admin, {
+      bookingId: booking.id,
+      kind,
+      body,
+      visible: true,
+      dossierTitle: booking.title,
+      dossierReference: booking.reference,
+      exceptPhones,
+    });
+  } catch {
+    return;
+  }
 }
 
 async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
@@ -489,14 +607,14 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       title: booking.title,
       items: steps,
       homeCity,
-      hasCover: stayHasPublishedCover(booking),
+      hasCover: stayHasPublishedCover(clientCoverBooking(booking, steps, homeCity)),
     });
     if (!preview) {
       await dropQueue(admin, row.id);
       return;
     }
     const waits = row.payload?.coverWaits || 0;
-    const dispatch = await openStayNotice(booking, waits, true);
+    const dispatch = await openStayNotice(booking, waits, true, steps, homeCity);
     if (dispatch === "wait") {
       await noteCoverWait(admin, row);
       return;
@@ -524,6 +642,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       stayCover: dispatch === "photo",
       holdWithoutCover: dispatch === "photo",
     });
+    if (outcome === "done") await copySpouses(admin, booking, "sejour", plan.body);
     if (outcome === "held") {
       const next = waits + 1;
       if (next >= STAY_COVER_WAIT_LIMIT) {
@@ -546,6 +665,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
             place: text.place,
             reference: booking.reference,
           });
+          await copySpouses(admin, booking, "sejour", text.body);
         }
         return;
       }
@@ -558,6 +678,11 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
     const pieces = row.payload?.pieces || [];
     const first = Date.parse(pieces[0]?.at || "");
     if (!pieces.length || !Number.isFinite(first) || now.getTime() - first < PIECES_WINDOW_MS) return;
+    const kept = await livePieceStamps(admin, booking.id, pieces);
+    if (!kept.length) {
+      await abandonPieceQueue(admin, row.id);
+      return;
+    }
     const plans = planPiecesNotices({
       published: true,
       reference: booking.reference,
@@ -565,7 +690,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       title: booking.title,
       items: steps,
       homeCity,
-      pieces,
+      pieces: kept,
     });
     const plan = plans[0];
     if (!plan) {
@@ -582,8 +707,9 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       reference: booking.reference,
       variable: plan.variable,
       card: pieceCardTemplate(plan),
-      sentDedupe: `pieces-sent:${booking.id}:${pieces[0].at}`,
+      sentDedupe: `pieces-sent:${booking.id}:${kept[0].at}`,
     });
+    await copySpouses(admin, booking, "pieces", plan.body);
     return;
   }
 
@@ -607,6 +733,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       reference: booking.reference,
       card: noticeCardTemplate(plan.template),
     });
+    const noticeKind = key.startsWith("formalite-manquante:") ? "formalite" : "passeport";
+    await copySpouses(admin, booking, noticeKind, plan.body);
     return;
   }
 
@@ -622,6 +750,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
     }
     if (!customer.email || !customer.phone || !proactiveWhatsappAllowed(customer)) return;
     await deliverGrant(admin, row, booking, customer.phone, customer.first_name || "");
+    await copySpouses(admin, booking, "formalite", row.body);
   }
 }
 
@@ -738,7 +867,7 @@ export async function notifyStayPublished(bookingId: string, admin: Admin = crea
     title: booking.title,
     items: steps,
     homeCity: customer?.city || null,
-    hasCover: stayHasPublishedCover(booking),
+    hasCover: stayHasPublishedCover(clientCoverBooking(booking, steps, customer?.city || null)),
   });
   if (!plan) return;
   const dedupeKey = `sejour:${booking.id}`;
@@ -752,7 +881,7 @@ export async function notifyStayPublished(bookingId: string, admin: Admin = crea
     payload: previous?.payload?.coverWaits ? { coverWaits: previous.payload.coverWaits } : {},
   });
   if (row.status === "sent") return;
-  const dispatch = await openStayNotice(booking, row.payload?.coverWaits || 0, false);
+  const dispatch = await openStayNotice(booking, row.payload?.coverWaits || 0, false, steps, customer?.city || null);
   if (dispatch === "wait") return;
   await deliverRow(admin, row, new Date());
 }
@@ -761,26 +890,35 @@ export async function notifyStayPublished(bookingId: string, admin: Admin = crea
 export async function queuePublishedPieces(
   bookingId: string,
   incoming: { id: string; kind: string | null }[],
-  now = new Date()
+  now = new Date(),
+  admin: Admin = createServiceClient()
 ) {
-  const admin = createServiceClient();
   const booking = await loadBooking(admin, bookingId);
   if (!booking?.visible_to_client) return;
   const dedupeKey = `pieces-queue:${booking.id}`;
   const existing = await findByDedupe(admin, dedupeKey);
-  let pieces = [...(existing?.payload?.pieces || [])];
-  const first = Date.parse(pieces[0]?.at || "");
-  if (pieces.length && Number.isFinite(first) && now.getTime() - first >= PIECES_WINDOW_MS && existing) {
-    await deliverRow(admin, existing, now);
-    const after = await findByDedupe(admin, dedupeKey);
-    if (!after || after.status === "sent") pieces = [];
+  const stored = [...(existing?.payload?.pieces || [])];
+  let pieces = await livePieceStamps(admin, booking.id, stored);
+  const firstStored = Date.parse(stored[0]?.at || "");
+  const windowOpen =
+    stored.length > 0 && Number.isFinite(firstStored) && now.getTime() - firstStored >= PIECES_WINDOW_MS;
+  if (windowOpen && existing?.status === "queued") {
+    if (!pieces.length) {
+      await abandonPieceQueue(admin, existing.id);
+    } else {
+      await deliverRow(admin, { ...existing, payload: { ...(existing.payload || {}), pieces } }, now);
+      const after = await findByDedupe(admin, dedupeKey);
+      if (!after || after.status === "sent" || after.status === "failed") pieces = [];
+      else pieces = await livePieceStamps(admin, booking.id, [...(after.payload?.pieces || [])]);
+    }
   }
   const at = now.toISOString();
   for (const piece of incoming) {
-    const kind = normalizePieceKind(piece.kind);
-    if (!kind || pieces.some((row) => row.id === piece.id)) continue;
+    if (!piece.id || pieces.some((row) => row.id === piece.id)) continue;
+    const kind = normalizePieceKind(piece.kind) || "other";
     pieces.push({ id: piece.id, kind, at });
   }
+  pieces = await livePieceStamps(admin, booking.id, pieces);
   if (!pieces.length) return;
   const { data: sent } = await admin
     .from("crm_whatsapp_messages")
@@ -1225,8 +1363,7 @@ export async function remindMissingPieces(bookingId: string, now = new Date(), a
   }
 }
 
-export async function flushConcierge(now = new Date()) {
-  const admin = createServiceClient();
+export async function deliverQueuedConcierge(now: Date, admin: Admin) {
   const { data } = await admin
     .from("crm_whatsapp_messages")
     .select("id, customer_id, booking_id, dedupe_key, template_key, body, status, payload")
@@ -1240,6 +1377,12 @@ export async function flushConcierge(now = new Date()) {
       quiet(err);
     }
   }
+  return (data || []).length;
+}
+
+export async function flushConcierge(now = new Date()) {
+  const admin = createServiceClient();
+  const queued = await deliverQueuedConcierge(now, admin);
   const today = now.toISOString().slice(0, 10);
   const { data: bookings } = await admin
     .from("crm_bookings")
@@ -1257,7 +1400,7 @@ export async function flushConcierge(now = new Date()) {
       quiet(err);
     }
   }
-  return { queued: (data || []).length, reminded };
+  return { queued, reminded };
 }
 
 export async function safeConcierge(task: () => Promise<unknown>) {

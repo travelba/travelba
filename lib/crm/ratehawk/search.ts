@@ -8,6 +8,7 @@ import {
   penaltyLines,
   pickPaymentType,
   preferHotelImages,
+  publicHotelName,
   shownPrice,
   type PaymentType,
   type RgExt,
@@ -37,7 +38,8 @@ export type ShownRate = {
   show_currency_code: string;
   sell_amount: string | null;
   needs_card: boolean;
-  excluded_taxes: { name: string; amount: string; currency_code: string }[];
+  excluded_taxes: { name: string; label: string; amount: string; currency_code: string }[];
+  taxes: { name: string; label: string; amount: string; currency_code: string; included: boolean }[];
   penalties: { text: string }[];
   free_cancellation_before: string | null;
   rg_ext: RgExt | null;
@@ -48,6 +50,8 @@ export type ShownRate = {
 export type HotelCard = {
   hid: number;
   name: string;
+  address: string | null;
+  star_rating: number | null;
   region_id: number | null;
   rates: ShownRate[];
   images: string[];
@@ -107,20 +111,35 @@ export function normalizeRate(
   const rg = asRecord(rate.rg_ext) as RgExt | null;
   const group = matchRoomGroup(rg, roomGroups);
   const policies = payment.cancellation_penalties?.policies || [];
+  const showCurrency = String(payment.show_currency_code || "");
+  const chargeCurrency = String(payment.currency_code);
+  const taxLine = (tax: (typeof taxes.excluded)[number], included: boolean) => ({
+    name: tax.name,
+    label: tax.label,
+    amount: tax.amount,
+    currency_code: tax.currency_code,
+    included,
+  });
   return {
     book_hash: hash,
     room_name: String(rate.room_name || "Chambre"),
     meal_code: meal.code,
     meal_label: meal.label,
-    payment_type: String(payment.type || config.paymentType),
+    payment_type: "deposit",
     amount: String(payment.amount),
-    currency_code: String(payment.currency_code),
-    show_amount: String(payment.show_amount || payment.amount),
-    show_currency_code: String(payment.show_currency_code || payment.currency_code),
+    currency_code: chargeCurrency,
+    show_amount: String(payment.show_amount || ""),
+    show_currency_code: showCurrency || chargeCurrency,
     sell_amount: price.sell == null ? null : price.sell.toFixed(2),
     needs_card: Boolean(payment.is_need_credit_card_data || payment.is_need_cvc),
-    excluded_taxes: taxes.excluded.map((tax) => ({ name: tax.name, amount: tax.amount, currency_code: tax.currency_code })),
-    penalties: penaltyLines(policies, payment.cancellation_penalties?.free_cancellation_before, price.currency || String(payment.show_currency_code || payment.currency_code)),
+    excluded_taxes: taxes.excluded.map((tax) => ({ name: tax.name, label: tax.label, amount: tax.amount, currency_code: tax.currency_code })),
+    taxes: [...taxes.included.map((tax) => taxLine(tax, true)), ...taxes.excluded.map((tax) => taxLine(tax, false))],
+    penalties: penaltyLines(
+      policies,
+      payment.cancellation_penalties?.free_cancellation_before,
+      showCurrency || chargeCurrency,
+      chargeCurrency
+    ),
     free_cancellation_before: payment.cancellation_penalties?.free_cancellation_before || null,
     rg_ext: rg,
     room_images: collectImageUrls([group?.images, group?.images_ext], 4),
@@ -156,9 +175,12 @@ export function normalizeHotels(
     const rates = (Array.isArray(row.rates) ? row.rates : [])
       .map((rate) => normalizeRate(asRecord(rate) || {}, config, roomGroups, requireHash))
       .filter((rate): rate is ShownRate => Boolean(rate));
+    const liveName = typeof row.name === "string" ? row.name : null;
     cards.push({
       hid,
-      name: String(row.name || row.id || `Hôtel ${hid}`),
+      name: publicHotelName(null, liveName, hid),
+      address: null,
+      star_rating: null,
       region_id: row.region_id == null ? null : Number(row.region_id) || null,
       images: collectImageUrls(row.images_ext ?? row.images, 8),
       rates: lowest(rates, rateLimit),
@@ -237,6 +259,8 @@ export type SearchRateView = {
   net: string;
   vente: string | null;
   devise: string;
+  debit: string;
+  devise_debit: string;
   remboursable: boolean;
   annulation_gratuite_avant: string | null;
   paiement: string;
@@ -266,10 +290,10 @@ export function presentHotels(
       const address = typeof facts?.address === "string" ? facts.address.trim() : "";
       const storedName = typeof facts?.name === "string" ? facts.name.trim() : "";
       return {
-        nom: storedName || card.name,
+        nom: publicHotelName(storedName, card.name, card.hid),
         hid: card.hid,
         etoiles: typeof stars === "number" && Number.isInteger(stars) && stars >= 0 && stars <= 5 ? stars : null,
-        adresse: address || null,
+        adresse: address || card.address,
         photos: fromStore.length ? fromStore : card.images.slice(0, RATEHAWK_PHOTO_CAP),
         tarifs: card.rates.map((rate) => ({
           hash: rate.book_hash,
@@ -278,6 +302,8 @@ export function presentHotels(
           net: rate.show_amount,
           vente: rate.sell_amount,
           devise: rate.show_currency_code,
+          debit: rate.amount,
+          devise_debit: rate.currency_code,
           remboursable: Boolean(rate.free_cancellation_before),
           annulation_gratuite_avant: rate.free_cancellation_before,
           paiement: rate.payment_type,
@@ -285,6 +311,24 @@ export function presentHotels(
       };
     }),
   };
+}
+
+/** La liste agence reprend le nom, l’adresse, les étoiles et la photo du contenu statique. */
+export function withStoredFacts(cards: HotelCard[], stored: StoredHotelFacts[]): HotelCard[] {
+  const byHid = new Map(stored.map((row) => [row.hid, row]));
+  return cards.map((card) => {
+    const facts = byHid.get(card.hid);
+    const fromStore = facts ? preferHotelImages(facts.images, facts.images_ext, 1) : [];
+    const stars = facts?.star_rating;
+    const address = typeof facts?.address === "string" ? facts.address.trim() : "";
+    return {
+      ...card,
+      name: publicHotelName(typeof facts?.name === "string" ? facts.name : null, card.name, card.hid),
+      address: address || null,
+      star_rating: typeof stars === "number" && Number.isInteger(stars) && stars >= 0 && stars <= 5 ? stars : null,
+      images: fromStore.length ? fromStore : card.images.slice(0, 1),
+    };
+  });
 }
 
 export type CompletionChoice = { kind: "region"; id: number; nom: string } | { kind: "hotel"; hid: number; nom: string };

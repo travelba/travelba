@@ -6,9 +6,12 @@ import { redactVaultDocument } from "@/lib/crm/agency-access";
 import { staffAllows } from "@/lib/crm/agency-guard";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
+import { openPersonalDossiers } from "@/lib/crm/company-dossiers";
+import { TwinAccountPanel } from "@/components/admin/TwinAccountPanel";
 import { HotelAccessCard } from "@/components/admin/HotelAccessCard";
 import { HotelDirectDesk, type DirectDeskStay } from "@/components/admin/HotelDirectDesk";
 import { CLIENT_PHASE_LABEL, type ClientPhase } from "@/lib/crm/hotel-direct";
+import { GroupedInvoicePanel } from "@/components/admin/GroupedInvoicePanel";
 import { Mb3mFicheAction } from "@/components/admin/Mb3mFicheAction";
 import {
   ArchiveBookingButton,
@@ -19,6 +22,10 @@ import { ClientPaymentsSlot } from "@/components/admin/ClientPaymentsSlot";
 import { DeleteCustomerButton } from "@/components/admin/DeleteCustomerButton";
 import { MergeCustomersButton } from "@/components/admin/MergeCustomersButton";
 import { InviteCustomerPanel } from "@/components/admin/InviteCustomerPanel";
+import { TravelClubInvite } from "@/components/admin/TravelClubInvite";
+import { referralAccountFor } from "@/lib/crm/signup-run";
+import { REFERRAL_CAP } from "@/lib/crm/signup-options";
+import { clubRenewalDue, formatClubDate } from "@/lib/crm/signup";
 import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
 import { StatementRequest } from "@/components/account/StatementRequest";
 import { ClientPayFollowUp } from "@/components/admin/ClientPayFollowUp";
@@ -27,6 +34,7 @@ import { agencyPayFollowUp } from "@/lib/crm/client-pay";
 import { formatCustomerLoginAt } from "@/lib/crm/customer-login";
 import { repairCustomerDownloads } from "@/lib/crm/download-journal";
 import { getPortalAccess } from "@/lib/crm/invite";
+import { listCustomerTwins } from "@/lib/crm/customer-twins";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { readPendingAccess } from "@/lib/crm/hotel-access-run";
 import { mb3mRealm } from "@/lib/crm/mb3m";
@@ -56,9 +64,10 @@ import { BookingHero } from "@/components/crm/BookingHero";
 import { FilePreviewLink } from "@/components/crm/FilePreview";
 import { identityPreview } from "@/lib/crm/preview-files";
 import { clientLedgerAdminHref } from "@/lib/crm/client-ledger";
+import { bookingIdsWhereClientTravels } from "@/lib/crm/company-role";
 import { ficheBookingTravelerLine, ficheTravelerCaption, mergeFicheBookings } from "@/lib/crm/fiche-bookings";
 import { formatDateFr, formatMoney, formatCreditDisponible } from "@/lib/crm/money";
-import { displayedEncours } from "@/lib/crm/sepa-hold";
+import { displayedEncours, sepaHoldBadge } from "@/lib/crm/sepa-hold";
 import { loadCustomerSepaState } from "@/lib/crm/sepa-ledger";
 import { SepaInFlight } from "@/components/account/SepaInFlight";
 import { CUSTOMER_PICK_SELECT, type PickableCustomer } from "@/lib/crm/customer-search";
@@ -166,10 +175,28 @@ export default async function AdminClientDetailPage({ params }: Props) {
   const mb3mCompanyIds = mb3mRows.map((row) => row.billing_company_id).filter((value): value is string => Boolean(value));
   const logins = loginError ? [] : ((loginRows || []) as CrmCustomerLogin[]);
   const activity = activityError ? [] : ((activityRows || []) as CrmCustomerActivity[]);
-  const bookingRows = mergeFicheBookings(
-    (bookings || []) as CrmBooking[],
-    (billedBookings || []) as CrmBooking[]
+  const foreignBilled = ((billedBookings || []) as CrmBooking[]).filter((row) => row.customer_id !== id);
+  let traveledIds = new Set<string>();
+  if (foreignBilled.length) {
+    const { data: travelerRows } = await supabase
+      .from("crm_booking_travelers")
+      .select("booking_id, first_name, last_name")
+      .in(
+        "booking_id",
+        foreignBilled.map((row) => row.id)
+      );
+    traveledIds = new Set(
+      bookingIdsWhereClientTravels(
+        c,
+        (travelerRows || []) as { booking_id: string; first_name: string | null; last_name: string | null }[]
+      )
+    );
+  }
+  const billedForFiche = ((billedBookings || []) as CrmBooking[]).filter(
+    (row) => row.customer_id === id || traveledIds.has(row.id)
   );
+  const hiddenTeamTrips = foreignBilled.filter((row) => !traveledIds.has(row.id)).length;
+  const bookingRows = mergeFicheBookings((bookings || []) as CrmBooking[], billedForFiche);
   const activeBookings = bookingRows.filter((row) => !row.archived_at);
   const archivedBookings = bookingRows.filter((row) => row.archived_at);
   const travelerIds = [
@@ -246,6 +273,16 @@ export default async function AdminClientDetailPage({ params }: Props) {
                   En veille
                 </span>
               ) : null}
+              {c.hide_client_prices ? (
+                <span className="ml-3 align-middle rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+                  Prix masqués au client
+                </span>
+              ) : null}
+              {c.zero_fees ? (
+                <span className="ml-3 align-middle rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
+                  Zéro frais
+                </span>
+              ) : null}
             </h1>
             <p className="mt-2 max-w-xl break-words text-sm text-white/70">
               {[contactLine, `Dernière visite · ${lastVisit}`].filter(Boolean).join("  ·  ")}
@@ -257,6 +294,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
                 <StatementRequest endpoint={`/api/admin/clients/${c.id}/releve`} audience="staff" />
               </Suspense>
             </div>
+            <GroupedInvoicePanel customerId={c.id} />
             <Link
               href={clientLedgerAdminHref(c.id)}
               className="admin-af-btn-accent inline-flex rounded-full px-5 py-2.5 text-sm"
@@ -283,11 +321,13 @@ export default async function AdminClientDetailPage({ params }: Props) {
                     .join(" · ")
                 : "—"}
             </p>
-            {sepaHeld >= 0.5 ? (
-              <p className="mt-1 text-xs text-white/80">
-                {formatMoney(sepaHeld, "EUR")} en cours de prélèvement SEPA
-              </p>
-            ) : null}
+            {sepa.holds
+              .filter((hold) => hold.currency === "EUR")
+              .map((hold) => (
+                <p key={hold.paymentIntentId || hold.launchedAt} className="mt-1 text-xs text-white/80">
+                  {sepaHoldBadge(hold)}
+                </p>
+              ))}
           </Link>
           <div className="border-l border-white/10 px-6 py-4 sm:border-0 sm:px-8">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold)]">Dossiers</p>
@@ -324,6 +364,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-5">
+      <TwinAccounts customerId={c.id} customerName={customerFullName(c)} />
       <CustomerEditor
         key={c.updated_at}
         customer={c}
@@ -331,6 +372,12 @@ export default async function AdminClientDetailPage({ params }: Props) {
         documents={vaultDocuments}
         companyAdmins={(companyAdmins || []) as PickableCustomer[]}
         billingCompanies={(billingCompanies || []) as CrmBillingCompany[]}
+        personalDossiers={openPersonalDossiers(activeBookings).map((booking) => ({
+          id: booking.id,
+          reference: booking.reference,
+          title: booking.title,
+          destination: booking.destination,
+        }))}
       />
       <Mb3mFicheAction
         customerId={c.id}
@@ -355,9 +402,14 @@ export default async function AdminClientDetailPage({ params }: Props) {
             Nouveau dossier
           </Link>
         </div>
-        {activeBookings.some((row) => row.customer_id !== id) ? (
+        {hiddenTeamTrips ? (
           <p className="mt-2 text-xs text-muted">
-            Les séjours facturés sur ce compte figurent ici, avec le nom du voyageur.
+            Les voyages des collaborateurs facturés sur ce compte ne figurent pas ici. Les dépenses restent dans les
+            transactions.
+          </p>
+        ) : activeBookings.some((row) => row.customer_id !== id) ? (
+          <p className="mt-2 text-xs text-muted">
+            Ce client voyage sur un dossier facturé ici. Le nom est celui du titulaire.
           </p>
         ) : null}
         {activeBookings.length ? (
@@ -455,6 +507,12 @@ export default async function AdminClientDetailPage({ params }: Props) {
 
         <aside className="space-y-3">
       <InviteCustomerPanel customerId={c.id} initial={portal} stacked />
+      <TravelClubSlot
+        customerId={c.id}
+        firstName={c.first_name}
+        startedOn={c.club_started_on || null}
+        endsOn={c.club_ends_on || null}
+      />
       <details className="admin-af-card group rounded-3xl">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden [&::marker]:content-none">
           <span className="min-w-0">
@@ -554,6 +612,23 @@ export default async function AdminClientDetailPage({ params }: Props) {
   );
 }
 
+async function TwinAccounts({ customerId, customerName }: { customerId: string; customerName: string }) {
+  let twins: { id: string; nom: string }[] = [];
+  try {
+    twins = await listCustomerTwins(createServiceClient(), customerId);
+  } catch {
+    twins = [];
+  }
+  return (
+    <TwinAccountPanel
+      key={twins.map((twin) => twin.id).join() || "aucun"}
+      customerId={customerId}
+      customerName={customerName}
+      twins={twins}
+    />
+  );
+}
+
 async function loadDirectStays(customerId: string): Promise<DirectDeskStay[]> {
   try {
     const { data } = await createServiceClient()
@@ -577,4 +652,31 @@ async function loadDirectStays(customerId: string): Promise<DirectDeskStay[]> {
   } catch {
     return [];
   }
+}
+
+async function TravelClubSlot({
+  customerId,
+  firstName,
+  startedOn,
+  endsOn,
+}: {
+  customerId: string;
+  firstName: string;
+  startedOn: string | null;
+  endsOn: string | null;
+}) {
+  const balance = await referralAccountFor(customerId);
+  return (
+    <TravelClubInvite
+      customerId={customerId}
+      firstName={firstName}
+      remaining={balance?.remaining ?? null}
+      cap={balance?.cap ?? REFERRAL_CAP}
+      membership={
+        startedOn && endsOn
+          ? { start: formatClubDate(startedOn), end: formatClubDate(endsOn), renewalDue: clubRenewalDue(endsOn) }
+          : null
+      }
+    />
+  );
 }

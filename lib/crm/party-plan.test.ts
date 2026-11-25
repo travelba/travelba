@@ -95,6 +95,33 @@ test("un voyageur déjà lié n’est pas reporté sur un homonyme", () => {
   assert.deepEqual(plans, [{ id: "child", action: "keep" }]);
 });
 
+test("un libellé d’occupation est retiré dès qu’un voyageur est nommé", () => {
+  const plans = planPartyLinks(
+    [
+      traveler({ id: "named", first_name: "Benjamin", last_name: "Boukris" }),
+      traveler({ id: "count", first_name: "2", last_name: "adultes" }),
+      traveler({ id: "child", first_name: "1", last_name: "Enfant" }),
+      traveler({ id: "age", first_name: "5", last_name: "ans)" }),
+    ],
+    holder,
+    []
+  );
+  assert.equal(plans.find((plan) => plan.id === "named")?.action, "keep");
+  assert.deepEqual(
+    plans.filter((plan) => plan.action === "delete").map((plan) => plan.id),
+    ["count", "child", "age"]
+  );
+  const alone = planPartyLinks(
+    [
+      traveler({ id: "count", first_name: "2", last_name: "adultes" }),
+      traveler({ id: "adult", first_name: "Adulte", last_name: "1" }),
+    ],
+    holder,
+    []
+  );
+  assert.equal(alone.every((plan) => plan.action === "keep"), true);
+});
+
 test("sans nom réel, Adulte 1 et 2 restent", () => {
   const plans = planPartyLinks(
     [

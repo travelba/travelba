@@ -34,7 +34,11 @@ function hostAllowed(mode: RatehawkEnv, hostname: string) {
 }
 
 export const PREBOOK_TIMEOUT_MS = 60_000;
-export const SEARCH_TIMEOUT_MAX_SECONDS = 30;
+/** Délai de recherche fixe. Pas de délai dynamique : attendu et maximum sont les mêmes. */
+export const SEARCH_TIMEOUT_SECONDS = 30;
+/** Statut de réservation : on continue jusqu’à 180 s. 120 s est l’attente prévue, pas un arrêt. */
+export const BOOKING_EXPECTED_SECONDS = 120;
+export const BOOKING_MAX_SECONDS = 180;
 
 export class RatehawkConfigError extends Error {}
 
@@ -96,12 +100,12 @@ export function loadRatehawkConfig(env: Record<string, string | undefined> = pro
     keyId: (env.RATEHAWK_KEY_ID || "").trim(),
     apiKey: (env.RATEHAWK_API_KEY || "").trim(),
     proxy,
-    paymentType: payment,
+    paymentType: "deposit",
     priceIncreasePercent,
     marginPercent,
-    searchTimeoutSeconds: clampInt(env.RATEHAWK_SEARCH_TIMEOUT_SECONDS, 30, 1, SEARCH_TIMEOUT_MAX_SECONDS),
+    searchTimeoutSeconds: SEARCH_TIMEOUT_SECONDS,
     prebookTimeoutMs: PREBOOK_TIMEOUT_MS,
-    bookingCutoffSeconds: clampInt(env.RATEHAWK_BOOKING_CUTOFF_SECONDS, 180, 30, 300),
+    bookingCutoffSeconds: BOOKING_MAX_SECONDS,
     orderInfoDelaySeconds: clampInt(env.RATEHAWK_ORDER_INFO_DELAY_SECONDS, 60, 30, 3600),
     currency: (env.RATEHAWK_CURRENCY || "EUR").trim().toUpperCase() || "EUR",
     language: mode === "sandbox" ? "en" : "fr",

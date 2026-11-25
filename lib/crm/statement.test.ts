@@ -15,6 +15,7 @@ import {
   type StatementHolder,
 } from "./statement";
 import { renderStatementPdf } from "./statement-pdf";
+import { statementTransfer, statementWireFromParts } from "./statement-wire";
 import type { CrmTransaction } from "./types";
 
 const ISSUED = new Date("2026-10-06T12:00:00.000Z");
@@ -237,6 +238,65 @@ test("le PDF porte l’agence, le titulaire et les mouvements", async () => {
   assert.match(text, /Virement/);
   assert.match(text, /991 614 694 00016/);
   assert.match(text, /pas une facture/);
+  assert.equal(model.transfer, null);
+  assert.doesNotMatch(text, /Règlement par virement/);
+});
+
+test("le PDF indique le virement, l’IBAN groupé et la référence du dossier", async () => {
+  const wire = statementWireFromParts(
+    { holder: "Travel Business Agency", iban: "FR7630006000011234567890189", bic: "REVOFRP2" },
+    null,
+    null
+  );
+  const base = buildStatement({
+    view: ledger(),
+    holderName: "Camille Morel",
+    holderLines: statementHolderLines(holder),
+    issuedAt: ISSUED,
+  });
+  const transfer = statementTransfer(wire, "TB-2026-0038");
+  assert.equal(transfer?.iban, "FR76 3000 6000 0112 3456 7890 189");
+  assert.equal(transfer?.bank, "Revolut");
+  assert.doesNotMatch(
+    [transfer?.holder, transfer?.iban, transfer?.bic, transfer?.bank, transfer?.reference].join(" "),
+    /IATA|APST/
+  );
+  const bytes = await renderStatementPdf({ ...base, transfer });
+  const { text } = await pdfPlainText(bytes);
+  assert.match(text, /Règlement par virement/);
+  assert.match(text, /Travel Business Agency/);
+  assert.match(text, /FR76 3000 6000 0112 3456 7890 189/);
+  assert.match(text, /REVOFRP2/);
+  assert.match(text, /Banque/);
+  assert.match(text, /Revolut/);
+  assert.match(text, /Référence à indiquer/);
+  assert.match(text, /TB-2026-0038/);
+  assert.match(text, /ordre de virement/);
+  assert.doesNotMatch(text, /IATA/);
+});
+
+test("sans banque, le PDF garde le virement et omet la ligne Banque", async () => {
+  const wire = statementWireFromParts(null, null, {
+    holder: "Travel Business Agency",
+    iban: "FR7630006000011234567890189",
+    bic: "REVOFRP2",
+  });
+  const base = buildStatement({
+    view: ledger(),
+    holderName: "Camille Morel",
+    holderLines: statementHolderLines(holder),
+    issuedAt: ISSUED,
+  });
+  const bytes = await renderStatementPdf({
+    ...base,
+    transfer: statementTransfer(wire, base.number),
+  });
+  const { text } = await pdfPlainText(bytes);
+  assert.match(text, /Règlement par virement/);
+  assert.match(text, /FR76 3000 6000 0112 3456 7890 189/);
+  assert.match(text, /REL-20261006/);
+  assert.doesNotMatch(text, /Banque/);
+  assert.doesNotMatch(text, /IATA/);
 });
 
 test("un long relevé tient sur plusieurs pages", async () => {

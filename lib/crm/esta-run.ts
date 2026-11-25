@@ -27,6 +27,8 @@ import { sendAuthorizationWhatsapp } from "@/lib/crm/authorization-send";
 import { pickVisaGrantFile, visaGrantPayload, visaGrantSidFor } from "@/lib/crm/visa-grant-whatsapp";
 import { loadAuthorizationGrantSids, type AuthorizationGrantSids } from "@/lib/crm/visa-grant-send";
 import { deliverEstaMail, estaAgencyMail, estaClientMail } from "@/lib/crm/esta-mail";
+import { authorizationNoticeTitle } from "@/lib/crm/authorization-client-message";
+import { flushAuthorizationWhatsapp } from "@/lib/crm/authorization-auto-run";
 import { stayPlaceName } from "@/lib/crm/concierge-notices";
 import { parisIsoDate } from "@/lib/crm/hotel-arrival";
 import { productionOnlySecret } from "@/lib/crm/preview-secrets";
@@ -349,7 +351,7 @@ async function loadEstaBundle(admin: Admin, bookingId: string): Promise<EstaBund
   if (error || !booking) return null;
   const customerId = (booking as { customer_id: string }).customer_id;
   const [items, travelers, documents, customer] = await Promise.all([
-    admin.from("crm_booking_items").select("kind, lifecycle, details, start_at, end_at").eq("booking_id", bookingId),
+    admin.from("crm_booking_items").select("kind, lifecycle, details, start_at, end_at, visible_to_client").eq("booking_id", bookingId),
     admin.from("crm_booking_travelers").select("*").eq("booking_id", bookingId),
     admin.from("crm_travel_documents").select("*").eq("customer_id", customerId),
     admin
@@ -468,7 +470,15 @@ export async function loadOpenEstaNotices(admin: Admin, bookingId?: string): Pro
   return rows.map((row) => {
     const name = names.get(row.traveler_id) || "Un voyageur";
     const reference = references.get(row.booking_id) || "Dossier";
-    const label = row.kind === "valable" ? `${name} · ${reference} · ESTA valable` : `${name} · ${reference} · ESTA à traiter`;
+    const title =
+      row.status === "refuse"
+        ? `${authorizationNoticeTitle(row.status, "esta")} · prioritaire`
+        : row.status === "introuvable"
+          ? authorizationNoticeTitle(row.status, "esta")
+          : row.kind === "valable"
+            ? "ESTA valable"
+            : "ESTA à traiter";
+    const label = `${name} · ${reference} · ${title}`;
     return { id: row.id, href: `/admin/reservations/${row.booking_id}`, label };
   });
 }
@@ -491,7 +501,7 @@ async function stayContext(admin: Admin, bookingId: string) {
   };
   const { data: items } = await admin
     .from("crm_booking_items")
-    .select("kind, lifecycle, title, details, start_at, end_at, sort_order")
+    .select("kind, lifecycle, title, details, start_at, end_at, sort_order, visible_to_client")
     .eq("booking_id", bookingId);
   const steps = (items || []) as CrmBookingItem[];
   const dates = tripEstaDates(steps, row);
@@ -734,5 +744,11 @@ export async function runEstaCron(admin: Admin) {
   }
   const mailed = await flushEstaNotices(admin);
   const clients = await flushEstaClientMails(admin);
-  return { synced, mailed, clients };
+  let auto = { sent: 0, alerts: 0 };
+  try {
+    auto = await flushAuthorizationWhatsapp(admin, "esta");
+  } catch {
+    console.info("[esta] whatsapp ignoré");
+  }
+  return { synced, mailed, clients, autoSent: auto.sent, autoAlerts: auto.alerts };
 }

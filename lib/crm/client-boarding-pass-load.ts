@@ -13,7 +13,8 @@ import type { BoardingTravelerName } from "./boarding-pass-groups";
 import { pieceEstRetiree } from "./dossier-piece";
 import { queryWithOptionalColumn } from "./optional-column";
 import { isWalletPassName } from "./pkpass";
-import { clientTripOwnerIds } from "./company-peers";
+import { clientMayReadBooking } from "./company-role";
+import { clientBookingScope } from "./company-peers";
 import type { CrmCustomer } from "./types";
 import { boardingPassPageTexts, readBoardingPassPages } from "./boarding-pass-pdf";
 import { isBoardingPassFile } from "./boarding-pass-whatsapp";
@@ -39,23 +40,26 @@ export type ClientBoardingBundle = {
 const EMPTY_BUNDLE: ClientBoardingBundle = { offer: EMPTY_OFFER, flights: [], travelers: [] };
 
 /**
- * Séjour visible du client, y compris via un admin société.
- * Un dossier caché ou archivé ne s’ouvre pas.
+ * Séjour visible du client, ou un dossier où il voyage.
+ * Le voyage d’un collaborateur facturé à la société ne s’ouvre pas.
+ * Un dossier caché ou archivé non plus.
  */
 export async function visibleClientBooking(
-  customer: Pick<CrmCustomer, "id" | "company_role" | "billing_parent_id">,
+  customer: Pick<CrmCustomer, "id" | "company_role" | "billing_parent_id" | "first_name" | "last_name"> &
+    Partial<Pick<CrmCustomer, "usage_name">>,
   bookingId: string
 ) {
   try {
     const admin = createServiceClient();
-    const owners = await clientTripOwnerIds(customer);
+    const scope = await clientBookingScope(customer);
     const { data } = await admin
       .from("crm_bookings")
       .select("id, customer_id, visible_to_client, archived_at, reference")
       .eq("id", bookingId)
       .maybeSingle();
-    if (!data || !owners.includes(String(data.customer_id || ""))) return null;
-    if (!data.visible_to_client || data.archived_at) return null;
+    if (!data || !clientMayReadBooking(data as { id: string; customer_id: string | null; visible_to_client: boolean | null; archived_at: string | null }, scope)) {
+      return null;
+    }
     return data as { id: string; reference: string | null };
   } catch {
     return null;
@@ -63,21 +67,23 @@ export async function visibleClientBooking(
 }
 
 export async function visibleClientBookingByReference(
-  customer: Pick<CrmCustomer, "id" | "company_role" | "billing_parent_id">,
+  customer: Pick<CrmCustomer, "id" | "company_role" | "billing_parent_id" | "first_name" | "last_name"> &
+    Partial<Pick<CrmCustomer, "usage_name">>,
   reference: string
 ) {
   const ref = reference.trim();
   if (!ref) return null;
   try {
     const admin = createServiceClient();
-    const owners = await clientTripOwnerIds(customer);
+    const scope = await clientBookingScope(customer);
     const { data } = await admin
       .from("crm_bookings")
       .select("id, customer_id, visible_to_client, archived_at, reference")
       .eq("reference", ref)
       .maybeSingle();
-    if (!data || !owners.includes(String(data.customer_id || ""))) return null;
-    if (!data.visible_to_client || data.archived_at) return null;
+    if (!data || !clientMayReadBooking(data as { id: string; customer_id: string | null; visible_to_client: boolean | null; archived_at: string | null }, scope)) {
+      return null;
+    }
     return data as { id: string; reference: string | null };
   } catch {
     return null;

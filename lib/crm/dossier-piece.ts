@@ -10,6 +10,8 @@ export type PieceSource = "mail" | "upload" | "import";
 export type PieceArchive = {
   retiree_at: string;
   visible_avant: boolean;
+  /** Empreinte mise de côté quand le retrait évite une collision d’index. */
+  empreinte?: string | null;
 };
 
 export type DossierPieceRow = {
@@ -56,7 +58,8 @@ export function readPieceArchive(extracted: unknown): PieceArchive | null {
   if (!mark || typeof mark !== "object" || Array.isArray(mark)) return null;
   const row = mark as Record<string, unknown>;
   if (typeof row.retiree_at !== "string" || !row.retiree_at.trim()) return null;
-  return { retiree_at: row.retiree_at, visible_avant: row.visible_avant === true };
+  const empreinte = typeof row.empreinte === "string" && row.empreinte.trim() ? row.empreinte.trim() : null;
+  return { retiree_at: row.retiree_at, visible_avant: row.visible_avant === true, empreinte };
 }
 
 export function pieceEstRetiree(extracted: unknown) {
@@ -73,7 +76,11 @@ export function withPieceArchive(extracted: unknown, archive: PieceArchive): Rec
     extracted && typeof extracted === "object" && !Array.isArray(extracted)
       ? { ...(extracted as Record<string, unknown>) }
       : {};
-  base[ARCHIVE_KEY] = { retiree_at: archive.retiree_at, visible_avant: archive.visible_avant };
+  base[ARCHIVE_KEY] = {
+    retiree_at: archive.retiree_at,
+    visible_avant: archive.visible_avant,
+    ...(archive.empreinte ? { empreinte: archive.empreinte } : {}),
+  };
   return base;
 }
 

@@ -96,6 +96,8 @@ function pieceView(row: InvoiceRow | null) {
 }
 
 function statutOf(result: Mb3mInvoiceResult) {
+  if (result.statut === "bloque_lettrage") return "bloque_lettrage";
+  if (result.statut === "avertissement") return "avertissement";
   if (result.printed && !result.created) return "imprimee";
   if (!result.created && !result.replaced) return "deja_en_place";
   if (result.replaced) return "mise_a_jour";
@@ -103,6 +105,7 @@ function statutOf(result: Mb3mInvoiceResult) {
 }
 
 function warnedStatut(statut: string, warning: string | null) {
+  if (statut === "bloque_lettrage" || statut === "avertissement") return statut;
   if (!warning) return statut;
   if (statut === "echec" || statut === "echouee" || statut === "en_cours" || statut === "imprimee") return statut;
   return "avertissement";

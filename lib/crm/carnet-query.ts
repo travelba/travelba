@@ -1,13 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { applyClientBookingScope } from "@/lib/crm/company-role";
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
 import { carnetVisible, stayArrivalPlaces } from "@/lib/crm/carnet";
+import { clientStayFace, type ClientStayFace, type StayFaceItem } from "@/lib/crm/client-stay-face";
 import { tripCityPlan } from "@/lib/crm/layover";
 import { stayCitiesFromSteps } from "@/lib/crm/staff-stay";
 
 export async function loadVisibleCarnets(
   supabase: SupabaseClient,
   customerId: string,
-  ownerIds?: string[]
+  ownerIds?: string[],
+  travelerBookingIds?: string[]
 ) {
   const ids = [...new Set((ownerIds?.length ? ownerIds : [customerId]).filter(Boolean))];
   let query = supabase
@@ -15,7 +18,7 @@ export async function loadVisibleCarnets(
     .select("*")
     .is("archived_at", null)
     .order("start_date", { ascending: false, nullsFirst: false });
-  query = ids.length === 1 ? query.eq("customer_id", ids[0]) : query.in("customer_id", ids);
+  query = applyClientBookingScope(query, { ownerIds: ids, travelerBookingIds: travelerBookingIds || [] });
   const { data } = await query;
   const all = (data || []) as CrmBooking[];
   if (!all.length) return [] as CrmBooking[];
@@ -33,6 +36,52 @@ export async function loadVisibleCarnets(
     byBooking.set(item.booking_id, list);
   }
   return all.filter((booking) => carnetVisible(booking, byBooking.get(booking.id) || []));
+}
+
+/** Séjours visibles et leur face, une seule lecture des cartes. */
+export async function loadClientCarnets(
+  supabase: SupabaseClient,
+  customerId: string,
+  ownerIds?: string[],
+  homeCity?: string | null,
+  travelerBookingIds?: string[]
+) {
+  const ids = [...new Set((ownerIds?.length ? ownerIds : [customerId]).filter(Boolean))];
+  let query = supabase
+    .from("crm_bookings")
+    .select("*")
+    .is("archived_at", null)
+    .order("start_date", { ascending: false, nullsFirst: false });
+  query = applyClientBookingScope(query, { ownerIds: ids, travelerBookingIds: travelerBookingIds || [] });
+  const { data } = await query;
+  const all = (data || []) as CrmBooking[];
+  const faces: Record<string, ClientStayFace> = {};
+  if (!all.length) return { bookings: [] as CrmBooking[], faces };
+  const { data: itemRows } = await supabase
+    .from("crm_booking_items")
+    .select("*")
+    .in(
+      "booking_id",
+      all.map((row) => row.id)
+    );
+  const byBooking = new Map<string, CrmBookingItem[]>();
+  for (const item of (itemRows || []) as CrmBookingItem[]) {
+    const list = byBooking.get(item.booking_id) || [];
+    list.push(item);
+    byBooking.set(item.booking_id, list);
+  }
+  const bookings = all.filter((booking) => carnetVisible(booking, byBooking.get(booking.id) || []));
+  for (const booking of bookings) {
+    faces[booking.id] = clientStayFace({
+      title: booking.title,
+      destination: booking.destination,
+      startDate: booking.start_date,
+      endDate: booking.end_date,
+      items: byBooking.get(booking.id) || [],
+      homeCity,
+    });
+  }
+  return { bookings, faces };
 }
 
 type StayStep = {
@@ -71,14 +120,14 @@ export async function loadStayMaps(
   }
   for (const id of ids) {
     const items = grouped.get(id) || [];
-    const places = stayArrivalPlaces(null, null, items);
+    const shown = opts?.visibleOnly ? items.filter((item) => item.visible_to_client !== false) : items;
+    const places = stayArrivalPlaces(null, null, shown);
     if (places.length) arrival[id] = places;
-    const titled = opts?.visibleOnly ? items.filter((item) => item.visible_to_client !== false) : items;
-    const cities = stayCitiesFromSteps(titled);
+    const cities = stayCitiesFromSteps(shown);
     if (cities.length) route[id] = cities;
-    const stops = tripCityPlan(titled).layovers;
+    const stops = tripCityPlan(shown).layovers;
     if (stops.length) layovers[id] = stops;
-    const named = stayCountries(items);
+    const named = stayCountries(shown);
     if (named.length) countries[id] = named;
   }
   return { arrival, route, layovers, countries };
@@ -93,6 +142,40 @@ export function stayCountries(items: Array<{ details?: Record<string, unknown> |
     if (name && !names.includes(name)) names.push(name);
   }
   return names;
+}
+
+type FaceBooking = Pick<CrmBooking, "id" | "title" | "destination" | "start_date" | "end_date">;
+
+/** Titre, villes, dates et photo que le client voit, une lecture pour toute la liste. */
+export async function loadClientStayFaces(
+  supabase: SupabaseClient,
+  bookings: FaceBooking[],
+  homeCity?: string | null
+) {
+  const faces: Record<string, ClientStayFace> = {};
+  const ids = [...new Set(bookings.map((row) => row.id).filter(Boolean))];
+  if (!ids.length) return faces;
+  const { data } = await supabase
+    .from("crm_booking_items")
+    .select("booking_id, kind, title, start_at, end_at, sort_order, details, lifecycle, visible_to_client")
+    .in("booking_id", ids);
+  const grouped = new Map<string, StayFaceItem[]>();
+  for (const row of (data || []) as (StayFaceItem & { booking_id: string })[]) {
+    const list = grouped.get(row.booking_id) || [];
+    list.push(row);
+    grouped.set(row.booking_id, list);
+  }
+  for (const booking of bookings) {
+    faces[booking.id] = clientStayFace({
+      title: booking.title,
+      destination: booking.destination,
+      startDate: booking.start_date,
+      endDate: booking.end_date,
+      items: grouped.get(booking.id) || [],
+      homeCity,
+    });
+  }
+  return faces;
 }
 
 /** Villes d’arrivée par dossier, pour la couverture (pays / diagonale). */

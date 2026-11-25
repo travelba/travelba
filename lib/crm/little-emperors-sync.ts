@@ -1,7 +1,7 @@
 import { deleteBookingById } from "@/lib/crm/delete-booking";
-import { cancellationApplyPlan, confirmationRefsAlign, referenceTokens } from "@/lib/crm/email-match";
+import { cancellationApplyPlan, confirmationLookupTokens, confirmationRefsAlign } from "@/lib/crm/email-match";
 import { applyCancellationToBooking, persistNewBookingFromExtract } from "@/lib/crm/ingest-booking";
-import { hotelBookingStem } from "@/lib/crm/item-match";
+import { cardStoresShortStem, confirmationShortStem, expandDistinctHotelCards } from "@/lib/crm/item-match";
 import {
   automaticCardAudits,
   confirmationForStamp,
@@ -191,14 +191,7 @@ async function loadMatchContext(admin: SupabaseClient) {
 
 /** Un seul dossier ouvert porte cette confirmation. Plusieurs : on ne crée pas. */
 async function findUniqueDossierByConfirmation(admin: SupabaseClient, confirmation: string | null) {
-  const stem = hotelBookingStem(confirmation);
-  const needles = [
-    ...new Set(
-      [...referenceTokens(confirmation), ...(stem ? [stem.toLowerCase()] : [])].map((token) =>
-        token.replace(/[%_]/g, "")
-      )
-    ),
-  ].filter((token) => token.length >= 4);
+  const needles = confirmationLookupTokens(confirmation);
   if (!needles.length) return null;
   const { data } = await admin
     .from("crm_booking_items")
@@ -210,6 +203,19 @@ async function findUniqueDossierByConfirmation(admin: SupabaseClient, confirmati
   for (const row of data || []) {
     if (!confirmationRefsAlign(row.confirmation_ref, confirmation)) continue;
     if (row.booking_id) ids.add(row.booking_id);
+  }
+  const stem = confirmationShortStem(confirmation);
+  if (!ids.size && stem) {
+    const { data: shortRows } = await admin
+      .from("crm_booking_items")
+      .select("booking_id, confirmation_ref")
+      .eq("kind", "hotel")
+      .or(`confirmation_ref.ilike.%${stem}%`)
+      .limit(30);
+    for (const row of shortRows || []) {
+      if (!cardStoresShortStem(row.confirmation_ref, stem)) continue;
+      if (row.booking_id) ids.add(row.booking_id);
+    }
   }
   if (!ids.size) return null;
   const { data: dossiers } = await admin
@@ -514,7 +520,7 @@ async function reflectCancellation(
   return "cancelled";
 }
 
-/** Gèle la carte du séjour et prévient l’agence. Le dossier n’est annulé que s’il ne reste plus de carte. */
+/** Gèle la carte du séjour et prévient l’agence, une seule fois. Un séjour déjà annulé et une carte déjà gelée ne sont pas rejoués. */
 async function freezeCancelledLeStay(admin: SupabaseClient, booking: LeBooking, crmBookingId: string | null) {
   const { data } = await admin
     .from("crm_hotel_direct_stays")
@@ -523,26 +529,36 @@ async function freezeCancelledLeStay(admin: SupabaseClient, booking: LeBooking, 
     .maybeSingle();
   const row = data as { id: string; state: unknown; phase: string | null; booking_id: string | null } | null;
   const cardId = pliantIdFromStayState(row?.state);
+  const state =
+    row?.state && typeof row.state === "object" ? { ...(row.state as Record<string, unknown>) } : {};
+  const markedLocked = state.pliant === "locked";
+  if (row?.phase === "cancelled" && (!cardId || markedLocked)) return;
+
   if (row && row.phase !== "cancelled") {
-    const state =
-      row.state && typeof row.state === "object" ? { ...(row.state as Record<string, unknown>) } : {};
     state.phase = "cancelled";
     state.reason = "Annulée chez Little Emperors.";
-    if (cardId) state.pliant = "locked";
     await admin
       .from("crm_hotel_direct_stays")
       .update({ state, phase: "cancelled", updated_at: new Date().toISOString() })
       .eq("id", row.id);
   }
-  if (cardId) {
+  if (cardId && !markedLocked) {
     try {
       await lockPliantCard(cardId);
+      state.pliant = "locked";
+      if (row) {
+        await admin
+          .from("crm_hotel_direct_stays")
+          .update({ state, updated_at: new Date().toISOString() })
+          .eq("id", row.id);
+      }
     } catch {
       console.error("[little-emperors] carte", "gel");
     }
     await admin.from("crm_booking_cards").update({ status: "locked" }).eq("pliant_card_id", cardId);
     await admin.from("crm_pliant_cards").update({ status: "locked", updated_at: new Date().toISOString() }).eq("pliant_card_id", cardId);
   }
+  if (row?.phase === "cancelled") return;
   const dossierId = crmBookingId || row?.booking_id || null;
   if (dossierId) {
     const { data: items } = await admin.from("crm_booking_items").select("id, kind, lifecycle").eq("booking_id", dossierId);
@@ -887,9 +903,11 @@ export async function attachLittleEmperorsBooking(opts: {
     throw new LittleEmperorsError("Little Emperors n’a pas indiqué le nom de l’hôtel.", 422, "hotel_name");
   }
   const dossierStatus = leCreatedDossierStatus(booking.state);
+  const createdExtract = leBookingExtract(booking);
+  createdExtract.items = expandDistinctHotelCards(createdExtract.items);
   const created = await persistNewBookingFromExtract({
     customerId: opts.customerId,
-    extract: leBookingExtract(booking),
+    extract: createdExtract,
     status: dossierStatus,
     visibleToClient: false,
     referenceClient: opts.referenceClient,

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { createServiceClient } from "@/lib/supabase/admin";
 import {
   HOTEL_BUTTON_VISIBILITY_KEY,
@@ -17,7 +18,7 @@ function admin() {
   return createServiceClient();
 }
 
-export async function readHotelButtonVisibility(): Promise<HotelButtonVisibility> {
+export const readHotelButtonVisibility = cache(async (): Promise<HotelButtonVisibility> => {
   try {
     const { data, error } = await admin()
       .from("crm_hotel_button_settings")
@@ -29,7 +30,7 @@ export async function readHotelButtonVisibility(): Promise<HotelButtonVisibility
   } catch {
     return "authorized";
   }
-}
+});
 
 export async function writeHotelButtonVisibility(actor: AccessActor, staffId: string | null, value: unknown) {
   const decision = decideButtonVisibility({ actor, value });

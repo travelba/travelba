@@ -20,6 +20,9 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Remplacer toute la liste | `enregistrer_societes` (`confirmer` true) — ajouté |
 | Supprimer la fiche | `supprimer_client` (`confirmer` = nom complet) — ajouté |
 | Inviter / renvoyer l’invitation | `inviter_client` — couvert. Sans `confirmer`, aperçu, rien ne part |
+| File d’inscription | `lister_inscriptions`, `voir_inscription`, `valider_inscription`, `refuser_inscription`, `completer_inscription` — ajouté. Sans `confirmer`, rien n’est écrit et rien ne part. `envoyer` true sur le refus pour écrire au demandeur |
+| Invitation d’inscription | `creer_invitation` — ajouté. Sans `confirmer`, aperçu. `envoyer` true tente WhatsApp Business. Sinon le lien se partage à la main |
+| Parrainages | `lister_parrainages` — ajouté. Compteurs et note. Aucun mouvement d’argent |
 | Montrer le carnet, relevé, pièce visa/ETA, carte d’embarquement | `publier_carnet`, `envoyer_releve`, `ajouter_piece`, `notifier_piece`, `notifier_carte_embarquement` — sans `confirmer`, aperçu, rien n’est écrit et rien ne part |
 | Renvoyer ses accès par WhatsApp | `renvoyer_acces_whatsapp` (`confirmer: true`) — ajouté. Un bouton, Ouvrir mon espace : lien personnel 30 jours (empreinte seulement), aucun mot de passe, le lien n’est pas renvoyé |
 | Annoncer l’accès Hôtels | `annoncer_option_hotel` (`confirmer: true`) — ajouté. Même lien, vers la rubrique Hôtels. Réservé aux administrateurs. L’option doit déjà être activée |
@@ -28,8 +31,11 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Créer la fiche dans MB3M | `creer_fiche_mb3m` — ajouté. Un bouton par société : `societe_id` n’envoie que celle-là. Sans code postal, la société est nommée et rien n’est envoyé |
 | Ouvrir l’espace à la place du client | hors API |
 | Lien d’accès magique 24 h (mot de passe déjà posé) | hors API — le bouton « Envoyer un lien d’accès » reste à l’écran |
-| Compte en veille, IBAN, téléphone secondaire, fidélité | partiel : pas de champ dédié sur `mettre_a_jour_client` |
+| Fidélité et lien sur la fiche, sans dossier | `modifier_titulaire` — `fidelite` (`programme` + `numero`, un objet ou une liste) ajoute ou remplace un programme du titulaire, ou de l’accompagnateur si `compagnon_id`. Les autres programmes restent. `lien` (compagnon seulement) : conjoint, enfant, parent, famille, ami, autre. Colonnes `crm_customers.loyalty` et `flying_blue`, `crm_travel_companions.loyalty` et `relationship`. Aucun message. `fiche_client` renvoie `fidelite`, et `lien` + `fidelite` sur chaque compagnon |
+| Compte en veille, IBAN, téléphone secondaire | partiel : pas de champ dédié sur `mettre_a_jour_client` |
 | Retirer un accompagnateur de la fiche | `supprimer_compagnon` (`confirmer` = nom complet) — ajouté. Réservé aux administrateurs. Pièces d’identité et fichiers compris. S’il est voyageur, refus en listant les dossiers, sauf `retirer_des_dossiers` true (lignes voyageur seulement). Réservations, paiements, factures et grand livre inchangés |
+| Compte jumeau | `compte_jumeau` — ajouté. Sans `confirmer`, aperçu. `confirmer` true lie ou délie. Aucun message. `fiche_client` et `chercher_clients` exposent `jumeaux` |
+| Zéro frais | `mettre_a_jour_client` `zero_frais` — ajouté. Retire les frais automatiques des dossiers non facturés de la fiche propriétaire |
 
 ## Dossiers et cartes
 
@@ -46,8 +52,11 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Voyageurs du dossier | `ajouter_voyageur`, `modifier_voyageur`, `retirer_voyageur`, `fusionner_compagnon` — couvert |
 | Changer le client du dossier | `changer_client_dossier` — ajouté. Sans `confirmer`, aperçu. Crée la fiche si besoin, sans invitation. Voyageurs qui sont l’ancien client, grand livre, paiements et payeur de ce dossier suivent. Aucun message. |
 | Vol, hôtel, accueil VIP | `ajouter_vol`, `modifier_vol`, `ajouter_hotel`, `modifier_hotel`, `ajouter_accueil_vip` — couvert |
+| Rechercher les infos d’une carte hôtel | `enrichir_hotel` (`carte_id`) — ajouté. Fiche réutilisable, seulement les champs vides. À vérifier. La visibilité ne change pas. Aucun message. `fiche_hotel` lit cette fiche |
 | Classer un courrier hôtel sans écrire | `classer_courrier_hotel` — ajouté. `rouvrir` true rouvre. Aucun e-mail. Un message entrant plus récent rouvre le fil |
+| Déplacer un courrier hôtel vers une autre carte du même dossier | `deplacer_courrier_hotel` — ajouté. Sans `confirmer`, aperçu. Aucun e-mail. `visible_to_client` inchangé. Le bouton Déplacer du fil hôtel fait le même geste. |
 | Train, transfert, activité, frais, dépense, autres types | `ajouter_carte`, `modifier_carte` — ajouté |
+| Marquer une carte vérifiée (lecture douteuse) | `valider_lecture`, et `effacer_avertissement` sur `modifier_vol`, `modifier_hotel`, `modifier_carte` — ajouté. Ne change pas la visibilité, n’envoie rien. |
 | Visibilité d’une carte, inclusion au grand livre | `definir_visibilite_carte` — couvert |
 | Retirer une carte | `retirer_carte` — couvert |
 | Réordonner les étapes | `reordonner_cartes` — ajouté |
@@ -86,9 +95,11 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Compléter le nom et l’e-mail Stripe | `completer_payeurs_stripe` — ajouté. Sans `confirmer`, aperçu. Écrit seulement le nom et l’e-mail, sans crédit. Réservé aux administrateurs |
 | Rapprocher une sortie Revolut ou un débit Pliant (geste simple) | `rapprocher_depense_revolut`, `rapprocher_pliant` — couvert |
 | Remettre un crédit non rattaché | `remettre_non_rattache` — couvert |
+| Rattacher un crédit déjà encaissé | `rattacher_credit` — ajouté. Dossier et payeur. Sans `confirmer`, aperçu. Aucun nouveau paiement, le montant ne change pas |
 | Préparer / lire la facture MB3M | `preparer_facture_mb3m`, `statut_facture_mb3m` — couvert. `preparer_facture_mb3m` : sans `confirmer`, aperçu, aucune pièce |
+| Facture groupée (plusieurs dossiers, même payeur) | `facture_groupee` — ajouté. Sans `confirmer`, aperçu, aucun appel MB3M en écriture. PDF pro forma masqué sur chaque dossier, et une pièce pro forma MB3M au nom du payeur. `action` `mb3m` pousse une facture déjà générée sans refaire le PDF. Aucun envoi, aucune impression |
 | Envoyer la facture et demander le paiement | `envoyer_facture` — ajouté. Sans `confirmer`, aperçu seulement |
-| Avoir et nouvelle facture (marge périmée) | `reprendre_facture_mb3m` — ajouté. Sans `confirmer`, aperçu, aucun avoir |
+| Avoir et nouvelle facture (marge périmée) | `reprendre_facture_mb3m` — seulement si `MB3M_ALLOW_CREDIT_NOTE` vaut `true` (non définie en production). Sinon refus. Avec le drapeau : sans `confirmer`, aperçu, aucun avoir |
 | Créditer un virement, Revolut ou Stripe | `crediter_virement`, `crediter_revolut`, `crediter_stripe` — sans `confirmer`, aperçu, rien n’est écrit |
 | Créer une carte Pliant | `creer_carte_pliant` — sans `confirmer`, aperçu, la carte n’est pas créée |
 | Créer la fiche client dans MB3M | `creer_fiche_mb3m` — ajouté. `societe_id` crée une seule société |
@@ -121,6 +132,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Déposer autorisation_validee_document_v2 et autorisation_validee_image_v2 | `deposer_modeles_autorisation_whatsapp`, `statut_modeles_autorisation_whatsapp` — ajouté. Administrateurs. La v2 nomme l’autorisation. L’envoi l’utilise dès approbation, sinon la v1. Même réglage, repli `TWILIO_CONTENT_AUTORISATION_VALIDEE_*` et `_V2`. Un envoi v1 ou v2 compte. Aucun message |
 | Message WhatsApp libre, avec PDF déjà déposé | `envoyer_message_libre`, `deposer_modeles_message_libre_whatsapp`, `statut_modeles_message_libre_whatsapp` — ajouté. Sans `confirmer`, aperçu. `confirmer` true envoie. Fenêtre de 24 h : texte tel quel. Hors fenêtre : `message_libre_texte`, `message_libre_document` ou `message_libre_image`. SID dans `crm_whatsapp_content_sids`. Pas le modèle d’autorisation. Un passeport ne part pas |
 | File WhatsApp | `file_whatsapp` — ajouté. Répondre, reprendre, rendre au Concierge, traiter, noter, créer une fiche sans invitation. Sans `confirmer`, aperçu. Seule `repondre` envoie, et rien ne part sans `confirmer` true |
+| Messages de l’application | `messages_app` — ajouté. Sans `client_id` ni `fil`, la file. `confirmer` true envoie la réponse et la notification. Sans `confirmer`, aperçu, le fil n’est pas marqué lu. Pas WhatsApp |
 | Proposition du Concierge, relance | `proposition_concierge` — ajouté. Approuver, refuser, modifier, relancer. Sans `confirmer`, aperçu du texte et si un message partirait. `confirmer` true enregistre. Refuser n’envoie rien |
 | Little Emperors | `reservation_little_emperors`, `little_emperors_en_attente` — couvert. `importer_reservation_little_emperors` crée ou rattache le dossier (`client_id`, `reference` ou `regroupement`, `dossier_id` ou `dossier_reference`, `voyageurs`, `forcer`). Le dossier créé reste Non visible, aucun message. Un dossier déjà Visible n’est pas recaché. Montrer au client ou `publier_carnet` le passe en Visible et prévient le client. Annulée ou en échec : refus, sauf `forcer`. Déjà liée ailleurs : refus, avec le dossier. `deplacer_etape` déplace une étape. `deplacer_reservation` déplace une réservation fournisseur. `recherche` liste les dossiers par nom, sans écrire. Dossier cible : identifiant ou référence `TB-AAAA-NNNN`. Sans `confirmer`, aperçu. `confirmer` true écrit. La même référence sur deux dossiers est déplacée. Un préfixe au même hôtel et aux dates proches relie la réservation à la carte déjà là. Client incohérent : `accepter_client`. Pièces, courriers et coûts suivent. Aucun message, aucun débit, les cartes Pliant restent |
 | Cartes Pliant du dossier | `creer_carte_pliant`, `bloquer_carte_pliant` et `lire_carte_pliant` : jeton général, jeton carte, ou clé `tbk_` avec le droit Créer une carte Pliant. Sans ce droit, la clé ne lit pas le numéro. La création ne renvoie pas le numéro ni le CVV. La lecture est journalisée sans l’enregistrer |
@@ -128,6 +140,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Formalités (lecture) | `formalites` — couvert |
 | Lancer une formalité (ESTA, ETA, visa) | `lancer_formalite` — couvert. `statut_formalite` lit le parcours. `reprendre_formalite` recommence (US, GB, IL) : sans `confirmer`, aperçu. Le remplissage du portail et le paiement restent à l’écran |
 | Séjour hôtel réservé par le client | `sejour_hotel` — ajouté. Répondre, marquer payé, lien expiré, envoyer la carte, valider le prix, annuler, rembourser. Sans `confirmer`, aperçu des effets. `confirmer` true écrit. Réservé aux administrateurs |
+| Réservations autonomes sur l’accueil | `tableau_de_bord` `reservations_autonomes` — ajouté. Client, hôtel, dates, état du paiement hôtel, à payer à la main. Le bouton Vu reste à l’écran |
 | Carte d’arrivée du pré-check-in | `carte_arrivee` — ajouté. Sans `confirmer`, aperçu. `confirmer` true crée la carte. Quatre derniers chiffres et titulaire, jamais le numéro complet. Aucun message |
 | Réserver ou annuler chez Ratehawk | `ratehawk` — ajouté. `rechercher` lit les disponibilités (destination ou `region_id`, ou `hid` ; `fiche` true pour tous les tarifs et le hash), sans écrire et sans `confirmer`. `statut` lit. `prereserver`, `reserver` et `annuler` : sans `confirmer`, aperçu. `confirmer` true exécute. `prereserver` confirmé renvoie `devis` (jeton signé), `prix` (prix final), `prix_depart`, `prix_augmente`, `ecart`, `ecart_pourcent` et `devise` : ce `devis` est l’argument `devis` de `reserver`. Si `prix_augmente` est vrai, `reserver` attend `prix_accepte` true. Un téléphone absent ou hors 5 à 35 caractères est refusé dès l’aperçu de `reserver`. Deposit, sans numéro de carte, aucun message au client |
 | Réglages Gmail, WhatsApp, mot de passe staff, connexion | hors API |

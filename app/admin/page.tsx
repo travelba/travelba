@@ -24,6 +24,8 @@ import { CUSTOMER_NAME_SELECT, type CustomerNameRow } from "@/lib/crm/customer-s
 import { ownerLabelsFor } from "@/lib/crm/dossier-responsables";
 import { siteConfig } from "@/lib/site";
 import { createServiceClient } from "@/lib/supabase/admin";
+import { loadAutonomousDesk } from "@/lib/crm/hotel-auto-run";
+import { HotelAutoDesk } from "@/components/admin/HotelAutoDesk";
 
 /** Même segment que le layout : le modèle de titre ne s’applique pas ici. */
 export const metadata = { title: { absolute: `Accueil — ${siteConfig.shortName}` } };
@@ -104,6 +106,7 @@ export default async function AdminHomePage() {
   after(() => {
     void resolveListCovers(coverRows).catch(() => undefined);
   });
+  const autonomous = await loadAutonomousDesk(createServiceClient()).catch(() => []);
   const todo = adminTodoLines({
     whatsapp: whatsappOpen.error ? 0 : whatsappOpen.count ?? 0,
     unread: badges.whatsapp,
@@ -143,6 +146,8 @@ export default async function AdminHomePage() {
           <p className="mt-2 text-sm text-muted">Rien en attente. Bonne journée.</p>
         )}
       </section>
+
+      <HotelAutoDesk lines={autonomous} />
 
       <DashboardWeek groups={week} names={byId} places={places} amounts={displayedStayAmounts} covers={covers} owners={owners} />
 

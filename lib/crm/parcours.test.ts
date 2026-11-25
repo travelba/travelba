@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { identityOverwriteWarning } from "./identity";
-import { loyaltyFromCustomer, normalizeLoyaltyMap, normalizeLoyaltyNumber } from "./loyalty";
+import { loyaltyFromCustomer, loyaltyLines, loyaltyProgramKey, mergeLoyaltyEntries, normalizeLoyaltyMap, normalizeLoyaltyNumber } from "./loyalty";
+import { canonicalRelationship } from "./identity";
 import { encoursCaption, formatEncours, formatMoney, jMinusLabel, postedLedgerTotals } from "./money";
 import { unsplashKeywordMatch, bookingCoverPlan, bookingCoverUrl, fallbackCoverTargets } from "./covers";
 import { stayArrivalPlaces } from "./carnet";
@@ -38,6 +39,29 @@ test("loyalty map keeps every program", () => {
   const fromCustomer = loyaltyFromCustomer({ flying_blue: "FB1", loyalty: { miles_more: "MM" } });
   assert.equal(fromCustomer.flying_blue, "FB1");
   assert.equal(fromCustomer.miles_more, "MM");
+  assert.equal(loyaltyProgramKey("Flying Blue"), "flying_blue");
+  assert.equal(loyaltyProgramKey("ALL Accor"), "all_accor");
+  assert.equal(loyaltyProgramKey("Marriott Bonvoy"), "bonvoy");
+  assert.equal(loyaltyProgramKey("inconnu"), null);
+  const merged = mergeLoyaltyEntries(
+    { flying_blue: "fb 1", loyalty: { miles_more: "MM1", bonvoy: "B1" } },
+    [{ key: "grand_voyageur", number: "gv 9" }]
+  );
+  assert.equal(merged.flying_blue, "fb 1");
+  assert.equal(merged.miles_more, "MM1");
+  assert.equal(merged.bonvoy, "B1");
+  assert.equal(merged.grand_voyageur, "GV9");
+  assert.deepEqual(loyaltyLines({ loyalty: merged }).map((line) => line.programme), [
+    "Flying Blue",
+    "Miles & More",
+    "Marriott Bonvoy",
+    "Grand Voyageur",
+  ]);
+  assert.equal(canonicalRelationship("Conjoint(e)"), "conjoint");
+  assert.equal(canonicalRelationship("épouse"), "conjoint");
+  assert.equal(canonicalRelationship("enfant"), "enfant");
+  assert.equal(canonicalRelationship(""), null);
+  assert.equal(canonicalRelationship("cousin"), undefined);
   assert.equal(fromCustomer.grand_voyageur, null);
   const sncf = normalizeLoyaltyMap({ grand_voyageur: "gv 12", great_members: "cm 9" });
   assert.equal(sncf.grand_voyageur, "GV12");

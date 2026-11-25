@@ -23,17 +23,24 @@ import {
   insuranceLineLabel,
   itemPriceLabel,
   publishRevealIds,
-  tripPlaceLine,
+  stayHeroPlace,
   whatsappModifyHref,
 } from "@/lib/crm/carnet";
-import { nextStayLabels } from "@/lib/crm/staff-stay";
+import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { findVisaExtra, visaProposed, type ServiceRefusal } from "@/lib/crm/extras";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
+import { readCommercialDiscount, type DiscountLine } from "@/lib/crm/commercial-discount";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { formatDateFr, todayIsoDate } from "@/lib/crm/money";
 import { shownClientNote } from "@/lib/crm/public-booking";
 import { attachmentPreviews, passportPreviewsForStay } from "@/lib/crm/preview-files";
 import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
+import {
+  CLIENT_MONEY_NOTICE,
+  clientHidesPrices,
+  stripClientMoneyItem,
+  withoutClientInvoices,
+} from "@/lib/crm/client-price-privacy";
 import { chargeableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { missingPassportCount } from "@/lib/crm/trip-documents";
 import { passportVaultRows } from "@/lib/crm/passport-vault";
@@ -94,10 +101,13 @@ export function ClientInterfacePreview({
   initialScreen = "stay",
   settled = [],
   agencyFeeRate,
+  discounts = null,
 }: {
   booking: CrmBooking;
   /** Montant seulement. Le pourcentage n’est pas affiché. */
   agencyFeeRate?: number;
+  /** null : remise des colonnes. Tableau : les lignes. */
+  discounts?: DiscountLine[] | null;
   items: CrmBookingItem[];
   documents: CrmBookingDocument[];
   travelers: CrmBookingTraveler[];
@@ -122,19 +132,24 @@ export function ClientInterfacePreview({
   settled?: string[];
 }) {
   const [screen, setScreen] = useState<ClientPreviewScreen>(initialScreen);
-  const items = withoutHotelRosterItems(sourceItems);
+  const hidePrices = clientHidesPrices(customer);
+  const source = hidePrices ? sourceItems.map((item) => stripClientMoneyItem(item)) : sourceItems;
+  const items = withoutHotelRosterItems(source);
   const published = booking.visible_to_client === true;
   const reveal = new Set(publishRevealIds(items, { includeKeptHidden: !published }));
   const liveItems = clientVisibleItems(items);
   const shownItems = published ? liveItems : items.filter((item) => reveal.has(item.id));
   const hiddenIds = new Set(items.map((item) => item.id).filter((id) => !reveal.has(id)));
   const liveDocuments = piecesActives(documents);
-  const shownDocs = published
+  const shownDocs = (published
     ? liveDocuments.filter((doc) => doc.visible_to_client)
-    : liveDocuments.filter((doc) => !doc.booking_item_id || !hiddenIds.has(doc.booking_item_id));
-  const screenBooking: CrmBooking = published
-    ? booking
-    : { ...booking, visible_to_client: true, prices_visible: true };
+    : liveDocuments.filter((doc) => !doc.booking_item_id || !hiddenIds.has(doc.booking_item_id))
+  ).filter((doc) => (hidePrices ? !withoutClientInvoices([doc]).length : true));
+  const screenBooking: CrmBooking = hidePrices
+    ? { ...(published ? booking : { ...booking, visible_to_client: true }), prices_visible: false }
+    : published
+      ? booking
+      : { ...booking, visible_to_client: true, prices_visible: true };
   const hasCarnet = published ? carnetVisible(booking, liveItems) : shownItems.some((item) => item.kind !== "fee" && !isLedgerExpenseKind(item.kind));
   const initials = [customer?.first_name, customer?.last_name]
     .map((part) => (part || "").trim().charAt(0))
@@ -172,10 +187,12 @@ export function ClientInterfacePreview({
           shareCompanions={shareCompanions}
           screen={screen}
           onScreen={setScreen}
-          ledger={ledger}
+          ledger={hidePrices ? null : ledger}
+          hidePrices={hidePrices}
           showStay={hasCarnet}
           settled={settled}
           agencyFeeRate={agencyFeeRate}
+          discounts={discounts}
         />
       )}
     </section>
@@ -242,6 +259,8 @@ function ClientScreen({
   showStay,
   settled = [],
   agencyFeeRate,
+  hidePrices = false,
+  discounts = null,
 }: {
   booking: CrmBooking;
   items: CrmBookingItem[];
@@ -269,6 +288,8 @@ function ClientScreen({
   showStay: boolean;
   settled?: string[];
   agencyFeeRate?: number;
+  hidePrices?: boolean;
+  discounts?: DiscountLine[] | null;
 }) {
   const insurances = items.filter((item) => item.kind === "insurance");
   const holder = {
@@ -277,21 +298,29 @@ function ClientScreen({
     usage_name: customer.usage_name,
     birth_date: customer.birth_date,
   };
+  const face = clientStayFace({
+    title: booking.title,
+    destination: booking.destination,
+    startDate: booking.start_date,
+    endDate: booking.end_date,
+    items: allItems,
+    homeCity: customer.city,
+  });
+  const shown = applyClientStayFace(booking, face);
   const missingCount = missingPassportCount(travelers, identityDocs, {
     holder,
     companions,
-    returnOn: booking.end_date || booking.start_date,
+    returnOn: shown.end_date || shown.start_date,
   });
   const missingPassports = missingCount > 0;
-  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, booking.reference, booking.destination, {
-    title: booking.title,
+  const modifyHref = whatsappModifyHref(siteConfig.whatsappNumber, booking.reference, shown.destination, {
+    title: shown.title,
     homeCity: customer.city,
     items,
   });
-  const labels = nextStayLabels(booking.title, booking.destination, items, "Séjour", customer.city);
-  const headline = labels.title || "Séjour";
+  const headline = face.title || "Séjour";
   const clientNote = shownClientNote(booking.notes_client);
-  const placeLine = tripPlaceLine(headline, labels.destination);
+  const placeLine = stayHeroPlace(headline, face.destination, face.items);
   const formalities = frenchPassportTrip(items, travelers.length);
   const feeExtras = agencyFeeExtraAmounts(allItems);
   const stayTotal = bookingTotalFromItems(allItems);
@@ -313,7 +342,9 @@ function ClientScreen({
     travelerCount: travelers.length,
     feeMode: booking.fee_mode,
   });
-  const pricesVisible = booking.prices_visible !== false;
+  const pricesVisible = !hidePrices && booking.prices_visible !== false;
+  const discount = readCommercialDiscount(booking);
+  const discountInput = discounts ? { discounts } : { discount };
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: booking.agency_commission === true,
@@ -324,21 +355,24 @@ function ClientScreen({
     extras: feeExtras,
     ticketingFee,
     ticketCount,
+    ...discountInput,
   });
   const passportRows = passportVaultRows(travelers, identityDocs, todayIsoDate(), holder, booking, companions);
   const encoursPay =
-    ledger && !ledger.member && ledger.owed.total > 0 ? (
+    hidePrices || !ledger || ledger.member || ledger.owed.total <= 0 ? null : (
       <EncoursPayment
         compact={screen === "transactions"}
         company={ledger.owed.company}
         personal={ledger.owed.personal}
+        pooled={ledger.owed.pooled}
+        total={ledger.owed.total}
         currency={ledger.currency}
         soleCompanyName={ledger.soleCompanyName}
         stripeKey={stripePublishableKey()}
         pockets={ledger.pockets}
         holds={ledger.sepaHolds}
       />
-    ) : null;
+    );
   const title = screen === "transactions" ? "Transactions" : "Réservations";
   return (
     <ClientPreviewScope>
@@ -356,7 +390,9 @@ function ClientScreen({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {screen === "transactions" ? (
             <div className="px-4 py-4">
-              {ledger ? (
+              {hidePrices ? (
+                <p className="text-sm text-[var(--admin-navy)]">{CLIENT_MONEY_NOTICE}</p>
+              ) : ledger ? (
                 <ClientTransactionsPanel view={ledger} payments={encoursPay} />
               ) : (
                 <p className="text-sm text-muted">Le grand livre n’est pas lisible pour le moment.</p>
@@ -369,8 +405,9 @@ function ClientScreen({
               <>
                 <p className="text-sm font-semibold text-[var(--aura-blue)]">← Réservations</p>
                 <BookingHero
-                  booking={booking}
-                  items={allItems}
+                  booking={shown}
+                  places={face.places}
+                  items={items}
                   priority
                   className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
                 >
@@ -384,13 +421,13 @@ function ClientScreen({
                       <h2 className="font-display text-[1.7rem] font-extrabold leading-tight">{headline}</h2>
                       {placeLine ? <p className="text-sm text-white/75">{placeLine}</p> : null}
                       <p className="text-sm text-white/75">
-                        {formatDateFr(booking.start_date)} — {formatDateFr(booking.end_date)}
+                        {formatDateFr(shown.start_date)} — {formatDateFr(shown.end_date)}
                       </p>
                     </div>
                   </div>
                 </BookingHero>
                 {clientNote ? (
-                  <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
+                  <p className="aura-card whitespace-pre-line rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
                     {clientNote}
                   </p>
                 ) : null}
@@ -477,6 +514,7 @@ function ClientScreen({
               ) : null
             }
             amount={
+              hidePrices ? null : (
               <section className="aura-card space-y-2 rounded-[1.35rem] bg-white p-4">
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
                   Montant du séjour
@@ -491,6 +529,7 @@ function ClientScreen({
                     expenses: expenseChoices,
                     extras: feeExtras,
                     ticketingFee,
+                    ...discountInput,
                   })}
                 </p>
                 {insurances.map((item) => {
@@ -503,8 +542,9 @@ function ClientScreen({
                   );
                 })}
               </section>
+              )
             }
-            expenses={expenseLines.length ? <StayExpenses lines={expenseLines} /> : null}
+            expenses={hidePrices || !expenseLines.length ? null : <StayExpenses lines={expenseLines} />}
             tail={
               <>
                 <ReservationFiles

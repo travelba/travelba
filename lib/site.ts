@@ -49,10 +49,10 @@ export const siteConfig = {
 export const CONCIERGE_SHARE_TITLE = "Le Concierge";
 export const CONCIERGE_SHARE_DESCRIPTION = "Votre espace personnel vous attend.";
 
-export const BRAND_OG_IMAGE = "/og.png";
+export const BRAND_OG_IMAGE = "/og-v2.png";
 export const BRAND_OG_IMAGE_WIDTH = 1200;
 export const BRAND_OG_IMAGE_HEIGHT = 630;
-export const BRAND_OG_SQUARE = "/og-square.png";
+export const BRAND_OG_SQUARE = "/og-square-v2.png";
 export const BRAND_OG_SQUARE_SIZE = 600;
 export const BRAND_ICON = "/icon.png";
 export const BRAND_APPLE_TOUCH_ICON = "/apple-touch-icon.png";

@@ -1,4 +1,5 @@
 import { Icon } from "@/components/crm/icons";
+import { isStripeSystemActivity } from "@/lib/crm/customer-activity";
 import { formatCustomerLoginAt, loginMethodLabel } from "@/lib/crm/customer-login";
 import type { CrmCustomerActivity, CrmCustomerLogin } from "@/lib/crm/types";
 
@@ -14,7 +15,7 @@ function activityLines(logins: CrmCustomerLogin[], activity: CrmCustomerActivity
       text: `Connexion · ${loginMethodLabel(login.method)}`,
       detail: null,
     })),
-    ...activity.map((row) => ({
+    ...activity.filter((row) => !isStripeSystemActivity(row)).map((row) => ({
       id: `act-${row.id}`,
       at: row.created_at,
       text: row.summary,

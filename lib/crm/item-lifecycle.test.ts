@@ -56,7 +56,7 @@ describe("replacementPlan", () => {
     assert.equal(plan.adds, 0);
   });
 
-  it("met à jour la carte quand l’hôtel et les dates sont les mêmes, même si le numéro change", () => {
+  it("ajoute une carte quand le numéro change, même hôtel et mêmes dates", () => {
     const plan = replacementPlan(
       [
         {
@@ -78,9 +78,9 @@ describe("replacementPlan", () => {
         }),
       ]
     );
-    assert.deepEqual(plan.updates, [{ itemId: "h1" }]);
+    assert.deepEqual(plan.updates, []);
     assert.equal(plan.replacements.length, 0);
-    assert.equal(plan.adds, 0);
+    assert.equal(plan.adds, 1);
     assert.equal(plan.choices.length, 0);
   });
 
@@ -114,21 +114,17 @@ describe("replacementPlan", () => {
     ]);
     assert.equal(plan.updates.length, 0);
     assert.equal(plan.replacements.length, 0);
-    assert.equal(plan.adds, 0);
-    assert.deepEqual(
-      plan.choices.map((row) => row.id),
-      ["h1", "h2"]
-    );
+    assert.equal(plan.adds, 1);
+    assert.equal(plan.choices.length, 0);
   });
 
-  it("remplace l’unique hôtel quand la référence change, au prix vendu", () => {
+  it("ajoute l’hôtel quand la référence change, sans remplacer le prix déjà là", () => {
     const plan = replacementPlan(
       [{ kind: "hotel", title: "Hotel Eden", confirmation_ref: "97620171" }],
       [hotel()]
     );
-    assert.equal(plan.replacements.length, 1);
-    assert.equal(plan.replacements[0].itemId, "h1");
-    assert.equal(plan.replacements[0].amount, 1200);
+    assert.equal(plan.replacements.length, 0);
+    assert.equal(plan.adds, 1);
   });
 
   it("demande la carte s’il y a deux hôtels du même séjour", () => {
@@ -140,11 +136,8 @@ describe("replacementPlan", () => {
       ]
     );
     assert.equal(plan.replacements.length, 0);
-    assert.equal(plan.adds, 0);
-    assert.deepEqual(
-      plan.choices.map((row) => row.id),
-      ["h1", "h2"]
-    );
+    assert.equal(plan.adds, 1);
+    assert.equal(plan.choices.length, 0);
     const chosen = replacementPlan(
       [{ kind: "hotel", title: "Autre hôtel", confirmation_ref: "97620199", start_at: "2026-06-01", end_at: "2026-06-04" }],
       [
@@ -184,7 +177,7 @@ describe("replacementPlan", () => {
     assert.equal(plan.adds, 1);
   });
 
-  it("remplace l’hôtel du même séjour quand le nom change", () => {
+  it("ajoute une confirmation distincte au lieu de remplacer l’hôtel déjà là", () => {
     const plan = replacementPlan(
       [
         {
@@ -197,9 +190,8 @@ describe("replacementPlan", () => {
       ],
       [hotel({ start_at: "2026-06-01", end_at: "2026-06-04", amount: 1200 })]
     );
-    assert.equal(plan.replacements.length, 1);
-    assert.equal(plan.replacements[0].itemId, "h1");
-    assert.equal(plan.replacements[0].amount, 1200);
+    assert.equal(plan.replacements.length, 0);
+    assert.equal(plan.adds, 1);
   });
 
   it("met à jour la réservation Little Emperors et ajoute le trajet manquant", () => {
@@ -229,7 +221,7 @@ describe("replacementPlan", () => {
     );
     assert.equal(plan.replacements.length, 0);
     assert.equal(plan.choices.length, 0);
-    assert.equal(plan.adds, 1);
+    assert.equal(plan.adds, 3);
     const gesture = inboxStayAction({
       documentStatus: "confirmed",
       incoming,
@@ -317,6 +309,33 @@ describe("replacementPlan", () => {
     assert.equal(gesture.label, "Mettre à jour le séjour");
   });
 
+  it("ajoute une voiture différente au lieu de remplacer l’autre", () => {
+    const plan = replacementPlan(
+      [
+        {
+          kind: "car",
+          title: "Peugeot 3008 ou similaire",
+          confirmation_ref: "81899756",
+          start_at: "2027-04-04T10:30:00",
+          end_at: "2027-04-11T09:00:00",
+        },
+      ],
+      [
+        {
+          id: "autre",
+          kind: "car",
+          title: "Fiat 500",
+          confirmation_ref: "11111111",
+          start_at: "2027-04-04T10:30:00",
+          end_at: "2027-04-11T09:00:00",
+        },
+      ]
+    );
+    assert.equal(plan.adds, 1);
+    assert.equal(plan.replacements.length, 0);
+    assert.equal(plan.updates.length, 0);
+  });
+
   it("ajoute un vol isolé même s’il reste d’autres vols, sauf si une carte est choisie", () => {
     const existing = [
       {
@@ -395,17 +414,27 @@ describe("replacementPlan", () => {
       hollowHotelCard({ kind: "hotel", confirmation_ref: "470705216", start_at: "2026-11-19" }),
       false
     );
+    assert.equal(hollowHotelCard({ kind: "hotel", confirmation_ref: "•••", title: "Hôtel" }), true);
+    assert.equal(hollowHotelCard({ kind: "hotel", confirmation_ref: "***", title: "Hotel" }), true);
+    assert.equal(
+      hollowHotelCard({ kind: "hotel", confirmation_ref: "•••", title: "Maison Exemple" }),
+      false
+    );
+    assert.equal(
+      hollowHotelCard({ kind: "hotel", confirmation_ref: "•••", start_at: "2027-04-04", title: "Hôtel" }),
+      false
+    );
   });
 
   it("recopie le prix d’une carte déjà annulée pour rouvrir le séjour", () => {
     const plan = replacementPlan(
-      [{ kind: "hotel", title: "Hotel Eden", confirmation_ref: "97620173" }],
+      [{ kind: "hotel", title: "Hotel Eden", confirmation_ref: "97620170" }],
       [hotel({ lifecycle: "cancelled", amount: 1500 })]
     );
     assert.equal(plan.replacements[0].amount, 1500);
     const gesture = inboxStayAction({
       documentStatus: "confirmed",
-      incoming: [{ kind: "hotel", title: "Hotel Eden", confirmation_ref: "97620173" }],
+      incoming: [{ kind: "hotel", title: "Hotel Eden", confirmation_ref: "97620170" }],
       bookingStatus: "cancelled",
       items: [hotel({ lifecycle: "cancelled", amount: 1500 })],
     });

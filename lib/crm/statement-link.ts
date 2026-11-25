@@ -35,8 +35,8 @@ export function verifyStatementToken(token: string, now = Date.now()) {
 }
 
 /** Variable {{1}} : jeton puis nom de fichier .pdf. */
-export function statementSignedPath(customerId: string, now = Date.now()) {
+export function statementSignedPath(customerId: string, now = Date.now(), filename?: string | null) {
   const token = signStatementToken(customerId, now);
   if (!token) return null;
-  return statementMediaVariable(token);
+  return statementMediaVariable(token, filename);
 }

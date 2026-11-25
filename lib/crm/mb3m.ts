@@ -157,7 +157,11 @@ export type Mb3mLine = {
   refPiece?: string | null;
   /** Vol : PNR, recopié sur la pièce s’il n’y en a qu’un. */
   refCommand?: string | null;
-  /** Nom des fournisseurs des coûts, imprimé en note. Ne crée pas de fournisseur. */
+  /**
+   * Note du « + » MB3M. Seule « Pliant : 1 245,00 € » part, sur la ligne Dépense
+   * (Standard, activité 22) ou sur un complémentaire 12 déjà enregistré avec cette note.
+   * Aucune autre note. Les avoirs suivent la même règle.
+   */
   note?: string | null;
 };
 
@@ -274,6 +278,62 @@ function addressXml(address: Mb3mAddress, fallbackName: string) {
   return `${tag("Name", address.name.trim() || fallbackName)}${tag("Line1", address.line1.trim())}${tag("Line2", address.line2?.trim())}${tag("Line3", address.line3?.trim())}${tag("PostalCode", postal)}${tag("City", address.city.trim())}${tag("CountryCode", mb3mCountryCode(address.countryCode))}`;
 }
 
+/**
+ * Actions réellement utilisées : lecture, pro forma (AddPieces), fiche client, dossier,
+ * annulation d’une pièce non imprimée, encaissement et lettrage.
+ * Impression, validation et finalisation n’y sont pas.
+ */
+export const MB3M_ALLOWED_CALLS = [
+  ["ConfigurationService", "GetAgencies"],
+  ["ConfigurationService", "GetBankAccounts"],
+  ["CustomerService", "FindAll"],
+  ["CustomerService", "Save"],
+  ["FolderService", "Get"],
+  ["FolderService", "FindAllPieces"],
+  ["FolderService", "Save"],
+  ["FolderService", "AddPieces"],
+  ["FolderService", "CancelInvoice"],
+  ["FolderService", "SavePayment"],
+  ["PieceService", "WriteMatching"],
+  ["PieceService", "Get"],
+  ["PieceService", "GetInvoice"],
+  ["PieceService", "ChangeFolder"],
+  ["RenderService", "Piece"],
+] as const;
+
+const MB3M_ISSUE_ACTION = /print|validate|validation|finali[sz]e|impress|valider|imprimer/i;
+
+const MB3M_ISSUE_FIELD =
+  /<(?:[\w.]+:)?(DatePrint|PrintedDate|PrintDate|DatePrinted|Printed|IsPrinted|ToPrint|PrintInvoice|Print|Impression|DateImpression|Validate|Validated|IsValidated|DateValidate|ValidationDate|ValidateInvoice|Validation|Finalize|Finalized|DateFinalize|FinalizeInvoice|Finalise|Finalised|DateFinalise)\b/i;
+
+/** Seule valeur qui autorise un avoir. Absente en production. */
+export function mb3mCreditNoteAllowed() {
+  return process.env.MB3M_ALLOW_CREDIT_NOTE === "true";
+}
+
+export const MB3M_CREDIT_NOTE_REFUSAL =
+  "L’avoir MB3M n’est pas émis depuis le CRM. Les pièces restent des pro forma.";
+
+export function assertMb3mCreditNoteAllowed() {
+  if (mb3mCreditNoteAllowed()) return;
+  console.error(`[mb3m] avoir refusé : ${MB3M_CREDIT_NOTE_REFUSAL}`);
+  throw new Mb3mError(MB3M_CREDIT_NOTE_REFUSAL, -1);
+}
+
+/** Nom du champ d’impression ou de validation, s’il est dans le corps SOAP. */
+export function mb3mIssueField(inner: string) {
+  return inner.match(MB3M_ISSUE_FIELD)?.[1] || null;
+}
+
+function mb3mCallAllowed(service: string, action: string) {
+  return MB3M_ALLOWED_CALLS.some(([allowedService, allowedAction]) => allowedService === service && allowedAction === action);
+}
+
+function refuseMb3mCall(service: string, action: string, reason: string): never {
+  console.error(`[mb3m] ${service}/${action} refusé : ${reason}`);
+  throw new Mb3mError(`Le CRM refuse ${service}/${action}. ${reason}`, -1);
+}
+
 /** Dernier appel parti : un refus (ResultCode ≠ 1) est journalisé avec sa requête, pour le support MB3M. */
 let lastCall: { service: string; action: string; inner: string } | null = null;
 
@@ -305,6 +365,24 @@ export async function mb3mSoap(
   inner: string,
   fetchImpl: FetchImpl = fetch
 ) {
+  if (MB3M_ISSUE_ACTION.test(action) || !mb3mCallAllowed(service, action)) {
+    refuseMb3mCall(
+      service,
+      action,
+      "Le CRM n’imprime pas, ne valide pas et ne finalise pas une pièce MB3M. Elle reste une pro forma."
+    );
+  }
+  if (action === "AddPieces") {
+    const field = mb3mIssueField(inner);
+    if (field) {
+      refuseMb3mCall(
+        service,
+        action,
+        `Le corps contient le champ ${field}. Une pro forma n’est ni imprimée ni validée.`
+      );
+    }
+  }
+  if (action === "Save" && /<CreditNote\b/i.test(inner)) assertMb3mCreditNoteAllowed();
   const user = mb3mUser();
   const password = mb3mPassword();
   if (!user || !password) {
@@ -381,6 +459,15 @@ export async function mb3mSingleAgencyUid(fetchImpl?: FetchImpl) {
 function agencyXml(uid: string | null | undefined) {
   const value = (uid || "").trim();
   return value ? `<Agency><Uid>${escapeMb3mXml(value)}</Uid></Agency>` : "";
+}
+
+/**
+ * Client déjà dans MB3M. Même balise que SaveFolder, AddInvoice et l’avoir :
+ * Uid seul. Pas de PartnerId : CustomerIdentity n’en porte pas ici
+ * (l’Id partenaire est le champ Id de Customer, à la création de la fiche).
+ */
+export function mb3mCustomerIdentityXml(uid: string) {
+  return `<CustomerIdentity><Uid>${escapeMb3mXml(uid.trim())}</Uid></CustomerIdentity>`;
 }
 
 function customerFindXml(query: {
@@ -605,7 +692,7 @@ export async function mb3mSaveFolder(
   },
   fetchImpl?: FetchImpl
 ) {
-  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${agencyXml(input.agencyUid)}${tag("CodeRef", input.codeRef?.trim())}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}${tag("FolderType", input.folderType)}${tag("Id", input.id?.trim())}${tag("Title", input.title.trim())}</Folder></FolderSaveRequest>`;
+  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${agencyXml(input.agencyUid)}${tag("CodeRef", input.codeRef?.trim())}${mb3mCustomerIdentityXml(input.customerUid)}${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}${tag("FolderType", input.folderType)}${tag("Id", input.id?.trim())}${tag("Title", input.title.trim())}</Folder></FolderSaveRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "Save", inner, fetchImpl);
   assertOperation(xml);
   const id = mb3mXmlTexts(xml, "Id")[0] || "";
@@ -617,12 +704,25 @@ export async function mb3mSaveFolder(
 }
 
 /**
- * Activité envoyée telle quelle. 2 = aérien, 1001 = achat direct, 27 = low cost, 5 = train.
+ * Contournement temporaire, en attendant CommissionId (API MB3M 1.78.0).
+ * Les vols (2, 1001, 27) gardent leur activité. La commission fixe de 1 €
+ * suit seulement `MB3M_FLIGHT_EURO_COMMISSION`.
+ * Le train (5, ferroviaire, code 143) et le maritime (9, code 142) sont aussi de la billetterie :
+ * sans commission, MB3M répond -22. Tant que CommissionId n’est pas envoyé, ils partent
+ * toujours en Divers terrestre (22), que le drapeau vol soit ouvert ou à `0`.
+ * Un choix déjà posé sur la carte (`mb3m_activity`) arrive ici comme une autre activité
+ * (22 pour divers terrestres) : il n’est pas dans cette liste, donc il reste.
+ * Low cost (27) et achat direct (1001) ont la commission de 1 € quand le drapeau est ouvert.
+ * FTI TICKET (34, code 144) n’est jamais choisi, donc pas envoyé.
  * Les frais généraux (14) ne sont pas une ligne de facture.
  */
+const MB3M_LAND_ACTIVITY = 22;
+const MB3M_TICKETING_AS_LAND = new Set<number>([5, 9]);
+
 export function mb3mPrestationActivityId(activityId: number | null | undefined) {
   if (activityId == null) return undefined;
   if (activityId === 14) throw new Mb3mError("Les frais généraux ne sont pas une ligne de facture.", -1);
+  if (MB3M_TICKETING_AS_LAND.has(activityId)) return MB3M_LAND_ACTIVITY;
   return activityId;
 }
 
@@ -643,8 +743,9 @@ export function mb3mDefaultProviderId() {
 }
 
 /**
- * Commission fixe de 1 € sur les vols (activités 2, 1001, 27), en attendant l’API MB3M.
- * Activé par défaut. `MB3M_FLIGHT_EURO_COMMISSION=0` le retire et retient à nouveau les vols.
+ * Commission fixe de 1 € sur les vols (activités 2, 1001, 27), en attendant CommissionId
+ * (API MB3M 1.78.0). Activé par défaut. `MB3M_FLIGHT_EURO_COMMISSION=0` la retire
+ * et retient à nouveau les vols. Le train et le maritime restent en activité 22.
  * Ce n’est pas `MB3M_FLIGHT_COMMISSION` : celui-là enverrait un CommissionId, absent du WSDL.
  */
 export const MB3M_FLIGHT_EURO_COMMISSION_AMOUNT = 1;
@@ -695,10 +796,16 @@ export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine
         line.type === "Custom" || line.marginUnit == null || !Number.isFinite(line.marginUnit)
           ? ""
           : tag("MarginUnit", money(line.marginUnit));
-      const note = line.type === "Custom" ? "" : tag("Note", (line.note || "").trim().slice(0, 250));
       const refPiece = tag("RefPiece", (line.refPiece || "").trim().slice(0, 40));
+      const pliantNote = (line.note || "").trim();
+      const custom = line.type === "Custom" || Boolean(line.customType);
+      const note =
+        pliantNote.startsWith("Pliant : ") && (!custom || line.customType?.complementary === "12")
+          ? tag("Note", pliantNote.slice(0, 250))
+          : "";
       // Ordre WCF : ActivityId, CommissionNetTotal, CommissionTotal, CustomType, Label,
       // MarginUnit, NetPriceTotal, NetPriceUnit, Note, ProviderId, Quantity, RefPiece, Type.
+      // Note seulement « Pliant : … », sur une ligne Dépense ou un complémentaire 12 déjà noté.
       // CommissionId n’est pas dans le WSDL.
       return `<${kind}>${activity}${commissionIdXml(line)}${flightEuroCommissionXml(line)}${customTypeXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${providerXml(line, providerFallback)}${tag("Quantity", quantity(line.quantity))}${refPiece}${tag("Type", type)}</${kind}>`;
     })
@@ -815,7 +922,9 @@ export function mb3mPaymentAccount(
     return { mode: "PaymentCard", bank, customModeId: null, warning: null };
   }
   if (source === "stripe" || text.includes("stripe") || text.includes("paiement en ligne") || text.includes("en ligne")) {
-    return { mode: "OnlinePaymentCard", bank, customModeId: null, warning: null };
+    // OnlinePaymentCard (« Carte bancaire (paiement en ligne) ») est refusé par MB3M pour un acompte
+    // client, donc sur une pro forma non imprimée. PaymentCard (carte simple) est le mode sûr.
+    return { mode: "PaymentCard", bank, customModeId: null, warning: null };
   }
   if (source === "pliant" || /carte|card|visa|mastercard|amex/.test(text)) {
     return { mode: "PaymentCard", bank, customModeId: null, warning: null };
@@ -831,9 +940,48 @@ export function mb3mPaymentReference(transactionId: string) {
   return `CRM ${transactionId.trim()}`;
 }
 
+/** Compte bancaire MB3M (guid) par son nom : le règlement le demande en BankAccountId. */
+let bankAccountCache: { at: number; rows: { uid: string; name: string }[] } | null = null;
+
+export async function mb3mBankAccountUid(name: string, fetchImpl?: FetchImpl) {
+  const wanted = name.trim().toLowerCase();
+  if (!wanted) return null;
+  if (!bankAccountCache || Date.now() - bankAccountCache.at > 10 * 60 * 1000) {
+    const xml = await mb3mSoap(
+      "ConfigurationService",
+      "IConfigurationService",
+      "GetBankAccounts",
+      '<GetBankAccounts xmlns="http://schemas.mb3m.fr/Partners"/>',
+      fetchImpl
+    );
+    const rows = [...xml.matchAll(/<BankAccount>\s*<Uid>([^<]+)<\/Uid>\s*<Name>([^<]*)<\/Name>/g)].map((match) => ({
+      uid: match[1].trim(),
+      name: match[2].trim(),
+    }));
+    bankAccountCache = { at: Date.now(), rows };
+  }
+  const hits = bankAccountCache.rows.filter((row) => row.name.toLowerCase() === wanted);
+  return hits.length === 1 ? hits[0].uid : null;
+}
+
+/** Pour les tests : oublie les comptes bancaires lus. */
+export function mb3mResetBankAccountCache() {
+  bankAccountCache = null;
+}
+
+/** Personne ou société : les deux propriétés du client Partners. */
+export type Mb3mCustomerKind = "person" | "company";
+
 /**
- * Encaissement client. Ordre alphabétique, comme les champs du dossier :
- * Amount, BankAccount, Date, FolderId, Mode, Reference.
+ * Encaissement client (FolderService.SavePayment). Le schéma est : FolderId au niveau de la requête,
+ * puis Payment. Les champs de Piece (CreationDate, puis l’identité du client) viennent avant ceux du règlement
+ * (Amount, CustomModeId, Mode, RefNumber, BankAccountId). Un champ hors de cet ordre est ignoré sans erreur :
+ * c’est ce qui laissait MB3M sans client (-609 « Un règlement doit toujours être associé à un client »).
+ * Un client déjà créé (Uid connu) part en CustomerIdentity, à la place de Customer.
+ * Customer crée une fiche à la volée ; ce chemin n’en crée pas, donc Customer n’est pas envoyé.
+ * Le type personne ou société n’est pas exigé : l’Uid suffit.
+ * FolderId est l’Id du dossier (01-0002007). Un Uid à cet endroit est refusé (-401
+ * « Il n'existe pas de dossier avec l'identifiant donné »). Sans Id, le champ est omis.
  */
 export async function mb3mSavePayment(
   input: {
@@ -844,11 +992,20 @@ export async function mb3mSavePayment(
     bank: string;
     mode: string;
     customModeId?: number | null;
+    customerUid: string;
+    /** Ignoré : un Uid connu part en CustomerIdentity, sans Customer. */
+    customerKind?: Mb3mCustomerKind | null;
+    bankAccountUid?: string | null;
   },
   fetchImpl?: FetchImpl
 ) {
+  const customerUid = (input.customerUid || "").trim();
+  if (!customerUid) throw new Mb3mError("Le règlement n’a pas de client MB3M.", -1);
+  const folderId = input.folderId.trim();
+  const bankUid = (input.bankAccountUid || "").trim() || (await mb3mBankAccountUid(input.bank, fetchImpl));
   const custom = input.mode === "Custom" && input.customModeId ? tag("CustomModeId", input.customModeId) : "";
-  const inner = `<FolderSavePaymentRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Payment>${tag("Amount", money(input.amount))}${tag("BankAccount", input.bank.trim())}${custom}${tag("Date", `${dayStamp(input.date)}T00:00:00`)}${tag("FolderId", input.folderId.trim())}${tag("Mode", input.mode.trim())}${tag("Reference", input.reference.trim())}</Payment></FolderSavePaymentRequest>`;
+  const customer = mb3mCustomerIdentityXml(customerUid);
+  const inner = `<FolderSavePaymentRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">${tag("FolderId", folderId)}<Payment>${tag("CreationDate", `${dayStamp(input.date)}T00:00:00`)}${customer}${tag("Amount", money(input.amount))}${custom}${tag("Mode", input.mode.trim())}${tag("RefNumber", input.reference.trim())}${tag("BankAccountId", bankUid)}</Payment></FolderSavePaymentRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "SavePayment", inner, fetchImpl);
   assertOperation(xml);
   const number = mb3mXmlText(xml, "Number");
@@ -856,15 +1013,19 @@ export async function mb3mSavePayment(
   return { number };
 }
 
-/** Lettrage du règlement sur la facture, pour le montant qui reste dû. */
+/**
+ * Lettrage du règlement sur la facture, pour le montant qui reste dû.
+ * WriteMatching est une opération de PieceService (PieceMatchingRequest), pas de FolderService
+ * (ContractFilter). Source : le règlement. Cible : la facture. Les deux sont des PieceIdentity.
+ */
 export async function mb3mWriteMatching(
   input: { paymentNumber: string; invoiceNumber: string; amount: number },
   fetchImpl?: FetchImpl
 ) {
-  const inner = `<FolderWriteMatchingRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Matching>${tag("Amount", money(input.amount))}${tag("PaymentNumber", input.paymentNumber.trim())}${tag("PieceNumber", input.invoiceNumber.trim())}</Matching></FolderWriteMatchingRequest>`;
-  const xml = await mb3mSoap("FolderService", "IFolderService", "WriteMatching", inner, fetchImpl);
+  const inner = `<PieceMatchingRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Source>${tag("Number", input.paymentNumber.trim())}</Source><Target>${tag("Number", input.invoiceNumber.trim())}</Target>${tag("Amount", money(input.amount))}</PieceMatchingRequest>`;
+  const xml = await mb3mSoap("PieceService", "IPieceService", "WriteMatching", inner, fetchImpl);
   assertOperation(xml);
-  return { id: mb3mXmlText(xml, "Id") || mb3mXmlText(xml, "Number") };
+  return { id: mb3mXmlText(xml, "Uid") || mb3mXmlText(xml, "Id") || mb3mXmlText(xml, "Number") };
 }
 
 export type Mb3mRemotePayment = {
@@ -930,6 +1091,8 @@ function paymentKind(block: string) {
 function isPaymentBlock(block: string) {
   const tag = /^<([A-Za-z]+)/.exec(block)?.[1] || "";
   if (tag === "Payment" || tag === "PaymentSummary") return true;
+  const flag = /<IsPayment>\s*(true|false)\s*</i.exec(block)?.[1];
+  if (flag) return flag.toLowerCase() === "true";
   return /paye?ment|r[eè]glement|encaissement/i.test(paymentKind(block));
 }
 
@@ -968,6 +1131,7 @@ function paymentFromBlock(block: string): Mb3mRemotePayment | null {
   const date = (
     mb3mXmlText(head, "Date") ||
     mb3mXmlText(head, "CreationDate") ||
+    mb3mXmlText(head, "DateCreation") ||
     mb3mXmlText(head, "PieceDate") ||
     mb3mXmlText(head, "DatePayment") ||
     mb3mXmlText(head, "PaymentDate")
@@ -1093,6 +1257,146 @@ function firstAmount(block: string, names: string[]) {
     if (Number.isFinite(value)) return value;
   }
   return null;
+}
+
+const LETTRAGE_CENT = 0.005;
+
+export type Mb3mLettrageSnapshot = {
+  /** Un règlement est lettré sur la facture, ou un règlement du dossier a un reste inférieur à son montant. */
+  lettered: boolean;
+  /** Montant TTC de la facture visée, quand la liste le porte. */
+  amount: number | null;
+  /** Solde de la facture visée. */
+  balance: number | null;
+  /** La facture visée était dans la réponse. */
+  seen: boolean;
+};
+
+function lettrageCents(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+/** Reste strictement inférieur au montant : une partie est lettrée. */
+function balanceIsLettered(balance: number, amount: number) {
+  return balance < amount - LETTRAGE_CENT;
+}
+
+/**
+ * Lettrage lu dans une réponse FindAllPieces.
+ * La facture est lettrée si son solde (Balance) est inférieur à son TTC.
+ * Un règlement du dossier l’est aussi si son reste est inférieur à son montant.
+ */
+export function mb3mLettrageFromXml(
+  xml: string,
+  invoiceNumber: string,
+  options?: { folderId?: string | null; folderScoped?: boolean }
+): Mb3mLettrageSnapshot {
+  const wanted = invoiceNumber.trim();
+  const folderId = (options?.folderId || "").trim();
+  const folderScoped = Boolean(options?.folderScoped);
+  let lettered = false;
+  let amount: number | null = null;
+  let balance: number | null = null;
+  let seen = false;
+  for (const block of topLevelBlocks(mb3mLocalNames(xml), PAYMENT_BLOCK_TAGS)) {
+    if (isPaymentBlock(block)) {
+      const payment = paymentFromBlock(block);
+      if (!payment) continue;
+      const actual = (payment.folderId || "").trim();
+      if (folderId && actual && actual !== folderId) continue;
+      if (folderId && !actual && !folderScoped) continue;
+      if (balanceIsLettered(payment.unmatched, payment.amount)) lettered = true;
+      continue;
+    }
+    if (paymentNumber(block) !== wanted) continue;
+    seen = true;
+    const head = paymentHead(block).split(/<Lines>/)[0] || paymentHead(block);
+    const total = firstAmount(head, ["Amount", "Total", "TotalPrice"]);
+    const left = firstAmount(head, ["Balance", "Solde"]);
+    if (total != null && total > 0) amount = lettrageCents(total);
+    if (left != null) balance = lettrageCents(Math.max(0, left));
+    if (amount != null && balance != null && balanceIsLettered(balance, amount)) lettered = true;
+  }
+  return { lettered, amount, balance, seen };
+}
+
+function mergeLettrage(left: Mb3mLettrageSnapshot, right: Mb3mLettrageSnapshot): Mb3mLettrageSnapshot {
+  return {
+    lettered: left.lettered || right.lettered,
+    amount: left.amount ?? right.amount,
+    balance: left.balance ?? right.balance,
+    seen: left.seen || right.seen,
+  };
+}
+
+function lettrageKnown(snap: Mb3mLettrageSnapshot) {
+  return snap.lettered || (snap.seen && snap.amount != null && snap.balance != null);
+}
+
+function mb3mLettragePieceQuery(number: string) {
+  return `<FolderFindPiecesQuery xmlns="http://schemas.mb3m.fr/Partners"><IncludeInvoices>true</IncludeInvoices><IncludePayments>true</IncludePayments><Number>${escapeMb3mXml(number)}</Number><PageIndex>0</PageIndex><PageSize>20</PageSize></FolderFindPiecesQuery>`;
+}
+
+/**
+ * Solde de la facture et règlements du dossier, via FindAllPieces
+ * (Balance, IsPayment, Identity/Number). Ne crée ni n’annule rien.
+ */
+export async function mb3mReadLettrage(
+  input: { number: string; folderId?: string | null; customerUid?: string | null },
+  fetchImpl?: FetchImpl
+): Promise<Mb3mLettrageSnapshot> {
+  const number = input.number.trim();
+  if (!/^[1-9]\d*$/.test(number)) throw new Mb3mError("Numéro de facture MB3M invalide.", -1);
+  const folderId = (input.folderId || "").trim() || null;
+  const customerUid = (input.customerUid || "").trim();
+  let snap: Mb3mLettrageSnapshot = { lettered: false, amount: null, balance: null, seen: false };
+  let folderError: Error | null = null;
+  if (customerUid && folderId) {
+    try {
+      for (let page = 0; page < 40 && !lettrageKnown(snap); page += 1) {
+        const xml = await mb3mSoap(
+          "FolderService",
+          "IFolderService",
+          "FindAllPieces",
+          mb3mFindPaymentsQuery(customerUid, page, PIECE_PAGE_SIZE, folderId),
+          fetchImpl
+        );
+        assertOperation(xml);
+        snap = mergeLettrage(snap, mb3mLettrageFromXml(xml, number, { folderId, folderScoped: true }));
+        const local = mb3mLocalNames(xml);
+        const pageItems = topLevelBlocks(local, PAYMENT_BLOCK_TAGS);
+        const reported = Number(mb3mXmlText(local, "TotalCount"));
+        const done =
+          !pageItems.length ||
+          pageItems.length < PIECE_PAGE_SIZE ||
+          (Number.isFinite(reported) && reported >= 0 && (page + 1) * PIECE_PAGE_SIZE >= reported);
+        if (done || snap.lettered) break;
+      }
+    } catch (err) {
+      folderError = err instanceof Error ? err : new Error("lecture");
+    }
+  }
+  if (!lettrageKnown(snap)) {
+    try {
+      const xml = await mb3mSoap(
+        "FolderService",
+        "IFolderService",
+        "FindAllPieces",
+        mb3mLettragePieceQuery(number),
+        fetchImpl
+      );
+      assertOperation(xml);
+      snap = mergeLettrage(snap, mb3mLettrageFromXml(xml, number, { folderId, folderScoped: false }));
+    } catch (err) {
+      if (!snap.lettered) throw folderError || err;
+    }
+  }
+  if (folderError && !snap.lettered) throw folderError;
+  if (!lettrageKnown(snap)) throw new Mb3mError("Le lettrage de la pro forma n’a pas pu être lu.", -1);
+  console.info(
+    `[mb3m] lettrage ${number} ${snap.lettered ? "lettré" : "ouvert"} solde ${snap.balance ?? "?"} sur ${snap.amount ?? "?"}`
+  );
+  return snap;
 }
 
 export type Mb3mRemotePiece = {
@@ -1339,10 +1643,14 @@ export async function mb3mAddInvoice(
     refCommand?: string;
     travelers?: Mb3mTraveler[];
     agencyUid?: string | null;
+    /** Pièce que celle-ci remplace. Relue juste avant l’envoi : une pièce imprimée bloque l’ajout. */
+    replacesNumber?: string | null;
   },
   fetchImpl?: FetchImpl
 ) {
-  const inner = `<FolderAddPiecesRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${escapeMb3mXml(input.folderId.trim())}</FolderId><Invoice>${agencyXml(input.agencyUid)}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", input.dateEnd ? dayStamp(input.dateEnd) : "")}${tag("DateStart", input.dateStart ? dayStamp(input.dateStart) : "")}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("InvoiceLine", input.lines, input.agencyUid)}</Lines>${travelersXml(input.travelers)}</Invoice></FolderAddPiecesRequest>`;
+  const replaces = (input.replacesNumber || "").trim();
+  if (replaces) await mb3mGuardOpenPiece(replaces, "remplacer", fetchImpl);
+  const inner = `<FolderAddPiecesRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>${escapeMb3mXml(input.folderId.trim())}</FolderId><Invoice>${agencyXml(input.agencyUid)}${mb3mCustomerIdentityXml(input.customerUid)}${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", input.dateEnd ? dayStamp(input.dateEnd) : "")}${tag("DateStart", input.dateStart ? dayStamp(input.dateStart) : "")}${tag("Destination", input.destination?.trim())}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("InvoiceLine", input.lines, input.agencyUid)}</Lines>${travelersXml(input.travelers)}</Invoice></FolderAddPiecesRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "AddPieces", inner, fetchImpl);
   assertOperation(xml);
   return pieceIdentity(xml, "Invoice");
@@ -1394,9 +1702,30 @@ export async function mb3mFindPiece(number: string, fetchImpl?: FetchImpl) {
   return mb3mPieceState(xml);
 }
 
+/**
+ * Relit la pièce juste avant de l’annuler ou de la remplacer.
+ * DatePrint ou PrintedDate : refus, l’appel d’écriture ne part pas.
+ */
+export async function mb3mGuardOpenPiece(
+  number: string,
+  purpose: "annuler" | "remplacer",
+  fetchImpl?: FetchImpl
+) {
+  const pieceNumber = number.trim();
+  const state = await mb3mFindPiece(pieceNumber, fetchImpl);
+  if (state !== "printed") return state;
+  const message =
+    purpose === "annuler"
+      ? `La pièce MB3M n° ${pieceNumber} est imprimée. Le CRM ne l’annule pas.`
+      : `La pièce MB3M n° ${pieceNumber} est imprimée. Le CRM n’ajoute pas de pièce à la place.`;
+  console.error(`[mb3m] ${message}`);
+  throw new Mb3mError(message, -1);
+}
+
 export async function mb3mCancelInvoice(folderId: string, number: string, fetchImpl?: FetchImpl) {
   const pieceNumber = number.trim();
   if (!/^[1-9]\d*$/.test(pieceNumber)) throw new Mb3mError("Numéro de facture MB3M invalide.", -1);
+  await mb3mGuardOpenPiece(pieceNumber, "annuler", fetchImpl);
   const inner = `<FolderCancelPieceRequest xmlns="http://schemas.mb3m.fr/Partners"><FolderId>${escapeMb3mXml(folderId.trim())}</FolderId><Number>${pieceNumber}</Number></FolderCancelPieceRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "CancelInvoice", inner, fetchImpl);
   assertOperation(xml);
@@ -1418,8 +1747,9 @@ export async function mb3mAddCreditNote(
   },
   fetchImpl?: FetchImpl
 ) {
+  assertMb3mCreditNoteAllowed();
   const agency = agencyXml(input.agencyUid);
-  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${agency}<CreditNotes><CreditNote>${agency}<CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", dayStamp(input.dateEnd))}${tag("DateStart", dayStamp(input.dateStart))}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("CreditNoteLine", input.lines, input.agencyUid)}</Lines></CreditNote></CreditNotes><CustomerIdentity><Uid>${escapeMb3mXml(input.customerUid.trim())}</Uid></CustomerIdentity>${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("FolderType", input.folderType)}${tag("Id", input.folderId.trim())}${tag("Title", input.folderTitle.trim())}</Folder></FolderSaveRequest>`;
+  const inner = `<FolderSaveRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Folder>${agency}<CreditNotes><CreditNote>${agency}${mb3mCustomerIdentityXml(input.customerUid)}${tag("Title", input.title.trim())}${tag("RefCommand", input.refCommand?.trim())}${tag("DateEnd", dayStamp(input.dateEnd))}${tag("DateStart", dayStamp(input.dateStart))}${tag("DestinationIso", input.destinationIso?.trim())}<Lines>${linesXml("CreditNoteLine", input.lines, input.agencyUid)}</Lines></CreditNote></CreditNotes>${mb3mCustomerIdentityXml(input.customerUid)}${tag("DateEnd", `${dayStamp(input.dateEnd)}T00:00:00`)}${tag("DateStart", `${dayStamp(input.dateStart)}T00:00:00`)}${tag("FolderType", input.folderType)}${tag("Id", input.folderId.trim())}${tag("Title", input.folderTitle.trim())}</Folder></FolderSaveRequest>`;
   const xml = await mb3mSoap("FolderService", "IFolderService", "Save", inner, fetchImpl);
   assertOperation(xml);
   return { number: pieceNumber(xml, "CreditNote") };

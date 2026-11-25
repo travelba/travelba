@@ -336,6 +336,109 @@ export function annotatePliantPayload(payload: unknown, card: unknown, holder: u
   return row;
 }
 
+export type PliantMoney = { value: number; currency: string };
+
+export type PliantCardLimits = {
+  limitCents: number | null;
+  transactionLimitCents: number | null;
+  currency: string | null;
+  transactionCurrency: string | null;
+  maxTransactionCount: number | null;
+};
+
+/**
+ * Corps de `PUT /cards/limits/{cardId}`.
+ * Le plafond total et le montant d’un achat partent ensemble.
+ * Le nombre de transactions n’est envoyé que s’il est déjà connu : l’omettre lève le plafond de nombre.
+ * Aucun contrôle supplémentaire (commerçant, catégorie, lieu).
+ */
+export function pliantLimitUpdateBody(input: {
+  limit: PliantMoney;
+  transactionLimit?: PliantMoney;
+  count: number | null;
+}) {
+  const perTransaction = input.transactionLimit || input.limit;
+  const body: Record<string, unknown> = {
+    limit: { value: input.limit.value, currency: input.limit.currency },
+    transactionLimit: { value: perTransaction.value, currency: perTransaction.currency },
+    limitRenewFrequency: "TOTAL",
+  };
+  if (typeof input.count === "number" && Number.isInteger(input.count) && input.count >= 1) {
+    body.maxTransactionCount = input.count;
+  }
+  return body;
+}
+
+function limitRecord(payload: unknown): Record<string, unknown> | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const row = payload as Record<string, unknown>;
+  const data = row.data;
+  if (data && typeof data === "object" && !Array.isArray(data)) return data as Record<string, unknown>;
+  return row;
+}
+
+function minorUnits(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.round(value);
+  if (typeof value === "string" && value.trim()) {
+    const amount = Number(value);
+    if (Number.isFinite(amount)) return Math.round(amount);
+  }
+  return null;
+}
+
+function moneyLimit(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { cents: null as number | null, currency: null as string | null };
+  }
+  const row = value as Record<string, unknown>;
+  const currency = typeof row.currency === "string" && row.currency.trim() ? row.currency.trim().toUpperCase() : null;
+  return { cents: minorUnits(row.value), currency };
+}
+
+/** Plafond, montant par transaction et nombre, lus sur une carte Pliant. */
+export function pliantCardLimits(card: unknown): PliantCardLimits {
+  const row = limitRecord(card);
+  const limit = moneyLimit(row?.limit);
+  const transaction = moneyLimit(row?.transactionLimit);
+  const count = minorUnits(row?.maxTransactionCount);
+  return {
+    limitCents: limit.cents,
+    transactionLimitCents: transaction.cents,
+    currency: limit.currency,
+    transactionCurrency: transaction.currency,
+    maxTransactionCount: count != null && count >= 1 ? count : null,
+  };
+}
+
+function sameMoney(cents: number | null, currency: string | null, expected: PliantMoney) {
+  return cents === expected.value && currency === expected.currency.trim().toUpperCase();
+}
+
+/** Vrai seulement si les deux montants relus sont ceux qui viennent d’être demandés. */
+export function pliantLimitsApplied(
+  card: unknown,
+  expected: { limit: PliantMoney; transactionLimit: PliantMoney }
+): { ok: true } | { ok: false; limitCents: number | null; transactionLimitCents: number | null } {
+  const read = pliantCardLimits(card);
+  if (sameMoney(read.limitCents, read.currency, expected.limit) && sameMoney(read.transactionLimitCents, read.transactionCurrency, expected.transactionLimit)) {
+    return { ok: true };
+  }
+  return { ok: false, limitCents: read.limitCents, transactionLimitCents: read.transactionLimitCents };
+}
+
+function eurosLabel(cents: number | null) {
+  if (cents == null || !Number.isFinite(cents)) return "illisible";
+  const abs = Math.abs(Math.round(cents));
+  const major = String(Math.trunc(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  const minor = String(abs % 100).padStart(2, "0");
+  return `${cents < 0 ? "-" : ""}${major},${minor} €`;
+}
+
+/** La relecture ne correspond pas au plafond demandé. */
+export function pliantLimitMismatchMessage(read: { limitCents: number | null; transactionLimitCents: number | null }) {
+  return `Pliant n’a pas appliqué le nouveau plafond. Plafond relu : ${eurosLabel(read.limitCents)}. Montant par transaction relu : ${eurosLabel(read.transactionLimitCents)}.`;
+}
+
 export function pliantCardFace(card: unknown) {
   if (!card || typeof card !== "object") return { id: null as string | null, label: null as string | null, last4: null as string | null };
   const row = card as Record<string, unknown>;

@@ -72,6 +72,8 @@ export type ClientPayPart = {
   /** Distingue deux parts société (crédit et Pro). */
   id?: string;
   kind: PayerKind;
+  /** Un seul montant, quand un crédit libre empêche de répartir. */
+  settlement?: "total";
   funding?: FundingKind;
   companyId?: string | null;
   mention: string;
@@ -145,7 +147,8 @@ export function StayPayment({
     try {
       const result = await postJson<PayResponse>("/api/client/ledger/pay", {
         method: next,
-        payerKind: part.kind,
+        payerKind: part.settlement === "total" ? undefined : part.kind,
+        settlement: part.settlement || null,
         funding: part.funding || null,
         companyId: part.companyId || null,
         nonce: currentNonce,
@@ -478,7 +481,11 @@ function ApplePayForm({ onPaid }: { onPaid: (message: string) => void }) {
           onPaid(PAYMENT_SENT_LABEL);
         }}
       />
-      {ready === false ? <p className="text-sm text-muted">Apple Pay s’ouvre sur iPhone, iPad ou Safari.</p> : null}
+      {ready === false ? (
+        <p className="text-sm text-muted">Apple Pay s’ouvre sur iPhone, iPad, Safari et dans l’application TBA. La carte reste disponible.</p>
+      ) : (
+        <p className="text-xs text-muted">Le séjour se règle par Apple Pay, comme sur le site.</p>
+      )}
       {error ? (
         <p className="text-sm text-accent" role="alert">
           {error}

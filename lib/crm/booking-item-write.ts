@@ -15,8 +15,10 @@ import { linkedPliantTransactionIds, pliantExpenseTransactionId } from "@/lib/cr
 import { parseMoney } from "@/lib/crm/money";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { composeAccueilVip, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
-import { BOOKING_ITEM_KINDS, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
+import { BOOKING_ITEM_KINDS, isExtraItemKind, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
+import { readCardPriceMode, withCardPriceMode, type CardPriceMode } from "@/lib/crm/card-price";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
+import { missingDbColumn } from "@/lib/crm/optional-column";
 import {
   DEFAULT_EXPENSE_PRESETS,
   TICKETING_PRESET_BLOCKED,
@@ -26,6 +28,32 @@ import {
 import { loadExpensePresets } from "@/lib/crm/expense-presets-db";
 
 const SORT_ORDER_ERROR = `Ordre de la carte invalide (0 à ${MAX_SORT_ORDER}).`;
+
+/** La colonne suit le mode écrit dans les détails. Sans la colonne, l’écriture reprend sans elle. */
+async function writeBookingItem(
+  supabase: SupabaseClient,
+  action: "insert" | "update",
+  payload: Record<string, unknown>,
+  where?: { id: string; bookingId: string }
+) {
+  const run = (row: Record<string, unknown>) => {
+    if (action === "insert") return supabase.from("crm_booking_items").insert(row).select("*").single();
+    return supabase
+      .from("crm_booking_items")
+      .update(row)
+      .eq("id", where?.id || "")
+      .eq("booking_id", where?.bookingId || "")
+      .select("*")
+      .single();
+  };
+  const first = await run(payload);
+  if (first.error && "price_mode" in payload && missingDbColumn(first.error, "price_mode")) {
+    const next = { ...payload };
+    delete next.price_mode;
+    return run(next);
+  }
+  return first;
+}
 
 function knownKind(value: unknown) {
   const kind = String(value || "");
@@ -152,31 +180,46 @@ export async function addStaffBookingCard(
       return { error: TICKETING_PRESET_BLOCKED, status: 409 };
     }
   }
+  const stayCard = !isLedgerExpenseKind(kind) && !isExtraItemKind(kind);
+  let columnMode: CardPriceMode | null = null;
+  if (stayCard) {
+    const mode = readCardPriceMode({ amount: nextAmount, details: nextDetails });
+    const priced = mode === "avec" && Number(nextAmount) > 0;
+    if (mode === "avec" && !priced) return { error: "Indiquez le prix de vente.", status: 400 };
+    columnMode = priced ? "avec" : "sans";
+    nextDetails = withCardPriceMode(nextDetails, columnMode);
+  }
   const company = await billingCompanyPatch(supabase, bookingId, body.billing_company_id);
   if ("error" in company && company.error) return { error: company.error, status: 400 };
-  const { data, error } = await supabase
-    .from("crm_booking_items")
-    .insert({
-      booking_id: bookingId,
-      kind,
-      title: String(nextBody.title || title).trim(),
-      supplier: nextBody.supplier || null,
-      confirmation_ref: nextBody.confirmation_ref || null,
-      start_at: nextBody.start_at || null,
-      end_at: nextBody.end_at || null,
-      amount: nextAmount,
-      include_in_ledger:
-        isLedgerExpenseKind(kind) || (kind === "accueil_vip" && nextAmount == null)
-          ? isLedgerExpenseKind(kind)
-          : parseIncludeInLedger(body.include_in_ledger, false),
-      sort_order: sortOrder,
-      details: nextDetails,
-      visible_to_client: false,
-      ...("billing_company_id" in company ? { billing_company_id: company.billing_company_id } : {}),
-    })
-    .select("*")
-    .single();
+  const { data, error } = await writeBookingItem(supabase, "insert", {
+    booking_id: bookingId,
+    kind,
+    title: String(nextBody.title || title).trim(),
+    supplier: nextBody.supplier || null,
+    confirmation_ref: nextBody.confirmation_ref || null,
+    start_at: nextBody.start_at || null,
+    end_at: nextBody.end_at || null,
+    amount: nextAmount,
+    include_in_ledger: stayCard
+      ? columnMode === "avec"
+      : isLedgerExpenseKind(kind)
+        ? true
+        : parseIncludeInLedger(body.include_in_ledger, false),
+    sort_order: sortOrder,
+    details: nextDetails,
+    visible_to_client: false,
+    ...(columnMode ? { price_mode: columnMode } : {}),
+    ...("billing_company_id" in company ? { billing_company_id: company.billing_company_id } : {}),
+  });
   if (error || !data) return { error: dbErrorMessage(error as DbErrorLike, "Carte non créée."), status: 400 };
+  if (kind === "hotel") {
+    try {
+      const { scheduleHotelWebEnrichment } = await import("@/lib/crm/hotel-web-schedule");
+      scheduleHotelWebEnrichment(String(data.id));
+    } catch (scheduleError) {
+      console.warn("[hotel-web]", scheduleError instanceof Error ? scheduleError.message : "planification");
+    }
+  }
   if (!isLedgerExpenseKind(kind)) {
     try {
       await persistBookingCardOrder(supabase, bookingId, { createdIds: [String(data.id)] });
@@ -245,14 +288,25 @@ export async function patchStaffBookingCard(
     patch.details = priced.details;
     patch.include_in_ledger = true;
   }
+  if (!isLedgerExpenseKind(row.kind) && !isExtraItemKind(row.kind)) {
+    const details = (
+      patch.details && typeof patch.details === "object" ? patch.details : row.details
+    ) as Record<string, unknown> | null;
+    const amount = "amount" in patch ? (patch.amount as number | null) : parseMoney(row.amount);
+    const mode = readCardPriceMode({ amount, details });
+    if ((("amount" in patch) || (details && details.price_mode === "avec") || (details && details.price_mode === "sans")) && mode === "avec" && !(Number(amount) > 0)) {
+      return { error: "Indiquez le prix de vente.", status: 400 };
+    }
+    if ("amount" in patch || (details && (details.price_mode === "avec" || details.price_mode === "sans"))) {
+      const stamped: CardPriceMode =
+        mode === "avec" && Number(amount) > 0 ? "avec" : mode === "sans" ? "sans" : readCardPriceMode({ amount, details });
+      patch.details = withCardPriceMode(details, stamped);
+      patch.price_mode = stamped;
+      patch.include_in_ledger = stamped === "avec";
+    }
+  }
   if (!Object.keys(patch).length) return { error: "Rien à mettre à jour", status: 400 };
-  const { data, error } = await supabase
-    .from("crm_booking_items")
-    .update(patch)
-    .eq("id", itemId)
-    .eq("booking_id", bookingId)
-    .select("*")
-    .single();
+  const { data, error } = await writeBookingItem(supabase, "update", patch, { id: itemId, bookingId });
   if (error || !data) return { error: dbErrorMessage(error as DbErrorLike, "Carte non modifiée."), status: 400 };
   if ("start_at" in body || "end_at" in body) {
     try {

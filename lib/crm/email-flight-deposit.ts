@@ -10,6 +10,9 @@ import {
 } from "@/lib/crm/email-match";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
 import { isPlaceholderReference } from "@/lib/crm/ingest-samples";
+import { countRealTickets, guardAutoFlightTravelers } from "@/lib/crm/ticket-party";
+
+export { guardAutoFlightTravelers };
 
 type FlightExtractItem = MatchableItem & {
   amount?: number | null;
@@ -49,6 +52,7 @@ export type FlightAutoCandidate = {
   start_date?: string | null;
   end_date?: string | null;
   covers_passengers?: boolean;
+  destination?: string | null;
 };
 
 const DAY_MS = 86_400_000;
@@ -243,6 +247,8 @@ export function planFlightDeposit(extract: FlightExtract | null | undefined): { 
 }
 
 function countedTickets(item: MatchableItem, fallback: number) {
+  const real = countRealTickets(item.details?.passengers, item.details?.ticket_numbers);
+  if (real != null) return real;
   const stated = statedTicketCount(item);
   if (stated != null) return stated;
   const passengers = item.details?.passengers;
@@ -312,7 +318,8 @@ export function sumFlightTicketCounts<T extends FlightExtract>(
     else details.document_amount = cost;
     if (refund == null) delete details.refund_amount;
     else details.refund_amount = refund;
-    details.ticket_count = revision.revised ? passengers.length : previous + incoming;
+    const realTickets = countRealTickets(passengers);
+    details.ticket_count = realTickets ?? (revision.revised ? passengers.length : previous + incoming);
     details.ticket_email_ids = [...ids];
     if (hit) delete details.email_ingest_id;
     if (passengers.length || revision.revised) details.passengers = passengers;
@@ -412,8 +419,8 @@ function travelerDatesBlocked(
   return dossierSpansTooLong(hit.start_date, hit.end_date);
 }
 
-/** Extract stocké avant le correctif PNR / distance / passagers. */
-export const FLIGHT_PARSER_REVISION = 2;
+/** Extract stocké avant le correctif des passagers compagnie/PNR. */
+export const FLIGHT_PARSER_REVISION = 3;
 
 export function flightParserRevision(raw: unknown) {
   if (!raw || typeof raw !== "object") return 0;

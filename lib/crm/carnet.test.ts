@@ -11,6 +11,12 @@ import {
   stayNameField,
   tripHeadline,
   tripPlaceLine,
+  stayHeroPlace,
+  carClosedFace,
+  carDayRole,
+  frenchVehicleName,
+  airportPlaceLabel,
+  hotelNightFace,
   clientVisibleItems,
   flightCardSubtitle,
   flightCardTitle,
@@ -29,6 +35,7 @@ import {
   clientShowList,
   pendingPublishCards,
   publishRevealIds,
+  documentsForItems,
   showClientCardCountCopy,
   unlinkedDocuments,
   whatsappModifyHref,
@@ -183,17 +190,26 @@ describe("carnet", () => {
     assert.equal(groups[1][1].some((row) => row.kind === "activity"), false);
   });
 
-  it("répète la location chaque jour, sans le jour de restitution", () => {
+  it("répète la location et montre la restitution le matin du retour", () => {
     const groups = groupByDay([
       item({
         id: "c",
         kind: "car",
         title: "Hertz",
-        start_at: "2026-08-12",
-        end_at: "2026-08-15",
+        start_at: "2026-08-12T09:30:00",
+        end_at: "2026-08-15T09:30:00",
+        sort_order: 2,
+      }),
+      item({
+        id: "f",
+        kind: "flight",
+        title: "Retour",
+        start_at: "2026-08-15T11:40:00",
+        sort_order: 0,
       }),
     ]);
-    assert.equal(groups.map(([day]) => day).join(","), "2026-08-12,2026-08-13,2026-08-14");
+    assert.equal(groups.map(([day]) => day).join(","), "2026-08-12,2026-08-13,2026-08-14,2026-08-15");
+    assert.equal(groups[3][1].map((row) => row.id).join(","), "c,f");
   });
 
   it("affiche le prix vendu seulement le premier jour", () => {
@@ -286,6 +302,10 @@ describe("carnet", () => {
     assert.equal(stayNameField(shown, shown).dirty, false);
     assert.equal(tripPlaceLine("Paris · Milan · Rome", "Paris · Milan"), null);
     assert.equal(tripPlaceLine("40 ans", "Marrakech"), "Marrakech");
+    assert.equal(stayHeadline("", "Nice", ["Mayakoba"]), "Mayakoba");
+    assert.equal(stayHeadline("", "Marrakech", []), "Marrakech");
+    assert.equal(stayHeroPlace("Nice · Bordeaux · Mayakoba", "Nice"), null);
+    assert.equal(stayHeroPlace("40 ans", "Marrakech"), "Marrakech");
   });
 
   it("sert la photo catalogue du lieu, pas Unsplash", () => {
@@ -317,6 +337,60 @@ describe("carnet", () => {
   it("affiche l’heure locale imprimée sans conversion", () => {
     assert.equal(itemClock("2026-08-12T08:40:00"), "08h40");
     assert.equal(itemClock("2026-08-12T00:00:00"), "");
+  });
+
+  it("donne trois visages à une location de plusieurs jours", () => {
+    const car = item({
+      kind: "car",
+      title: "PEUGEOT 3008 AUTOMATICO ou similaire",
+      supplier: "Expedia TAAP",
+      confirmation_ref: "1209347615",
+      start_at: "2026-12-20T09:30:00",
+      end_at: "2026-12-27T09:30:00",
+      details: {
+        vehicle: "PEUGEOT 3008 AUTOMATICO ou similaire",
+        pickup: "Palma de Majorque (PMI)",
+        dropoff: "Palma de Majorque (PMI)",
+      },
+    });
+    assert.equal(frenchVehicleName("PEUGEOT 3008 AUTOMATICO ou similaire"), "Peugeot 3008 automatique ou similaire");
+    assert.equal(airportPlaceLabel("Palma de Majorque (PMI)"), "Aéroport de Palma (PMI)");
+    assert.equal(carDayRole(car, "2026-12-20"), "pickup");
+    assert.equal(carDayRole(car, "2026-12-22"), "during");
+    assert.equal(carDayRole(car, "2026-12-27"), "return");
+    const pickup = carClosedFace(car, "2026-12-20");
+    assert.equal(pickup.kicker, "Voiture · prise en charge 09h30");
+    assert.equal(pickup.subtitle, "Aéroport de Palma (PMI)");
+    assert.equal(pickup.quiet, false);
+    assert.doesNotMatch(pickup.kicker, /→/);
+    const middle = carClosedFace(car, "2026-12-22");
+    assert.equal(middle.quiet, true);
+    assert.match(middle.title, /avec vous jusqu’au 27 décembre/);
+    assert.equal(middle.subtitle, "");
+    const back = carClosedFace(car, "2026-12-27");
+    assert.equal(back.kicker, "Voiture · restitution 09h30");
+    const sameDay = carClosedFace(
+      item({
+        kind: "car",
+        title: "Fiat",
+        start_at: "2026-08-12T09:30:00",
+        end_at: "2026-08-12T18:00:00",
+      }),
+      "2026-08-12"
+    );
+    assert.equal(sameDay.kicker, "Voiture · 09h30 → 18h00");
+    const hotel = item({
+      kind: "hotel",
+      title: "Can Verí",
+      start_at: "2026-12-21",
+      end_at: "2026-12-28",
+      details: { city: "Sóller", hotel_name: "Can Verí Suites" },
+    });
+    assert.equal(hotelNightFace(hotel, "2026-12-21").first, true);
+    assert.equal(hotelNightFace(hotel, "2026-12-21").total, 7);
+    assert.equal(hotelNightFace(hotel, "2026-12-23").index, 3);
+    assert.equal(stayHeroPlace("Majorque", "Majorque", [hotel]), "Sóller");
+    assert.equal(stayHeroPlace("Sóller", "Sóller", [hotel]), null);
   });
 
   it("sépare IATA et villes sur le vol", () => {
@@ -394,6 +468,36 @@ describe("carnet", () => {
     assert.equal(nextTimelineFlight([item({ kind: "hotel", start_at: "2026-08-02", visible_to_client: true }), next], "2026-08-01"), null);
     assert.equal(nextTimelineFlight([next], "2026-08-01")?.airline, "Copa");
     assert.equal(clientVisibleItems([hidden, next]).map((row) => row.id).join(","), "next");
+  });
+
+  it("suit details.price_mode, puis la colonne, pour l’admin, le client et le lien public", () => {
+    const avecColonneSans = item({
+      kind: "hotel",
+      amount: 900,
+      price_mode: "sans",
+      details: { price_mode: "avec", hotel_name: "The Siam" },
+    });
+    assert.equal(itemPriceLabel(avecColonneSans, "EUR"), formatMoney(900, "EUR"));
+    assert.equal(itemPriceLabel(avecColonneSans, "EUR", null, false), "Prix à la publication");
+    assert.equal(itemPriceLabel(avecColonneSans, "EUR", null, true, "forfait"), null);
+
+    const sansColonneAvec = item({
+      kind: "flight",
+      amount: 450,
+      price_mode: "avec",
+      details: { price_mode: "sans" },
+    });
+    assert.equal(itemPriceLabel(sansColonneAvec, "EUR"), null);
+    assert.equal(itemPriceLabel(sansColonneAvec, "EUR", null, false), null);
+
+    const hotelAncien = item({
+      kind: "hotel",
+      title: "Can Verí",
+      amount: 640,
+      price_mode: "avec",
+      details: {},
+    });
+    assert.equal(itemPriceLabel(hotelAncien, "EUR"), formatMoney(640, "EUR"));
   });
 
   it("affiche le prix unitaire × billets", () => {
@@ -560,6 +664,73 @@ describe("insuranceLineLabel", () => {
     assert.equal(insuranceLineLabel("Multirisque Allianz"), "Assurance Multirisque Allianz");
     assert.equal(insuranceLineLabel("  "), "Assurance");
     assert.equal(insuranceLineLabel(null), "Assurance");
+  });
+});
+
+describe("billets sur plusieurs vols", () => {
+  function doc(partial: Partial<CrmBookingDocument> & { id: string }): CrmBookingDocument {
+    return {
+      booking_id: "b1",
+      kind: "pdf",
+      file_name: `${partial.id}.pdf`,
+      mime_type: "application/pdf",
+      storage_path: `bookings/b1/${partial.id}.pdf`,
+      visible_to_client: true,
+      created_at: "2026-04-01",
+      ...partial,
+    };
+  }
+  const ek78 = item({
+    id: "ek78",
+    title: "Nice → Dubaï",
+    confirmation_ref: "ZU5TCO",
+    start_at: "2027-04-13T15:50:00",
+    details: { pnr: "KDP4AS", flight_number: "EK 78", from: "NCE", to: "DXB" },
+  });
+  const ek209 = item({
+    id: "ek209",
+    title: "Dubaï → Athènes",
+    confirmation_ref: "ZU5TCO",
+    start_at: "2027-04-20T10:50:00",
+    details: { pnr: "KDP4AS", flight_number: "EK 209", from: "DXB", to: "ATH" },
+  });
+  const aegean = item({
+    id: "a3690",
+    title: "Athènes → Nice",
+    confirmation_ref: "YFFRS8",
+    start_at: "2027-05-02T09:00:00",
+    details: { pnr: "YFFRS8", flight_number: "A3 690", from: "ATH", to: "NCE" },
+  });
+  const hotel = item({
+    id: "hotel",
+    kind: "hotel",
+    title: "Hôtel",
+    confirmation_ref: "H1",
+    details: { hotel_name: "Hôtel" },
+  });
+
+  it("montre les cinq e-tickets sur chaque vol du PNR, pas sur l’autre réservation", () => {
+    const emirates = ["p1", "p2", "p3", "p4"].map((id) => doc({ id, booking_item_id: "ek78", visible_to_client: true }));
+    const imported = doc({ id: "p5", booking_item_id: "ek209", kind: "pdf", visible_to_client: false });
+    const returns = ["r1", "r2", "r3", "r4", "r5"].map((id) => doc({ id, booking_item_id: "a3690" }));
+    const voucher = doc({ id: "hotel-pdf", booking_item_id: "hotel", file_name: "voucher-hotel.pdf" });
+    const pass = doc({ id: "pass", booking_item_id: "ek78", kind: "carte d'embarquement", file_name: "carte.pdf" });
+    const docs = [...emirates, imported, ...returns, voucher, pass];
+    const dossier = [ek78, ek209, aegean, hotel];
+    const on78 = documentsForItems([ek78], docs, dossier).map((row) => row.id);
+    const on209 = documentsForItems([ek209], docs, dossier).map((row) => row.id);
+    const onReturn = documentsForItems([aegean], docs, dossier).map((row) => row.id);
+    const onHotel = documentsForItems([hotel], docs, dossier).map((row) => row.id);
+    assert.deepEqual(on78.filter((id) => /^p\d$/.test(id)).sort(), ["p1", "p2", "p3", "p4", "p5"]);
+    assert.deepEqual(on209.filter((id) => /^p\d$/.test(id)).sort(), ["p1", "p2", "p3", "p4", "p5"]);
+    assert.equal(on78.includes("pass"), true);
+    assert.equal(on209.includes("pass"), false);
+    assert.deepEqual(onReturn.sort(), ["r1", "r2", "r3", "r4", "r5"]);
+    assert.deepEqual(onHotel, ["hotel-pdf"]);
+    assert.equal(imported.visible_to_client, false);
+    const loose = unlinkedDocuments(docs, dossier).map((row) => row.id);
+    assert.equal(loose.includes("p1"), false);
+    assert.equal(loose.includes("hotel-pdf"), false);
   });
 });
 

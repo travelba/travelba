@@ -15,14 +15,18 @@ function stayLabel(nights: number) {
 
 function Photos({ images, name }: { images: string[]; name: string }) {
   const scroller = useRef<HTMLDivElement>(null);
-  const [at, setAt] = useState(0);
+  const at = useRef(0);
+  const pin = useRef<HTMLParagraphElement>(null);
   const [failed, setFailed] = useState<string[]>([]);
   const shown = images.filter((src) => !failed.includes(src));
 
   function onScroll() {
     const node = scroller.current;
     if (!node || node.clientWidth < 1) return;
-    setAt(Math.max(0, Math.min(shown.length - 1, Math.round(node.scrollLeft / node.clientWidth))));
+    const next = Math.max(0, Math.min(shown.length - 1, Math.round(node.scrollLeft / node.clientWidth)));
+    if (next === at.current) return;
+    at.current = next;
+    if (pin.current) pin.current.textContent = `${next + 1}/${shown.length}`;
   }
 
   return (
@@ -56,8 +60,8 @@ function Photos({ images, name }: { images: string[]; name: string }) {
         )}
       </div>
       {shown.length > 1 ? (
-        <p className="h-pin absolute bottom-2 right-2">
-          {Math.min(at + 1, shown.length)}/{shown.length}
+        <p ref={pin} className="h-pin absolute bottom-2 right-2">
+          1/{shown.length}
         </p>
       ) : null}
     </div>
@@ -71,7 +75,7 @@ export function HotelMapPreview({
   onClose,
 }: {
   hotel: ClientHotel;
-  onOpen: (hotel: ClientHotel) => void;
+  onOpen: (hotel: ClientHotel, focus?: "tarifs") => void;
   onClose: () => void;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -127,8 +131,15 @@ export function HotelMapPreview({
         </p>
         <button
           type="button"
-          data-hotel-map-fiche="1"
           className="h-btn h-search-go h-press mt-3 flex h-12 w-full items-center justify-center text-sm font-semibold"
+          onClick={() => onOpen(hotel, "tarifs")}
+        >
+          Voir les tarifs
+        </button>
+        <button
+          type="button"
+          data-hotel-map-fiche="1"
+          className="h-btn-line h-press mt-2 flex h-11 w-full items-center justify-center text-sm font-semibold"
           onClick={() => onOpen(hotel)}
         >
           Voir la fiche

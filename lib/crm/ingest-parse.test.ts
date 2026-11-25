@@ -21,6 +21,7 @@ import {
   parseDdMonYy,
   parseHotelConfirmationLetter,
   parseExpediaTaap,
+  parseExpediaTaapCar,
   frenchLeBenefitLine,
   parseLittleEmperorsGuests,
   parseLittleEmperorsHotel,
@@ -149,8 +150,9 @@ describe("redactIngestText", () => {
     });
     assert.equal(cleaned.total_amount, 0);
     assert.equal(cleaned.document_status, "quote");
-    assert.equal((cleaned.notes_client || "").includes("8445"), false);
-    assert.match(cleaned.notes_client || "", /Devis/);
+    assert.equal(cleaned.notes_client, null);
+    assert.equal((cleaned.notes_internal || "").includes("8445"), false);
+    assert.match(cleaned.notes_internal || "", /Devis/);
   });
 
   it("masque une ligne Numéro de la carte maeva", () => {
@@ -336,14 +338,114 @@ Distance 3 610,00 km
     assert.equal(JSON.stringify(items).includes("3 610"), false);
   });
 
-  it("lit le tableau passager et ne garde que les 4 derniers chiffres", () => {
+  it("lit le tableau passager, le numéro à 13 chiffres et ignore la carte fidélité", () => {
     const people = parseTicketPassengers(EASYJET);
     assert.equal(people.length, 1);
     assert.equal(people[0]?.first_name, "Pax");
     assert.equal(people[0]?.last_name, "Test");
+    assert.equal(people[0]?.ticket_number, "0000000001234");
     assert.equal(people[0]?.ticket_last4, "1234");
-    assert.equal(JSON.stringify(people).includes("0000001234"), false);
-    assert.equal(JSON.stringify(people).includes("000-0000001234"), false);
+    assert.equal(JSON.stringify(people).includes("5019257094"), false);
+  });
+
+  it("lit NOM/PRENOM MR, MRS, MSTR et le titre collé", () => {
+    const slash = parseTicketPassengers("Passager MARTIN/LEA MRS 057-2123456789");
+    assert.equal(slash[0]?.first_name, "Lea");
+    assert.equal(slash[0]?.last_name, "Martin");
+    assert.equal(slash[0]?.ticket_number, "0572123456789");
+    const child = parseTicketPassengers("MARTIN/NOA MSTR");
+    assert.deepEqual(
+      child.map((row) => `${row.first_name} ${row.last_name}`),
+      ["Noa Martin"]
+    );
+    const glued = parseTicketPassengers("MARTIN/LEAMRS");
+    assert.equal(glued[0]?.first_name, "Lea");
+    assert.equal(glued[0]?.last_name, "Martin");
+    assert.equal(parseTicketPassengers("Référence du dossier compagnie AF/ABC123").length, 0);
+    assert.equal(parseTicketPassengers("Référence du dossier compagnie AF/ZLFJIN, LY/ZLFJIN").length, 0);
+    assert.equal(parseTicketPassengers("Référence du dossier compagnie AF/XETHOS").length, 0);
+    assert.equal(parseTicketPassengers("Référence du dossier compagnie AF/XFTSWW").length, 0);
+    assert.equal(parseTicketPassengers("Référence du dossier compagnie AF/ZFSBMS").length, 0);
+  });
+});
+
+const ZOE_RECEIPT = `
+Reçu de Billet Electronique
+Référence du dossier ZLFJIN
+Passager / Numéro De Billet
+BENILLOUCHE/ZOE MS 114-3812456790
+Compagnie émettrice : EL AL
+Mardi 24 novembre 2026
+El Al LY 9843 (Opéré Par El Al, LY)
+24 November 18:00 Ben Gurion TEL AVIV Terminal : 3Départ
+24 November 22:00 Charles-de-Gaulle PARIS Terminal : 2EArrivée
+Siège 12A - Confirmé pour Ms Zoe Benillouche
+Référence du dossier compagnie AF/ZLFJIN, LY/ZLFJIN
+Numéro de billet : 114-3812456790 Ms Zoe Benillouche
+`;
+
+describe("reçu compagnie, une passagère et des références AF/PNR", () => {
+  it("garde Zoe Benillouche et ignore AF/ZLFJIN et LY/ZLFJIN", () => {
+    const people = parseTicketPassengers(ZOE_RECEIPT);
+    assert.deepEqual(
+      people.map((row) => `${row.first_name} ${row.last_name}`),
+      ["Zoe Benillouche"]
+    );
+    assert.equal(people[0]?.ticket_number, "1143812456790");
+    const parsed = parsedItemsFromText(ZOE_RECEIPT);
+    assert.equal(parsed.travelers.length, 1);
+    assert.equal(parsed.travelers[0]?.first_name, "Zoe");
+    assert.equal(parsed.travelers[0]?.last_name, "Benillouche");
+    const flight = parsed.items.find((item) => item.kind === "flight");
+    const details = flight?.details as { passengers?: { first_name: string; last_name: string }[]; ticket_count?: number };
+    assert.equal(details?.ticket_count, 1);
+    assert.deepEqual(
+      (details?.passengers || []).map((row) => `${row.first_name} ${row.last_name}`),
+      ["Zoe Benillouche"]
+    );
+    assert.equal(JSON.stringify(parsed).includes("Zlfjin"), false);
+  });
+});
+
+const RECEIPT = `
+Reçu de Billet Electronique
+Référence du dossier ABC123
+Dimanche 04 avril 2027
+-Passager Numéro De Billet Compagnie émettrice
+-Mr Lea Martin 057-2123456789 Air France
+Compagnie émettrice : AIR FRANCE
+Air France AF 1001 (Opéré Par Air France, )
+04 April 08:20 Aéroport Charles-de-Gaulle PARIS Terminal : 6Départ
+04 April 10:00 Côte d'Azur NICE Terminal : 2Arrivée
+Siège 12A(Non smoking,AISLE) - Confirmé pour Mr Lea Martin
+Dimanche 11 avril 2027
+Air France AF 1002 (Opéré Par Air France, )
+11 April 09:40 Côte d'Azur NICE Terminal : 2Départ
+11 April 11:15 Aéroport Charles-de-Gaulle PARIS Terminal : 6Arrivée
+Siège 14C(Non smoking,WINDOW) - Confirmé pour Mr Lea Martin
+Référence du dossier compagnie AF/ABC123
+Numéro de billet : 057-2123456789 Mr Lea Martin date d'émission:
+Nº de carte fidélité AF5019257094 pour Mr Lea Martin
+`;
+
+describe("reçu Amadeus fictif", () => {
+  it("nomme le passager, le billet à 13 chiffres et la place de chaque segment", () => {
+    const parsed = parsedItemsFromText(RECEIPT);
+    assert.equal(parsed.items.length, 2);
+    assert.equal(parsed.travelers[0]?.first_name, "Lea");
+    assert.equal(parsed.travelers[0]?.last_name, "Martin");
+    const out = parsed.items[0];
+    const back = parsed.items[1];
+    assert.equal(out?.details?.flight_number, "AF 1001");
+    assert.equal(out?.details?.from, "CDG");
+    assert.equal(out?.details?.to, "NCE");
+    assert.equal(out?.confirmation_ref, "ABC123");
+    const people = out?.details?.passengers as { first_name: string; last_name: string; ticket_number?: string; seat?: string }[];
+    assert.equal(people?.[0]?.ticket_number, "0572123456789");
+    assert.equal(people?.[0]?.seat, "12A");
+    assert.equal((back?.details?.passengers as { seat?: string }[])?.[0]?.seat, "14C");
+    assert.equal(JSON.stringify(parsed).includes("5019257094"), false);
+    assert.equal(JSON.stringify(parsed).includes("\"Mr\""), false);
   });
 });
 
@@ -475,6 +577,61 @@ describe("Expedia TAAP", () => {
       assert.equal(decision.firstName, "Camille");
       assert.equal(decision.lastName, "Martin");
     }
+  });
+
+  it("lit une location de voiture et n’en fait pas un hôtel", () => {
+    const mail = `
+Confirmation de voyage TAAP
+De : noreply@expediataap.fr
+
+Location de voiture
+Peugeot 3008 ou similaire
+Conducteur : Camille Martin
+
+N° de confirmation : 81899756
+
+Prise en charge et restitution
+Nice (NCE)
+04/04/2027 10:30
+Nice (NCE)
+11/04/2027 09:00
+
+Loueur : Europcar
+Téléphone : +33 4 00 00 00 00
+
+Prix total : 337,23 €
+
+Conditions d'annulation
+Annulation gratuite jusqu'au 1 avril 2027.
+`;
+    assert.equal(classifyIngestFamily(mail, "taap.txt"), "expedia_taap_car");
+    const car = parseExpediaTaapCar(mail);
+    assert.ok(car);
+    assert.equal(car.vehicle, "Peugeot 3008 ou similaire");
+    assert.equal(car.driver, "Camille Martin");
+    assert.equal(car.travelers[0]?.first_name, "Camille");
+    assert.equal(car.travelers[0]?.last_name, "Martin");
+    assert.equal(car.confirmation_ref, "81899756");
+    assert.equal(car.pickup, "Nice (NCE)");
+    assert.equal(car.dropoff, "Nice (NCE)");
+    assert.equal(car.start_at, "2027-04-04T10:30:00");
+    assert.equal(car.end_at, "2027-04-11T09:00:00");
+    assert.equal(car.supplier, "Europcar");
+    assert.equal(car.phone, "+33 4 00 00 00 00");
+    assert.equal(car.amount, 337.23);
+    assert.equal(car.currency, "EUR");
+    assert.match(car.cancellation || "", /Annulation gratuite/);
+
+    const parsed = parsedItemsFromText(mail);
+    assert.equal(parsed.items.some((item) => item.kind === "hotel"), false);
+    const item = parsed.items.find((item) => item.kind === "car");
+    assert.equal(item?.title, "Peugeot 3008 ou similaire");
+    assert.equal(item?.amount, null);
+    assert.equal(item?.details?.document_amount, 337.23);
+    assert.equal(item?.details?.phone, "+33 4 00 00 00 00");
+    assert.match(String(item?.details?.notes || ""), /Annulation gratuite/);
+    assert.notEqual(parsed.status, "cancelled");
+    assert.equal(classifyIngestFamily(TAAP_MAIL, "hotel.txt"), "expedia_taap");
   });
 
   it("laisse vide ce qui n’est pas imprimé", () => {

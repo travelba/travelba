@@ -1,4 +1,6 @@
 import { catalogNameAgrees } from "@/lib/crm/hotel-gallery";
+import { namesReferToSamePerson } from "@/lib/crm/person-match";
+import { countRealTickets } from "@/lib/crm/ticket-party";
 import type { BookingItemKind } from "@/lib/crm/types";
 
 export type MatchableItem = {
@@ -91,20 +93,56 @@ function pnrsOverlap(left: MatchableItem, right: MatchableItem) {
   return false;
 }
 
+function flightPeople(item: MatchableItem) {
+  const rows = item.details?.passengers;
+  if (!Array.isArray(rows)) return [];
+  const people: { first_name: string; last_name: string }[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const person = row as { first_name?: unknown; last_name?: unknown };
+    const first_name = typeof person.first_name === "string" ? person.first_name.trim() : "";
+    const last_name = typeof person.last_name === "string" ? person.last_name.trim() : "";
+    if (!first_name && !last_name) continue;
+    people.push({ first_name, last_name });
+  }
+  return people;
+}
+
+function flightPartiesOverlap(left: MatchableItem, right: MatchableItem) {
+  const incoming = flightPeople(left);
+  const current = flightPeople(right);
+  if (!incoming.length || !current.length) return false;
+  return incoming.some((person) =>
+    current.some((other) =>
+      namesReferToSamePerson(
+        { first_name: person.first_name, last_name: person.last_name },
+        { first_name: other.first_name, last_name: other.last_name }
+      )
+    )
+  );
+}
+
 /**
  * Même jour : le numéro de vol d’abord (`U2 4692` = `EJU4692`).
  * Le PNR ne réunit pas deux segments différents (EK 706 puis EK 75).
- * Il complète seulement une carte du même PNR qui n’a pas encore de numéro.
+ * Même vol, même jour : la carte déjà là, même si le PNR diffère.
+ * Deux groupes de passagers distincts restent deux cartes.
  */
 export function findFlightCard<T extends MatchableItem>(existing: T[], incoming: MatchableItem): T | null {
   if ((incoming.kind || "") !== "flight" || !day(incoming.start_at)) return null;
   const sameDay = existing.filter((row) => (row.kind || "") === "flight" && sameFlightDay(row, incoming));
   const number = detail(incoming, "flight_number");
   if (number) {
-    const byNumber = sameDay.find(
-      (row) => flightNumbersAlign(number, detail(row, "flight_number")) && pnrsCompatible(incoming, row)
-    );
-    if (byNumber) return byNumber;
+    const aligned = sameDay.filter((row) => flightNumbersAlign(number, detail(row, "flight_number")));
+    const compatible = aligned.find((row) => pnrsCompatible(incoming, row));
+    if (compatible) return compatible;
+    const incomingPeople = flightPeople(incoming);
+    const sameParty = aligned.find((row) => {
+      const current = flightPeople(row);
+      if (!incomingPeople.length || !current.length) return true;
+      return flightPartiesOverlap(incoming, row);
+    });
+    if (sameParty) return sameParty;
     return sameDay.find((row) => !detail(row, "flight_number") && pnrsOverlap(incoming, row)) || null;
   }
   return sameDay.find((row) => pnrsOverlap(incoming, row)) || null;
@@ -120,7 +158,7 @@ export function hotelRefTokens(ref: string | null | undefined) {
 const LE_ROOM_REF = /^(\d{4,})SH\d+$/;
 const LE_BOOKING_REF = /^(\d{4,})$/;
 
-/** Réservation Little Emperors : `64570`, ou chambre `64570SH046795`. */
+/** Réservation Little Emperors : `64570`, ou chambre `64570SH046795`. Le préfixe avant `SH` est le code hôtel. */
 export function hotelBookingStem(ref: string | null | undefined): string | null {
   for (const token of hotelRefTokens(ref)) {
     const room = token.match(LE_ROOM_REF);
@@ -131,8 +169,36 @@ export function hotelBookingStem(ref: string | null | undefined): string | null 
   return null;
 }
 
-/** Même réservation, y compris le numéro court et une autre chambre. Deux numéros sans `SH` ne se rejoignent pas. */
+function leRoomTokens(ref: string | null | undefined) {
+  return hotelRefTokens(ref).filter((token) => LE_ROOM_REF.test(token));
+}
+
+/** Préfixe court d’un seul numéro `…SH…`. Absent si la référence n’est pas une chambre. */
+export function confirmationShortStem(value: string | null | undefined): string | null {
+  const rooms = leRoomTokens(value);
+  if (rooms.length !== 1) return null;
+  return hotelBookingStem(rooms[0]);
+}
+
+/** La carte ne porte que le numéro court, pas une autre chambre `…SH…`. */
+export function cardStoresShortStem(stored: string | null | undefined, stem: string | null | undefined) {
+  const key = (stem || "").toUpperCase();
+  if (!key) return false;
+  const tokens = hotelRefTokens(stored);
+  if (!tokens.includes(key)) return false;
+  return !tokens.some((token) => LE_ROOM_REF.test(token));
+}
+
+/**
+ * Même numéro exact, ou numéro court face à une seule chambre `…SH…`.
+ * Deux numéros `…SH…` distincts ne sont jamais la même réservation : les chiffres avant `SH` sont le code hôtel.
+ */
 export function hotelRefsShareBooking(a: string | null | undefined, b: string | null | undefined) {
+  const leftRooms = leRoomTokens(a);
+  const rightRooms = leRoomTokens(b);
+  if (leftRooms.length && rightRooms.length) {
+    return leftRooms.some((token) => rightRooms.includes(token));
+  }
   const stemA = hotelBookingStem(a);
   const stemB = hotelBookingStem(b);
   if (!stemA || stemA !== stemB) return false;
@@ -268,6 +334,7 @@ export function hotelSameStay(
 ) {
   const card: MatchableItem = { ...incoming, kind: incoming.kind || "" };
   if (current.kind !== "hotel" || card.kind !== "hotel") return false;
+  if (hotelRefsConflict(current.confirmation_ref, card.confirmation_ref)) return false;
   if (hotelRefsShareBooking(current.confirmation_ref, card.confirmation_ref)) return true;
   if (hotelsShareName(current, card)) return true;
   return hotelNightsShare(current, card);
@@ -327,9 +394,8 @@ function hotelNamesAgree(a: MatchableItem, b: MatchableItem) {
 }
 
 /**
- * Même hôtel (nom ou `le_hotel_id`) et dates exactes.
- * Deux numéros différents ne se bloquent pas : confirmation hôtel et numéro Little Emperors.
- * Deux identifiants d’hôtel différents ne se rejoignent pas.
+ * Même hôtel (nom ou `le_hotel_id`) et dates exactes, sans deux confirmations distinctes.
+ * Deux numéros différents restent deux cartes. Deux identifiants d’hôtel différents ne se rejoignent pas.
  */
 export function hotelExactStay(current: MatchableItem, incoming: MatchableItem) {
   if ((current.kind || "") !== "hotel" || (incoming.kind || "") !== "hotel") return false;
@@ -339,6 +405,7 @@ export function hotelExactStay(current: MatchableItem, incoming: MatchableItem) 
   const rightEnd = day(incoming.end_at);
   if (!leftStart || !rightStart || !leftEnd || !rightEnd) return false;
   if (leftStart !== rightStart || leftEnd !== rightEnd) return false;
+  if (hotelRefsConflict(current.confirmation_ref, incoming.confirmation_ref)) return false;
   const leftId = leHotelId(current);
   const rightId = leHotelId(incoming);
   if (leftId != null && rightId != null && leftId !== rightId) return false;
@@ -371,15 +438,31 @@ export function hotelMatchKeepsStay(current: MatchableItem, incoming: MatchableI
  * Une seule carte active porte cette réservation. Deux chambres actives : aucun choix,
  * l’agence désigne la carte.
  */
+function stayDaysMatch(current: MatchableItem, incoming: MatchableItem) {
+  const leftStart = day(current.start_at);
+  const rightStart = day(incoming.start_at);
+  if (!leftStart || !rightStart) return true;
+  if (leftStart !== rightStart) return false;
+  const leftEnd = day(current.end_at);
+  const rightEnd = day(incoming.end_at);
+  if (leftEnd && rightEnd && leftEnd !== rightEnd) return false;
+  return true;
+}
+
 export function findHotelBookingCard<T extends MatchableItem>(
   existing: T[],
   incoming: MatchableItem
 ): T | null {
   if ((incoming.kind || "") !== "hotel") return null;
   if (!hotelBookingStem(incoming.confirmation_ref)) return null;
-  const hits = existing.filter(
-    (row) => (row.kind || "") === "hotel" && hotelRefsShareBooking(incoming.confirmation_ref, row.confirmation_ref)
-  );
+  const hits = existing.filter((row) => {
+    if ((row.kind || "") !== "hotel") return false;
+    if (!hotelRefsShareBooking(incoming.confirmation_ref, row.confirmation_ref)) return false;
+    const exact = hotelRefTokens(incoming.confirmation_ref).some((token) =>
+      hotelRefTokens(row.confirmation_ref).includes(token)
+    );
+    return exact || stayDaysMatch(row, incoming);
+  });
   return hits.length === 1 ? hits[0] : null;
 }
 
@@ -521,8 +604,75 @@ export function findMatchingItem<T extends MatchableItem>(
   const flight = findFlightCard(existing, incoming);
   if (flight) return flight;
   const key = itemMatchKey(incoming);
-  if (!key) return null;
-  return existing.find((row) => itemMatchKey(row) === key) || null;
+  const keyed = key ? existing.find((row) => itemMatchKey(row) === key) || null : null;
+  if (keyed) return keyed;
+  return findServiceStay(existing, incoming);
+}
+
+const SERVICE_KINDS = new Set(["transfer", "car", "cruise", "activity", "insurance"]);
+
+const GENERIC_SERVICE_TITLE = new Set([
+  "LOCATION",
+  "VOITURE",
+  "TRANSFERT",
+  "ACTIVITE",
+  "PRESTATION",
+  "TRAIN",
+  "ASSURANCE",
+  "BATEAU",
+]);
+
+function serviceTitlesAgree(current: string | null | undefined, incoming: string | null | undefined) {
+  const left = norm(current);
+  const right = norm(incoming);
+  if (!left || !right || GENERIC_SERVICE_TITLE.has(left) || GENERIC_SERVICE_TITLE.has(right)) return true;
+  return left === right || left.includes(right) || right.includes(left);
+}
+
+export function isServiceKind(kind: string | null | undefined) {
+  return SERVICE_KINDS.has(kind || "");
+}
+
+/**
+ * Même prestation : même confirmation, ou mêmes dates et même fournisseur
+ * quand le numéro manque d’un côté. Deux confirmations différentes restent deux cartes.
+ */
+export function findServiceStay<T extends MatchableItem>(existing: T[], incoming: MatchableItem): T | null {
+  const kind = incoming.kind || "";
+  if (!SERVICE_KINDS.has(kind)) return null;
+  const inRef = norm(incoming.confirmation_ref);
+  const inStart = day(incoming.start_at);
+  const inEnd = day(incoming.end_at);
+  const inSupplier = norm(incoming.supplier);
+  return (
+    existing.find((row) => {
+      if ((row.kind || "") !== kind) return false;
+      const exRef = norm(row.confirmation_ref);
+      if (inRef && exRef && inRef !== exRef) return false;
+      if (inRef && exRef && inRef === exRef) return true;
+      if (!inSupplier || norm(row.supplier) !== inSupplier) return false;
+      if (!serviceTitlesAgree(row.title, incoming.title)) return false;
+      const exStart = day(row.start_at);
+      if (!inStart || !exStart || inStart !== exStart) return false;
+      const exEnd = day(row.end_at);
+      if (inEnd && exEnd && inEnd !== exEnd) return false;
+      return true;
+    }) || null
+  );
+}
+
+/** Complète les champs vides. Un champ déjà rempli du mail remplace le vide, pas l’inverse. */
+export function mergeFilledDetails(
+  current: Record<string, unknown> | null | undefined,
+  incoming: Record<string, unknown>
+) {
+  const merged: Record<string, unknown> = { ...(current || {}) };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value == null || value === "") continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    merged[key] = value;
+  }
+  return merged;
 }
 
 function fillEmpty<T>(current: T, incoming: T): T {
@@ -594,40 +744,328 @@ function mergeDetails(
   return out;
 }
 
+export type FlightPassengerRow = {
+  first_name: string;
+  last_name: string;
+  ticket_last4?: string;
+  ticket_number?: string;
+  seat?: string;
+};
+
+function passengerTokens(person: { first_name?: string; last_name?: string }) {
+  return `${person.first_name || ""} ${person.last_name || ""}`.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function readPassenger(value: unknown): FlightPassengerRow | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as {
+    first_name?: unknown;
+    last_name?: unknown;
+    ticket_last4?: unknown;
+    ticket_number?: unknown;
+    seat?: unknown;
+  };
+  const first_name = String(record.first_name || "").trim();
+  const last_name = String(record.last_name || "").trim();
+  if (!first_name && !last_name) return null;
+  const ticket = String(record.ticket_number || "").replace(/\D/g, "");
+  const ticket_number = ticket.length === 13 ? ticket : "";
+  const seat = String(record.seat || "").trim();
+  const ticket_last4 = ticket_number ? ticket_number.slice(-4) : String(record.ticket_last4 || "").trim();
+  return {
+    first_name,
+    last_name,
+    ...(ticket_number ? { ticket_number } : {}),
+    ...(ticket_last4 ? { ticket_last4 } : {}),
+    ...(seat ? { seat } : {}),
+  };
+}
+
+function absorbPassenger(current: FlightPassengerRow, incoming: FlightPassengerRow, writeTicket: boolean) {
+  const keepIncomingName = passengerTokens(incoming) > passengerTokens(current);
+  if (keepIncomingName) {
+    current.first_name = incoming.first_name;
+    current.last_name = incoming.last_name;
+  }
+  if (writeTicket && !current.ticket_number && incoming.ticket_number) {
+    current.ticket_number = incoming.ticket_number;
+    current.ticket_last4 = incoming.ticket_number.slice(-4);
+  }
+  if (writeTicket && !current.seat && incoming.seat) current.seat = incoming.seat;
+}
+
+/**
+ * Même personne : le nom le plus complet reste (un reçu ne raccourcit pas un passeport).
+ * Le numéro de billet et la place se complètent seulement s’ils manquent.
+ */
 export function mergeFlightPassengers(
   target: Record<string, unknown> | null | undefined,
-  incoming: Record<string, unknown> | null | undefined
+  incoming: Record<string, unknown> | null | undefined,
+  writeTicket = true
 ) {
-  const rows: { first_name: string; last_name: string; ticket_last4?: string }[] = [];
-  const seen = new Set<string>();
+  const rows: FlightPassengerRow[] = [];
   for (const list of [target?.passengers, incoming?.passengers]) {
     if (!Array.isArray(list)) continue;
     for (const person of list) {
-      if (!person || typeof person !== "object") continue;
-      const record = person as { first_name?: unknown; last_name?: unknown; ticket_last4?: unknown };
-      const first_name = String(record.first_name || "").trim();
-      const last_name = String(record.last_name || "").trim();
-      if (!first_name && !last_name) continue;
-      const key = `${first_name}|${last_name}`.toLocaleLowerCase("fr");
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const ticket_last4 = String(record.ticket_last4 || "").trim();
-      rows.push(ticket_last4 ? { first_name, last_name, ticket_last4 } : { first_name, last_name });
+      const read = readPassenger(person);
+      if (!read) continue;
+      const hit = rows.find((row) =>
+        namesReferToSamePerson(
+          { first_name: row.first_name, last_name: row.last_name },
+          { first_name: read.first_name, last_name: read.last_name }
+        )
+      );
+      if (!hit) {
+        rows.push(read);
+        continue;
+      }
+      absorbPassenger(hit, read, writeTicket);
     }
   }
   return rows;
 }
 
-/** Un e-ticket par passager → une carte vol. Deux réf. hôtel → une carte. */
-export function mergeExtractItems<T extends MatchableItem>(items: T[]): T[] {
+function listedSourceFiles(details?: Record<string, unknown> | null) {
+  const names: string[] = [];
+  const raw = details?.source_file_name;
+  const one = typeof raw === "string" ? raw.trim() : "";
+  if (one) names.push(one);
+  const many = details?.source_files;
+  if (Array.isArray(many)) {
+    for (const name of many) {
+      if (typeof name === "string" && name.trim()) names.push(name.trim());
+    }
+  }
+  return names;
+}
+
+function unionSourceFiles(...groups: (Record<string, unknown> | null | undefined)[]) {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const details of groups) {
+    for (const name of listedSourceFiles(details)) {
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+    }
+  }
+  return out;
+}
+
+function withFlightSourceFiles<T extends MatchableItem>(item: T): T {
+  if ((item.kind || "") !== "flight" || !item.details) return item;
+  const files = unionSourceFiles(item.details);
+  if (!files.length) return item;
+  return { ...item, details: { ...item.details, source_files: files } };
+}
+
+type RoomRow = Record<string, unknown>;
+
+function listedTokens(ref: string | null | undefined) {
+  const seen = new Set<string>();
+  const out: { key: string; raw: string }[] = [];
+  for (const raw of String(ref || "").split(/[;,\s/|]+/)) {
+    const trimmed = raw.trim();
+    const key = norm(trimmed);
+    if (key.length < 5 || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, raw: trimmed });
+  }
+  return out;
+}
+
+function roomRows(item: MatchableItem): RoomRow[] {
+  const rooms = item.details?.rooms;
+  if (!Array.isArray(rooms)) return [];
+  return rooms.filter((room): room is RoomRow => Boolean(room) && typeof room === "object");
+}
+
+function roomRef(room: RoomRow) {
+  return typeof room.confirmation_ref === "string" ? room.confirmation_ref : "";
+}
+
+/**
+ * Une carte par numéro `…SH…` distinct. Le numéro Little Emperors et la confirmation hôtel
+ * de la même chambre restent ensemble. Deux numéros `…SH…` ne se rejoignent jamais.
+ */
+export function hotelConfirmationGroups(item: MatchableItem): { refs: string[]; rooms: RoomRow[] }[] {
+  const rooms = roomRows(item);
+  const bookingTokens = listedTokens(item.confirmation_ref);
+  const sh = new Map<string, { raw: string; rooms: RoomRow[]; plains: string[] }>();
+  const remember = (key: string, raw: string, room?: RoomRow, plain?: string) => {
+    const row = sh.get(key) || { raw, rooms: [], plains: [] };
+    if (room && !row.rooms.includes(room)) row.rooms.push(room);
+    if (plain && !row.plains.includes(plain)) row.plains.push(plain);
+    sh.set(key, row);
+  };
+  for (const token of bookingTokens) {
+    if (LE_ROOM_REF.test(token.key)) remember(token.key, token.raw);
+  }
+  for (const room of rooms) {
+    const tokens = listedTokens(roomRef(room));
+    const roomSh = tokens.filter((token) => LE_ROOM_REF.test(token.key));
+    const plains = tokens.filter((token) => !LE_ROOM_REF.test(token.key));
+    for (const token of roomSh) {
+      remember(token.key, token.raw, room);
+      for (const plain of plains) remember(token.key, token.raw, room, plain.raw);
+    }
+  }
+  const stemOfRoom = (key: string) => [...sh.keys()].some((roomKey) => roomKey.startsWith(key));
+  const bookingPlains = bookingTokens.filter((token) => !LE_ROOM_REF.test(token.key) && !stemOfRoom(token.key));
+  if (sh.size === 0) {
+    const plains = new Map<string, string>();
+    for (const token of [...bookingTokens, ...rooms.flatMap((room) => listedTokens(roomRef(room)))]) {
+      if (!LE_ROOM_REF.test(token.key)) plains.set(token.key, token.raw);
+    }
+    if (plains.size <= 1 || rooms.length === 1) return [{ refs: [...plains.values()], rooms }];
+    if (!rooms.length) {
+      return [...plains.entries()].map(([, raw]) => ({ refs: [raw], rooms: [] }));
+    }
+    return rooms
+      .map((room) => {
+        const tokens = listedTokens(roomRef(room)).filter((token) => !LE_ROOM_REF.test(token.key));
+        return { room, tokens };
+      })
+      .filter((row) => row.tokens.length)
+      .map((row) => ({ refs: row.tokens.map((token) => token.raw), rooms: [row.room] }));
+  }
+  if (sh.size === 1) {
+    const only = [...sh.values()][0];
+    return [{
+      refs: [only.raw, ...only.plains, ...bookingPlains.map((token) => token.raw)],
+      rooms: only.rooms.length ? only.rooms : rooms,
+    }];
+  }
+  return [...sh.values()].map((row) => ({
+    refs: [row.raw, ...row.plains],
+    rooms: row.rooms,
+  }));
+}
+
+/** Une réservation dont les numéros diffèrent devient une carte par numéro. */
+export function expandDistinctHotelCards<T extends MatchableItem>(items: T[]): T[] {
   const out: T[] = [];
   for (const item of items) {
-    const hit = findMatchingItem(out, item) || foldHollowHotel(out, item);
+    if ((item.kind || "") !== "hotel") {
+      out.push(item);
+      continue;
+    }
+    const groups = hotelConfirmationGroups(item);
+    if (groups.length <= 1) {
+      out.push(item);
+      continue;
+    }
+    groups.forEach((group, index) => {
+      const details = { ...(item.details || {}) };
+      if (group.rooms.length) details.rooms = group.rooms;
+      if (index > 0) {
+        delete details.supplier_net;
+        delete details.supplier_net_eur;
+        delete details.document_amount;
+      }
+      const clone = {
+        ...item,
+        confirmation_ref: group.refs.filter(Boolean).join(";") || item.confirmation_ref,
+        details,
+      };
+      if (index > 0 && "amount" in clone) (clone as { amount?: number | null }).amount = null;
+      out.push(clone);
+    });
+  }
+  return out;
+}
+
+export const HOTEL_CONFIRMATION_GAP =
+  "Le document cite plusieurs confirmations d’hôtel distinctes, et il manque des cartes. À vérifier avant de montrer au client.";
+
+/** Cartes attendues : un numéro `…SH…` par carte, une confirmation hôtel liée à ce numéro ne compte pas en plus. */
+export function distinctHotelBookingCount(items: MatchableItem[]) {
+  const hotels = expandDistinctHotelCards(items).filter((item) => (item.kind || "") === "hotel");
+  const roomIndexes = hotels
+    .map((item, index) => (leRoomTokens(item.confirmation_ref).length ? index : -1))
+    .filter((index) => index >= 0);
+  const paired = new Set<number>();
+  let count = 0;
+  for (const index of roomIndexes) {
+    count += 1;
+    const plain = hotels.findIndex(
+      (item, other) => other !== index && !paired.has(other) && hotelLinkedRoom(hotels[index], item)
+    );
+    if (plain >= 0) paired.add(plain);
+  }
+  hotels.forEach((item, index) => {
+    if (roomIndexes.includes(index) || paired.has(index)) return;
+    if (hotelRefTokens(item.confirmation_ref).length || day(item.start_at)) count += 1;
+  });
+  return count;
+}
+
+/** Moins de cartes que de confirmations distinctes : l’écart reste visible. */
+export function flagMissingHotelCards<T extends MatchableItem>(source: T[], produced: T[]): T[] {
+  const expected = distinctHotelBookingCount(source);
+  const cards = produced.filter((item) => (item.kind || "") === "hotel").length;
+  if (expected < 2 || cards >= expected) return produced;
+  return produced.map((item) => {
+    if ((item.kind || "") !== "hotel") return item;
+    const details = { ...(item.details || {}) };
+    const current = typeof details.review_reason === "string" ? details.review_reason.trim() : "";
+    return {
+      ...item,
+      details: {
+        ...details,
+        needs_review: true,
+        review_reason: current || HOTEL_CONFIRMATION_GAP,
+      },
+    };
+  });
+}
+
+/**
+ * Numéro Little Emperors et confirmation hôtel de la même chambre, dans la même source.
+ * Deux numéros `…SH…` ne passent jamais ici.
+ */
+function hotelLinkedRoom(current: MatchableItem, incoming: MatchableItem) {
+  if ((current.kind || "") !== "hotel" || (incoming.kind || "") !== "hotel") return false;
+  const leftStart = day(current.start_at);
+  const rightStart = day(incoming.start_at);
+  if (!leftStart || !rightStart || leftStart !== rightStart) return false;
+  const leftEnd = day(current.end_at) || leftStart;
+  const rightEnd = day(incoming.end_at) || rightStart;
+  if (leftEnd !== rightEnd) return false;
+  const left = hotelRefTokens(current.confirmation_ref);
+  const right = hotelRefTokens(incoming.confirmation_ref);
+  if (!left.length || !right.length) return false;
+  const leftRooms = left.filter((token) => LE_ROOM_REF.test(token));
+  const rightRooms = right.filter((token) => LE_ROOM_REF.test(token));
+  if (leftRooms.length && rightRooms.length) return false;
+  const leftPlain = left.filter((token) => !LE_ROOM_REF.test(token) && !leftRooms.some((room) => room.startsWith(token)));
+  const rightPlain = right.filter((token) => !LE_ROOM_REF.test(token) && !rightRooms.some((room) => room.startsWith(token)));
+  const leftIsRoom = leftRooms.length === 1 && leftPlain.length === 0;
+  const rightIsRoom = rightRooms.length === 1 && rightPlain.length === 0;
+  const leftIsPlain = leftRooms.length === 0 && leftPlain.length === 1;
+  const rightIsPlain = rightRooms.length === 0 && rightPlain.length === 1;
+  if (!((leftIsRoom && rightIsPlain) || (rightIsRoom && leftIsPlain))) return false;
+  const leftNames = hotelLabels(current);
+  const rightNames = hotelLabels(incoming);
+  if (leftNames.length && rightNames.length && !hotelsShareName(current, incoming) && !hotelNamesAgree(current, incoming)) {
+    return false;
+  }
+  return true;
+}
+
+/** Un e-ticket par passager → une carte vol. Une confirmation d’hôtel exacte → une carte. */
+export function mergeExtractItems<T extends MatchableItem>(items: T[]): T[] {
+  const source = expandDistinctHotelCards(items);
+  const out: T[] = [];
+  for (const item of source) {
+    const linked = out.find((row) => hotelLinkedRoom(row, item)) || null;
+    const hit = findMatchingItem(out, item) || linked || foldHollowHotel(out, item);
     if (!hit) {
-      out.push({
+      out.push(withFlightSourceFiles({
         ...item,
         details: item.details ? { ...item.details } : item.details,
-      });
+      }));
       continue;
     }
     hit.supplier = fillEmpty(hit.supplier, item.supplier);
@@ -644,16 +1082,20 @@ export function mergeExtractItems<T extends MatchableItem>(items: T[]): T[] {
     }
     const currentCount = itemTicketCount(hit);
     const incomingCount = itemTicketCount(item);
+    const sourceFiles = (hit.kind || "") === "flight" ? unionSourceFiles(hit.details, item.details) : [];
     hit.details = mergeDetails(hit.details, item.details);
     if ((hit.kind || "") === "flight") {
       const passengers = mergeFlightPassengers(hit.details, item.details);
       hit.details = {
         ...(hit.details || {}),
-        ...(passengers.length ? { passengers, ticket_count: passengers.length } : { ticket_count: currentCount + incomingCount }),
+        ...(passengers.length
+          ? { passengers, ticket_count: countRealTickets(passengers) ?? passengers.length }
+          : { ticket_count: currentCount + incomingCount }),
+        ...(sourceFiles.length ? { source_files: sourceFiles } : {}),
       };
     }
   }
-  return dropUndatedFlightDuplicates(out);
+  return flagMissingHotelCards(items, dropUndatedFlightDuplicates(out));
 }
 
 /** Un vol sans date qui répète un segment daté du même numéro est retiré. */

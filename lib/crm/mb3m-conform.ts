@@ -1,16 +1,21 @@
 /**
  * Facture MB3M conforme au fichier agence (activités du 12/11/2026, fournisseurs existants).
  * Le CRM ne crée aucun fournisseur. Les vols (2, 1001, 27) partent avec une commission
- * fixe de 1 € (`MB3M_FLIGHT_EURO_COMMISSION=0` les retient). `MB3M_FLIGHT_COMMISSION=1`
- * reste le chemin CommissionId, non utilisé.
+ * fixe de 1 € quand `MB3M_FLIGHT_EURO_COMMISSION` n’est pas `0`. Le train (5) et le
+ * maritime (9) partent toujours en Divers terrestre (22), sans commission, tant que
+ * CommissionId n’est pas utilisé. Un choix `mb3m_activity` sur la carte prime.
+ * `MB3M_FLIGHT_COMMISSION=1` reste le chemin CommissionId, non utilisé.
+ * Hôtel (activité 7) : Expedia, Little Emperors, Ratehawk et CDS gardent leur fournisseur.
+ * Tout autre hôtel part sur « Hôtel Divers » du référentiel TBA, jamais sans ProviderId.
  */
 
+import { formatAgencyFeePercent } from "@/lib/crm/agency-fee-rate";
 import { agencyEmailHtml } from "@/lib/crm/email-html";
 import { MB3M_AIRLINE_PROVIDERS, MB3M_PROVIDERS, type Mb3mCatalogProvider } from "@/lib/crm/mb3m-providers";
 import { mb3mVerifiedProviderId } from "@/lib/crm/mb3m-verified-providers";
 import { readMb3mActivityOverride } from "@/lib/crm/mb3m-activity";
 import type { Mb3mAccountLine } from "@/lib/crm/mb3m-account";
-import { mb3mFlightEuroCommissionEnabled, type Mb3mLine } from "@/lib/crm/mb3m";
+import { mb3mFlightEuroCommissionEnabled, mb3mPrestationActivityId, type Mb3mLine } from "@/lib/crm/mb3m";
 import { siteConfig } from "@/lib/site";
 
 /** Activités du fichier MB3M. 14 (frais généraux) n’est jamais une ligne de facture. */
@@ -152,19 +157,52 @@ export type Mb3mSaleChannel =
   | "trainline"
   | "little_emperors"
   | "expedia"
+  | "ratehawk"
   | "cds"
   | "direct";
+
+/**
+ * Nom exact dans `mb3m-verified-providers.json` (export Fournisseur du compte TBA).
+ * Uid lu dans cette table : 013428ca-a71c-4d2a-90a7-75c279281f82. Aucun fournisseur n’est créé.
+ */
+export const MB3M_HOTEL_DIVERS_PROVIDER_NAME = "Hôtel Divers";
+
+/**
+ * Noms cherchés pour une réservation Ratehawk. RATEHAWK est dans le référentiel TBA,
+ * créé le 25/11/2026. L’Uid vient de mb3mVerifiedProviderId("Ratehawk").
+ * La ligne ne part pas sur Hôtel Divers.
+ */
+export const MB3M_RATEHAWK_PROVIDER_NAMES = ["Ratehawk", "RATEHAWK", "Emerging Travel"] as const;
+
+export const MB3M_RATEHAWK_PROVIDER_ID: string | null =
+  MB3M_RATEHAWK_PROVIDER_NAMES.map((name) => mb3mVerifiedProviderId(name)).find((id): id is string => Boolean(id)) ?? null;
 
 function detailText(details: Record<string, unknown> | null | undefined, key: string) {
   const value = details?.[key];
   return typeof value === "string" ? value.trim() : "";
 }
 
+function mentionsRatehawk(value: string) {
+  return /\bratehawk\b|\brate hawk\b|\bemerging travel\b/.test(value);
+}
+
+function providerFromVerifiedName(name: string): Mb3mCatalogProvider | null {
+  const id = mb3mVerifiedProviderId(name);
+  if (!id) return null;
+  return { id, name, account: true };
+}
+
 /** Canal de réservation. Amadeus est le défaut d’un vol ou d’un train sans mention de site. */
 export function mb3mSaleChannel(item: Mb3mConformItem): Mb3mSaleChannel {
   const details = item.details || {};
   const explicit = foldMb3mName(
-    [detailText(details, "sale_channel"), detailText(details, "booked_on"), detailText(details, "channel"), detailText(details, "source")]
+    [
+      detailText(details, "sale_channel"),
+      detailText(details, "booked_on"),
+      detailText(details, "channel"),
+      detailText(details, "source"),
+      detailText(details, "source_family"),
+    ]
       .filter(Boolean)
       .join(" ")
   );
@@ -183,6 +221,7 @@ export function mb3mSaleChannel(item: Mb3mConformItem): Mb3mSaleChannel {
   if (item.kind === "hotel") {
     if (blob.includes("little emperor")) return "little_emperors";
     if (blob.includes("expedia")) return "expedia";
+    if (mentionsRatehawk(explicit) || mentionsRatehawk(blob)) return "ratehawk";
     if (/(^| )cds( |$)/.test(blob)) return "cds";
     return "direct";
   }
@@ -268,16 +307,34 @@ function airlineProvider(iata: string, name: string) {
 
 export type Mb3mSupplierResolution =
   | { ok: true; provider: Mb3mCatalogProvider; genericLand: boolean }
-  | { ok: false; reason: string };
+  /** `unknown` : le nom du fournisseur absent du catalogue MB3M. La ligne part sans ProviderId. */
+  | { ok: false; reason: string; unknown?: string };
 
 function found(provider: Mb3mCatalogProvider | null, genericLand = false): Mb3mSupplierResolution {
   if (!provider) return { ok: false, reason: "Fournisseur introuvable dans MB3M." };
   return { ok: true, provider, genericLand };
 }
 
+/** Hôtel hors Expedia, Little Emperors, Ratehawk et CDS. L’Uid vient seulement du référentiel TBA. */
+function hotelDiversSupplier(): Mb3mSupplierResolution {
+  const provider = providerFromVerifiedName(MB3M_HOTEL_DIVERS_PROVIDER_NAME);
+  if (!provider) return { ok: false, reason: "Hôtel Divers est absent du référentiel MB3M." };
+  return found(provider);
+}
+
+/** Ratehawk garde son fournisseur. L’Uid est celui de la fiche RATEHAWK, jamais inventé. */
+function ratehawkSupplier(): Mb3mSupplierResolution {
+  const id = MB3M_RATEHAWK_PROVIDER_ID;
+  const name = id ? MB3M_RATEHAWK_PROVIDER_NAMES.find((label) => mb3mVerifiedProviderId(label) === id) : "";
+  const provider = name ? providerFromVerifiedName(name) : null;
+  if (provider) return found(provider);
+  return { ok: false, reason: "Ratehawk introuvable dans le référentiel MB3M.", unknown: "Ratehawk" };
+}
+
 function missing(kind: string, name: string): Mb3mSupplierResolution {
-  const who = name.trim() || "sans nom";
-  return { ok: false, reason: `${kind} introuvable dans MB3M : ${who}.` };
+  const clean = name.trim();
+  const who = clean || "sans nom";
+  return { ok: false, reason: `${kind} introuvable dans MB3M : ${who}.`, ...(clean ? { unknown: clean } : {}) };
 }
 
 export function resolveMb3mSupplier(input: {
@@ -304,8 +361,11 @@ export function resolveMb3mSupplier(input: {
   if (activity === MB3M_ACTIVITY.hotel) {
     if (input.channel === "little_emperors") return found(mb3mProviderByName("LITTLE EMPERORS"));
     if (input.channel === "expedia") return found(mb3mProviderByName("EXPEDIA"));
+    // « CDS » du catalogue Bolon. Le référentiel TBA a « CDS GROUPE » : les noms ne
+    // coïncident pas, donc le ProviderId reste vide. On ne le remplace pas par Hôtel Divers.
     if (input.channel === "cds") return found(mb3mProviderByName("CDS"));
-    return found(mb3mProviderByName("HOTELS DIVERS"));
+    if (input.channel === "ratehawk") return ratehawkSupplier();
+    return hotelDiversSupplier();
   }
   if (activity === MB3M_ACTIVITY.rail) {
     if (input.channel === "ouigo") return found(mb3mProviderByName("OUIGO direct"));
@@ -394,11 +454,137 @@ export function mb3mFeeCode(input: { label?: string | null; amount?: number | nu
 }
 
 export function mb3mFeeLabel(code: Mb3mFeeCode, fallback?: string | null) {
-  if (code === "4") return "Remise";
+  if (code === "4") {
+    const text = (fallback || "").trim();
+    if (/^remise commerciale$/i.test(text)) return "Remise commerciale";
+    return "Remise";
+  }
   if (code === "401") return "Frais Agence Billetterie";
   if (code === "12") return "Frais agence";
   if (code === "13") return (fallback || "").trim().match(/tourisme/i) ? (fallback || "").trim() : "Frais Agence Tourisme";
   return (fallback || "").trim() || "Frais agence";
+}
+
+/**
+ * Frais d’agence de 10 % (facture société) : complémentaire 12, libellé « Frais agence ».
+ * Custom, LineType 4, fournisseur = l’agence. Le frais de billeterie reste en 401.
+ * Une dépense de dossier (kind=expense) n’utilise pas ce code : elle repart en activité 22.
+ */
+export const MB3M_CLIENT_FEE_CODE: Mb3mFeeCode = "12";
+
+const EXPENSE_PREFIX = /^dépense\s*[·•]\s*/i;
+const LEDGER_DOSSIER_REF = /\s[—–-]\s*(TB-[\w-]+)\s*$/i;
+
+export function isMb3mClientExpense(kind: string, label: string) {
+  if (kind === "expense") return true;
+  return EXPENSE_PREFIX.test(label.trim());
+}
+
+/** Débit Pliant déjà rattaché : identifiant de transaction, ou coût `source=pliant` sur la dépense. */
+export type Mb3mPliantDebit = {
+  source: string;
+  sourceId?: string | null;
+  bookingItemId?: string | null;
+  /** Euros déjà convertis. Absent : le montant EUR de la dépense. */
+  amountEur?: number | null;
+  originalCurrency?: string | null;
+};
+
+const PLIANT_NOTE_PREFIX = "Pliant : ";
+
+/** « Pliant : 1 245,00 € ». Espace insécable fine entre les milliers, virgule, deux décimales. */
+export function mb3mPliantNote(euros: number) {
+  const cents = Math.round(Math.abs(euros) * 100) / 100;
+  const [whole, frac] = cents.toFixed(2).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f");
+  return `${PLIANT_NOTE_PREFIX}${grouped},${frac} €`;
+}
+
+export function isMb3mPliantNote(value: string | null | undefined) {
+  return (value || "").trim().startsWith(PLIANT_NOTE_PREFIX);
+}
+
+function detailEuros(details: Record<string, unknown> | null | undefined, key: string) {
+  const value = details?.[key];
+  if (typeof value === "number" && Number.isFinite(value)) return Math.abs(value);
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.replace(",", "."));
+    if (Number.isFinite(parsed)) return Math.abs(parsed);
+  }
+  return null;
+}
+
+/**
+ * Note d’une dépense payée par carte Pliant. Null sinon.
+ * Le débit en euros (coût converti, sinon `pliant_amount`) prime. Sans conversion, le montant EUR de la dépense.
+ */
+export function mb3mPliantExpenseNote(input: {
+  itemId?: string | null;
+  details?: Record<string, unknown> | null;
+  expenseEuros: number;
+  debits?: Mb3mPliantDebit[] | null;
+}) {
+  const rawId = input.details?.pliant_transaction_id;
+  const transactionId = typeof rawId === "string" ? rawId.trim() : "";
+  const linked = (input.debits || []).filter((row) => {
+    if (row.source !== "pliant") return false;
+    if (transactionId && row.sourceId && row.sourceId === transactionId) return true;
+    return Boolean(input.itemId && row.bookingItemId && row.bookingItemId === input.itemId);
+  });
+  if (!transactionId && !linked.length) return null;
+  const converted = linked
+    .map((row) => (row.amountEur == null ? null : Number(row.amountEur)))
+    .find((value) => value != null && Number.isFinite(value));
+  const remembered = detailEuros(input.details, "pliant_amount");
+  const expense = Number(input.expenseEuros);
+  const euros =
+    converted != null
+      ? Math.abs(converted)
+      : remembered != null
+        ? remembered
+        : Number.isFinite(expense)
+          ? Math.abs(expense)
+          : null;
+  if (euros == null) return null;
+  return mb3mPliantNote(euros);
+}
+
+function expenseType(input: { title?: string | null; ledgerLabel?: string | null }) {
+  const ledger = (input.ledgerLabel || "").replace(/\s+/g, " ").trim();
+  const titled = (input.title || "").replace(/\s+/g, " ").trim();
+  const strip = (value: string) =>
+    value.replace(EXPENSE_PREFIX, "").replace(/^dépense\b\s*/i, "").replace(LEDGER_DOSSIER_REF, "").trim();
+  const fromTitle = strip(titled);
+  const fromLedger = strip(ledger);
+  return {
+    type: (fromTitle && !/^dépense$/i.test(fromTitle) ? fromTitle : fromLedger) || "Dépense",
+    reference: ledger.match(LEDGER_DOSSIER_REF)?.[1] || "",
+  };
+}
+
+/** « Dépense · SEJOUR MONTAGNE — TB-2026-0028 ». Activité 22, pas le complémentaire 12. */
+export function mb3mDossierExpenseLabel(input: {
+  title?: string | null;
+  ledgerLabel?: string | null;
+  reference?: string | null;
+}) {
+  const picked = expenseType(input);
+  const ref = ((input.reference || "").trim() || picked.reference).trim();
+  const label = ref ? `Dépense · ${picked.type} — ${ref}` : `Dépense · ${picked.type}`;
+  return label.slice(0, 120);
+}
+
+export function isMb3mAgencyCommissionLabel(label: string) {
+  const fold = foldMb3mName(label);
+  return fold === "commission d agence" || fold === "frais d agence";
+}
+
+/** « Frais agence 10 % · TB-2026-0028 ». Le taux réel (10 %, 7,5 % ou 5 %) est dans le libellé. */
+export function mb3mAgencyFeeInvoiceLabel(input: { rate?: number | null; reference?: string | null } = {}) {
+  const percent = formatAgencyFeePercent(input.rate ?? Number.NaN);
+  const ref = (input.reference || "").trim();
+  const label = ref ? `Frais agence ${percent} · ${ref}` : `Frais agence ${percent}`;
+  return label.slice(0, 120);
 }
 
 function landLabel(label: string, supplier: string) {
@@ -408,7 +594,7 @@ function landLabel(label: string, supplier: string) {
   return `${label} · ${clean}`.slice(0, 120);
 }
 
-/** Nom résolu dans la Note quand aucun ProviderId vérifié n’est envoyé. */
+/** Nom résolu, pour l’avertissement agence. Il n’est pas envoyé : la Note de ligne reste vide. */
 function noteWithResolvedProvider(existing: string | null | undefined, name: string) {
   const clean = name.trim();
   if (!clean) return existing ?? null;
@@ -431,7 +617,13 @@ function commissionScope(item: Mb3mConformItem | null): Mb3mCommissionScope {
 }
 
 /** Pose l’activité, le fournisseur et la garde billetterie sur les lignes du grand livre. */
-export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mConformItem[]): Mb3mAccountLine[] {
+export function conformMb3mAccountLines(
+  lines: Mb3mAccountLine[],
+  items: Mb3mConformItem[],
+  reference?: string | null,
+  debits?: Mb3mPliantDebit[] | null,
+  agencyFeeRate?: number | null
+): Mb3mAccountLine[] {
   const byId = new Map(items.flatMap((item) => (item.id ? [[item.id, item] as const] : [])));
   return lines.map((line) => {
     const item = line.itemId ? byId.get(line.itemId) || null : null;
@@ -440,6 +632,26 @@ export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mCon
       return { ...line, rollup: true, activityId: MB3M_ACTIVITY.tourOperator, held: false, supplierReason: null };
     }
     if (kind === "fee" || line.chargeKind === "fee") {
+      if (isMb3mAgencyCommissionLabel(line.label)) {
+        return {
+          ...line,
+          activityId: null,
+          customCode: MB3M_CLIENT_FEE_CODE,
+          agencyProvider: true,
+          providerId: null,
+          providerName: null,
+          margin: null,
+          note: null,
+          held: false,
+          supplierReason: null,
+          supplierWarning: null,
+          chargeKind: "fee",
+          refPiece: null,
+          refCommand: null,
+          ticketRefs: [],
+          label: mb3mAgencyFeeInvoiceLabel({ rate: agencyFeeRate, reference }),
+        };
+      }
       const code = mb3mFeeCode({ label: line.label, amount: line.amount, items });
       return {
         ...line,
@@ -448,11 +660,71 @@ export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mCon
         agencyProvider: true,
         providerId: null,
         margin: null,
+        note: null,
         held: false,
         supplierReason: null,
         label: mb3mFeeLabel(code, line.label),
       };
     }
+    // Dépense de dossier : le chemin d’avant la #823. Standard, activité 22, fournisseur résolu
+    // comme une ligne terrestre (DIVERS TERRESTRE si rien de plus précis). La note, s’il y en a une,
+    // est seulement « Pliant : X,XX € ».
+    if (isMb3mClientExpense(kind, line.label)) {
+      const channel = item ? mb3mSaleChannel(item) : "direct";
+      const iata = item ? airlineIata(item) : "";
+      const carrier = item ? airlineName(item) : line.label;
+      const activityId = mb3mChooseActivity({
+        kind: "expense",
+        channel,
+        airlineIata: iata,
+        supplier: item?.supplier || carrier,
+        title: item?.title || line.label,
+      });
+      const supplierName = (item?.supplier || "").trim() || line.label;
+      const supplier =
+        activityId == null
+          ? null
+          : resolveMb3mSupplier({
+              kind: "expense",
+              activityId,
+              channel,
+              supplier: supplierName,
+              title: item?.title || line.label,
+              airlineIata: iata,
+              airlineName: carrier,
+            });
+      const unknownSupplier = supplier && !supplier.ok && supplier.unknown ? supplier.unknown : null;
+      const providerName = supplier?.ok ? supplier.provider.name : unknownSupplier;
+      const providerId = supplier?.ok && providerName ? mb3mVerifiedProviderId(providerName) : null;
+      return {
+        ...line,
+        activityId,
+        customCode: null,
+        agencyProvider: false,
+        providerId,
+        providerName,
+        note: mb3mPliantExpenseNote({
+          itemId: item?.id || line.itemId,
+          details: item?.details,
+          expenseEuros: line.amount,
+          debits,
+        }),
+        held: false,
+        supplierReason: supplier ? (supplier.ok || unknownSupplier ? null : supplier.reason) : "Activité MB3M inconnue.",
+        supplierWarning: unknownSupplier && supplier && !supplier.ok ? supplier.reason : null,
+        chargeKind: "expense",
+        refPiece: activityId === MB3M_ACTIVITY.land ? bookingRef(item) || null : null,
+        refCommand: null,
+        ticketRefs: [],
+        fareScope: commissionScope(item),
+        label: mb3mDossierExpenseLabel({
+          title: item?.title,
+          ledgerLabel: line.label,
+          reference,
+        }),
+      };
+    }
+    // Choix explicite de la carte. Il prime sur le remap d’envoi train 5 / maritime 9 → 22.
     if (item && readMb3mActivityOverride(item.details) === "land") {
       const named = mb3mProviderByName("DIVERS TERRESTRE");
       const providerName = named?.name || "DIVERS TERRESTRE";
@@ -501,13 +773,17 @@ export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mCon
       MB3M_FLIGHT_ACTIVITIES.has(activityId) && !mb3mFlightLinesEnabled() && !mb3mFlightEuroCommissionEnabled();
     const generic = supplier.ok && supplier.genericLand;
     const tickets = ticketRefs(item?.details);
-    const providerName = supplier.ok ? supplier.provider.name : null;
-    const providerId = providerName ? mb3mVerifiedProviderId(providerName) : null;
+    // Fournisseur absent du catalogue : jamais bloquant. Le vol est de toute façon retenu ; les autres lignes
+    // partent sans ProviderId. La page affiche un avertissement. La Note de ligne n’est pas envoyée.
+    const unknownSupplier = !supplier.ok && supplier.unknown ? supplier.unknown : null;
+    const providerName = supplier.ok ? supplier.provider.name : unknownSupplier;
+    const providerId = supplier.ok && providerName ? mb3mVerifiedProviderId(providerName) : null;
     return {
       ...line,
       activityId,
       providerId,
       providerName,
+      supplierWarning: unknownSupplier && !supplier.ok ? supplier.reason : null,
       note: providerName && !providerId ? noteWithResolvedProvider(line.note, providerName) : line.note,
       refPiece:
         activityId === MB3M_ACTIVITY.hotel || activityId === MB3M_ACTIVITY.land ? bookingRef(item) || null : tickets[0] || null,
@@ -515,7 +791,7 @@ export function conformMb3mAccountLines(lines: Mb3mAccountLine[], items: Mb3mCon
       refCommand: MB3M_FLIGHT_ACTIVITIES.has(activityId) ? bookingRef(item) || null : null,
       fareScope: commissionScope(item),
       held,
-      supplierReason: supplier.ok ? null : supplier.reason,
+      supplierReason: supplier.ok || unknownSupplier ? null : supplier.reason,
       label: generic ? landLabel(line.label, supplierName) : line.label,
       customCode: null,
       agencyProvider: false,
@@ -536,6 +812,20 @@ export function mb3mInvoiceNotice(lines: Mb3mAccountLine[]) {
   return lines.some((line) => line.held) ? MB3M_FLIGHT_HOLD_MESSAGE : null;
 }
 
+/** Fournisseurs absents du catalogue MB3M : avertissement, la facture n’est pas bloquée. */
+export function mb3mSupplierWarnings(lines: Mb3mAccountLine[]) {
+  const reasons = lines.filter((line) => line.supplierWarning && !line.rollup).map((line) => line.supplierWarning || "");
+  const unique = [...new Set(reasons.filter(Boolean))];
+  if (!unique.length) return null;
+  const held = lines.some((line) => line.supplierWarning && line.held);
+  const sent = lines.some((line) => line.supplierWarning && !line.held);
+  const tail = [
+    sent ? "Sans ProviderId : aucun fournisseur n’est créé, et la ligne ne porte pas de note." : "",
+    held && !sent ? "La ligne est retenue : rien n’est envoyé à MB3M pour elle." : "",
+  ].filter(Boolean);
+  return [...unique, ...tail].join(" ");
+}
+
 export function mb3mInvoiceRefCommand(dossierRef: string, lines: Mb3mLine[]) {
   const commands = [...new Set(lines.map((line) => (line.refCommand || "").trim()).filter(Boolean))];
   if (commands.length === 1 && lines.some((line) => line.activityId != null && MB3M_FLIGHT_ACTIVITIES.has(line.activityId))) {
@@ -544,12 +834,13 @@ export function mb3mInvoiceRefCommand(dossierRef: string, lines: Mb3mLine[]) {
   return dossierRef;
 }
 
-/** Ligne SOAP. Les frais d’agence sont Custom, sans marge. Les vols partent avec la commission fixe de 1 €, sans CommissionId. */
+/** Ligne SOAP. Les frais d’agence sont Custom, sans marge. Les vols partent avec la commission fixe de 1 €, sans CommissionId, seulement si le drapeau est ouvert. Le train et le maritime partent toujours en 22. */
 export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): Mb3mLine {
   if (line.customCode) {
     const amount = Math.round(line.amount * 100) / 100;
+    const keepLabel = line.label.startsWith("Frais agence");
     return {
-      label: mb3mFeeLabel(line.customCode, line.label),
+      label: keepLabel ? line.label : mb3mFeeLabel(line.customCode, line.label),
       quantity: 1,
       netPriceUnit: amount,
       netPriceTotal: amount,
@@ -557,6 +848,8 @@ export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): M
       customType: { complementary: line.customCode, lineType: 4 },
       providerRole: "agency",
       marginUnit: null,
+      note:
+        line.customCode === MB3M_CLIENT_FEE_CODE && isMb3mPliantNote(line.note) ? (line.note || "").trim() : null,
     };
   }
   const raw = line.margin == null || !Number.isFinite(line.margin) ? null : line.margin;
@@ -571,10 +864,10 @@ export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): M
     quantity: 1,
     netPriceUnit: net,
     netPriceTotal: net,
-    activityId: line.activityId ?? undefined,
+    activityId: mb3mPrestationActivityId(line.activityId),
     type: "Standard",
     marginUnit: margin,
-    note: line.note ?? null,
+    note: isMb3mPliantNote(line.note) ? (line.note || "").trim() : null,
     providerId: line.providerId ?? null,
     providerRole: "supplier",
     refPiece: line.refPiece ?? null,

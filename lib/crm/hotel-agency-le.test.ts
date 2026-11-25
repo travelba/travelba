@@ -106,6 +106,10 @@ function memory() {
         state.filters.push({ kind: "eq", col, val });
         return api;
       },
+      gte(col: string, val: unknown) {
+        state.filters.push({ kind: "gte", col, val });
+        return api;
+      },
       neq(col: string, val: unknown) {
         state.filters.push({ kind: "neq", col, val });
         return api;
@@ -140,6 +144,7 @@ function memory() {
     function matches(row: Row) {
       return state.filters.every((filter) => {
         if (filter.kind === "eq") return row[filter.col] === filter.val;
+        if (filter.kind === "gte") return String(row[filter.col] ?? "") >= String(filter.val ?? "");
         if (filter.kind === "neq") return row[filter.col] !== filter.val;
         if (filter.kind === "is") return filter.val == null ? row[filter.col] == null : row[filter.col] === filter.val;
         return Array.isArray(filter.val) && filter.val.includes(row[filter.col]);
@@ -471,7 +476,7 @@ test("un refus amont gèle la carte et n’ouvre pas le dossier", async () => {
       assert.equal(state?.reason === "Refus", false);
       assert.equal(String(state?.reason || "").includes(PAN), false);
       assert.doesNotMatch(String(state?.reason || ""), /\b123\b/);
-      const alert = tables.crm_agency_alerts?.[0];
+      const alert = (tables.crm_agency_alerts || []).find((row) => row.kind === "pliant");
       assert.equal(alert?.kind, "pliant");
       assert.match(String(alert?.summary || ""), /credit_card\.cvc/);
       assert.equal(String(alert?.summary || "").includes(PAN), false);

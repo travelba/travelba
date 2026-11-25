@@ -1,4 +1,4 @@
-import { sepaBannerLine, type SepaFailureView, type SepaHoldView } from "@/lib/crm/sepa-hold";
+import { sepaBannerLine, sepaHoldBadge, type SepaFailureView, type SepaHoldView } from "@/lib/crm/sepa-hold";
 
 /** Bannière prélèvement : en cours, ou refusé avec la marche à suivre. Jamais l’IBAN complet. */
 export function SepaInFlight({
@@ -19,7 +19,7 @@ export function SepaInFlight({
           className="rounded-xl border border-[#e5d3b3] bg-[#fbf7ec] px-4 py-3"
           role="status"
         >
-          <p className="text-[13px] font-semibold text-[var(--admin-navy)]">Prélèvement SEPA en cours</p>
+          <p className="text-[13px] font-semibold text-[var(--admin-navy)]">{sepaHoldBadge(hold)}</p>
           <p className="mt-1 text-sm leading-snug text-[var(--admin-navy)]">{sepaBannerLine(hold)}</p>
           {tone === "admin" ? (
             <p className="mt-2 text-xs leading-snug text-[#3d4654]">

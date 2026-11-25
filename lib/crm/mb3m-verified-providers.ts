@@ -1,7 +1,7 @@
 /**
  * Seule source des ProviderId envoyés à MB3M.
  * La table est `mb3m-verified-providers.json` : export Fournisseur du compte TBA
- * (Thomas Bolon), ContactId = Uid API, Name. 237 fournisseurs.
+ * (Thomas Bolon), ContactId = Uid API, Name. 237 fournisseurs, plus RATEHAWK créé le 25/11/2026.
  * L’ancien export `mb3m-providers.ts` ne fournit aucun Uid. Aucun fournisseur n’est créé.
  * Un code IATA (AF) retrouve le nom de la compagnie dans cette table.
  */

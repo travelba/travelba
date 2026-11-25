@@ -152,3 +152,27 @@ test("une liste affiche le séjour, pas le départ ni la ville de la fiche", () 
     "Marrakech"
   );
 });
+
+test("un titre d’une seule ville qui n’est pas le séjour reste saisi", () => {
+  assert.equal(
+    listStayTitle("Paris", "Paris", ["Bangkok"], ["Paris", "Dubaï", "Bangkok"], [], "Séjour", "Paris"),
+    "Paris"
+  );
+  assert.equal(listStayTitle("", "Paris", ["Bangkok"], ["Paris", "Dubaï", "Bangkok"], [], "Séjour", "Paris"), "Bangkok");
+});
+
+test("une liste automatique multi-villes qui cite le séjour se recalcule", () => {
+  assert.equal(
+    listStayTitle(
+      "Paris · Tel Aviv · Seychelles",
+      "Paris · Tel Aviv · Seychelles",
+      ["Tel Aviv", "Seychelles"],
+      ["Paris", "Tel Aviv", "Seychelles"]
+    ),
+    "Tel Aviv · Seychelles"
+  );
+  assert.equal(
+    listStayTitle("Lyon · Marrakech", "Lyon · Marrakech", ["Marrakech"], ["Marrakech"], [], "Séjour", "Lyon"),
+    "Marrakech"
+  );
+});

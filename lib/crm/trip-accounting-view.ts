@@ -2,7 +2,8 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { mb3mRealm } from "./mb3m";
-import { mb3mDossierLines, mb3mPieceStale, type Mb3mLedgerRow } from "./mb3m-account";
+import { mb3mDossierLines, mb3mPieceStale, withCommercialDiscountLines, type Mb3mLedgerRow } from "./mb3m-account";
+import { loadStayPricedDiscounts } from "./displayed-stay";
 import { isStayAmountKind } from "./bookings";
 import {
   accountLines,
@@ -10,6 +11,7 @@ import {
   saleLines,
   tripAccountingState,
   tripTotals,
+  withCommercialDiscountSales,
   type SaleLedgerRow,
   type TripAccountingView,
   type TripCost,
@@ -75,7 +77,7 @@ export async function loadDossierAccountingInputs(admin: SupabaseClient, booking
 /** Le bloc « Comptabilité du voyage » de l’onglet Argent. */
 export async function buildTripAccountingView(
   admin: SupabaseClient,
-  booking: { id: string; client_settles_stay?: boolean | null },
+  booking: { id: string; client_settles_stay?: boolean | null; currency?: string | null },
   items: { id?: string | null; kind?: string | null; details?: Record<string, unknown> | null }[],
   inputs: DossierAccountingInputs,
   options?: { skipOutgoingQueue?: boolean }
@@ -89,9 +91,20 @@ export async function buildTripAccountingView(
     booking.id,
     inputs.costs.map((cost) => cost.sourceId)
   ).catch(() => []);
-  const sales = saleLines(inputs.charges, booking.id);
+  const inEuros = !booking.currency || booking.currency.toUpperCase() === "EUR";
+  const cuts = inEuros
+    ? await loadStayPricedDiscounts(admin, booking.id)
+        .then((loaded) => loaded.lines.filter((line) => line.euros > 0).map((line) => ({ id: line.id, label: line.label, euros: line.euros })))
+        .catch(() => [])
+    : [];
+  // Lignes synthétiques, sommées une fois par tripTotals. Les charges MB3M restent les débits :
+  // withCommercialDiscountLines ajoute les remises de la pro forma, sans seconde ligne.
+  const sales = withCommercialDiscountSales(saleLines(inputs.charges, booking.id), cuts);
   const { lines, unsold } = accountLines(sales, [...inputs.costs, ...pending]);
-  const mbLines = mb3mDossierLines(inputs.charges, items, marginByTransaction(lines));
+  const mbLines = withCommercialDiscountLines(
+    mb3mDossierLines(inputs.charges, items, marginByTransaction(lines)),
+    cuts
+  );
   const valid = inputs.pieces.filter((row) => row.printed_at && !row.credited_at);
   const stale = valid.filter((row) =>
     mb3mPieceStale({ transactionIds: row.transaction_ids || [], signature: row.line_signature }, mbLines)

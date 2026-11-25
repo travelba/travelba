@@ -23,6 +23,7 @@ export async function POST(request: Request, ctx: Ctx) {
         designation?: string;
         transactionAmount?: string;
         transactionCount?: string;
+        troisDs?: boolean;
         itemId?: string;
         pliantCardId?: string;
       }
@@ -42,6 +43,7 @@ export async function POST(request: Request, ctx: Ctx) {
         designation: typeof body?.designation === "string" ? body.designation : "",
         transactionAmount: typeof body?.transactionAmount === "string" ? body.transactionAmount : "",
         transactionCount: typeof body?.transactionCount === "string" ? body.transactionCount : "",
+        troisDs: body?.troisDs === true,
       });
       return NextResponse.json({ ok: true, cardConfig: issued.cardConfig, avertissement: issued.avertissement });
     } catch (error) {

@@ -13,6 +13,12 @@ import { CustomerPickDialog } from "@/components/admin/CustomerPickDialog";
 import { Icon } from "@/components/crm/icons";
 import { customerPickLabel, type PickableCustomer } from "@/lib/crm/customer-search";
 import {
+  emptyPaymentTarget,
+  paymentTargetReady,
+  PaymentTargetFields,
+  type PaymentTargetValue,
+} from "@/components/admin/PaymentTargetFields";
+import {
   matchStripeReasonLabel,
   stripeInboxMethodCaption,
   stripePossibleClientsLabel,
@@ -48,6 +54,7 @@ export function StripeInbox({
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [pickerRow, setPickerRow] = useState<string | null>(null);
+  const [linkFor, setLinkFor] = useState<Record<string, PaymentTargetValue>>({});
   const [scope, setScope] = useState<"unmatched" | "all">("unmatched");
   const [previewCount, setPreviewCount] = useState<number | null>(null);
   const shown = scope === "unmatched" ? rows.filter((row) => row.status === "unmatched") : rows;
@@ -155,7 +162,22 @@ export function StripeInbox({
       setPickerRow(id);
       return "Choisissez le client à créditer.";
     }
-    const ok = await post(id, { customer_id: customerId }, "Crédit impossible. Réessayez.");
+    const link = linkFor[id] || emptyPaymentTarget();
+    if (!paymentTargetReady(link)) {
+      setError("Choisissez le dossier et le payeur.");
+      return "Choisissez le dossier et le payeur.";
+    }
+    const ok = await post(
+      id,
+      {
+        customer_id: customerId,
+        lier: true,
+        booking_id: link.bookingId,
+        payer_kind: link.payerKind,
+        billing_company_id: link.payerKind === "company" ? link.companyId : null,
+      },
+      "Crédit impossible. Réessayez."
+    );
     if (!ok) return "Crédit impossible. Réessayez.";
     setMessage(`Crédit enregistré : ${formatMoney(gross, currency)}.`);
     return null;
@@ -261,6 +283,17 @@ export function StripeInbox({
                       </span>
                       <Icon name="search" className="h-4 w-4 shrink-0 text-muted" />
                     </button>
+                    {chosen ? (
+                      <div className="w-full basis-full">
+                        <PaymentTargetFields
+                          customerId={chosen.id}
+                          label={`${row.payer_name || ""} ${row.reference || ""}`}
+                          value={linkFor[row.id] || emptyPaymentTarget()}
+                          onChange={(next) => setLinkFor((current) => ({ ...current, [row.id]: next }))}
+                          disabled={rowBusy === row.id}
+                        />
+                      </div>
+                    ) : null}
                     {chosen ? (
                       <ConfirmAction
                         size="sm"

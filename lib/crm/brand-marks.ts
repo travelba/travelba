@@ -1,5 +1,5 @@
 export type BrandMark = {
-  kind: "airline" | "car";
+  kind: "airline" | "car" | "rail";
   code: string;
   src: string;
   alt: string;
@@ -89,6 +89,97 @@ export function carLogoSrc(slug: string) {
   return `/brands/cars/${slug}.svg`;
 }
 
+/**
+ * Produits entre parenthèses = la compagnie. Lyria, Eurostar (ex-Thalys) et
+ * les marques propres passent avant SNCF : un TGV Lyria n’est pas le logo SNCF
+ * quand le champ opérateur ne tranche pas.
+ */
+const RAIL_BRANDS: { re: RegExp; slug: string; label: string }[] = [
+  { re: /\bLYRIA\b/, slug: "lyria", label: "Lyria" },
+  { re: /\bEUROSTAR\b|\bTHALYS\b|\bES\s*\d{3,4}\b/, slug: "eurostar", label: "Eurostar" },
+  { re: /\bFRECCIAROSSA\b|\bFRECCIARGENTO\b|\bFRECCIABIANCA\b|\bTRENITALIA\b|\bFR\s*\d{3,4}\b/, slug: "trenitalia", label: "Trenitalia" },
+  { re: /\bITALO\b|\bNTV\b/, slug: "italo", label: "Italo" },
+  { re: /\bIRYO\b|\bILSA\b/, slug: "iryo", label: "Iryo" },
+  { re: /\bRENFE\b|\bAVE\b/, slug: "renfe", label: "Renfe" },
+  { re: /\bDEUTSCHE BAHN\b|\bDB\b|\bICE\b/, slug: "db", label: "Deutsche Bahn" },
+  { re: /\bSBB\b|\bCFF\b|\bFFS\b|\bCHEMINS DE FER FEDERAUX\b|\bSCHWEIZERISCHE BUNDESBAHNEN\b/, slug: "sbb", label: "SBB CFF FFS" },
+  { re: /\bOBB\b|\bOEBB\b|\bRAILJET\b|\bNIGHTJET\b/, slug: "obb", label: "ÖBB" },
+  { re: /\bSNCB\b|\bNMBS\b/, slug: "sncb", label: "SNCB" },
+  { re: /\bOUIGO\b|\bTGV\b|\bINOUI\b|\bINTERCITES\b|\bTER\b|\bSNCF\b/, slug: "sncf", label: "SNCF" },
+];
+
+function foldRail(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+}
+
+function matchRailBrand(value: string | null | undefined) {
+  const text = foldRail(String(value || "").trim());
+  if (!text) return null;
+  for (const row of RAIL_BRANDS) {
+    if (row.re.test(text)) return row;
+  }
+  return null;
+}
+
+function firstRailBrand(values: (string | null | undefined)[]) {
+  for (const value of values) {
+    const brand = matchRailBrand(value);
+    if (brand) return brand;
+  }
+  return null;
+}
+
+export function inferRailBrand(input: {
+  operator?: string | null;
+  compagnie?: string | null;
+  carrier?: string | null;
+  company?: string | null;
+  railway?: string | null;
+  airline?: string | null;
+  product?: string | null;
+  product_name?: string | null;
+  train?: string | null;
+  brand?: string | null;
+  service?: string | null;
+  train_number?: string | null;
+  flight_number?: string | null;
+  title?: string | null;
+  supplier?: string | null;
+}) {
+  const company = firstRailBrand([
+    input.operator,
+    input.compagnie,
+    input.carrier,
+    input.company,
+    input.railway,
+    input.airline,
+  ]);
+  if (company) return company;
+  return firstRailBrand([
+    input.product,
+    input.product_name,
+    input.train,
+    input.brand,
+    input.service,
+    input.train_number,
+    input.flight_number,
+    input.title,
+    input.supplier,
+  ]);
+}
+
+export function railLogoSrc(slug: string) {
+  return `/brands/rail/${slug}.svg`;
+}
+
+function detailString(details: Record<string, unknown>, key: string) {
+  const value = details[key];
+  return typeof value === "string" ? value : null;
+}
+
 export function brandMarkForItem(item: {
   kind?: string | null;
   supplier?: string | null;
@@ -117,6 +208,32 @@ export function brandMarkForItem(item: {
       kind: "car",
       code: brand.slug,
       src: carLogoSrc(brand.slug),
+      alt: brand.label,
+    };
+  }
+  if (item.kind === "rail") {
+    const brand = inferRailBrand({
+      operator: detailString(details, "operator"),
+      compagnie: detailString(details, "compagnie"),
+      carrier: detailString(details, "carrier"),
+      company: detailString(details, "company"),
+      railway: detailString(details, "railway"),
+      airline: detailString(details, "airline"),
+      product: detailString(details, "product"),
+      product_name: detailString(details, "product_name"),
+      train: detailString(details, "train"),
+      brand: detailString(details, "brand"),
+      service: detailString(details, "service"),
+      train_number: detailString(details, "train_number"),
+      flight_number: detailString(details, "flight_number"),
+      title: item.title,
+      supplier: item.supplier,
+    });
+    if (!brand) return null;
+    return {
+      kind: "rail",
+      code: brand.slug,
+      src: railLogoSrc(brand.slug),
       alt: brand.label,
     };
   }

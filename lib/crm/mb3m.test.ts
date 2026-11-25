@@ -3,16 +3,21 @@ import { afterEach, describe, it } from "node:test";
 import {
   Mb3mError,
   MB3M_ADDRESS_ELEMENTS,
+  MB3M_ALLOWED_CALLS,
+  MB3M_CREDIT_NOTE_REFUSAL,
   mb3mActivityId,
   mb3mAddCreditNote,
   mb3mAddInvoice,
   mb3mAgencyNames,
   mb3mBlockedOnProduction,
+  mb3mCancelInvoice,
   mb3mCivilityFromSex,
   mb3mConfigured,
+  mb3mCreditNoteAllowed,
   mb3mDefaultProviderId,
   mb3mEntityUid,
   mb3mFaultDetail,
+  mb3mIssueField,
   mb3mOperationMessage,
   mb3mCollectCompanies,
   mb3mCountryCode,
@@ -30,13 +35,18 @@ import {
   mb3mChangeFolder,
   mb3mFindCustomerPayments,
   mb3mFindCustomerPieces,
+  mb3mLettrageFromXml,
+  mb3mReadLettrage,
   mb3mGetInvoice,
   MB3M_PAYMENT_MODES,
   mb3mPaymentAccount,
   mb3mPaymentReference,
+  mb3mResetBankAccountCache,
+  mb3mCustomerIdentityXml,
   mb3mSavePayment,
   mb3mSavePerson,
   mb3mPrestationActivityId,
+  mb3mSoap,
   mb3mWriteMatching,
   mb3mSingleAgencyUid,
   mb3mXmlText,
@@ -54,6 +64,7 @@ const previous = {
   provider: process.env.MB3M_PROVIDER_ID,
   prodProvider: process.env.MB3M_PROD_PROVIDER_ID,
   vercel: process.env.VERCEL_ENV,
+  creditNote: process.env.MB3M_ALLOW_CREDIT_NOTE,
 };
 
 afterEach(() => {
@@ -66,6 +77,7 @@ afterEach(() => {
   restore("MB3M_PROVIDER_ID", previous.provider);
   restore("MB3M_PROD_PROVIDER_ID", previous.prodProvider);
   restore("VERCEL_ENV", previous.vercel);
+  restore("MB3M_ALLOW_CREDIT_NOTE", previous.creditNote);
 });
 
 function restore(name: string, value: string | undefined) {
@@ -193,6 +205,7 @@ describe("client MB3M Partners", () => {
       }
     );
     assert.ok(body.includes("<Folder><Agency><Uid>ba3e9d2d-c2a5-4872-b5d2-99e74b483831</Uid></Agency><CustomerIdentity>"));
+    assert.ok(body.includes(mb3mCustomerIdentityXml("6759c8c7-2cb1-40a7-a9e8-91eaf71c8623")));
     assert.deepEqual(folder, { id: "01-0002000", uid: "b74cb0fe-afc2-4210-92a1-202610141546" });
 
     let invoiceBody = "";
@@ -212,6 +225,7 @@ describe("client MB3M Partners", () => {
       }
     );
     assert.ok(invoiceBody.includes("<Invoice><Agency><Uid>ba3e9d2d-c2a5-4872-b5d2-99e74b483831</Uid></Agency><CustomerIdentity>"));
+    assert.ok(invoiceBody.includes(mb3mCustomerIdentityXml("6759c8c7-2cb1-40a7-a9e8-91eaf71c8623")));
     assert.equal(invoiceBody.includes("<ProviderId>"), false);
   });
 
@@ -346,7 +360,7 @@ describe("client MB3M Partners", () => {
     assert.equal(invoice.number, "4531");
   });
 
-  it("écrit la marge et la note dans l’ordre du schéma, et les omet sans coût pointé", async () => {
+  it("écrit la marge dans l’ordre du schéma, sans note de ligne, et omet la marge sans coût pointé", async () => {
     arm();
     let body = "";
     await mb3mAddInvoice(
@@ -367,9 +381,10 @@ describe("client MB3M Partners", () => {
       }
     );
     const hotel = body.slice(body.indexOf("<InvoiceLine>"), body.indexOf("</InvoiceLine>"));
-    const order = ["<ActivityId>7", "<Label>Hôtel", "<MarginUnit>-50.5", "<NetPriceTotal>1200", "<NetPriceUnit>1200", "<Note>Fournisseur : RIAD", "<Quantity>1", "<Type>Standard"].map(
+    const order = ["<ActivityId>7", "<Label>Hôtel", "<MarginUnit>-50.5", "<NetPriceTotal>1200", "<NetPriceUnit>1200", "<Quantity>1", "<Type>Standard"].map(
       (needle) => hotel.indexOf(needle)
     );
+    assert.equal(hotel.includes("<Note>"), false);
     assert.ok(order.every((index) => index >= 0), hotel);
     assert.deepEqual(order, [...order].sort((left, right) => left - right));
     assert.equal(hotel.includes("<CommissionNetTotal>"), false);
@@ -422,11 +437,16 @@ describe("client MB3M Partners", () => {
 
   it("garde l’activité du fichier, la marge, et n’écrit une commission que si CommissionId est posé", () => {
     const base = { quantity: 1, netPriceUnit: 400, netPriceTotal: 400 };
-    for (const activityId of [2, 5, 27, 1001] as const) {
-      assert.equal(mb3mPrestationActivityId(activityId), activityId);
+    for (const activityId of [2, 5, 9, 27, 34, 1001] as const) {
+      const sent = activityId === 5 || activityId === 9 ? 22 : activityId;
+      assert.equal(mb3mPrestationActivityId(activityId), sent);
       const air = linesXml("InvoiceLine", [{ ...base, label: "Vol", activityId }]);
-      if (activityId === 5) {
-        assert.ok(air.includes(`<ActivityId>${activityId}</ActivityId><Label>Vol</Label>`), air);
+      if (activityId === 5 || activityId === 9) {
+        assert.ok(air.includes(`<ActivityId>22</ActivityId><Label>Vol</Label>`), air);
+        assert.equal(air.includes(`<ActivityId>${activityId}</ActivityId>`), false);
+        assert.equal(air.includes("Commission"), false);
+      } else if (activityId === 34) {
+        assert.ok(air.includes("<ActivityId>34</ActivityId><Label>Vol</Label>"), air);
         assert.equal(air.includes("Commission"), false);
       } else {
         assert.ok(
@@ -471,7 +491,53 @@ describe("client MB3M Partners", () => {
     assert.equal(credit.includes("CommissionId"), false);
   });
 
-  it("le train et le vol partent en 22 avec le net et la marge du CRM, sans commission", async () => {
+  it("le train et le maritime partent en 22 avec ou sans la commission vol de 1 €", () => {
+    const previous = process.env.MB3M_FLIGHT_EURO_COMMISSION;
+    const piece = (activityId: number, label: string) =>
+      linesXml("InvoiceLine", [{ label, quantity: 1, netPriceUnit: 362, netPriceTotal: 362, marginUnit: 0, activityId }]);
+    try {
+      for (const flag of ["0", "1"] as const) {
+        process.env.MB3M_FLIGHT_EURO_COMMISSION = flag;
+        assert.equal(mb3mPrestationActivityId(5), 22);
+        assert.equal(mb3mPrestationActivityId(9), 22);
+        assert.equal(mb3mPrestationActivityId(2), 2);
+        assert.equal(mb3mPrestationActivityId(1001), 1001);
+        assert.equal(mb3mPrestationActivityId(27), 27);
+        assert.equal(mb3mPrestationActivityId(22), 22);
+        for (const [activityId, label] of [
+          [5, "Train"],
+          [9, "Maritime"],
+        ] as const) {
+          const xml = piece(activityId, label);
+          assert.ok(xml.includes(`<ActivityId>22</ActivityId><Label>${label}</Label>`), xml);
+          assert.equal(xml.includes(`<ActivityId>${activityId}</ActivityId>`), false);
+          assert.equal(xml.includes("Commission"), false);
+        }
+        const flight = piece(2, "Vol");
+        assert.ok(flight.includes("<ActivityId>2</ActivityId>"), flight);
+        assert.equal(flight.includes("<ActivityId>22</ActivityId>"), false);
+        if (flag === "0") {
+          assert.equal(flight.includes("Commission"), false);
+        } else {
+          assert.ok(
+            flight.includes(
+              "<ActivityId>2</ActivityId><CommissionNetTotal>1</CommissionNetTotal><CommissionTotal>1</CommissionTotal><Label>Vol</Label>"
+            ),
+            flight
+          );
+          assert.equal(flight.includes("CommissionId"), false);
+        }
+        const forced = piece(22, "Divers");
+        assert.ok(forced.includes("<ActivityId>22</ActivityId><Label>Divers</Label>"), forced);
+        assert.equal(forced.includes("Commission"), false);
+      }
+    } finally {
+      if (previous === undefined) delete process.env.MB3M_FLIGHT_EURO_COMMISSION;
+      else process.env.MB3M_FLIGHT_EURO_COMMISSION = previous;
+    }
+  });
+
+  it("le train part en 22, le vol garde la commission de 1 €, le net et la marge restent", async () => {
     process.env.VERCEL_ENV = "production";
     const train = "11111111-1111-4111-8111-111111111111";
     const fee = "22222222-2222-4222-8222-222222222222";
@@ -519,7 +585,7 @@ describe("client MB3M Partners", () => {
     assert.equal(flight?.netPriceUnit, 198);
     assert.equal(flight?.marginUnit, 1000.44);
     assert.equal(Math.round(((flight?.netPriceUnit || 0) + (flight?.marginUnit || 0)) * 100) / 100, 1198.44);
-    assert.equal(trainLine?.activityId, 5);
+    assert.equal(trainLine?.activityId, 22);
     assert.equal(trainLine?.netPriceUnit, 0.01);
     assert.equal(trainLine?.marginUnit, 361.99);
     assert.equal(Math.round(((trainLine?.netPriceUnit || 0) + (trainLine?.marginUnit || 0)) * 100) / 100, 362);
@@ -528,10 +594,12 @@ describe("client MB3M Partners", () => {
     assert.ok(xml.includes("<CommissionNetTotal>1</CommissionNetTotal><CommissionTotal>1</CommissionTotal>"));
     assert.equal(xml.includes("CommissionId"), false);
     assert.ok(xml.includes("<ActivityId>2</ActivityId><CommissionNetTotal>1</CommissionNetTotal>"));
-    assert.ok(xml.includes("<ActivityId>5</ActivityId>"));
+    assert.ok(xml.includes("<ActivityId>22</ActivityId>"));
+    assert.equal(xml.includes("<ActivityId>5</ActivityId>"), false);
     assert.ok(xml.includes("<NetPriceTotal>198</NetPriceTotal>"));
     assert.ok(xml.includes("<MarginUnit>1000.44</MarginUnit>"));
     arm();
+    process.env.MB3M_ALLOW_CREDIT_NOTE = "true";
     let invoiceBody = "";
     let creditBody = "";
     const ok = (number: string, kind: "Invoice" | "CreditNote") =>
@@ -574,11 +642,12 @@ describe("client MB3M Partners", () => {
       assert.ok(body.includes("<CommissionNetTotal>1</CommissionNetTotal><CommissionTotal>1</CommissionTotal>"), body);
       assert.equal(body.includes("CommissionId"), false);
       assert.ok(body.includes("<ActivityId>2</ActivityId>"));
-      assert.ok(body.includes("<ActivityId>5</ActivityId>"));
+      assert.ok(body.includes("<ActivityId>22</ActivityId>"));
+      assert.equal(body.includes("<ActivityId>5</ActivityId>"), false);
       assert.ok(body.includes("<NetPriceTotal>198</NetPriceTotal>"));
       assert.ok(body.includes("<MarginUnit>1000.44</MarginUnit>"));
       const close = body.includes("</InvoiceLine>") ? "</InvoiceLine>" : "</CreditNoteLine>";
-      const trainAt = body.indexOf("<ActivityId>5</ActivityId>");
+      const trainAt = body.indexOf("<ActivityId>22</ActivityId>");
       const trainLine = body.slice(trainAt, body.indexOf(close, trainAt) + close.length);
       assert.equal(trainLine.includes("Commission"), false, trainLine);
     }
@@ -593,6 +662,7 @@ describe("client MB3M Partners", () => {
 
   it("crée un avoir sur le dossier déjà ouvert", async () => {
     arm();
+    process.env.MB3M_ALLOW_CREDIT_NOTE = "true";
     let body = "";
     let action = "";
     const note = await mb3mAddCreditNote(
@@ -1013,7 +1083,7 @@ describe("règlements MB3M", () => {
     assert.equal(emitted[0]?.bank, "REVOLUT");
     assert.equal(emitted[1]?.mode, "BankTransfer");
     assert.equal(emitted[1]?.bank, "QONTO");
-    assert.equal(emitted[2]?.mode, "OnlinePaymentCard");
+    assert.equal(emitted[2]?.mode, "PaymentCard");
     assert.equal(emitted[3]?.mode, "PaymentCard");
     assert.equal(emitted[4]?.mode, "Check");
     assert.equal(emitted[5]?.mode, "Cash");
@@ -1030,12 +1100,18 @@ describe("règlements MB3M", () => {
     assert.equal(mb3mPaymentReference("0173733f-95a6-4115-8e49-e81cb3e875c5"), "CRM 0173733f-95a6-4115-8e49-e81cb3e875c5");
   });
 
-  it("envoie SavePayment puis WriteMatching dans l’ordre des champs", async () => {
+  it("envoie SavePayment avec le client, puis WriteMatching, dans l’ordre du schéma", async () => {
     arm();
+    mb3mResetBankAccountCache();
     const bodies: { action: string; body: string }[] = [];
     const fetchImpl = async (_url: RequestInfo | URL, init?: RequestInit) => {
-      bodies.push({ action: String(new Headers(init?.headers).get("SOAPAction")), body: String(init?.body) });
       const action = String(new Headers(init?.headers).get("SOAPAction"));
+      if (action.includes("GetBankAccounts")) {
+        return new Response(
+          `<GetBankAccountsResponse><GetBankAccountsResult><BankAccount><Uid>e02187e1-00e0-4a31-a3f2-bd21eadcd731</Uid><Name>REVOLUT</Name></BankAccount><BankAccount><Uid>b1c53247-dedd-4554-88dc-34bfe2c38193</Uid><Name>PLIANT</Name></BankAccount></GetBankAccountsResult></GetBankAccountsResponse>`
+        );
+      }
+      bodies.push({ action, body: String(init?.body) });
       const number = action.includes("SavePayment") ? "2154" : "900";
       return new Response(
         `<FolderOperationResponse><ResultCode>1</ResultCode><Result><Payment><Number>${number}</Number><Id>${number}</Id></Payment></Result></FolderOperationResponse>`
@@ -1049,6 +1125,8 @@ describe("règlements MB3M", () => {
         reference: "CRM 0173733f-95a6-4115-8e49-e81cb3e875c5",
         bank: "REVOLUT",
         mode: "BankTransfer",
+        customerUid: "fb3e41d2-6be4-4998-aef4-851839cc48f3",
+        customerKind: "company",
       },
       fetchImpl
     );
@@ -1059,17 +1137,110 @@ describe("règlements MB3M", () => {
     assert.equal(saved.number, "2154");
     assert.equal(matched.id, "900");
     assert.equal(bodies[0]?.action, '"http://schemas.mb3m.fr/Partners/IFolderService/SavePayment"');
-    const saveOrder = ["<Amount>2639.96</Amount>", "<BankAccount>REVOLUT</BankAccount>", "<Date>2026-10-30T00:00:00</Date>", "<FolderId>01-0002007</FolderId>", "<Mode>BankTransfer</Mode>", "<Reference>CRM 0173733f-95a6-4115-8e49-e81cb3e875c5</Reference>"].map(
-      (needle) => (bodies[0]?.body || "").indexOf(needle)
+    const identity = mb3mCustomerIdentityXml("fb3e41d2-6be4-4998-aef4-851839cc48f3");
+    assert.equal(identity, "<CustomerIdentity><Uid>fb3e41d2-6be4-4998-aef4-851839cc48f3</Uid></CustomerIdentity>");
+    const request = (bodies[0]?.body || "").match(/<FolderSavePaymentRequest[\s\S]*<\/FolderSavePaymentRequest>/)?.[0];
+    assert.equal(
+      request,
+      `<FolderSavePaymentRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><FolderId>01-0002007</FolderId><Payment><CreationDate>2026-10-30T00:00:00</CreationDate>${identity}<Amount>2639.96</Amount><Mode>BankTransfer</Mode><RefNumber>CRM 0173733f-95a6-4115-8e49-e81cb3e875c5</RefNumber><BankAccountId>e02187e1-00e0-4a31-a3f2-bd21eadcd731</BankAccountId></Payment></FolderSavePaymentRequest>`
     );
-    assert.ok(saveOrder.every((index) => index >= 0));
-    assert.deepEqual(saveOrder, [...saveOrder].sort((left, right) => left - right));
-    assert.equal(bodies[1]?.action, '"http://schemas.mb3m.fr/Partners/IFolderService/WriteMatching"');
-    const matchOrder = ["<Amount>2274.96</Amount>", "<PaymentNumber>2154</PaymentNumber>", "<PieceNumber>2152</PieceNumber>"].map(
+    assert.equal(request?.includes("<Customer>"), false);
+    assert.equal(request?.includes("<Company>"), false);
+    assert.equal(request?.includes("<Person>"), false);
+    assert.equal(bodies[1]?.action, '"http://schemas.mb3m.fr/Partners/IPieceService/WriteMatching"');
+    assert.ok((bodies[1]?.body || "").includes("<PieceMatchingRequest"));
+    const matchOrder = ["<Source><Number>2154</Number></Source>", "<Target><Number>2152</Number></Target>", "<Amount>2274.96</Amount>"].map(
       (needle) => (bodies[1]?.body || "").indexOf(needle)
     );
     assert.ok(matchOrder.every((index) => index >= 0));
     assert.deepEqual(matchOrder, [...matchOrder].sort((left, right) => left - right));
+  });
+
+  it("SavePayment : sans client, rien ne part ; un Uid de dossier n’entre pas dans FolderId", async () => {
+    arm();
+    mb3mResetBankAccountCache();
+    const calls: string[] = [];
+    const fetchImpl = async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const action = String(new Headers(init?.headers).get("SOAPAction"));
+      calls.push(action);
+      if (action.includes("GetBankAccounts")) {
+        return new Response(`<GetBankAccountsResponse><GetBankAccountsResult></GetBankAccountsResult></GetBankAccountsResponse>`);
+      }
+      calls.push(String(init?.body));
+      return new Response(`<FolderOperationResponse><ResultCode>1</ResultCode><Result><Payment><Number>77</Number></Payment></Result></FolderOperationResponse>`);
+    };
+    const base = { amount: 10, date: "2026-11-17", reference: "CRM x", bank: "REVOLUT", mode: "BankTransfer" as const, customerKind: "person" as const };
+    await assert.rejects(
+      () => mb3mSavePayment({ ...base, folderId: "01-1", customerUid: "" }, fetchImpl),
+      (error: unknown) => error instanceof Mb3mError && /client/.test(error.message)
+    );
+    assert.deepEqual(calls, []);
+    const folderUid = "1f0c002c-615e-422b-aff6-202611161249";
+    const identity = mb3mCustomerIdentityXml("c-uid");
+    assert.equal(identity, "<CustomerIdentity><Uid>c-uid</Uid></CustomerIdentity>");
+    await mb3mSavePayment({ ...base, folderId: "", customerUid: "c-uid" }, fetchImpl);
+    const emptyFolder = calls.join(" ");
+    assert.ok(emptyFolder.includes(identity));
+    assert.equal(emptyFolder.includes("<Customer>"), false);
+    assert.doesNotMatch(emptyFolder, /<Person>/);
+    assert.doesNotMatch(emptyFolder, /<Company>/);
+    assert.doesNotMatch(emptyFolder, /<FolderId>/);
+    assert.doesNotMatch(emptyFolder, new RegExp(folderUid));
+    assert.doesNotMatch(emptyFolder, /BankAccountId/);
+    calls.length = 0;
+    await mb3mSavePayment({ ...base, folderId: "01-1", customerUid: "c-uid", customerKind: null }, fetchImpl);
+    const unknownKind = calls.join(" ");
+    assert.ok(unknownKind.includes(identity));
+    assert.equal(unknownKind.includes("<Customer>"), false);
+    assert.match(unknownKind, /<FolderId>01-1<\/FolderId>/);
+    calls.length = 0;
+    await mb3mSavePayment({ ...base, folderId: "01-0002007", customerUid: "c-uid" }, fetchImpl);
+    const withId = calls.join(" ");
+    assert.match(withId, /<FolderId>01-0002007<\/FolderId>/);
+    assert.doesNotMatch(withId, new RegExp(folderUid));
+    assert.ok(withId.includes(identity));
+    assert.equal(withId.includes("<Customer>"), false);
+  });
+
+  it("SavePayment : client existant envoie CustomerIdentity, sans Customer, même si le type est inconnu", async () => {
+    arm();
+    mb3mResetBankAccountCache();
+    const calls: string[] = [];
+    const fetchImpl = async (_url: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(String(init?.body || ""));
+      return new Response(
+        `<FolderOperationResponse><ResultCode>1</ResultCode><Result><Payment><Number>2204</Number></Payment></Result></FolderOperationResponse>`
+      );
+    };
+    const base = {
+      folderId: "01-0002007",
+      amount: 2767.61,
+      date: "2026-11-17",
+      reference: "CRM beelynq",
+      bank: "REVOLUT",
+      mode: "BankTransfer",
+      bankAccountUid: "bank-uid",
+    };
+    const companyUid = "fb3e41d2-6be4-4998-aef4-851839cc48f3";
+    const company = mb3mCustomerIdentityXml(companyUid);
+    assert.equal(company, `<CustomerIdentity><Uid>${companyUid}</Uid></CustomerIdentity>`);
+    await mb3mSavePayment({ ...base, customerUid: companyUid, customerKind: "company" }, fetchImpl);
+    assert.ok(calls[0]?.includes(company));
+    assert.equal(calls[0]?.includes("<Customer>"), false);
+    assert.equal(calls[0]?.includes("<Company>"), false);
+    assert.equal(calls[0]?.includes("<Person>"), false);
+    calls.length = 0;
+    await mb3mSavePayment({ ...base, customerUid: "person-uid", customerKind: "person" }, fetchImpl);
+    const person = mb3mCustomerIdentityXml("person-uid");
+    assert.equal(person, "<CustomerIdentity><Uid>person-uid</Uid></CustomerIdentity>");
+    assert.ok(calls[0]?.includes(person));
+    assert.equal(calls[0]?.includes("<Customer>"), false);
+    assert.equal(calls[0]?.includes("<Company>"), false);
+    calls.length = 0;
+    await mb3mSavePayment({ ...base, customerUid: companyUid }, fetchImpl);
+    assert.ok(calls[0]?.includes(company));
+    assert.equal(calls[0]?.includes("<Customer>"), false);
+    assert.equal(calls.length > 0, true);
   });
 
   it("lit les règlements déjà saisis pour ce client", async () => {
@@ -1152,6 +1323,66 @@ describe("règlements MB3M", () => {
     });
     assert.equal(rows[0]?.number, "2149");
     assert.equal(rows[0]?.unmatched, 561.19);
+  });
+
+  it("lit un règlement de la vraie réponse FindAllPieces (IsPayment, Balance, Identity)", async () => {
+    arm();
+    const xml = `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><FolderFindPiecesResult xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Pieces><Piece><Amount>2767.6100</Amount><Balance>2767.6100</Balance><Customer><Uid>fb3e41d2-6be4-4998-aef4-851839cc48f3</Uid><Name>BEELYNQ LLC</Name></Customer><DateCreation>2026-11-17T00:00:00</DateCreation><Folder><Id i:nil="true"/><Uid>1f0c002c-615e-422b-aff6-202611161249</Uid></Folder><Identity><Number>2218</Number><Uid>31be0700-573c-4d21-b6c8-202611171333</Uid></Identity><IsPayment>true</IsPayment><RefCommand/></Piece><Piece><Amount>2767.6100</Amount><Balance>0.0000</Balance><Customer><Uid>fb3e41d2-6be4-4998-aef4-851839cc48f3</Uid></Customer><DatePrint>2026-11-16T12:27:51.28+00:00</DatePrint><Identity><Number>2203</Number><Uid>a1dce7bf-7e4e-4431-8332-202611161316</Uid></Identity><IsPayment>false</IsPayment><RefCommand>TB-2026-0159</RefCommand></Piece></Pieces><TotalCount>2</TotalCount></FolderFindPiecesResult></s:Body></s:Envelope>`;
+    const rows = await mb3mFindCustomerPayments("fb3e41d2-6be4-4998-aef4-851839cc48f3", async () => new Response(xml));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.number, "2218");
+    assert.equal(rows[0]?.amount, 2767.61);
+    assert.equal(rows[0]?.unmatched, 2767.61);
+    assert.equal(rows[0]?.date, "2026-11-17");
+  });
+
+  it("reconnaît un lettrage au solde de la facture ou au reste d’un règlement du dossier", () => {
+    const invoice = (balance: string) =>
+      `<Piece><Amount>5404.15</Amount><Balance>${balance}</Balance><Folder><Id>01-0002217</Id></Folder><Identity><Number>2217</Number></Identity><IsPayment>false</IsPayment></Piece>`;
+    const payment = (balance: string, folder = "01-0002217") =>
+      `<Piece><Amount>5404.15</Amount><Balance>${balance}</Balance><Folder><Id>${folder}</Id></Folder><Identity><Number>2216</Number></Identity><IsPayment>true</IsPayment></Piece>`;
+    const read = (inner: string) =>
+      mb3mLettrageFromXml(`<FindAllPiecesResponse><ResultCode>1</ResultCode>${inner}</FindAllPiecesResponse>`, "2217", {
+        folderId: "01-0002217",
+        folderScoped: true,
+      });
+    const lettered = read(`${invoice("0.00")}${payment("0.00")}`);
+    assert.equal(lettered.lettered, true);
+    assert.equal(lettered.seen, true);
+    assert.equal(lettered.amount, 5404.15);
+    assert.equal(lettered.balance, 0);
+    const open = read(`${invoice("5404.15")}${payment("5404.15")}`);
+    assert.equal(open.lettered, false);
+    assert.equal(open.balance, 5404.15);
+    const byPayment = read(`${invoice("5404.15")}${payment("0.00")}`);
+    assert.equal(byPayment.lettered, true);
+    const otherFolder = read(`${invoice("5404.15")}${payment("0.00", "01-9999999")}`);
+    assert.equal(otherFolder.lettered, false);
+    const byInvoice = read(invoice("5391.65"));
+    assert.equal(byInvoice.lettered, true);
+    assert.equal(byInvoice.balance, 5391.65);
+  });
+
+  it("lit le lettrage par FindAllPieces, sans écriture", async () => {
+    arm();
+    const actions: string[] = [];
+    const snap = await mb3mReadLettrage(
+      { number: "2217", folderId: "01-0002217", customerUid: "customer-uid" },
+      async (_url, init) => {
+        const action = String(new Headers(init?.headers).get("SOAPAction"));
+        actions.push(action);
+        const body = String(init?.body || "");
+        assert.equal(body.includes("IncludePayments"), true);
+        assert.equal(body.includes("AddPieces"), false);
+        assert.equal(body.includes("CancelInvoice"), false);
+        return new Response(
+          `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>1</TotalCount><Piece><Amount>5404.15</Amount><Balance>0</Balance><Folder><Id>01-0002217</Id></Folder><Identity><Number>2217</Number></Identity><IsPayment>false</IsPayment></Piece></FindAllPiecesResponse>`
+        );
+      }
+    );
+    assert.equal(snap.lettered, true);
+    assert.equal(actions.every((action) => action.includes("FindAllPieces")), true);
+    assert.equal(actions.some((action) => action.includes("AddPieces") || action.includes("CancelInvoice")), false);
   });
 
   it("cherche d’abord le dossier de la facture, puis les autres dossiers du client", async () => {
@@ -1295,5 +1526,140 @@ describe("règlements MB3M", () => {
     assert.equal(calls, 2);
     assert.equal(detail.refCommand, "Y2FYWL");
     assert.equal(detail.amount, 1197.44);
+  });
+
+  it("refuse d’imprimer, de valider ou de finaliser une pièce", async () => {
+    arm();
+    const sent: string[] = [];
+    const fetchImpl = async () => {
+      sent.push("appel");
+      return new Response("<ok/>");
+    };
+    for (const action of ["PrintInvoice", "Validate", "Finalize"]) {
+      await assert.rejects(
+        () => mb3mSoap("FolderService", "IFolderService", action, `<${action}/>`, fetchImpl),
+        (error: unknown) => error instanceof Mb3mError && /n’imprime pas/.test(error.message) && error.message.includes(action)
+      );
+    }
+    await assert.rejects(
+      () => mb3mSoap("PieceService", "IPieceService", "Print", "<Print/>", fetchImpl),
+      /n’imprime pas/
+    );
+    assert.equal(sent.length, 0);
+    assert.equal(mb3mCreditNoteAllowed(), false);
+    assert.equal(
+      MB3M_ALLOWED_CALLS.some((pair) => /print|validate|finali/i.test(pair[1])),
+      false
+    );
+  });
+
+  it("envoie AddPieces sans champ d’impression ni de validation", async () => {
+    arm();
+    let body = "";
+    await mb3mAddInvoice(
+      {
+        folderId: "22-0000025",
+        customerUid: "ac53a900-3ab4-4e41-bfce-0af005dfde72",
+        title: "Séjour",
+        lines: [{ label: "Hôtel", quantity: 1, netPriceUnit: 100, netPriceTotal: 100, marginUnit: 10 }],
+      },
+      async (_url, init) => {
+        body = String(init?.body);
+        return new Response(
+          `<FolderOperationResponse><ResultCode>1</ResultCode><Invoices><Invoice><Number>4542</Number></Invoice></Invoices></FolderOperationResponse>`
+        );
+      }
+    );
+    assert.equal(mb3mIssueField(body), null);
+    assert.equal(/<(?:DatePrint|PrintedDate|Validate|Finalize|Validation)\b/i.test(body), false);
+    const sent: string[] = [];
+    await assert.rejects(
+      () =>
+        mb3mSoap(
+          "FolderService",
+          "IFolderService",
+          "AddPieces",
+          `<FolderAddPiecesRequest><Invoice><DatePrint>2026-01-01</DatePrint><Validate>true</Validate></Invoice></FolderAddPiecesRequest>`,
+          async () => {
+            sent.push("appel");
+            return new Response("<ok/>");
+          }
+        ),
+      (error: unknown) => error instanceof Mb3mError && /DatePrint/.test(error.message)
+    );
+    assert.equal(sent.length, 0);
+  });
+
+  it("refuse d’annuler une pièce déjà imprimée", async () => {
+    arm();
+    const actions: string[] = [];
+    const fetchImpl = async (_url: URL | RequestInfo, init?: RequestInit) => {
+      const action = String(new Headers(init?.headers).get("SOAPAction"));
+      actions.push(action);
+      if (action.includes("CancelInvoice")) return new Response("<ne-doit-pas-partir/>");
+      return new Response(
+        `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>1</TotalCount><Invoice><Number>4531</Number><DatePrint>2026-10-12T11:59:25</DatePrint></Invoice></FindAllPiecesResponse>`
+      );
+    };
+    await assert.rejects(
+      () => mb3mCancelInvoice("01-0002000", "4531", fetchImpl),
+      (error: unknown) => error instanceof Mb3mError && /imprimée/.test(error.message)
+    );
+    assert.equal(actions.some((action) => action.includes("CancelInvoice")), false);
+    await assert.rejects(
+      () =>
+        mb3mAddInvoice(
+          {
+            folderId: "01-0002000",
+            customerUid: "ac53a900-3ab4-4e41-bfce-0af005dfde72",
+            title: "Séjour",
+            lines: [{ label: "Hôtel", quantity: 1, netPriceUnit: 10, netPriceTotal: 10 }],
+            replacesNumber: "4531",
+          },
+          fetchImpl
+        ),
+      /imprimée/
+    );
+    assert.equal(actions.some((action) => action.includes("AddPieces")), false);
+    actions.length = 0;
+    await mb3mCancelInvoice("01-0002000", "4531", async (_url, init) => {
+      const action = String(new Headers(init?.headers).get("SOAPAction"));
+      actions.push(action);
+      if (action.includes("FindAllPieces")) {
+        return new Response(
+          `<FindAllPiecesResponse><ResultCode>1</ResultCode><TotalCount>1</TotalCount><Invoice><Number>4531</Number></Invoice></FindAllPiecesResponse>`
+        );
+      }
+      return new Response(`<FolderOperationResponse><ResultCode>1</ResultCode></FolderOperationResponse>`);
+    });
+    assert.equal(actions.some((action) => action.includes("CancelInvoice")), true);
+  });
+
+  it("refuse l’avoir sans MB3M_ALLOW_CREDIT_NOTE", async () => {
+    arm();
+    delete process.env.MB3M_ALLOW_CREDIT_NOTE;
+    assert.equal(mb3mCreditNoteAllowed(), false);
+    let sent = false;
+    await assert.rejects(
+      () =>
+        mb3mAddCreditNote(
+          {
+            folderId: "22-0000025",
+            customerUid: "ac53a900-3ab4-4e41-bfce-0af005dfde72",
+            folderTitle: "Séjour",
+            folderType: "Prestation",
+            dateStart: "2026-11-01",
+            dateEnd: "2026-11-08",
+            title: "Avoir",
+            lines: [{ label: "Hôtel", quantity: 1, netPriceUnit: 10, netPriceTotal: 10, activityId: 3 }],
+          },
+          async () => {
+            sent = true;
+            return new Response("<ok/>");
+          }
+        ),
+      (error: unknown) => error instanceof Mb3mError && error.message === MB3M_CREDIT_NOTE_REFUSAL
+    );
+    assert.equal(sent, false);
   });
 });
