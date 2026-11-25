@@ -248,7 +248,8 @@ type PiecePatch = {
  * facture »), et ses types Fees / Note ne conviennent pas (non supporté / ligne absente du PDF).
  * Une ligne de marge pure (frais, prestation sans coût pointé) part donc avec un net plancher
  * d’un centime et la marge qui complète : la pièce imprime le bon montant, la marge varie de 0,01 €.
- * Un frais d’agence part en ligne Custom, sans marge. Un vol garde son activité (2, 1001 ou 27).
+ * Un frais d’agence (10 %, 7,5 % ou 5 %) part en ligne Custom « Frais agence », sans marge.
+ * Une dépense de dossier part en Standard, activité 22. Un vol garde son activité (2, 1001 ou 27).
  * Le train et le maritime partent toujours en 22, tant que CommissionId n’est pas utilisé.
  * `MB3M_FLIGHT_EURO_COMMISSION` ne concerne que la commission de 1 € des vols.
  */
@@ -271,7 +272,7 @@ export function mb3mInvoiceLine(line: Mb3mAccountLine): Mb3mLine {
     activityId: mb3mPrestationActivityId(line.activityId),
     type: "Standard" as const,
     marginUnit: margin,
-    note: null,
+    note: (line.note || "").trim().startsWith("Pliant : ") ? (line.note || "").trim() : null,
     providerId: line.providerId ?? null,
     refPiece: line.refPiece ?? null,
     refCommand: line.refCommand ?? null,
@@ -534,6 +535,10 @@ export function buildMb3mInvoiceContext(input: {
             ? undefined
             : Number(input.booking.agency_fee_rate)
         );
+  const agencyFeeRate =
+    input.booking.agency_fee_rate == null || input.booking.agency_fee_rate === ""
+      ? null
+      : Number(input.booking.agency_fee_rate);
   const conformed = conformMb3mAccountLines(
     posted.filter((line) => !covered.has(line.transactionId)),
     input.items,
@@ -544,7 +549,8 @@ export function buildMb3mInvoiceContext(input: {
       bookingItemId: cost.bookingItemId,
       amountEur: cost.amountEur,
       originalCurrency: cost.originalCurrency,
-    }))
+    })),
+    agencyFeeRate
   );
   const lines = input.discountCuts
     ? withCommercialDiscountLines(conformed, input.discountCuts)

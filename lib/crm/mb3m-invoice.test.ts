@@ -254,15 +254,17 @@ describe("facture MB3M", () => {
     assert.equal(ctx.amount, 1050);
     assert.equal(ctx.lines.some((line) => line.transactionId === "remise-commerciale"), false);
     const expense = ctx.lines.find((line) => line.transactionId === "fee-debit");
-    assert.equal(expense?.activityId ?? null, null);
-    assert.equal(expense?.customCode, "12");
+    assert.equal(expense?.activityId, 22);
+    assert.equal(expense?.customCode ?? null, null);
+    assert.equal(expense?.agencyProvider ?? false, false);
+    assert.equal(expense?.providerName, "DIVERS TERRESTRE");
     assert.equal(expense?.amount, 50);
-    assert.equal(expense?.label, "Frais agence · Extra — TBA-42");
-    assert.equal(/dépense/i.test(expense?.label || ""), false);
+    assert.equal(expense?.label, "Dépense · Extra — TBA-42");
+    assert.equal(expense?.note ?? null, null);
     assert.deepEqual(
       ctx.lines.map((line) => [line.transactionId, line.amount, line.activityId]),
       [
-        ["fee-debit", 50, null],
+        ["fee-debit", 50, 22],
         ["hotel-debit", 1000, 7],
       ]
     );
@@ -272,7 +274,7 @@ describe("facture MB3M", () => {
     assert.equal(mb3mInvoiceBlocker(ctx), null);
   });
 
-  it("facture les frais du dossier en Frais agence, sur la pièce simple et la pièce groupée", () => {
+  it("facture une dépense en activité 22 et laisse la billeterie en 401, sur la pièce simple et la pièce groupée", () => {
     arm();
     const hotelFee = {
       id: "exp-hotel",
@@ -334,45 +336,52 @@ describe("facture MB3M", () => {
     const hotel = first.lines.find((line) => line.transactionId === "hotel-fee");
     const auto = first.lines.find((line) => line.transactionId === "auto-fee");
     const manual = second.lines.find((line) => line.transactionId === "ticket-fee");
-    assert.equal(hotel?.customCode, "12");
-    assert.equal(hotel?.agencyProvider, true);
-    assert.equal(hotel?.providerId ?? null, null);
-    assert.equal(hotel?.margin ?? null, null);
+    assert.equal(hotel?.activityId, 22);
+    assert.equal(hotel?.customCode ?? null, null);
+    assert.equal(hotel?.agencyProvider ?? false, false);
+    assert.equal(hotel?.providerName, "DIVERS TERRESTRE");
     assert.equal(hotel?.amount, 15);
-    assert.equal(hotel?.label, "Frais agence · Frais hôtel — TB-2026-0211");
+    assert.equal(hotel?.label, "Dépense · Frais hôtel — TB-2026-0211");
+    assert.equal(hotel?.note ?? null, null);
     assert.equal(auto?.customCode, "401");
     assert.equal(auto?.label, "Frais Agence Billetterie");
     assert.equal(auto?.amount, 25);
-    assert.equal(manual?.customCode, "12");
+    assert.equal(manual?.activityId, 22);
+    assert.equal(manual?.customCode ?? null, null);
     assert.equal(manual?.amount, 25);
-    assert.equal(manual?.label, "Frais agence · Frais de billetterie — TB-2026-0212");
-    assert.equal(/dépense/i.test([hotel, auto, manual].map((line) => line?.label || "").join(" ")), false);
+    assert.equal(manual?.label, "Dépense · Frais de billetterie — TB-2026-0212");
 
     const agency = "ba3e9d2d-c2a5-4872-b5d2-99e74b483831";
     const simple = linesXml("InvoiceLine", mb3mSoapLines(first.lines, 0.01), agency);
-    assert.match(simple, /<Label>Frais agence · Frais hôtel — TB-2026-0211<\/Label>/);
+    const hotelAt = simple.indexOf("<Label>Dépense · Frais hôtel — TB-2026-0211</Label>");
+    const hotelXml = simple.slice(simple.lastIndexOf("<InvoiceLine>", hotelAt), simple.indexOf("</InvoiceLine>", hotelAt));
+    assert.match(hotelXml, /<ActivityId>22<\/ActivityId>/);
+    assert.match(hotelXml, /<Type>Standard<\/Type>/);
+    assert.match(hotelXml, /<Label>Dépense · Frais hôtel — TB-2026-0211<\/Label>/);
+    assert.equal(hotelXml.includes("<Complementary>"), false);
+    assert.equal(hotelXml.includes("<Note>"), false);
     assert.match(simple, /<Label>Frais Agence Billetterie<\/Label>/);
-    assert.match(simple, /<Complementary>12<\/Complementary>/);
     assert.match(simple, /<Complementary>401<\/Complementary>/);
-    assert.match(simple, /<NetPriceUnit>15<\/NetPriceUnit>/);
+    assert.equal(simple.includes("<Complementary>12</Complementary>"), false);
     assert.match(simple, /<NetPriceUnit>25<\/NetPriceUnit>/);
     assert.equal(simple.includes("<Note>"), false);
-    assert.equal(simple.includes("<MarginUnit>"), false);
-    assert.equal(/dépense/i.test(simple), false);
     assert.match(simple, new RegExp(`<ProviderId>${agency}</ProviderId>`));
 
     const grouped = assembleGroupedMb3m([first, second]);
     const groupedXml = linesXml("InvoiceLine", grouped.lines, agency);
-    assert.match(groupedXml, /<Label>Frais agence · Frais hôtel — TB-2026-0211<\/Label>/);
-    assert.match(groupedXml, /<Label>Frais agence · Frais de billetterie — TB-2026-0212<\/Label>/);
+    assert.match(groupedXml, /<Label>Dépense · Frais hôtel — TB-2026-0211<\/Label>/);
+    assert.match(groupedXml, /<Label>Dépense · Frais de billetterie — TB-2026-0212<\/Label>/);
+    assert.match(groupedXml, /<ActivityId>22<\/ActivityId>/);
     assert.match(groupedXml, /Frais Agence Billetterie/);
     assert.match(groupedXml, /TB-2026-0211/);
     assert.equal(groupedXml.includes("<Note>"), false);
-    assert.equal(/dépense/i.test(groupedXml), false);
+    assert.equal(groupedXml.includes("<Complementary>12</Complementary>"), false);
     assert.equal(grouped.lines.every((line) => !line.note), true);
+    const spent = grouped.lines.filter((line) => line.label.startsWith("Dépense · "));
+    assert.equal(spent.length, 2);
     assert.equal(
-      grouped.lines.filter((line) => line.label.startsWith("Frais agence · ")).map((line) => line.netPriceUnit).sort((a, b) => a - b).join(","),
-      "15,25"
+      spent.every((line) => line.activityId === 22 && line.type === "Standard" && Math.round(((line.netPriceUnit || 0) + (line.marginUnit || 0)) * 100) / 100 > 0),
+      true
     );
   });
 
@@ -451,31 +460,34 @@ describe("facture MB3M", () => {
       const at = xml.indexOf(`<Label>${label}</Label>`);
       return xml.slice(xml.lastIndexOf("<InvoiceLine>", at), xml.indexOf("</InvoiceLine>", at));
     };
-    const pliant = block("Frais agence · Frais hôtel — TB-2026-0211");
-    assert.match(pliant, /<Complementary>12<\/Complementary>/);
+    const pliant = block("Dépense · Frais hôtel — TB-2026-0211");
+    assert.match(pliant, /<ActivityId>22<\/ActivityId>/);
+    assert.match(pliant, /<Type>Standard<\/Type>/);
+    assert.equal(pliant.includes("<Complementary>"), false);
     assert.match(pliant, new RegExp(`<Note>Pliant : 1${thin}245,00 €</Note>`));
-    assert.equal(pliant.includes("<MarginUnit>"), false);
-    const tip = block("Frais agence · Pourboire — TB-2026-0211");
+    const tip = block("Dépense · Pourboire — TB-2026-0211");
     assert.equal(tip.includes("<Note>"), false);
-    assert.match(tip, /<Complementary>12<\/Complementary>/);
+    assert.match(tip, /<ActivityId>22<\/ActivityId>/);
+    assert.equal(tip.includes("<Complementary>"), false);
     const hotel = block("Hôtel · Avoriaz");
     assert.equal(hotel.includes("<Note>"), false);
     assert.match(hotel, /<Type>Standard<\/Type>/);
     const grouped = assembleGroupedMb3m([ctx]);
     const groupedPliant = grouped.lines.find((line) => line.label.includes("Frais hôtel"));
+    assert.equal(groupedPliant?.type, "Standard");
+    assert.equal(groupedPliant?.activityId, 22);
     assert.equal(groupedPliant?.note, `Pliant : 1${thin}245,00 €`);
     assert.equal(grouped.lines.filter((line) => line.note).length, 1);
     const credit = linesXml(
       "CreditNoteLine",
       [
         {
-          label: "Frais agence · Frais hôtel — TB-2026-0211",
+          label: "Dépense · Frais hôtel — TB-2026-0211",
           quantity: 1,
           netPriceUnit: 15,
           netPriceTotal: 15,
-          type: "Custom",
-          customType: { complementary: "12", lineType: 4 },
-          providerRole: "agency",
+          activityId: 22,
+          type: "Standard",
           note: `Pliant : 1${thin}245,00 €`,
         },
         {
@@ -502,8 +514,166 @@ describe("facture MB3M", () => {
     );
     assert.equal(credit.match(/<Note>/g)?.length, 1);
     assert.match(credit, new RegExp(`<Note>Pliant : 1${thin}245,00 €</Note>`));
+    assert.match(credit, /<ActivityId>22<\/ActivityId>/);
+    assert.match(credit, /<Label>Dépense · Frais hôtel — TB-2026-0211<\/Label>/);
     assert.equal(credit.includes("Fournisseur"), false);
     assert.equal(credit.includes("Débit Pliant"), false);
+    assert.equal(credit.includes("<Complementary>12</Complementary>"), false);
+  });
+
+  it("envoie SEJOUR MONTAGNE et ETA-IL en Dépense, et les 10 % en Frais agence", () => {
+    arm();
+    const charge = (id: string, amount: number, label: string, externalId: string) => ({
+      id,
+      direction: "debit" as const,
+      status: "posted",
+      currency: "EUR",
+      amount,
+      label,
+      external_id: externalId,
+      booking_id: bookingId,
+    });
+    const ctx = buildMb3mInvoiceContext({
+      booking: booking({
+        reference: "TB-2026-0028",
+        payer_kind: "company",
+        billing_company_id: "co-1",
+        agency_commission: true,
+        agency_fee_rate: 0.1,
+        destination: "Courchevel",
+      }),
+      items: [
+        { id: "montagne", kind: "expense", title: "SEJOUR MONTAGNE", amount: 1200, lifecycle: "active" },
+        {
+          id: "eta",
+          kind: "expense",
+          title: "ETA-IL ELETRONIC TRAVE",
+          amount: 40,
+          lifecycle: "active",
+          details: { pliant_transaction_id: "tx-eta", pliant_amount: 40 },
+        },
+        {
+          id: "auto-ticket",
+          kind: "expense",
+          title: "Frais de billeterie (1 billet)",
+          amount: 25,
+          lifecycle: "active",
+          details: { auto_fee: "ticketing" },
+        },
+      ],
+      travelers: [{ first_name: "Ada", last_name: "Lovelace" }],
+      payer: payer(),
+      companies: [
+        {
+          id: "co-1",
+          sort_order: 1,
+          company_name: "Travelba",
+          siret: null,
+          billing_email: null,
+          billing_address_line: "1 rue du Test",
+          billing_postal_code: "75001",
+          billing_city: "Paris",
+          billing_country: "France",
+        },
+      ],
+      costs: [
+        {
+          id: "cost-eta",
+          bookingId,
+          bookingItemId: "eta",
+          source: "pliant",
+          sourceId: "tx-eta",
+          amountEur: 40,
+          originalAmount: 40,
+          originalCurrency: "EUR",
+          supplier: "ETA",
+          occurredOn: "2026-03-04",
+          instrument: "pliant_card",
+          instrumentDetail: "4242",
+        },
+      ],
+      charges: [
+        charge("montagne", 1200, "Dépense · SEJOUR MONTAGNE — TB-2026-0028", "booking:b:expense:montagne"),
+        charge("eta", 40, "Dépense · ETA-IL ELETRONIC TRAVE — TB-2026-0028", "booking:b:expense:eta"),
+        charge("billets", 25, "Frais de billeterie (1 billet)", "booking:b:expense:auto-ticket"),
+        charge("commission", 126.5, "Commission d’agence", "booking:b:agency-commission"),
+      ],
+    });
+    const montagne = ctx.lines.find((line) => line.transactionId === "montagne");
+    const eta = ctx.lines.find((line) => line.transactionId === "eta");
+    const tickets = ctx.lines.find((line) => line.transactionId === "billets");
+    const fee = ctx.lines.find((line) => line.transactionId === "commission");
+    assert.equal(montagne?.label, "Dépense · SEJOUR MONTAGNE — TB-2026-0028");
+    assert.equal(montagne?.activityId, 22);
+    assert.equal(montagne?.customCode ?? null, null);
+    assert.equal(montagne?.providerName, "DIVERS TERRESTRE");
+    assert.equal(montagne?.note ?? null, null);
+    assert.equal(eta?.label, "Dépense · ETA-IL ELETRONIC TRAVE — TB-2026-0028");
+    assert.equal(eta?.activityId, 22);
+    assert.equal(eta?.note, "Pliant : 40,00 €");
+    assert.equal(tickets?.customCode, "401");
+    assert.equal(tickets?.label, "Frais Agence Billetterie");
+    assert.equal(tickets?.note ?? null, null);
+    assert.equal(fee?.customCode, "12");
+    assert.equal(fee?.agencyProvider, true);
+    assert.equal(fee?.label, "Frais agence 10 % · TB-2026-0028");
+    assert.equal(fee?.note ?? null, null);
+    assert.equal(fee?.activityId ?? null, null);
+
+    const reduced = buildMb3mInvoiceContext({
+      booking: booking({ reference: "TB-2026-0028", agency_fee_rate: "0.0750" }),
+      items: [],
+      travelers: [],
+      payer: payer(),
+      companies: [],
+      charges: [charge("commission", 90, "Commission d’agence", "booking:b:agency-commission")],
+    });
+    assert.equal(reduced.lines[0]?.label, "Frais agence 7,5 % · TB-2026-0028");
+    assert.equal(reduced.lines[0]?.customCode, "12");
+
+    const agency = "ba3e9d2d-c2a5-4872-b5d2-99e74b483831";
+    const xml = linesXml("InvoiceLine", mb3mSoapLines(ctx.lines, 0.01), agency);
+    const block = (label: string) => {
+      const at = xml.indexOf(`<Label>${label}</Label>`);
+      return xml.slice(xml.lastIndexOf("<InvoiceLine>", at), xml.indexOf("</InvoiceLine>", at));
+    };
+    const montagneXml = block("Dépense · SEJOUR MONTAGNE — TB-2026-0028");
+    assert.match(montagneXml, /<ActivityId>22<\/ActivityId>/);
+    assert.match(montagneXml, /<Type>Standard<\/Type>/);
+    assert.equal(montagneXml.includes("<Note>"), false);
+    assert.equal(montagneXml.includes("<Complementary>"), false);
+    const etaXml = block("Dépense · ETA-IL ELETRONIC TRAVE — TB-2026-0028");
+    assert.match(etaXml, /<ActivityId>22<\/ActivityId>/);
+    assert.match(etaXml, /<Note>Pliant : 40,00 €<\/Note>/);
+    assert.equal(etaXml.includes("Fournisseur"), false);
+    const feeXml = block("Frais agence 10 % · TB-2026-0028");
+    assert.match(feeXml, /<Complementary>12<\/Complementary>/);
+    assert.match(feeXml, /<LineType>4<\/LineType>/);
+    assert.match(feeXml, /<Type>Custom<\/Type>/);
+    assert.equal(feeXml.includes("<Note>"), false);
+    assert.equal(feeXml.includes("<ActivityId>"), false);
+    assert.equal(feeXml.includes("<MarginUnit>"), false);
+    const ticketXml = block("Frais Agence Billetterie");
+    assert.match(ticketXml, /<Complementary>401<\/Complementary>/);
+    assert.equal(ticketXml.includes("<Note>"), false);
+    assert.equal(xml.match(/<Note>/g)?.length, 1);
+
+    const grouped = assembleGroupedMb3m([ctx]);
+    assert.equal(
+      grouped.lines.find((line) => line.label.startsWith("Dépense · SEJOUR"))?.activityId,
+      22
+    );
+    assert.equal(grouped.lines.find((line) => line.label.includes("ETA-IL"))?.note, "Pliant : 40,00 €");
+    assert.equal(grouped.lines.find((line) => line.customType?.complementary === "12")?.label, "Frais agence 10 % · TB-2026-0028");
+    const ticketsGrouped = grouped.lines.find((line) => line.customType?.complementary === "401");
+    assert.equal(ticketsGrouped?.label.startsWith("Frais Agence Billetterie"), true);
+    assert.equal(ticketsGrouped?.note ?? null, null);
+    const credit = linesXml("CreditNoteLine", mb3mSoapLines(ctx.lines, 0.01), agency);
+    assert.equal(credit.match(/<Note>/g)?.length, 1);
+    assert.match(credit, /<Note>Pliant : 40,00 €<\/Note>/);
+    assert.match(credit, /<Label>Dépense · SEJOUR MONTAGNE — TB-2026-0028<\/Label>/);
+    assert.match(credit, /<Label>Frais agence 10 % · TB-2026-0028<\/Label>/);
+    assert.match(credit, /<Complementary>401<\/Complementary>/);
   });
 
   it("porte la remise en ligne négative Custom, avec les actions déjà autorisées", () => {
