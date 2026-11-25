@@ -20,6 +20,7 @@ import { ticketPartyKeys } from "@/lib/crm/document-passengers";
 import { Trash2 } from "lucide-react";
 import { reviewDoubts } from "@/lib/crm/review-doubt";
 import { cardPriceError, readCardPriceMode, withCardPriceMode, type CardPriceMode } from "@/lib/crm/card-price";
+import { hotelSupplierFieldValue, hotelSupplierToStore } from "@/lib/crm/hotel-card-supplier";
 
 type ItemDraft = BookingExtract["items"][number];
 
@@ -134,6 +135,10 @@ export function IngestItemCard({
   );
   const missingDocumentPrice =
     itemRequiresDocumentPrice(item.kind) && readDocumentAmount(d) == null;
+  const sellingPriceLabel =
+    item.kind === "flight" && statedTicketCount(item) != null && !flightAmountIsGroupTotal(item.details)
+      ? "Prix du billet"
+      : "Prix de vente";
   const included = Array.isArray(d.included) ? d.included.join("\n") : String(d.included || "");
   const roomRows = Array.isArray(d.rooms) ? d.rooms : [];
   const kinds = BOOKING_ITEM_KINDS.filter(
@@ -207,9 +212,9 @@ export function IngestItemCard({
           />
         </Field>
         <Field
-          label="Prix document"
+          label="Prix d’achat"
           error={
-            missingDocumentPrice ? "Indiquez le prix imprimé sur le document." : null
+            missingDocumentPrice ? "Indiquez le prix d’achat." : null
           }
         >
           <MoneyInput
@@ -223,7 +228,7 @@ export function IngestItemCard({
                 },
               })
             }
-            aria-label="Prix document"
+            aria-label="Prix d’achat"
             placeholder="Montant imprimé"
             className={`${fieldControlClass}${missingDocumentPrice ? " border-accent" : ""}`}
           />
@@ -309,11 +314,7 @@ export function IngestItemCard({
         {pricedCard && (priceMode === "sans" || forfait) ? null : (
         <>
         <Field
-          label={
-            item.kind === "flight" && statedTicketCount(item) != null && !flightAmountIsGroupTotal(item.details)
-              ? "Prix du billet"
-              : "Prix"
-          }
+          label={sellingPriceLabel}
           hint={
             item.kind === "flight" && flightAmountIsGroupTotal(item.details)
               ? "Total du groupe, au centime. Le nombre de billets ne le divise pas."
@@ -325,11 +326,7 @@ export function IngestItemCard({
           <MoneyInput
             value={item.amount}
             onChange={(amount) => onChange({ ...item, amount })}
-            aria-label={
-              item.kind === "flight" && statedTicketCount(item) != null && !flightAmountIsGroupTotal(item.details)
-                ? "Prix du billet"
-                : "Prix"
-            }
+            aria-label={sellingPriceLabel}
           />
         </Field>
         {item.kind === "flight" &&
@@ -373,8 +370,8 @@ export function IngestItemCard({
         )}
         <Field label="Fournisseur">
           <Text
-            value={item.supplier || ""}
-            onChange={(supplier) => onChange({ ...item, supplier })}
+            value={hotelSupplierFieldValue(item.kind, item.supplier)}
+            onChange={(supplier) => onChange({ ...item, supplier: hotelSupplierToStore(item.kind, supplier) })}
           />
         </Field>
       </div>

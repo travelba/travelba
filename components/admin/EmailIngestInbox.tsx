@@ -810,7 +810,7 @@ export function EmailIngestInbox({
                       ) : needsPrice ? (
                         <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_7.5rem]">
                           <Field
-                            label="Prix imprimé sur le document"
+                            label="Prix d’achat"
                             hint={
                               ticketTotalOnce && item.kind === "flight"
                                 ? "Total du billet, une fois pour ces vols."
@@ -820,7 +820,7 @@ export function EmailIngestInbox({
                             <MoneyInput
                               value={amount}
                               onChange={(next) => patchItem(row, index, { document_amount: next })}
-                              aria-label={`Prix document ${itemLabel(item.kind)}`}
+                              aria-label={`Prix d’achat ${itemLabel(item.kind)}`}
                               placeholder="Montant imprimé"
                             />
                           </Field>
@@ -844,7 +844,7 @@ export function EmailIngestInbox({
                         </div>
                       ) : amount != null ? (
                         <p className="mt-1 text-xs text-muted">
-                          Prix imprimé sur le document : {formatDocumentPrice(amount, currency)}
+                          Prix d’achat : {formatDocumentPrice(amount, currency)}
                         </p>
                       ) : null}
                     </li>
