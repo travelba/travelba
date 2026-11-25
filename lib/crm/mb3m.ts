@@ -158,8 +158,8 @@ export type Mb3mLine = {
   /** Vol : PNR, recopié sur la pièce s’il n’y en a qu’un. */
   refCommand?: string | null;
   /**
-   * Ancienne note de ligne. N’est plus envoyée : le « + » MB3M reprend ce champ.
-   * Le libellé de la ligne reste seul.
+   * Note du « + » MB3M. Seule une dépense Pliant en complémentaire 12 part :
+   * « Pliant : 1 245,00 € ». Les autres lignes et les avoirs hors Pliant restent vides.
    */
   note?: string | null;
 };
@@ -796,10 +796,15 @@ export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine
           ? ""
           : tag("MarginUnit", money(line.marginUnit));
       const refPiece = tag("RefPiece", (line.refPiece || "").trim().slice(0, 40));
+      const pliantNote = (line.note || "").trim();
+      const note =
+        line.type === "Custom" && line.customType?.complementary === "12" && pliantNote.startsWith("Pliant : ")
+          ? tag("Note", pliantNote.slice(0, 250))
+          : "";
       // Ordre WCF : ActivityId, CommissionNetTotal, CommissionTotal, CustomType, Label,
-      // MarginUnit, NetPriceTotal, NetPriceUnit, ProviderId, Quantity, RefPiece, Type.
-      // Le champ Note (le « + » de la ligne) n’est pas envoyé. CommissionId n’est pas dans le WSDL.
-      return `<${kind}>${activity}${commissionIdXml(line)}${flightEuroCommissionXml(line)}${customTypeXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${providerXml(line, providerFallback)}${tag("Quantity", quantity(line.quantity))}${refPiece}${tag("Type", type)}</${kind}>`;
+      // MarginUnit, NetPriceTotal, NetPriceUnit, Note, ProviderId, Quantity, RefPiece, Type.
+      // Note seulement pour une dépense Pliant en complémentaire 12. CommissionId n’est pas dans le WSDL.
+      return `<${kind}>${activity}${commissionIdXml(line)}${flightEuroCommissionXml(line)}${customTypeXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${providerXml(line, providerFallback)}${tag("Quantity", quantity(line.quantity))}${refPiece}${tag("Type", type)}</${kind}>`;
     })
     .join("");
 }

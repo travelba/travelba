@@ -376,6 +376,136 @@ describe("facture MB3M", () => {
     );
   });
 
+  it("note seulement la dépense payée par Pliant, sur la facture et l’avoir", () => {
+    arm();
+    const thin = "\u202f";
+    const ctx = buildMb3mInvoiceContext({
+      booking: booking({ reference: "TB-2026-0211" }),
+      items: [
+        {
+          id: "exp-pliant",
+          kind: "expense",
+          title: "Frais hôtel",
+          amount: 15,
+          lifecycle: "active",
+          details: { pliant_transaction_id: "tx-pliant", pliant_amount: 200 },
+        },
+        { id: "exp-libre", kind: "expense", title: "Pourboire", amount: 10, lifecycle: "active" },
+        { id: "hotel-1", kind: "hotel", title: "Avoriaz", amount: 1000, lifecycle: "active" },
+      ],
+      travelers: [{ first_name: "Ada", last_name: "Lovelace" }],
+      payer: payer(),
+      companies: [],
+      costs: [
+        {
+          id: "cost-1",
+          bookingId,
+          bookingItemId: "exp-pliant",
+          source: "pliant",
+          sourceId: "tx-pliant",
+          amountEur: 1245,
+          originalAmount: 1350,
+          originalCurrency: "USD",
+          supplier: "Hôtel",
+          occurredOn: "2026-03-04",
+          instrument: "pliant_card",
+          instrumentDetail: "4242",
+        },
+      ],
+      charges: [
+        {
+          id: "pliant-debit",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 15,
+          label: "Dépense · Frais hôtel — TB-2026-0211",
+          external_id: "booking:b:expense:exp-pliant",
+          booking_id: bookingId,
+        },
+        {
+          id: "free-debit",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 10,
+          label: "Dépense · Pourboire — TB-2026-0211",
+          external_id: "booking:b:expense:exp-libre",
+          booking_id: bookingId,
+        },
+        {
+          id: "hotel-debit",
+          direction: "debit",
+          status: "posted",
+          currency: "EUR",
+          amount: 1000,
+          label: "Hôtel · Avoriaz",
+          external_id: "booking:b:item:hotel-1",
+          booking_id: bookingId,
+        },
+      ],
+    });
+    const agency = "ba3e9d2d-c2a5-4872-b5d2-99e74b483831";
+    const xml = linesXml("InvoiceLine", mb3mSoapLines(ctx.lines, 0.01), agency);
+    const block = (label: string) => {
+      const at = xml.indexOf(`<Label>${label}</Label>`);
+      return xml.slice(xml.lastIndexOf("<InvoiceLine>", at), xml.indexOf("</InvoiceLine>", at));
+    };
+    const pliant = block("Frais agence · Frais hôtel — TB-2026-0211");
+    assert.match(pliant, /<Complementary>12<\/Complementary>/);
+    assert.match(pliant, new RegExp(`<Note>Pliant : 1${thin}245,00 €</Note>`));
+    assert.equal(pliant.includes("<MarginUnit>"), false);
+    const tip = block("Frais agence · Pourboire — TB-2026-0211");
+    assert.equal(tip.includes("<Note>"), false);
+    assert.match(tip, /<Complementary>12<\/Complementary>/);
+    const hotel = block("Hôtel · Avoriaz");
+    assert.equal(hotel.includes("<Note>"), false);
+    assert.match(hotel, /<Type>Standard<\/Type>/);
+    const grouped = assembleGroupedMb3m([ctx]);
+    const groupedPliant = grouped.lines.find((line) => line.label.includes("Frais hôtel"));
+    assert.equal(groupedPliant?.note, `Pliant : 1${thin}245,00 €`);
+    assert.equal(grouped.lines.filter((line) => line.note).length, 1);
+    const credit = linesXml(
+      "CreditNoteLine",
+      [
+        {
+          label: "Frais agence · Frais hôtel — TB-2026-0211",
+          quantity: 1,
+          netPriceUnit: 15,
+          netPriceTotal: 15,
+          type: "Custom",
+          customType: { complementary: "12", lineType: 4 },
+          providerRole: "agency",
+          note: `Pliant : 1${thin}245,00 €`,
+        },
+        {
+          label: "Hôtel · Avoriaz",
+          quantity: 1,
+          netPriceUnit: 1000,
+          netPriceTotal: 1000,
+          activityId: 7,
+          type: "Standard",
+          note: "Fournisseur : RIAD",
+        },
+        {
+          label: "Frais Agence Billetterie",
+          quantity: 1,
+          netPriceUnit: 25,
+          netPriceTotal: 25,
+          type: "Custom",
+          customType: { complementary: "401", lineType: 4 },
+          providerRole: "agency",
+          note: "Pliant : 25,00 €",
+        },
+      ],
+      agency
+    );
+    assert.equal(credit.match(/<Note>/g)?.length, 1);
+    assert.match(credit, new RegExp(`<Note>Pliant : 1${thin}245,00 €</Note>`));
+    assert.equal(credit.includes("Fournisseur"), false);
+    assert.equal(credit.includes("Débit Pliant"), false);
+  });
+
   it("porte la remise en ligne négative Custom, avec les actions déjà autorisées", () => {
     arm();
     const ctx = buildMb3mInvoiceContext({

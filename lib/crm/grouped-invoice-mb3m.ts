@@ -187,7 +187,7 @@ function referenceOf(marker: string) {
 /**
  * Le premier frais Custom porte la référence, la destination, les dates et les voyageurs
  * quand le dossier n’a pas d’autre ligne. Les frais suivants gardent la référence dans le libellé.
- * Aucune ligne n’envoie de Note : le « + » MB3M reste vide. Le libellé d’une prestation ne change pas.
+ * La note ne part que si elle est déjà « Pliant : … ». Le libellé d’une prestation ne change pas.
  * La commission d’agence garde son libellé, sans pourcentage.
  */
 export function stampGroupedMb3mSection(marker: string, lines: Mb3mLine[]): Mb3mLine[] {
@@ -195,7 +195,8 @@ export function stampGroupedMb3mSection(marker: string, lines: Mb3mLine[]): Mb3m
   const hasStandard = lines.some((line) => line.type !== "Custom");
   let marked = false;
   return lines.map((line) => {
-    const stripped = { ...line, note: null };
+    const kept = (line.note || "").trim();
+    const stripped = { ...line, note: kept.startsWith("Pliant : ") ? kept : null };
     if (line.type === "Custom") {
       const extra = !hasStandard && !marked ? marker : reference;
       marked = true;
