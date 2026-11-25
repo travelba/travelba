@@ -620,7 +620,7 @@ export function BookingEditor({
   }
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const saveOpenCard = useRef<(() => Promise<boolean>) | null>(null);
+  const saveOpenCard = useRef<(() => Promise<boolean | "annule">) | null>(null);
   const [pricedItems, setPricedItems] = useState(items);
   const [liveSteps, setLiveSteps] = useState<CrmBookingItem[] | null>(null);
   const [stepError, setStepError] = useState<string | null>(null);
@@ -990,12 +990,11 @@ export function BookingEditor({
 
   async function persistSteps() {
     if (!saveOpenCard.current) return true;
-    const cardOk = await Promise.race([
-      saveOpenCard.current().catch(() => false),
-      new Promise<boolean>((resolve) => {
-        window.setTimeout(() => resolve(false), 25000);
-      }),
-    ]);
+    const cardOk = await saveOpenCard.current().catch(() => false as const);
+    if (cardOk === "annule") {
+      noteStepError(null);
+      return false;
+    }
     if (!cardOk) {
       noteStepError(stepErrorRef.current || "Les étapes n’ont pas été enregistrées. Le séjour n’a pas changé.");
       return false;

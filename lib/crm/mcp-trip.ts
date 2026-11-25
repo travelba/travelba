@@ -45,6 +45,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { MCP_BOOKING_COLUMNS, MCP_ITEM_COLUMNS } from "@/lib/crm/mcp-columns";
 import { McpWriteError } from "@/lib/crm/mcp-write";
 import { applyStayCommit, planDeletedCardDocuments } from "@/lib/crm/stay-commit";
+import { recordStepJournals } from "@/lib/crm/step-journal";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOCAL = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/;
@@ -2183,7 +2184,7 @@ export async function removeCarte(input: Record<string, unknown>, admin?: Admin)
   const db = client(admin);
   const { data, error } = await db
     .from("crm_booking_items")
-    .select("id, kind, title, details")
+    .select("id, kind, title, supplier, confirmation_ref, start_at, end_at, details")
     .eq("id", carteId)
     .eq("booking_id", booking.id)
     .maybeSingle();
@@ -2203,6 +2204,31 @@ export async function removeCarte(input: Record<string, unknown>, admin?: Admin)
     relink: documents.relink,
   });
   if (!written.ok) throw new McpWriteError("Carte non retirée.");
+  const removed = data as {
+    kind?: string | null;
+    title?: string | null;
+    supplier?: string | null;
+    confirmation_ref?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    details?: Record<string, unknown> | null;
+  };
+  await recordStepJournals({
+    bookingId: booking.id,
+    staffId: null,
+    deleted: [
+      {
+        kind: removed.kind,
+        title: removed.title,
+        supplier: removed.supplier,
+        confirmation_ref: removed.confirmation_ref,
+        start_at: removed.start_at,
+        end_at: removed.end_at,
+        details: removed.details,
+      },
+    ],
+    updated: [],
+  });
   await resyncAccueilVip(db, booking.id);
   const warning = await ledgerWarning("Carte retirée", () => refreshBookingLedger(db, booking.id));
   await import("@/lib/crm/dossier-refresh")

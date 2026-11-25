@@ -15,6 +15,7 @@ import {
   refreshBookingLedger,
 } from "@/lib/crm/bookings";
 import { recordAgencyJournal } from "@/lib/crm/agency-log";
+import { recordStepJournals, type StepIdentity } from "@/lib/crm/step-journal";
 import { noteCarnetAdditions, type CarnetAdditionCard } from "@/lib/crm/carnet-addition";
 import { verifiedJournalSummary } from "@/lib/crm/review-doubt";
 import { cardVisibilityUpdate, detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
@@ -381,6 +382,39 @@ async function updateBookingItem(
   return { item: data, shown, verified };
 }
 
+type JournalStepRow = {
+  id?: string;
+  kind?: string | null;
+  title?: string | null;
+  supplier?: string | null;
+  confirmation_ref?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  details?: unknown;
+};
+
+function stepIdentity(row: JournalStepRow | undefined, patch?: Record<string, unknown>): StepIdentity {
+  const currentDetails =
+    row?.details && typeof row.details === "object" && !Array.isArray(row.details)
+      ? (row.details as Record<string, unknown>)
+      : null;
+  const patchDetails =
+    patch?.details && typeof patch.details === "object" && !Array.isArray(patch.details)
+      ? (patch.details as Record<string, unknown>)
+      : null;
+  const text = (value: unknown, fallback: string | null | undefined) =>
+    typeof value === "string" ? value : fallback || null;
+  return {
+    kind: text(patch?.kind, row?.kind),
+    title: text(patch?.title, row?.title) || "Étape",
+    supplier: patch && "supplier" in patch ? text(patch.supplier, null) : row?.supplier || null,
+    confirmation_ref: patch && "confirmation_ref" in patch ? text(patch.confirmation_ref, null) : row?.confirmation_ref || null,
+    start_at: patch && "start_at" in patch ? text(patch.start_at, null) : row?.start_at || null,
+    end_at: patch && "end_at" in patch ? text(patch.end_at, null) : row?.end_at || null,
+    details: patchDetails || currentDetails,
+  };
+}
+
 async function journalVerifiedCards(bookingId: string, staffId: string, titles: string[]) {
   const names = titles.map((title) => title.trim()).filter(Boolean);
   if (!names.length) return;
@@ -454,6 +488,19 @@ async function commitStaySteps(
       kind: prepared.kind,
     });
   }
+  const watched = [...new Set([...deleted, ...preparedUpdates.map((item) => item.id)])];
+  const known = new Map<string, JournalStepRow>();
+  if (watched.length) {
+    const { data: existing, error: existingError } = await supabase
+      .from("crm_booking_items")
+      .select("id, kind, title, supplier, confirmation_ref, start_at, end_at, details")
+      .eq("booking_id", bookingId)
+      .in("id", watched);
+    if (existingError) return dbError(existingError, 400);
+    for (const row of (existing || []) as JournalStepRow[]) {
+      if (row.id) known.set(row.id, row);
+    }
+  }
   const documents = await planDeletedCardDocuments(supabase, bookingId, deleted);
   if (!documents.ok) return dbError(documents.error, 400);
   const written = await applyStayCommit(supabase, {
@@ -507,6 +554,14 @@ async function commitStaySteps(
   await refreshBookingDerived(bookingId, { signatory });
   await noteCarnetAdditions(supabase, bookingId, shown);
   if (staffId) await journalVerifiedCards(bookingId, staffId, verified);
+  const deletedRows = deleted.map((id) => stepIdentity(known.get(id)));
+  const updatedRows = preparedUpdates.map((item) => stepIdentity(known.get(item.id), item.patch));
+  await recordStepJournals({
+    bookingId,
+    staffId: staffId || null,
+    deleted: deletedRows,
+    updated: updatedRows,
+  });
   return NextResponse.json({
     ok: true,
     ids: Object.fromEntries(idMap),
@@ -589,7 +644,7 @@ export async function DELETE(request: Request, ctx: Ctx) {
   if (!itemId) return jsonError("itemId requis");
   const { data: current, error: lookupError } = await auth.supabase
     .from("crm_booking_items")
-    .select("kind, details")
+    .select("id, kind, title, supplier, confirmation_ref, start_at, end_at, details")
     .eq("id", itemId)
     .eq("booking_id", bookingId)
     .maybeSingle();
@@ -612,6 +667,14 @@ export async function DELETE(request: Request, ctx: Ctx) {
     relink: documents.relink,
   });
   if (!written.ok) return dbError(written.error, 400);
+  if (current) {
+    await recordStepJournals({
+      bookingId,
+      staffId: auth.staff.id,
+      deleted: [stepIdentity(current as JournalStepRow)],
+      updated: [],
+    });
+  }
   try {
     await resyncAccueilVip(auth.supabase, bookingId);
   } catch (syncError) {
