@@ -25,7 +25,7 @@ import {
   type ConciergePending,
   type HandoffKind,
 } from "./whatsapp-concierge";
-import { type ConciergeGenerator, type ConciergeHistoryTurn } from "./whatsapp-conversation";
+import { agencyRequestBody, type ConciergeGenerator, type ConciergeHistoryTurn } from "./whatsapp-conversation";
 import { signalWhatsappTyping } from "./whatsapp-typing";
 import { planPhase2 } from "./concierge-phase2";
 import { knowledgeSeed, type KnowledgeChunk } from "./concierge-knowledge";
@@ -570,6 +570,8 @@ export async function receiveWhatsappWebhook(input: {
 
   let bookingId: string | null = linkedBooking;
   let handoff: HandoffKind | null = null;
+  let prior: ConciergeHistoryTurn[] = [];
+  let answered = clientText;
   let tools: string[] | null = linkedBooking ? ["ajouter_piece"] : null;
   let authorizationCheck: AuthorizationCheckIntent | null = null;
   let reply = leadReply(messageLanguage(clientText));
@@ -624,6 +626,7 @@ export async function receiveWhatsappWebhook(input: {
     const stopping = parts.some((line) => isConciergeStop(line));
     const hadPiece = piece === "saved" || parts.some((line) => line === PIECE_MARK);
     const content = parts.filter((line) => !isConciergeStop(line) && line !== PIECE_MARK).join("\n");
+    answered = content || said;
     const loaded = await input.store.loadDossier(customer.id);
     const raw = companion ? scopeCompanionDossier(loaded, companion.bookingIds) : loaded;
     const dossier = buildConciergeDossier({ ...raw, firstName: customer.first_name });
@@ -631,7 +634,7 @@ export async function receiveWhatsappWebhook(input: {
       reply = withConciergeSignature(pieceSavedLine(lang));
     } else {
       const history = input.store.conversationHistory ? await input.store.conversationHistory(customer.id) : [];
-      const prior: ConciergeHistoryTurn[] = history
+      prior = history
         .filter((row) => row.twilio_sid !== sid && !row.body.startsWith("Conversation rendue au Concierge"))
         .slice(-16)
         .map((row) => ({ direction: row.direction, body: row.body, at: row.created_at }));
@@ -743,7 +746,7 @@ export async function receiveWhatsappWebhook(input: {
       booking_id: bookingId,
       message_id: inbound.id,
       kind: handoff,
-      body: redactIngestText(clientText),
+      body: redactIngestText(agencyRequestBody(answered, prior)),
       status: "open",
     };
     try {

@@ -704,6 +704,7 @@ export function classifyHandoff(message: string): HandoffKind | null {
   if (/\burgent\b|\burgence\b|\bbloque\b|\bau secours\b|\bsos\b|\bemergency\b|\bstranded\b/.test(text) || /דחוף/.test(message)) {
     return "urgent";
   }
+  if (isServiceQuote(message)) return "quote";
   if (
     /\bdevis\b|\bnouveau (sejour|voyage)\b|\borganiser un (sejour|voyage)\b|\bquote\b|\bnew trip\b/.test(text) ||
     /הצעת מחיר|טיול חדש/.test(message)
@@ -718,6 +719,99 @@ export function isComplaint(message: string) {
   return /plainte|mecontent|decu|inacceptable|scandale|pas content|complaint|unhappy|unacceptable|disappointed|disgusted/.test(
     text
   );
+}
+
+function flat(message: string) {
+  return fold(message).replace(/[’ʼ']/g, "'");
+}
+
+/** « mon séjour », « le prix du vol », une référence : la réservation est déjà au dossier. */
+function asksExistingBooking(text: string) {
+  if (/\btb-\d{4}-\d+\b/.test(text)) return true;
+  if (/\b(mon|ma|mes|notre|nos)\s+(sejour|voyage|vol|vols|hotel|transfert|reservation|dossier|carnet|chambre)\b/.test(text)) {
+    return true;
+  }
+  if (/\b(du|de la|de mon|de ma|des)\s+(sejour|voyage|hotel|reservation|carnet)\b/.test(text)) return true;
+  if (/\bprix\s+du\s+(sejour|vol|hotel|voyage|transfert)\b/.test(text)) return true;
+  if (/\b(le|la)\s+(sejour|reservation|carnet)\b/.test(text) && /\b(prix|tarif|coute|montant)\b/.test(text)) return true;
+  return false;
+}
+
+/**
+ * Demande commerciale : tarif, prix, devis ou disponibilité d’un vol, d’un hôtel,
+ * d’un séjour ou d’un transfert qui n’est pas déjà au dossier.
+ * « nouveau séjour » sans prix reste le questionnaire. « le prix du séjour » reste le dossier.
+ */
+export function isServiceQuote(message: string) {
+  const text = flat(message);
+  if (asksExistingBooking(text)) return false;
+  if (
+    /\b(nouveau (sejour|voyage)|new trip|organiser un (sejour|voyage))\b/.test(text) &&
+    !/\b(tarif|prix|disponib|combien|price|rate|fare)\b/.test(text)
+  ) {
+    return false;
+  }
+  if (/\bcombien pour\b|\bhow much for\b/.test(text)) return true;
+  if (/\b(possible d'avoir un tarif|avoir un tarif|tarif pour|prix d'un|prix pour un|prix d un)\b/.test(text)) return true;
+  const priced = /\b(tarif|tarifs|prix|devis|disponibilite|disponible|combien|price|rate|fare|quote|availability|available)\b/.test(
+    text
+  );
+  const service = /\b(vol|vols|avion|hotel|sejour|voyage|transfert|navette|chambre|flight|flights|stay|transfer|room)\b/.test(
+    text
+  );
+  return priced && service;
+}
+
+const CLASH_MONTHS: Record<string, number> = {
+  janvier: 1,
+  fevrier: 2,
+  mars: 3,
+  avril: 4,
+  mai: 5,
+  juin: 6,
+  juillet: 7,
+  aout: 8,
+  septembre: 9,
+  octobre: 10,
+  novembre: 11,
+  decembre: 12,
+  january: 1,
+  february: 2,
+  march: 3,
+  april: 4,
+  may: 5,
+  june: 6,
+  july: 7,
+  august: 8,
+  september: 9,
+  october: 10,
+  november: 11,
+  december: 12,
+};
+
+export type WeekdayClash = { cited: string; actual: string; date: string };
+
+/** Jour cité incompatible avec la date. Sans année : la prochaine occurrence. */
+export function weekdayDateClash(message: string, now: Date): WeekdayClash | null {
+  const text = flat(message);
+  const dayName = "dimanche|lundi|mardi|mercredi|jeudi|vendredi|samedi|sunday|monday|tuesday|wednesday|thursday|friday|saturday";
+  const monthName = Object.keys(CLASH_MONTHS).join("|");
+  const lead = text.match(new RegExp(`\\b(${dayName})\\s+(\\d{1,2})(?:er)?\\s+(${monthName})(?:\\s+(\\d{4}))?`));
+  const trail = lead ? null : text.match(new RegExp(`\\b(\\d{1,2})(?:er)?\\s+(${monthName})(?:\\s+(\\d{4}))?\\s+(${dayName})\\b`));
+  if (!lead && !trail) return null;
+  const cited = (lead ? lead[1] : trail?.[4] || "").toLowerCase();
+  const day = Number(lead ? lead[2] : trail?.[1]);
+  const month = CLASH_MONTHS[(lead ? lead[3] : trail?.[2]) || ""] || 0;
+  const yearRaw = lead ? lead[4] : trail?.[3];
+  if (!cited || !month || day < 1 || day > 31) return null;
+  const today = parisMoment(now).date;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  let iso = `${yearRaw || today.slice(0, 4)}-${pad(month)}-${pad(day)}`;
+  if (!yearRaw && iso < today) iso = `${Number(today.slice(0, 4)) + 1}-${pad(month)}-${pad(day)}`;
+  const english = /sunday|monday|tuesday|wednesday|thursday|friday|saturday/.test(cited);
+  const actual = english ? englishWeekday(iso).toLowerCase() : frenchWeekday(iso);
+  if (!actual || actual === cited) return null;
+  return { cited, actual, date: iso };
 }
 
 const GENERIC_STAY_WORDS = new Set([
@@ -846,11 +940,18 @@ export function conciergeFollowUp(detail: string, lang: ReplyLang = "fr") {
   return sign(`${tone}\n${detail.trim()}`);
 }
 
+/** Avoir comptable seulement. Le verbe « avoir » (d’avoir un tarif) n’est pas un encours. */
+function mentionsBalance(text: string) {
+  if (/encours|solde|reste a payer|credit disponible|combien je dois|\bbalance\b|amount due|how much do i owe/.test(text)) {
+    return true;
+  }
+  if (/\b(un|mon|ma|votre|vos|notre|nos|son|leur|cet|cette) avoir\b/.test(text)) return true;
+  return /\bl'avoir\b/.test(text) && /\b(credit|solde|encours|compte|disponible|montant)\b/.test(text);
+}
+
 function topicOf(message: string) {
   const text = fold(message);
-  if (/encours|solde|reste a payer|avoir|credit disponible|combien je dois|balance|amount due|how much do i owe/.test(text)) {
-    return "balance";
-  }
+  if (mentionsBalance(flat(message))) return "balance";
   if (/transaction|virement|releve|mouvement|statement/.test(text)) return "transactions";
   if (/passeport|piece|document|carte d.identite|coffre|passport/.test(text)) return "documents";
   if (/visa|esta|\beta\b|formalit|autorisation/.test(text)) return "formality";
@@ -1618,10 +1719,27 @@ function tripZone(dossier: ConciergeDossier, now: Date) {
   return nextUpcomingFlight(dossier, now)?.item.timezone || nextUpcomingHotel(dossier, now)?.item.timezone || "Europe/Paris";
 }
 
+/** Le client dit que la réponse n’a rien à voir avec sa demande. */
+export function contestsOffTopic(message: string) {
+  const text = flat(message).replace(/'/g, "");
+  return (
+    /pourquoi (tu me parles|vous me parlez) de (ca|cela)/.test(text) ||
+    /na rien a voir/.test(text) ||
+    /rien a voir avec/.test(text) ||
+    /(ne vous ai pas|ne tai pas|vous ai pas|tai pas) demande/.test(text) ||
+    /pas demande ca/.test(text) ||
+    /pas ce que jai demande/.test(text) ||
+    /jai pas demande ca/.test(text)
+  );
+}
+
 export function contestsMessage(message: string) {
-  const text = fold(message);
-  return /tu te trompes|vous vous trompez|t'es trompe|c'est faux|c'est pas (ca|le bon|mon)|ce n'est pas (ca|le bon|mon)|pas le bon vol|mauvais vol|vous etes sur|tu es sur|un doute|are you sure|not sure|you(?:'| a)re wrong|that(?:'| i)s wrong|not my flight/.test(
-    text
+  const text = flat(message);
+  return (
+    contestsOffTopic(message) ||
+    /tu te trompes|vous vous trompez|t'es trompe|c'est faux|c'est pas (ca|le bon|mon)|ce n'est pas (ca|le bon|mon)|pas le bon vol|mauvais vol|vous etes sur|tu es sur|un doute|are you sure|not sure|you(?:'| a)re wrong|that(?:'| i)s wrong|not my flight/.test(
+      text
+    )
   );
 }
 
@@ -1824,10 +1942,43 @@ function subjectStay(message: string, dossier: ConciergeDossier, topic: string) 
   return null;
 }
 
+function clientIsBenjamin(dossier: ConciergeDossier) {
+  const first = fold(dossier.firstName || "").split(/[^a-z]+/).find(Boolean) || "";
+  return first === "benjamin";
+}
+
 function offerAgency(lang: ReplyLang) {
   return lang === "en"
-    ? "I don’t have that information. Would you like me to ask Benjamin?"
-    : "Je n’ai pas cette information. Souhaitez-vous que j’en parle à Benjamin ?";
+    ? "I don’t have that information. Would you like me to ask the agency?"
+    : "Je n’ai pas cette information. Souhaitez-vous que j’en parle à l’agence ?";
+}
+
+function quoteComing(lang: ReplyLang) {
+  return say(lang, {
+    fr: `Un chiffrage arrive très rapidement. ${HANDOFF_SENTENCE}`,
+    en: "A quote is on its way very shortly. I’m passing this to the agency.",
+    he: "הצעת מחיר תגיע בקרוב. אני מעביר את זה לסוכנות.",
+  });
+}
+
+function clashLine(message: string, lang: ReplyLang, now: Date) {
+  const clash = weekdayDateClash(message, now);
+  if (!clash) return "";
+  const english = lang === "en" || /sunday|monday|tuesday|wednesday|thursday|friday|saturday/.test(clash.cited);
+  if (english) {
+    const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+    return `\n${englishLongDate(clash.date)} is a ${cap(clash.actual)}, not a ${cap(clash.cited)}. Which should I keep?`;
+  }
+  return `\nLe ${frenchLongDate(clash.date)} est un ${clash.actual}, pas un ${clash.cited}. Lequel dois-je retenir ?`;
+}
+
+function previousClientText(history?: Array<BubbleHistory & { body?: string | null }>) {
+  const rows = history || [];
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const body = (rows[index].body || "").trim();
+    if (rows[index].direction === "inbound" && body && !contestsMessage(body)) return body;
+  }
+  return "";
 }
 
 function benjaminHandoff(lang: ReplyLang) {
@@ -2020,7 +2171,7 @@ export function planConciergeTurn(
   message: string,
   dossier: ConciergeDossier,
   now: Date = new Date(),
-  history?: BubbleHistory[],
+  history?: Array<BubbleHistory & { body?: string | null }>,
   pending?: ConciergePending[]
 ): ConciergeTurn {
   const lang = messageLanguage(message);
@@ -2036,12 +2187,51 @@ export function planConciergeTurn(
   }
 
   if (contestsMessage(message)) {
+    if (contestsOffTopic(message)) {
+      const previous = previousClientText(history);
+      if (previous) {
+        const replay = planConciergeTurn(previous, dossier, now, history, pending);
+        const already =
+          replay.handoff === "quote" &&
+          (pending || []).some((row) => row.kind === "quote" && flat(row.body) === flat(previous));
+        const apology = say(lang, {
+          fr: "Pardon, je me suis écarté de votre demande.",
+          en: "Sorry, that was beside your request.",
+          he: "סליחה, זה לא ענה לבקשה.",
+        });
+        const core = already
+          ? say(lang, {
+              fr: "Votre demande de chiffrage est déjà chez l’agence.",
+              en: "Your quote request is already with the agency.",
+              he: "בקשת הצעת המחיר כבר אצל הסוכנות.",
+            })
+          : replay.text
+              .replace(/\n+Le Concierge\.?\s*$/i, "")
+              .replace(/^(?:Bonjour|Hello|שלום)\b[^,\n]*,\s*/i, "")
+              .trim();
+        const packed = sayTurn(`${apology}\n${core}`, Boolean(replay.handoff) && !already);
+        return {
+          ...empty,
+          handoff: already ? null : replay.handoff,
+          bookingId: replay.bookingId,
+          text: packed.text,
+          messages: packed.messages,
+          cover: replay.handoff || already ? null : replay.cover,
+        };
+      }
+    }
     const stay = focusStay(message, dossier.stays);
-    const body = say(lang, {
-      fr: VERIFY_SENTENCE,
-      en: "I’ll check with Benjamin.",
-      he: "אני בודק מול הסוכנות.",
-    });
+    const body = clientIsBenjamin(dossier)
+      ? say(lang, {
+          fr: "Je vérifie avec l’agence.",
+          en: "I’ll check with the agency.",
+          he: "אני בודק מול הסוכנות.",
+        })
+      : say(lang, {
+          fr: VERIFY_SENTENCE,
+          en: "I’ll check with Benjamin.",
+          he: "אני בודק מול הסוכנות.",
+        });
     const packed = sayTurn(body);
     return {
       ...empty,
@@ -2083,17 +2273,26 @@ export function planConciergeTurn(
 
   const handoff = classifyHandoff(message);
   if (handoff && AGENCY_HANDOFF.has(handoff)) {
-    const stay = focusStay(message, dossier.stays);
-    const sentence = handoff === "payment" ? benjaminHandoff(lang) : handoffSentence(lang);
-    const which = !stay && dossier.stays.length > 1 ? `\n${whichStayText(dossier.stays, lang)}` : "";
-    const focused = stay
+    const serviceQuote = handoff === "quote" && isServiceQuote(message);
+    const stay = serviceQuote ? null : focusStay(message, dossier.stays);
+    const sentence =
+      handoff === "payment"
+        ? clientIsBenjamin(dossier)
+          ? handoffSentence(lang)
+          : benjaminHandoff(lang)
+        : serviceQuote
+          ? quoteComing(lang)
+          : handoffSentence(lang);
+    const which = !serviceQuote && !stay && dossier.stays.length > 1 ? `\n${whichStayText(dossier.stays, lang)}` : "";
+    const focused = !serviceQuote && stay
       ? `\n${say(lang, {
           fr: `Cela concerne le séjour ${stay.reference}.`,
           en: `This is about stay ${stay.reference}.`,
           he: `זה נוגע לשהות ${stay.reference}.`,
         })}\n${stayClientUrl(stay.reference)}`
       : "";
-    const agency = sayTurn(conciergeFollowUp(`${sentence}${focused}${which}`, lang), true);
+    const clash = serviceQuote ? clashLine(message, lang, now) : "";
+    const agency = sayTurn(conciergeFollowUp(`${sentence}${clash}${focused}${which}`, lang), true);
     return {
       ...empty,
       handoff,
@@ -2205,7 +2404,10 @@ export function planConciergeTurn(
   const complaint = isComplaint(message);
   const thin = answerIsThin(body) || body.includes("Lequel vous intéresse") || body.includes("Which one do you mean");
   if (complaint && (thin || answerHandoff)) {
-    if (!/benjamin/i.test(body)) body = `${body}\n${benjaminHandoff(lang)}`;
+    const pass = clientIsBenjamin(dossier) ? handoffSentence(lang) : benjaminHandoff(lang);
+    if (clientIsBenjamin(dossier) ? !/transmets à l’agence/i.test(body) : !/benjamin/i.test(body)) {
+      body = `${body}\n${pass}`;
+    }
     const stay = pinned || subjectStay(message, dossier, topic);
     const packed = sayTurn(body);
     return {
