@@ -19,7 +19,7 @@ import { HotelReservationCard } from "@/components/crm/HotelReservationCard";
 import { HotelStayFacts } from "@/components/crm/HotelStayFacts";
 import { hotelPhotos, hotelRoomLine } from "@/lib/crm/hotel-gallery";
 import { withoutHotelRoster } from "@/lib/crm/hotel-contact";
-import { transferDescription } from "@/lib/crm/transfer-contact";
+import { transferOpenedLine } from "@/lib/crm/transfer-contact";
 import {
   BOARDING_PASSES_READY_LABEL,
   boardingPassesReadyStatus,
@@ -182,7 +182,7 @@ function CardBody({
   const occupancy = detailStr(item, "occupancy");
   const special = detailStr(item, "special_requests");
   const pickupNote = detailStr(item, "pickup_note");
-  const transferLine = item.kind === "transfer" ? transferDescription(item) : "";
+  const transferOpened = item.kind === "transfer" ? transferOpenedLine(item) : "";
   const baggage = detailStr(item, "baggage");
   const seat = detailStr(item, "seat");
   const terminal = item.kind === "flight" ? flightTerminal(item) : detailStr(item, "terminal");
@@ -266,6 +266,7 @@ function CardBody({
           <p>
             {[detailStr(item, "pickup"), detailStr(item, "dropoff")].filter(Boolean).join(" → ")}
           </p>
+          {transferOpened ? <p>{transferOpened}</p> : null}
           {pickupNote ? <p>{pickupNote}</p> : null}
         </>
       ) : null}
@@ -423,11 +424,13 @@ function CardBody({
             <p className="break-words text-xs text-muted">
               {[item.supplier, vipLeg?.flight_number, vipPlace, item.confirmation_ref].filter(Boolean).join(" · ")}
             </p>
+          ) : item.kind === "transfer" ? (
+            item.confirmation_ref ? (
+              <p className="truncate text-xs text-muted">{item.confirmation_ref}</p>
+            ) : null
           ) : (
             <p className="truncate text-xs text-muted">
-              {item.kind === "transfer"
-                ? transferLine
-                : [item.supplier, item.confirmation_ref].filter(Boolean).join(" · ")}
+              {[item.supplier, item.confirmation_ref].filter(Boolean).join(" · ")}
             </p>
           )}
           {price ? (

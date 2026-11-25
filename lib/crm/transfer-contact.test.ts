@@ -3,42 +3,35 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CarnetItinerary } from "../../components/account/CarnetItinerary";
-import { IngestItemCard } from "../../components/crm/IngestItemCard";
 import type { CrmBookingItem } from "./types";
 import type { PublicBooking } from "./public-booking";
-import { transferDescription, transferProviderPhone } from "./transfer-contact";
+import { transferOpenedLine, transferProviderPhone } from "./transfer-contact";
 
-test("la description du transfert reprend le nom et le numéro, rien d’autre", () => {
+test("le détail ouvert donne le nom et le numéro, pas la carte cachée", () => {
   assert.equal(transferProviderPhone({ phone: "+33612345678" }), "+33 6 12 34 56 78");
-  assert.equal(transferProviderPhone({ phone: "  " }), "");
   assert.equal(
-    transferDescription({
+    transferOpenedLine({
       supplier: "Alpine Transfers",
-      confirmation_ref: "TR-9",
       visible_to_client: true,
       details: { phone: "+33612345678", driver: "Marc", document_amount: 987654, notes: "NOTE-INTERNE" },
     }),
-    "Alpine Transfers · +33 6 12 34 56 78 · TR-9"
+    "Alpine Transfers · +33 6 12 34 56 78"
   );
   assert.equal(
-    transferDescription({
-      supplier: "Alpine Transfers",
-      visible_to_client: false,
-      details: { phone: "+33612345678" },
-    }),
-    "Alpine Transfers"
+    transferOpenedLine({ supplier: "Alpine Transfers", visible_to_client: false, details: { phone: "+33612345678" } }),
+    ""
   );
-  assert.equal(transferDescription({ supplier: "Alpine Transfers", visible_to_client: true, details: {} }), "Alpine Transfers");
+  assert.equal(transferOpenedLine({ supplier: "", visible_to_client: true, details: {} }), "");
 });
 
-test("le carnet écrit le numéro dans la description, sans bouton", () => {
+test("la carte fermée ne montre ni le nom ni le numéro", () => {
   const item = {
     id: "transfert",
     booking_id: "b1",
     kind: "transfer" as const,
     title: "Gare de Moûtiers → Hôtel Le Savoy Méribel",
     supplier: "Alpine Transfers",
-    confirmation_ref: null,
+    confirmation_ref: "TR-9",
     start_at: "2026-12-20T12:56:00",
     end_at: null,
     amount: null,
@@ -52,12 +45,21 @@ test("le carnet écrit le numéro dans la description, sans bouton", () => {
       pickup: "Gare de Moûtiers",
       dropoff: "Hôtel Le Savoy Méribel",
       phone: "+33612345678",
+      pickup_note: "2 h avant le vol",
       driver: "Marc",
       document_amount: 987654,
       notes: "NOTE-INTERNE-XYZ",
     },
   } satisfies CrmBookingItem;
-  const hidden = { ...item, id: "cache", visible_to_client: false, supplier: "Secret Transfer", details: { phone: "+33699999999" } };
+  const hidden = {
+    ...item,
+    id: "cache",
+    title: "Transfert caché",
+    supplier: "Secret Transfer",
+    confirmation_ref: null,
+    visible_to_client: false,
+    details: { phone: "+33699999999", pickup: "Lieu secret" },
+  };
   const html = renderToStaticMarkup(
     createElement(CarnetItinerary, {
       booking: {
@@ -82,33 +84,18 @@ test("le carnet écrit le numéro dans la description, sans bouton", () => {
       items: [item, hidden],
     })
   );
-  assert.match(html, /Alpine Transfers · \+33 6 12 34 56 78/);
-  assert.equal(html.includes("Appeler"), false);
-  assert.equal(html.includes("wa.me"), false);
-  assert.equal(html.includes("Marc"), false);
+  const closed = html.slice(html.indexOf("<summary"), html.indexOf("</summary>"));
+  const opened = html.slice(html.indexOf("</summary>"), html.indexOf("<summary", html.indexOf("</summary>")));
+  assert.equal(closed.includes("Alpine"), false);
+  assert.equal(closed.includes("+33"), false);
+  assert.match(closed, /TR-9/);
+  assert.match(opened, /Alpine Transfers · \+33 6 12 34 56 78/);
+  assert.match(opened, /2 h avant le vol/);
   assert.equal(html.includes("+33699999999"), false);
+  assert.equal(html.includes("Secret Transfer"), false);
+  assert.equal(html.includes("Marc"), false);
   assert.equal(html.includes("987654"), false);
   assert.equal(html.includes("NOTE-INTERNE-XYZ"), false);
-
-  const editor = renderToStaticMarkup(
-    createElement(IngestItemCard, {
-      item: {
-        kind: "transfer",
-        title: item.title,
-        supplier: "Alpine Transfers",
-        confirmation_ref: null,
-        start_at: item.start_at,
-        end_at: null,
-        amount: null,
-        details: { pickup: "Gare de Moûtiers", dropoff: "Hôtel", pickup_note: "2 h avant" },
-      },
-      onChange: () => {},
-      onRemove: () => {},
-    })
-  );
-  assert.match(editor, /Fournisseur/);
-  assert.match(editor, /Note sans heure/);
-  assert.equal(editor.includes("Téléphone du prestataire"), false);
-  assert.equal(editor.includes("Chauffeur"), false);
-  assert.equal(editor.includes(">Prestataire<"), false);
+  assert.equal(html.includes("Appeler"), false);
+  assert.equal(html.includes("wa.me"), false);
 });
