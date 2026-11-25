@@ -219,6 +219,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
         if (!before.error) beforeCards = (before.data || []) as typeof beforeCards;
       }
       await setCarnetPublished(auth.supabase, id, Boolean(body.visible_to_client), {
+        includeKeptHidden: justShown,
         revealDocuments: justShown,
       });
       if (beforeCards.length) {

@@ -15,7 +15,7 @@ import {
 } from "@/lib/crm/types";
 import { statedTicketCount } from "@/lib/crm/item-match";
 import { expenseAwaitsValidation, expenseCountsForClient } from "@/lib/crm/expense-validation";
-import { flightAmountIsGroupTotal, hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
+import { detailsForCardVisibility, flightAmountIsGroupTotal, hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
 import { shownClientNote } from "@/lib/crm/public-booking";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
 import { coversStayRollup, isStayRollupDebit } from "@/lib/crm/ledger-display";
@@ -1035,12 +1035,14 @@ export function canPublishCarnet(items: { kind: string; lifecycle?: string | nul
  * `revealDocuments: false`, leurs pièces. Un dossier déjà visible ne doit pas rouvrir
  * les pièces masquées : l’appelant passe `revealDocuments: false`.
  * `prices` (défaut : suivre `visible`) : la formalité ouvre le séjour sans révéler des prix masqués.
+ * `includeKeptHidden` : le bouton « Montrer au client ». Même écriture que le Montrer d’une carte
+ * (`detailsForCardVisibility`), en une seule requête. Le grand livre suit ensuite, comme aujourd’hui.
  */
 export async function setCarnetPublished(
   supabase: SupabaseClient,
   bookingId: string,
   visible: boolean,
-  options?: { prices?: boolean; revealDocuments?: boolean }
+  options?: { prices?: boolean; includeKeptHidden?: boolean; revealDocuments?: boolean }
 ) {
   const pricesVisible = visible ? options?.prices !== false : false;
   if (visible) {
@@ -1068,22 +1070,46 @@ export async function setCarnetPublished(
   if (!visible) return;
   const { data: rows, error: rowsError } = await supabase
     .from("crm_booking_items")
-    .select("id, kind, details, lifecycle")
+    .select("id, kind, title, details, lifecycle")
     .eq("booking_id", bookingId);
   if (rowsError) throw new Error(rowsError.message);
   const typedRows = (rows || []) as {
     id: string;
     kind: string;
+    title?: string | null;
     details?: Record<string, unknown> | null;
   }[];
-  const revealIds = publishRevealIds(typedRows);
+  const includeKeptHidden = options?.includeKeptHidden === true;
+  const revealIds = publishRevealIds(typedRows, { includeKeptHidden });
   const hiddenIds = new Set(typedRows.map((row) => row.id).filter((id) => !revealIds.includes(id)));
   if (revealIds.length) {
-    const { error: itemsError } = await supabase
-      .from("crm_booking_items")
-      .update({ visible_to_client: true })
-      .in("id", revealIds);
-    if (itemsError) throw new Error(itemsError.message);
+    if (includeKeptHidden) {
+      const byId = new Map(typedRows.map((row) => [row.id, row]));
+      const patches = revealIds.map((id) => {
+        const row = byId.get(id);
+        const title = (row?.title || "").trim();
+        if (!row?.kind || !title) throw new Error("Carte illisible.");
+        return {
+          id,
+          booking_id: bookingId,
+          kind: row.kind,
+          title,
+          visible_to_client: true,
+          details: detailsForCardVisibility(row.details, true),
+        };
+      });
+      const { error: itemsError } = await supabase.from("crm_booking_items").upsert(patches, {
+        onConflict: "id",
+        defaultToNull: false,
+      });
+      if (itemsError) throw new Error(itemsError.message);
+    } else {
+      const { error: itemsError } = await supabase
+        .from("crm_booking_items")
+        .update({ visible_to_client: true })
+        .in("id", revealIds);
+      if (itemsError) throw new Error(itemsError.message);
+    }
   }
   if (options?.revealDocuments === false) return;
   const { data: docs, error: docsLookupError } = await supabase

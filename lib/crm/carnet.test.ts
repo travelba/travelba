@@ -32,9 +32,11 @@ import {
   itemPriceLabel,
   nextFlightPass,
   nextTimelineFlight,
+  clientShowList,
   pendingPublishCards,
   publishRevealIds,
   documentsForItems,
+  showClientCardCountCopy,
   unlinkedDocuments,
   whatsappModifyHref,
 } from "./carnet";
@@ -577,6 +579,39 @@ describe("carnet", () => {
       ]).map((row) => row.id),
       ["nuit"]
     );
+    const imported = item({
+      id: "importe",
+      kind: "hotel",
+      visible_to_client: false,
+      details: { client_hidden: true, needs_review: true, city: "Rome" },
+    });
+    const chosen = item({
+      id: "choisi",
+      kind: "flight",
+      visible_to_client: false,
+      details: { client_hidden: true },
+    });
+    const retired = item({
+      id: "retire",
+      kind: "hotel",
+      visible_to_client: false,
+      lifecycle: "cancelled",
+      details: { client_hidden: true },
+    });
+    const shown = item({ id: "deja", kind: "hotel", visible_to_client: true });
+    const batch = [imported, chosen, retired, shown, item({ id: "alcool", kind: "expense", visible_to_client: false })];
+    assert.deepEqual(publishRevealIds(batch, { includeKeptHidden: true }), ["importe", "choisi", "deja"]);
+    assert.deepEqual(
+      clientShowList(batch, false).map((row) => row.id),
+      ["importe", "choisi", "deja"]
+    );
+    assert.deepEqual(
+      clientShowList(batch, true).map((row) => row.id),
+      ["importe", "choisi"]
+    );
+    assert.equal(showClientCardCountCopy(0), "");
+    assert.equal(showClientCardCountCopy(1), "1 carte va devenir visible.");
+    assert.equal(showClientCardCountCopy(3), "3 cartes vont devenir visibles.");
   });
 
   it("garde le montant document hors du prix vendu et du total séjour", () => {

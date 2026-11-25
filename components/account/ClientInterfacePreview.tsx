@@ -136,7 +136,7 @@ export function ClientInterfacePreview({
   const source = hidePrices ? sourceItems.map((item) => stripClientMoneyItem(item)) : sourceItems;
   const items = withoutHotelRosterItems(source);
   const published = booking.visible_to_client === true;
-  const reveal = new Set(publishRevealIds(items));
+  const reveal = new Set(publishRevealIds(items, { includeKeptHidden: !published }));
   const liveItems = clientVisibleItems(items);
   const shownItems = published ? liveItems : items.filter((item) => reveal.has(item.id));
   const hiddenIds = new Set(items.map((item) => item.id).filter((id) => !reveal.has(id)));

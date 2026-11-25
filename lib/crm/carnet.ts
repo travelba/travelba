@@ -684,13 +684,48 @@ export function publishConfirmHold(input: {
   return "Aucune étape à montrer. Un fichier seul n’ouvre pas le séjour.";
 }
 
-/** Ids passés visibles. Les dépenses restent au grand livre. */
-export function publishRevealIds(
-  rows: { id: string; kind: string; lifecycle?: string | null; details?: Record<string, unknown> | null }[]
-) {
+export type RevealRow = {
+  id: string;
+  kind: string;
+  lifecycle?: string | null;
+  details?: Record<string, unknown> | null;
+  visible_to_client?: boolean | null;
+};
+
+/**
+ * Ids passés visibles. Les dépenses restent au grand livre.
+ * Sans option, `client_hidden` reste masqué (formalité, publier le carnet).
+ * `includeKeptHidden` : le bouton « Montrer au client ». Le drapeau sert à la fois
+ * à l’import jamais montré et au bouton Cacher. Le modèle ne les sépare pas :
+ * les deux deviennent visibles. Annulée et remplacée restent hors carnet.
+ */
+export function publishRevealIds(rows: RevealRow[], options?: { includeKeptHidden?: boolean }) {
+  const includeKeptHidden = options?.includeKeptHidden === true;
   return rows
-    .filter((row) => isActiveItem(row) && !keptHiddenFromClient(row.details) && !isLedgerExpenseKind(row.kind))
+    .filter(
+      (row) =>
+        isActiveItem(row) &&
+        !isLedgerExpenseKind(row.kind) &&
+        (includeKeptHidden || !keptHiddenFromClient(row.details))
+    )
     .map((row) => row.id);
+}
+
+/**
+ * Cartes listées dans la confirmation de « Montrer au client ».
+ * Séjour encore caché : toutes celles que le client verra.
+ * Séjour déjà montré : seulement celles qui vont apparaître.
+ */
+export function clientShowList<T extends RevealRow>(rows: T[], stayVisible: boolean) {
+  const ids = new Set(publishRevealIds(rows, { includeKeptHidden: true }));
+  return rows.filter((row) => ids.has(row.id) && (!stayVisible || row.visible_to_client !== true));
+}
+
+/** Phrase de confirmation. Vide s’il n’y a aucune carte nouvelle. */
+export function showClientCardCountCopy(count: number) {
+  if (count < 1) return "";
+  if (count === 1) return "1 carte va devenir visible.";
+  return `${count} cartes vont devenir visibles.`;
 }
 
 export function flightAirline(item: Pick<CrmBookingItem, "supplier" | "details">) {

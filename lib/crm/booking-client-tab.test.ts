@@ -66,6 +66,11 @@ test("la barre du dossier n’a qu’un geste, le menu tient le reste", () => {
   assert.equal(menu.includes("Photo du lieu"), false);
   assert.match(editor, /onUsePlacePhoto/);
   assert.match(editor, /clientSpace\.dialog/);
+  assert.match(editor, /showClientCardCountCopy\(becomingVisible\.length\)/);
+  assert.match(editor, /clientShowList\(items, booking\.visible_to_client\)/);
+  const route = readFileSync(join(root, "app/api/admin/bookings/[id]/route.ts"), "utf8");
+  assert.match(route, /includeKeptHidden: justShown/);
+  assert.match(route, /revealDocuments: justShown/);
   assert.match(editor, /← Dossiers/);
   assert.equal(editor.includes("← Réservations"), false);
 });
