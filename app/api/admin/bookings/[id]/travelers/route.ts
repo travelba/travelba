@@ -4,6 +4,7 @@ import { refreshTicketingFee } from "@/lib/crm/bookings";
 import { schedulePendingFlightRematch } from "@/lib/crm/email-flight-rematch";
 import { reconcileCustomerParty } from "@/lib/crm/reconcile-party";
 import { sameRecordedTraveler } from "@/lib/crm/person-match";
+import { setSpouseTravelWhatsapp } from "@/lib/crm/travel-whatsapp-toggle";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -79,6 +80,25 @@ export async function POST(request: Request, ctx: Ctx) {
   await refreshTicketingFee(auth.supabase, id);
   schedulePendingFlightRematch();
   return NextResponse.json({ traveler: data });
+}
+
+export async function PATCH(request: Request, ctx: Ctx) {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  const { id } = await ctx.params;
+  const body = await request.json().catch(() => null);
+  const travelerId = String(body?.travelerId || "").trim();
+  if (!travelerId || typeof body?.whatsapp_travel_updates !== "boolean") {
+    return jsonError("Indiquez le voyageur et la case.");
+  }
+  const result = await setSpouseTravelWhatsapp(auth.supabase, {
+    travelerId,
+    bookingId: id,
+    enabled: body.whatsapp_travel_updates,
+    staffId: auth.staff.id,
+  });
+  if (!result.ok) return jsonError(result.error, 400);
+  return NextResponse.json({ travelerId: result.voyageur_id, whatsapp_travel_updates: result.actif });
 }
 
 export async function DELETE(request: Request, ctx: Ctx) {

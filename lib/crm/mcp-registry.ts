@@ -54,6 +54,7 @@ import { lireFicheHotel } from "@/lib/crm/hotel-enrich";
 import { enrichirHotel } from "@/lib/crm/hotel-web-run";
 import { inviteClientAccess, setCompanyRole, updateCompanionIdentity, updateHolderProfile } from "@/lib/crm/mcp-account";
 import { updateVoyageur } from "@/lib/crm/traveler-update";
+import { setSpouseTravelWhatsapp } from "@/lib/crm/travel-whatsapp-toggle";
 import { readReservationLittleEmperors } from "@/lib/crm/mcp-le";
 import { importLittleEmperorsFromMcp } from "@/lib/crm/le-import";
 import { moveReservationFromMcp, moveStepFromMcp } from "@/lib/crm/le-reattach";
@@ -158,7 +159,7 @@ import { societeDepense } from "@/lib/crm/mcp-expense-company";
 import { attachPostedCredit, payerKindFromInput } from "@/lib/crm/attach-credit";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 157;
+export const MCP_TOOL_CAP = 158;
 
 async function attachCreditFromRegistry(args: Record<string, unknown>) {
   const id = [args.id, args.mouvement_id].find((value) => typeof value === "string" && value.trim());
@@ -1457,6 +1458,31 @@ export const MCP_TOOLS: ToolDef[] = [
       numero_fidelite: z.string().trim().max(40).optional().describe("Numéro du programme. Il n’est pas un numéro de passeport"),
     },
     run: (args) => updateVoyageur(args),
+  },
+  {
+    name: "infos_voyage_whatsapp",
+    write: true,
+    description:
+      "Coche ou décoche « Reçoit les infos voyage WhatsApp » pour un conjoint voyageur du dossier. La case est cochée par défaut. actif false la retire pour ce dossier seulement. Réservé au lien conjoint (épouse, époux, mari, femme) avec un téléphone. Aucun message, aucune invitation, aucun accès au compte.",
+    input: {
+      voyageur_id: z.string().trim().describe("Identifiant du voyageur sur le séjour"),
+      dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier, pour vérifier"),
+      actif: z.boolean().describe("true : la case est cochée. false : ce dossier ne part plus vers ce conjoint"),
+    },
+    run: async (args) => {
+      const { createServiceClient } = await import("@/lib/supabase/admin");
+      const id = String(args.voyageur_id || "").trim();
+      if (!id) throw new McpWriteError("Indiquez le voyageur.");
+      if (typeof args.actif !== "boolean") throw new McpWriteError("Indiquez actif, vrai ou faux.");
+      const result = await setSpouseTravelWhatsapp(createServiceClient(), {
+        travelerId: id,
+        bookingId: typeof args.dossier_id === "string" ? args.dossier_id.trim() : null,
+        enabled: args.actif,
+        staffId: currentMcpAccess().staff?.id || null,
+      });
+      if (!result.ok) throw new McpWriteError(result.error);
+      return { voyageur_id: result.voyageur_id, actif: result.actif, envoye: false };
+    },
   },
   {
     name: "retirer_voyageur",

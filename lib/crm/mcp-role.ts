@@ -68,6 +68,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   creer_dossier: "create_dossiers",
   ajouter_voyageur: "edit_dossiers",
   modifier_voyageur: "edit_dossiers",
+  infos_voyage_whatsapp: "edit_dossiers",
   retirer_voyageur: "edit_dossiers",
   fusionner_compagnon: "edit_dossiers",
   supprimer_compagnon: "admin",

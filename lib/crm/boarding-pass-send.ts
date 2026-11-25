@@ -28,6 +28,7 @@ import { resolveContentSid } from "./twilio-content-sid";
 import { airportPushCopy, boardingPushCopy } from "./push-copy";
 import { sendCustomerPush } from "./push-notices";
 import { sendContentTemplate } from "./whatsapp";
+import { copyTravelNoticeToSpouses } from "./travel-whatsapp-fanout";
 
 type CardInput = {
   documentId?: string;
@@ -149,7 +150,7 @@ export async function sendBoardingPassWhatsapp(
   });
   if (block || !customer) return { ok: false, error: block || "Client introuvable.", sent: 0 };
 
-  if (input.mode === "aeroport") return sendAirport(input, customerId, customer);
+  if (input.mode === "aeroport") return sendAirport(supabase, input, customerId, customer);
 
   const cards = Array.isArray(input.cards) ? input.cards : [];
   const template = boardingPassTemplateForCount(cards.length);
@@ -193,6 +194,13 @@ export async function sendBoardingPassWhatsapp(
       const detail = result.reason === "rejected" ? "WhatsApp a refusé le message." : "WhatsApp n’est pas configuré.";
       return { ok: false, error: sent ? `${sent} carte est partie. ${detail}` : detail, sent };
     }
+    await copyTravelNoticeToSpouses(supabase, {
+      bookingId: input.bookingId,
+      kind: "carte_embarquement",
+      body: row.preview,
+      visible: true,
+      exceptPhones: customer.phone ? [customer.phone] : [],
+    });
     const noted = boardingPassJournal({
       names: [row.fields.firstName],
       flight: row.fields.flight,
@@ -242,6 +250,7 @@ export async function sendBoardingPassWhatsapp(
 }
 
 async function sendAirport(
+  supabase: SupabaseClient,
   input: BoardingPassSendInput & { bookingId: string; staffId: string; staffUserId: string | null },
   customerId: string,
   customer: { phone?: string | null; auth_user_id?: string | null }
@@ -266,6 +275,13 @@ async function sendAirport(
   if (!result.ok) {
     return { ok: false, error: result.reason === "rejected" ? "WhatsApp a refusé le message." : "WhatsApp n’est pas configuré.", sent: 0 };
   }
+  await copyTravelNoticeToSpouses(supabase, {
+    bookingId: input.bookingId,
+    kind: "carte_embarquement",
+    body: preview,
+    visible: true,
+    exceptPhones: customer.phone ? [customer.phone] : [],
+  });
   const noted = checkinJournal(fields);
   await journal({
     customerId,

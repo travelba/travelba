@@ -11,6 +11,7 @@ import { entryForFrenchPassport } from "./visa-fr";
 import { frenchPassportRequired, frenchPassportTrip } from "./visa-trip";
 import { toE164 } from "./phone";
 import { proactiveWhatsappAllowed } from "./whatsapp-concierge";
+import { copyTravelNoticeToSpouses } from "./travel-whatsapp-fanout";
 import { sendContentTemplate, type WhatsappSendResult } from "./whatsapp";
 import { resolveVisaGrantContentSid, sendVisaGrantWhatsapp } from "./visa-grant-send";
 import {
@@ -559,6 +560,30 @@ async function deliverTravellerPlain(admin: Admin, row: QueueRow, booking: CrmBo
     return;
   }
   await deliverGrant(admin, row, booking, handset.phone, handset.firstName);
+  await copySpouses(admin, booking, "formalite", row.body, handset.phone ? [handset.phone] : []);
+}
+
+async function copySpouses(
+  admin: Admin,
+  booking: { id: string; title?: string | null; reference?: string | null; visible_to_client?: boolean | null },
+  kind: string,
+  body: string,
+  exceptPhones: string[] = []
+) {
+  if (!booking.visible_to_client || !body.trim()) return;
+  try {
+    await copyTravelNoticeToSpouses(admin, {
+      bookingId: booking.id,
+      kind,
+      body,
+      visible: true,
+      dossierTitle: booking.title,
+      dossierReference: booking.reference,
+      exceptPhones,
+    });
+  } catch {
+    return;
+  }
 }
 
 async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
@@ -617,6 +642,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       stayCover: dispatch === "photo",
       holdWithoutCover: dispatch === "photo",
     });
+    if (outcome === "done") await copySpouses(admin, booking, "sejour", plan.body);
     if (outcome === "held") {
       const next = waits + 1;
       if (next >= STAY_COVER_WAIT_LIMIT) {
@@ -639,6 +665,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
             place: text.place,
             reference: booking.reference,
           });
+          await copySpouses(admin, booking, "sejour", text.body);
         }
         return;
       }
@@ -682,6 +709,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       card: pieceCardTemplate(plan),
       sentDedupe: `pieces-sent:${booking.id}:${kept[0].at}`,
     });
+    await copySpouses(admin, booking, "pieces", plan.body);
     return;
   }
 
@@ -705,6 +733,8 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
       reference: booking.reference,
       card: noticeCardTemplate(plan.template),
     });
+    const noticeKind = key.startsWith("formalite-manquante:") ? "formalite" : "passeport";
+    await copySpouses(admin, booking, noticeKind, plan.body);
     return;
   }
 
@@ -720,6 +750,7 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
     }
     if (!customer.email || !customer.phone || !proactiveWhatsappAllowed(customer)) return;
     await deliverGrant(admin, row, booking, customer.phone, customer.first_name || "");
+    await copySpouses(admin, booking, "formalite", row.body);
   }
 }
 

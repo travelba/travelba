@@ -2,6 +2,7 @@
 
 import { FormEvent, KeyboardEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DeferredHotels, DeferredLedger, DeferredSlice, type DeferredLedgerValue } from "@/components/admin/BookingDeferred";
+import { SpouseTravelWhatsapp } from "@/components/admin/SpouseTravelWhatsapp";
 import { Mb3mFicheAction } from "@/components/admin/Mb3mFicheAction";
 import type { DossierPanels } from "@/lib/crm/admin-booking-load";
 import dynamic from "next/dynamic";
@@ -2548,6 +2549,7 @@ export function BookingEditor({
             onRemove={(id) => removeTraveler(id)}
           />
         )}
+        <SpouseTravelWhatsapp bookingId={booking.id} travelers={travelers} companions={companions} />
         {passportGap.length ? (
           <Link
             href={`/admin/clients/${booking.customer_id}`}
