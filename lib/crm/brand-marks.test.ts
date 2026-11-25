@@ -104,10 +104,31 @@ test("la carte train prend le logo local, ou l’icône train s’il n’y a pas
   const logos = ["sncf", "eurostar", "trenitalia", "italo", "renfe", "iryo", "db", "sbb", "obb", "lyria", "sncb"];
   for (const slug of logos) {
     const svg = readFileSync(join(process.cwd(), "public/brands/rail", `${slug}.svg`), "utf8");
-    assert.match(svg, /<svg/);
+    assert.match(svg, /viewBox="0 0 80 80"/);
     assert.equal(svg.includes("<image"), false);
     assert.equal(/https?:\/\/(?!www\.w3\.org)/.test(svg), false);
+    assert.equal(/<rect[^>]*width="80"[^>]*height="80"/.test(svg), false);
   }
+
+  const flightMark = renderToStaticMarkup(
+    createElement(BrandMark, {
+      item: { kind: "flight", details: { airline: "Air France", flight_number: "AF 1789" } },
+      className: "h-10 w-10",
+    })
+  );
+  const railMark = renderToStaticMarkup(
+    createElement(BrandMark, {
+      item: { kind: "rail", supplier: "SNCF Connect", title: "TGV INOUI 6601" },
+      className: "h-10 w-10",
+    })
+  );
+  const frame = (html: string) => html.match(/class="([^"]*rounded-full[^"]*)"/)?.[1];
+  const image = (html: string) => html.match(/<img[^>]*class="([^"]*)"/)?.[1];
+  assert.equal(frame(railMark), frame(flightMark));
+  assert.equal(image(railMark), image(flightMark));
+  assert.match(frame(flightMark) || "", /bg-white/);
+  assert.match(frame(flightMark) || "", /ring-1 ring-\[#e5e3dc\]/);
+  assert.match(image(flightMark) || "", /object-contain p-1/);
 
   assert.equal(
     brandMarkForItem({ kind: "rail", supplier: "Amtrak", title: "New York → Washington" }),
