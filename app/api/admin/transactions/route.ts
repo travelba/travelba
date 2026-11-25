@@ -37,25 +37,33 @@ export async function POST(request: Request) {
     .eq("id", body.customer_id)
     .maybeSingle();
   if (!customer) return jsonError("Client introuvable", 404);
-  if (body.booking_id) {
-    const { data: booking } = await auth.supabase
-      .from("crm_bookings")
-      .select("id")
-      .eq("id", body.booking_id)
-      .maybeSingle();
-    if (!booking) return jsonError("Dossier introuvable", 404);
+  if (!body.booking_id || !body.payer_kind) return jsonError("Choisissez le dossier et le payeur.");
+  const { data: booking } = await auth.supabase
+    .from("crm_bookings")
+    .select("id, customer_id, billing_customer_id")
+    .eq("id", body.booking_id)
+    .maybeSingle();
+  if (!booking) return jsonError("Dossier introuvable", 404);
+  if (booking.customer_id !== body.customer_id && booking.billing_customer_id !== body.customer_id) {
+    return jsonError("Ce dossier n’est pas celui de ce client.");
   }
   const { data: companies } = await auth.supabase
     .from("crm_billing_companies")
-    .select("id, funding")
+    .select("id, funding, customer_id")
     .eq("customer_id", body.customer_id);
   const account = resolveWireAccount(companies || [], body.billing_company_id);
   if ("error" in account) return jsonError(account.error);
+  const companyId =
+    account.billingCompanyId || (body.payer_kind === "company" ? body.billing_company_id || null : null);
+  if (body.payer_kind === "company" && !companyId) return jsonError("Choisissez la société.");
+  if (body.payer_kind === "company" && companyId && !(companies || []).some((company) => company.id === companyId)) {
+    return jsonError("Cette société n’est pas sur la fiche.");
+  }
   const { data, error } = await auth.supabase
     .from("crm_transactions")
     .insert({
       customer_id: body.customer_id,
-      booking_id: body.booking_id || null,
+      booking_id: body.booking_id,
       direction: "credit",
       kind: "transfer",
       amount: body.amount,
@@ -64,9 +72,8 @@ export async function POST(request: Request) {
       label: body.label || "Virement manuel",
       source: "manual",
       status: "posted",
-      ...(account.billingCompanyId
-        ? { billing_company_id: account.billingCompanyId, payer_kind: "company" as const }
-        : {}),
+      payer_kind: body.payer_kind,
+      billing_company_id: body.payer_kind === "personal" && !account.billingCompanyId ? null : companyId,
     })
     .select("*")
     .single();

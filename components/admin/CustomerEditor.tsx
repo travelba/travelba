@@ -37,6 +37,8 @@ import { SectionFold } from "@/components/crm/SectionFold";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { ConfirmAction } from "@/components/crm/ConfirmAction";
 import { adminAction } from "@/lib/crm/admin-action";
+import { CompanyDossierPrompt, type PersonalDossierChoice } from "@/components/admin/CompanyDossierPrompt";
+import { fold } from "@/lib/crm/text";
 import { type ScanResult } from "@/components/crm/IdentityScan";
 import { primaryIdentityDoc, vaultDocumentsForPerson } from "@/lib/crm/trip-documents";
 import type { PickableCustomer } from "@/lib/crm/customer-search";
@@ -116,12 +118,14 @@ export function CustomerEditor({
   documents,
   companyAdmins = [],
   billingCompanies = [],
+  personalDossiers = [],
 }: {
   customer: CrmCustomer;
   companions: CrmCompanion[];
   documents: CrmTravelDocument[];
   companyAdmins?: PickableCustomer[];
   billingCompanies?: CrmBillingCompany[];
+  personalDossiers?: PersonalDossierChoice[];
 }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState(customer.first_name);
@@ -156,6 +160,8 @@ export function CustomerEditor({
     })
   );
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [dossierChoices, setDossierChoices] = useState<Record<string, string>>({});
+  const [askingDossiers, setAskingDossiers] = useState(false);
   const [saving, setSaving] = useState(false);
   const savingLock = useRef(false);
   const [onHold, setOnHold] = useState(Boolean(customer.on_hold));
@@ -237,6 +243,22 @@ export function CustomerEditor({
       setSaveError(err);
       return;
     }
+    const freshCompanies = companyDrafts
+      .filter((draft) => !draft.id && draft.values.companyName.trim())
+      .map((draft) => ({ key: draft.key, name: draft.values.companyName.trim() }));
+    if (freshCompanies.length && personalDossiers.length) {
+      const missing = personalDossiers.some((dossier) => !dossierChoices[dossier.id]);
+      if (!askingDossiers || missing) {
+        setAskingDossiers(true);
+        setOpenBilling(true);
+        setSaveError(
+          askingDossiers && missing
+            ? "Indiquez, pour chaque dossier, s’il passe sur la société ou reste en particulier."
+            : null
+        );
+        return;
+      }
+    }
     savingLock.current = true;
     setSaving(true);
     setSaveError(null);
@@ -280,6 +302,27 @@ export function CustomerEditor({
         ? billingCompanyDrafts(json.billing_companies, customer, profileAddress)
         : companyDrafts;
       if (Array.isArray(json.billing_companies)) setCompanyDrafts(nextDrafts);
+      const previousIds = new Set(billingCompanies.map((company) => company.id));
+      const created = (Array.isArray(json.billing_companies) ? json.billing_companies : []) as CrmBillingCompany[];
+      const createdIds = created.filter((company) => !previousIds.has(company.id));
+      for (const dossier of personalDossiers) {
+        const choice = dossierChoices[dossier.id];
+        if (!choice || choice === "personal") continue;
+        const draft = freshCompanies.find((company) => company.key === choice);
+        const match = createdIds.find((company) => fold(company.company_name) === fold(draft?.name));
+        if (!match) continue;
+        const moved = await fetch(`/api/admin/bookings/${dossier.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payer_kind: "company", billing_company_id: match.id }),
+        });
+        if (!moved.ok) {
+          const movedJson = await moved.json().catch(() => ({}));
+          setSaveError(movedJson.error || `Le dossier ${dossier.reference} n’a pas changé de payeur.`);
+        }
+      }
+      setAskingDossiers(false);
+      setDossierChoices({});
       setInitial(
         ficheSnapshot({
           firstName,
@@ -578,6 +621,18 @@ export function CustomerEditor({
               profileAddress={profileAddress}
             />
           </SectionFold>
+          {askingDossiers ? (
+            <CompanyDossierPrompt
+              companies={companyDrafts
+                .filter((draft) => !draft.id && draft.values.companyName.trim())
+                .map((draft) => ({ key: draft.key, name: draft.values.companyName.trim() }))}
+              dossiers={personalDossiers}
+              choices={dossierChoices}
+              onChoose={(dossierId, choice) =>
+                setDossierChoices((current) => ({ ...current, [dossierId]: choice }))
+              }
+            />
+          ) : null}
         </div>
 
         {saveError ? <p className="text-sm text-accent">{saveError}</p> : null}
@@ -590,7 +645,7 @@ export function CustomerEditor({
         >
           <BusyBar active={saving} label="Enregistrement…" />
           <button className="admin-af-btn admin-tap w-full rounded-full px-4 py-2 text-sm" disabled={saving}>
-            {saving ? "Enregistrement…" : "Enregistrer"}
+            {saving ? "Enregistrement…" : askingDossiers ? "Enregistrer la société" : "Enregistrer"}
           </button>
         </div>
         </div>

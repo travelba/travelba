@@ -23,7 +23,7 @@ test("cinq entrées puis Réglages ; les agents n’y voient que les modèles et
   );
   assert.deepEqual(
     agent.find((g) => g.id === "reglages")?.items.map((item) => item.label),
-    ["Modèles WhatsApp", "E-mails au client"]
+    ["Modèles WhatsApp", "E-mails au client", "Frais de billeterie"]
   );
   const admin = adminNavGroups({ role: "admin", showExample: true });
   const reglages = admin.find((g) => g.id === "reglages")!;

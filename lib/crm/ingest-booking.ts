@@ -753,7 +753,7 @@ export async function persistNewBookingFromExtract(opts: {
       end_date: stayDates.end,
       currency: bookingCurrencyFromReview(extract.currency, extract.items),
       total_amount: totalAmount,
-      notes_client: notes.notes_client,
+      notes_client: null,
       notes_internal: notes.notes_internal,
       visible_to_client: status === "confirmed",
     })

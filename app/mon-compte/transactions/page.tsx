@@ -50,6 +50,8 @@ export default async function TransactionsPage() {
               compact
               company={view.owed.company}
               personal={view.owed.personal}
+              pooled={view.owed.pooled}
+              total={view.owed.total}
               currency={view.currency}
               soleCompanyName={view.soleCompanyName}
               stripeKey={stripePublishableKey()}

@@ -150,8 +150,9 @@ describe("redactIngestText", () => {
     });
     assert.equal(cleaned.total_amount, 0);
     assert.equal(cleaned.document_status, "quote");
-    assert.equal((cleaned.notes_client || "").includes("8445"), false);
-    assert.match(cleaned.notes_client || "", /Devis/);
+    assert.equal(cleaned.notes_client, null);
+    assert.equal((cleaned.notes_internal || "").includes("8445"), false);
+    assert.match(cleaned.notes_internal || "", /Devis/);
   });
 
   it("masque une ligne Numéro de la carte maeva", () => {

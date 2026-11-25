@@ -72,6 +72,8 @@ export type ClientPayPart = {
   /** Distingue deux parts société (crédit et Pro). */
   id?: string;
   kind: PayerKind;
+  /** Un seul montant, quand un crédit libre empêche de répartir. */
+  settlement?: "total";
   funding?: FundingKind;
   companyId?: string | null;
   mention: string;
@@ -145,7 +147,8 @@ export function StayPayment({
     try {
       const result = await postJson<PayResponse>("/api/client/ledger/pay", {
         method: next,
-        payerKind: part.kind,
+        payerKind: part.settlement === "total" ? undefined : part.kind,
+        settlement: part.settlement || null,
         funding: part.funding || null,
         companyId: part.companyId || null,
         nonce: currentNonce,

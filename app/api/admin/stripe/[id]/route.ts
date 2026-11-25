@@ -27,7 +27,18 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const customerId = String(body?.customer_id || "");
   if (!customerId) return jsonError("Client requis");
-  const result = await applyStripeToCustomer(admin, movement, customerId);
+  const bookingId = typeof body?.booking_id === "string" ? body.booking_id : "";
+  const payerKind = body?.payer_kind === "company" || body?.payer_kind === "personal" ? body.payer_kind : null;
+  const companyId = typeof body?.billing_company_id === "string" ? body.billing_company_id : null;
+  if (body?.lier === true) {
+    if (!bookingId || !payerKind) return jsonError("Choisissez le dossier et le payeur.");
+    if (payerKind === "company" && !companyId) return jsonError("Choisissez la société.");
+  }
+  const result = await applyStripeToCustomer(admin, movement, customerId, {
+    bookingId: bookingId || null,
+    payerKind,
+    companyId: payerKind === "company" ? companyId : null,
+  });
   if (!result.ok) {
     if (result.error === "already_matched") return jsonError("Déjà rapproché");
     if (result.error === "not_a_credit") {

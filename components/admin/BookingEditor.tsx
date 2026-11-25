@@ -2099,6 +2099,10 @@ export function BookingEditor({
                       Visible sur son séjour
                     </span>
                   </span>
+                  <span className="text-[11px] font-normal leading-snug text-amber-800">
+                    Ce texte est public : il apparaît dans l’espace client et sur le lien du séjour. N’y mettez pas de
+                    devis, de prix ni de note d’import.
+                  </span>
                   <textarea
                     name="notes_client"
                     value={notesClient}

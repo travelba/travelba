@@ -10,6 +10,7 @@ import {
   ledgerDebitPayer,
   owedByPayer,
   payerBadge,
+  payerSettlement,
   paymentSlips,
   resolveFeesFollowStay,
   slipMention,
@@ -241,7 +242,7 @@ test("un paiement abouti devient un crédit, un virement en attente non", () => 
   );
 });
 
-test("l’encours dû se répartit entre société et particulier", () => {
+test("un crédit libre ne se répartit pas entre société et particulier", () => {
   const payers = new Map<string, "company" | "personal" | null>([
     ["b1", "company"],
     ["b2", "personal"],
@@ -255,10 +256,31 @@ test("l’encours dû se répartit entre société et particulier", () => {
     payers,
     "EUR"
   );
-  const owed = fitPayerOwed(split.company, split.personal, 1200);
-  assert.equal(owed.total, 1200);
-  assert.equal(Math.round((owed.company + owed.personal) * 100) / 100, 1200);
-  assert.equal(owed.company > owed.personal, true);
+  assert.equal(split.company, 1000);
+  assert.equal(split.personal, 400);
+  assert.equal(split.open, 200);
+  const pooled = payerSettlement(split, 1200);
+  assert.equal(pooled.pooled, true);
+  assert.equal(pooled.total, 1200);
+  assert.equal(pooled.company, 0);
+  assert.equal(pooled.personal, 0);
+  const own = payerSettlement(
+    owedByPayer(
+      [
+        { direction: "debit", amount: 1000, booking_id: "b1", status: "posted", currency: "EUR" },
+        { direction: "debit", amount: 400, booking_id: "b2", status: "posted", currency: "EUR" },
+        { direction: "credit", amount: 200, booking_id: "b1", payer_kind: "company", status: "posted", currency: "EUR" },
+      ],
+      payers,
+      "EUR"
+    ),
+    1200
+  );
+  assert.equal(own.pooled, false);
+  assert.equal(own.company, 800);
+  assert.equal(own.personal, 400);
+  const fitted = fitPayerOwed(800, 400, 1200);
+  assert.equal(fitted.total, 1200);
   assert.equal(encoursPartLabel("company", "Horizon"), "Société · Horizon");
   assert.equal(encoursPartLabel("personal", "Horizon"), "Particulier");
   assert.equal(

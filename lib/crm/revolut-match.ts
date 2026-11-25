@@ -351,7 +351,8 @@ export async function applyRevolutToCustomer(
   admin: RevolutAdmin,
   row: CrmRevolutTransaction,
   customerId: string,
-  billingCompanyId?: string | null
+  billingCompanyId?: string | null,
+  link?: { bookingId?: string | null; payerKind?: "company" | "personal" | null; companyId?: string | null } | null
 ) {
   if (row.status === "matched") {
     return { ok: false as const, error: "already_matched" };
@@ -373,10 +374,14 @@ export async function applyRevolutToCustomer(
   const account = resolveWireAccount(await customerFundingCompanies(admin, customerId), billingCompanyId);
   if ("error" in account) return { ok: false as const, error: "account_required" as const };
 
+  const payerKind = link?.payerKind || (account.billingCompanyId ? ("company" as const) : null);
+  const companyId =
+    account.billingCompanyId || (payerKind === "company" ? link?.companyId || null : null);
   const { data: tx, error } = await admin
     .from("crm_transactions")
     .insert({
       customer_id: customerId,
+      booking_id: link?.bookingId || null,
       direction: "credit",
       kind: "transfer",
       amount: Math.abs(Number(row.amount)),
@@ -386,9 +391,8 @@ export async function applyRevolutToCustomer(
       source: "revolut",
       external_id: row.revolut_transaction_id,
       status: "posted",
-      ...(account.billingCompanyId
-        ? { billing_company_id: account.billingCompanyId, payer_kind: "company" }
-        : {}),
+      ...(payerKind ? { payer_kind: payerKind } : {}),
+      ...(companyId ? { billing_company_id: companyId } : {}),
     })
     .select("*")
     .single();

@@ -76,7 +76,7 @@ export function PublicTripView({
       </BookingHero>
 
       {clientNote ? (
-        <p className="aura-card mt-5 rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed">
+        <p className="aura-card mt-5 whitespace-pre-line rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed">
           {clientNote}
         </p>
       ) : null}

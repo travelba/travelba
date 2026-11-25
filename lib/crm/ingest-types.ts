@@ -566,7 +566,7 @@ export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract
     total_amount: sellingTotalFromExtract(priced),
     items: sortItemsByOrder(merged),
   };
-  return redactIngestValue(next);
+  return parkAgencyNotes(redactIngestValue(next));
 }
 
 /** Parse tolérant : renvoie un extract vide si le payload est invalide (jamais d'exception). */

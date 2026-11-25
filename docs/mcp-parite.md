@@ -94,6 +94,7 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Compléter le nom et l’e-mail Stripe | `completer_payeurs_stripe` — ajouté. Sans `confirmer`, aperçu. Écrit seulement le nom et l’e-mail, sans crédit. Réservé aux administrateurs |
 | Rapprocher une sortie Revolut ou un débit Pliant (geste simple) | `rapprocher_depense_revolut`, `rapprocher_pliant` — couvert |
 | Remettre un crédit non rattaché | `remettre_non_rattache` — couvert |
+| Rattacher un crédit déjà encaissé | `rattacher_credit` — ajouté. Dossier et payeur. Sans `confirmer`, aperçu. Aucun nouveau paiement, le montant ne change pas |
 | Préparer / lire la facture MB3M | `preparer_facture_mb3m`, `statut_facture_mb3m` — couvert. `preparer_facture_mb3m` : sans `confirmer`, aperçu, aucune pièce |
 | Facture groupée (plusieurs dossiers, même payeur) | `facture_groupee` — ajouté. Sans `confirmer`, aperçu, aucun appel MB3M en écriture. PDF pro forma masqué sur chaque dossier, et une pièce pro forma MB3M au nom du payeur. `action` `mb3m` pousse une facture déjà générée sans refaire le PDF. Aucun envoi, aucune impression |
 | Envoyer la facture et demander le paiement | `envoyer_facture` — ajouté. Sans `confirmer`, aperçu seulement |
