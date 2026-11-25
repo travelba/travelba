@@ -24,7 +24,7 @@ export const TRAVEL_BA_SEARCH_ADVANTAGES = HOME_ADVANTAGE_KEYS.map(
 ).filter((label) => label.length > 0);
 
 /** Ma carte s’ouvre à chaque clic sur Hôtels. Le parcours, sous la carte, ouvre les prix. */
-export const HOTEL_ACCESS_EYEBROW = "Club Travel BA";
+export const HOTEL_ACCESS_EYEBROW = "Travel Club TBA";
 
 export const HOTEL_CLUB_TITLE = "Ma carte";
 

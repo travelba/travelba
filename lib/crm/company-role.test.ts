@@ -5,10 +5,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { CompanyRoleFields } from "../../components/crm/CompanyRoleFields";
 import { customerPatchFromBody } from "./customer-patch";
 import {
+  bookingIdsWhereClientTravels,
+  clientBookingFilter,
+  clientMayReadBooking,
+  clientTravelsAs,
   collaboratorTripOwnerIds,
   companyRoleLabel,
   filterClientLedgerRows,
   parseCompanyRole,
+  payerMayReadBilledInvoice,
   resolveBillingCustomerId,
 } from "./company-role";
 import type { CrmTransaction } from "./types";
@@ -92,14 +97,93 @@ test("member ledger hides company credits", () => {
   assert.equal(full.length, 4);
 });
 
-test("un admin voit ses collaborateurs, pas les autres admins", () => {
-  const raphael = { id: "raphael", company_role: "admin" as const, billing_parent_id: null };
-  const gaelle = { id: "gaelle", company_role: "member" as const, billing_parent_id: "raphael" };
-  const otherAdmin = { id: "julie", company_role: "admin" as const, billing_parent_id: "raphael" };
-  const rows = [raphael, gaelle, otherAdmin];
-  assert.deepEqual(collaboratorTripOwnerIds(raphael, rows).sort(), ["gaelle", "raphael"]);
-  assert.deepEqual(collaboratorTripOwnerIds(gaelle, rows), ["gaelle"]);
-  assert.deepEqual(collaboratorTripOwnerIds(otherAdmin, rows), ["julie"]);
+test("un admin ne reçoit pas les dossiers de ses collaborateurs", () => {
+  assert.deepEqual(collaboratorTripOwnerIds({ id: "raphael" }), ["raphael"]);
+  assert.deepEqual(collaboratorTripOwnerIds({ id: "gaelle" }), ["gaelle"]);
+});
+
+test("le payeur voit un dossier seulement s’il y voyage", () => {
+  const raphael = { first_name: "Raphaël", last_name: "Benillouche", usage_name: null };
+  assert.equal(clientTravelsAs(raphael, { first_name: "Raphael", last_name: "Benillouche" }), true);
+  assert.equal(clientTravelsAs(raphael, { first_name: "Jorge", last_name: "Garcia Velez" }), false);
+  assert.equal(clientTravelsAs(raphael, { first_name: "Raphael", last_name: "" }), false);
+  const raphaelId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const jorge = "11111111-1111-4111-8111-111111111111";
+  const shared = "22222222-2222-4222-8222-222222222222";
+  const ids = bookingIdsWhereClientTravels(raphael, [
+    { booking_id: jorge, first_name: "Jorge", last_name: "Garcia Velez" },
+    { booking_id: shared, first_name: "Raphael", last_name: "Benillouche" },
+  ]);
+  assert.deepEqual(ids, [shared]);
+  const scope = { ownerIds: [raphaelId], travelerBookingIds: ids };
+  assert.equal(
+    clientMayReadBooking(
+      { id: jorge, customer_id: "jorge", visible_to_client: true, archived_at: null },
+      scope
+    ),
+    false
+  );
+  assert.equal(
+    clientMayReadBooking(
+      { id: shared, customer_id: "jorge", visible_to_client: true, archived_at: null },
+      scope
+    ),
+    true
+  );
+  assert.equal(
+    clientMayReadBooking(
+      { id: "own", customer_id: raphaelId, visible_to_client: true, archived_at: null },
+      scope
+    ),
+    true
+  );
+  assert.equal(
+    clientMayReadBooking(
+      { id: "own", customer_id: raphaelId, visible_to_client: false, archived_at: null },
+      scope
+    ),
+    false
+  );
+  const filter = clientBookingFilter(scope);
+  assert.equal(filter.kind, "or");
+  if (filter.kind === "or") {
+    assert.match(filter.value, new RegExp(`customer_id\\.in\\.\\(${raphaelId}\\)`));
+    assert.match(filter.value, new RegExp(shared));
+    assert.equal(filter.value.includes(jorge), false);
+  }
+});
+
+test("la facture d’un séjour facturé au payeur se lit, pas le billet", () => {
+  assert.equal(
+    payerMayReadBilledInvoice({
+      viewerId: "raphael",
+      billingCustomerId: "raphael",
+      kind: "invoice",
+      fileName: "facture.pdf",
+      storagePath: "bookings/jorge/facture.pdf",
+    }),
+    true
+  );
+  assert.equal(
+    payerMayReadBilledInvoice({
+      viewerId: "raphael",
+      billingCustomerId: "jorge",
+      kind: "invoice",
+      fileName: "facture.pdf",
+      storagePath: "bookings/jorge/facture.pdf",
+    }),
+    false
+  );
+  assert.equal(
+    payerMayReadBilledInvoice({
+      viewerId: "raphael",
+      billingCustomerId: "raphael",
+      kind: "ticket",
+      fileName: "e-ticket.pdf",
+      storagePath: "bookings/jorge/e-ticket.pdf",
+    }),
+    false
+  );
 });
 
 test("la fiche n’attache un admin à aucun wallet", () => {
@@ -176,7 +260,7 @@ test("le formulaire facture un collaborateur par l’admin, sans associé", () =
       onSpendingAllowanceChange: () => {},
     })
   );
-  assert.match(adminHtml, /voyages publiés de ses collaborateurs/);
+  assert.match(adminHtml, /dépenses de son équipe, pas le voyage d’un collaborateur/);
   assert.equal(adminHtml.includes("Associé de"), false);
   assert.equal(adminHtml.includes("Facturé par"), false);
 });

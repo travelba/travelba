@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 import { formatAgencyFeePercent, loadResolvedAgencyFees, type ResolvedAgencyFee } from "@/lib/crm/agency-fee-rate";
+import { commercialDiscountPublic, discountLineMirror, discountLinePublic } from "@/lib/crm/commercial-discount";
 import { loadAgencyAccounts } from "@/lib/crm/agency-accounts";
 import { attachSearchMatches, attachSearchTokens } from "@/lib/crm/attach-search";
 import { adminBadges } from "@/lib/crm/admin-badges";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/crm/admin-list";
 import { findAttachBookingIds } from "@/lib/crm/attach-search-db";
 import { adminTodoLines } from "@/lib/crm/admin-todo";
+import { loadAutonomousDesk } from "@/lib/crm/hotel-auto-run";
 import { clientCreditLines } from "@/lib/crm/unmatch-credit";
 import { dossierFlightStamp } from "@/lib/crm/airport-time";
 import { flightCities, flightIata, hotelDisplayName } from "@/lib/crm/carnet";
@@ -35,7 +37,9 @@ import {
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
 import { clientLedgerAdminHref, loadClientLedger } from "@/lib/crm/client-ledger";
+import { twinsForCustomers, type TwinPerson } from "@/lib/crm/customer-twins";
 import { ledgerTravelerLabel } from "@/lib/crm/ledger-travelers";
+import { loyaltyLines, type LoyaltyMap } from "@/lib/crm/loyalty";
 import {
   countDossiersByCustomer,
   CUSTOMER_LIST_SELECT,
@@ -54,6 +58,7 @@ import { scoreStripeMatches, STRIPE_MATCH_SELECT, type StripeMatchCustomer } fro
 import { matchStripeReasonLabel } from "@/lib/crm/stripe-labels";
 import { stripeShownCandidate } from "@/lib/crm/stripe-inbox";
 import { leListMadeAt, loadLeConfirmationMails } from "@/lib/crm/le-confirmation-mail";
+import { leStaysInSupplierQueue } from "@/lib/crm/le-queue";
 import { compareLeMadeAt, leMadeDayLabel } from "@/lib/crm/le-made-at";
 import { formatDateFr, formatMoney, isoDateInDays, todayIsoDate } from "@/lib/crm/money";
 import { revolutDebitLine, revolutInboxCopy, revolutInboxVisible } from "@/lib/crm/revolut-inbox";
@@ -153,8 +158,34 @@ function customerLine(row: CustomerListRow | CustomerNameRow) {
   };
 }
 
+async function zeroFeesFor(admin: SupabaseClient, ids: string[]) {
+  const map = new Map<string, boolean>();
+  if (!ids.length) return map;
+  const read = await admin.from("crm_customers").select("id, zero_fees").in("id", ids);
+  if (read.error) return map;
+  for (const row of (read.data || []) as { id: string; zero_fees?: boolean | null }[]) {
+    map.set(row.id, row.zero_fees === true);
+  }
+  return map;
+}
+
+async function attachTwins<T extends { id: string }>(admin: SupabaseClient, rows: T[]) {
+  const fees = await zeroFeesFor(
+    admin,
+    rows.map((row) => row.id)
+  );
+  const empty = rows.map((row) => ({ ...row, jumeaux: [] as TwinPerson[], zero_frais: fees.get(row.id) === true }));
+  if (!rows.length) return empty;
+  try {
+    const map = await twinsForCustomers(admin, rows.map((row) => row.id));
+    return rows.map((row) => ({ ...row, jumeaux: map.get(row.id) || [], zero_frais: fees.get(row.id) === true }));
+  } catch {
+    return empty;
+  }
+}
+
 async function withDossierCounts(admin: SupabaseClient, rows: CustomerListRow[]) {
-  if (!rows.length) return rows.map((row) => ({ ...customerLine(row), dossiers: 0 }));
+  if (!rows.length) return rows.map((row) => ({ ...customerLine(row), dossiers: 0, jumeaux: [] as TwinPerson[], zero_frais: false }));
   const { data, error } = await admin
     .from("crm_bookings")
     .select("customer_id")
@@ -164,7 +195,10 @@ async function withDossierCounts(admin: SupabaseClient, rows: CustomerListRow[])
     );
   if (error) logRead("dossiers", error);
   const counts = countDossiersByCustomer((data || []) as { customer_id: string | null }[]);
-  return rows.map((row) => ({ ...customerLine(row), dossiers: counts.get(row.id) || 0 }));
+  return attachTwins(
+    admin,
+    rows.map((row) => ({ ...customerLine(row), dossiers: counts.get(row.id) || 0 }))
+  );
 }
 
 /** Société facturée, à côté du contact. Particulier si le séjour n’est pas à la société. */
@@ -352,6 +386,19 @@ function pieceLine(doc: CrmTravelDocument, names?: Map<string, string>) {
   };
 }
 
+async function autonomousLines(admin: SupabaseClient) {
+  const lines = await loadAutonomousDesk(admin).catch(() => []);
+  return lines.map((line) => ({
+    reference: line.reference,
+    client: line.client,
+    hotel: line.hotel,
+    dates: line.dates || null,
+    paiement: line.payment,
+    a_la_main: line.manual,
+    lien: line.href,
+  }));
+}
+
 export async function readTableauDeBord() {
   const admin = db();
   const today = todayIsoDate();
@@ -411,6 +458,7 @@ export async function readTableauDeBord() {
       message: "Possible doublon de billets.",
       lien: `/admin/reservations/${row.bookingId}`,
     })),
+    reservations_autonomes: await autonomousLines(admin),
     courriers_hotel: courriers.map((mail) => ({
       hotel: mail.title,
       reference: mail.reference,
@@ -554,13 +602,21 @@ async function oneCustomer(admin: SupabaseClient, input: { id?: string; q?: stri
 }
 
 export function clientCompanionLines(
-  companions: { id: string; first_name: string | null; last_name: string | null }[],
+  companions: {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    relationship?: string | null;
+    loyalty?: LoyaltyMap | null;
+  }[],
   stays: { companion_id: string | null; booking_id: string }[],
   bookings: { id: string; reference: string | null }[]
 ) {
   return companions.map((companion) => ({
     compagnon_id: companion.id,
     nom: customerFullName({ first_name: companion.first_name || "", last_name: companion.last_name || "" }),
+    lien: companion.relationship || null,
+    fidelite: loyaltyLines({ loyalty: companion.loyalty }),
     dossiers: stays
       .filter((stay) => stay.companion_id === companion.id)
       .map((stay) => {
@@ -573,10 +629,16 @@ export function clientCompanionLines(
 async function companionsOfClient(admin: SupabaseClient, customerId: string) {
   const listed = await admin
     .from("crm_travel_companions")
-    .select("id, first_name, last_name")
+    .select("id, first_name, last_name, relationship, loyalty")
     .eq("customer_id", customerId);
   if (listed.error) throw new McpReadError("Lecture des accompagnateurs impossible.");
-  const companions = (listed.data || []) as { id: string; first_name: string | null; last_name: string | null }[];
+  const companions = (listed.data || []) as {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    relationship?: string | null;
+    loyalty?: LoyaltyMap | null;
+  }[];
   if (!companions.length) return [];
   const staysQuery = await admin
     .from("crm_booking_travelers")
@@ -631,13 +693,37 @@ export async function readFicheClient(input: { id?: string; q?: string }, admin 
     };
   });
   const pieces = reviewIdentityPieces((docs || []) as CrmTravelDocument[]);
+  const priceFlag = await admin
+    .from("crm_customers")
+    .select("hide_client_prices, zero_fees")
+    .eq("id", customer.id)
+    .maybeSingle();
+  const priceFallback =
+    priceFlag.error && /zero_fees/i.test(priceFlag.error.message || "")
+      ? await admin.from("crm_customers").select("hide_client_prices").eq("id", customer.id).maybeSingle()
+      : priceFlag;
+  const priceRow = priceFallback.data as { hide_client_prices?: boolean | null; zero_fees?: boolean | null } | null;
+  const masquer_prix = priceFallback.error ? false : priceRow?.hide_client_prices === true;
+  const zero_frais = priceFlag.error ? false : priceRow?.zero_fees === true;
+  const loyaltyRead = await admin
+    .from("crm_customers")
+    .select("loyalty, flying_blue")
+    .eq("id", customer.id)
+    .maybeSingle();
+  const fidelite = loyaltyRead.error
+    ? []
+    : loyaltyLines((loyaltyRead.data || {}) as { loyalty?: LoyaltyMap | null; flying_blue?: string | null });
   return {
     ...customerLine(customer),
+    fidelite,
+    masquer_prix,
+    zero_frais,
     societes: billingCompaniesPublic(companies.companies),
     en_veille: customer.on_hold === true,
     encours: wallets,
     pieces_a_echeance: pieces.map((doc) => pieceLine(doc)),
     compagnons: await companionsOfClient(admin, customer.id),
+    jumeaux: (await twinsForCustomers(admin, [customer.id]).catch(() => new Map())).get(customer.id) || [],
   };
 }
 
@@ -894,8 +980,30 @@ export async function readFicheDossier(input: { id?: string; reference?: string 
   } catch (err) {
     logRead("responsables", err as { code?: string; message?: string });
   }
+  let remise: ReturnType<typeof commercialDiscountPublic> = null;
+  let remises: ReturnType<typeof discountLinePublic>[] = [];
+  try {
+    const { loadStayPricedDiscounts } = await import("@/lib/crm/displayed-stay");
+    const loaded = await loadStayPricedDiscounts(admin, booking.id);
+    remises = loaded.lines.map(discountLinePublic);
+    if (loaded.source === "columns") {
+      const storedRemise = await admin.from("crm_bookings").select("remise_type, remise_value").eq("id", booking.id);
+      if (storedRemise.error) {
+        if (storedRemise.error.code !== "42703" && storedRemise.error.code !== "PGRST204") logRead("remise", storedRemise.error);
+      } else {
+        const row = Array.isArray(storedRemise.data) ? storedRemise.data[0] : storedRemise.data;
+        remise = commercialDiscountPublic(row as { remise_type?: unknown; remise_value?: unknown } | null);
+      }
+    } else if (remises.length === 1) {
+      remise = discountLineMirror(remises[0]);
+    }
+  } catch (err) {
+    logRead("remise", err as { code?: string; message?: string });
+  }
   return {
     ...bookingLine(booking, names, amounts, companies),
+    remise,
+    remises,
     en_charge: people.owner?.name ?? null,
     cree_par: people.createdBy?.name ?? null,
     intervenants: people.intervenants.map((person) => person.name),
@@ -1456,7 +1564,7 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
   if (!id && !reference) return { message: "Indiquez l’identifiant ou la référence du dossier." };
   let query = admin
     .from("crm_bookings")
-    .select("id, reference, title, destination, client_settles_stay, agency_commission, customer_id, billing_customer_id");
+    .select("id, reference, title, destination, currency, client_settles_stay, agency_commission, customer_id, billing_customer_id");
   if (id) {
     if (!UUID.test(id)) return { message: "Identifiant inconnu." };
     query = query.eq("id", id);
@@ -1473,6 +1581,7 @@ export async function readComptabiliteVoyage(input: { id?: string; reference?: s
     reference: string;
     title: string | null;
     destination: string | null;
+    currency?: string | null;
     client_settles_stay: boolean | null;
     agency_commission?: boolean | null;
     customer_id?: string | null;
@@ -1692,6 +1801,7 @@ export async function readLittleEmperorsEnAttente(admin = db(), input: { page?: 
     | "created_at"
   > & { raw?: unknown; booked_at?: string | null })[])
     .map((row) => ({ ...row, booked_on: leListMadeAt(row, mails) }))
+    .filter((row) => leStaysInSupplierQueue({ ...row, status: "unmatched", crm_booking_id: null }))
     .sort((left, right) => compareLeMadeAt(left.booked_on, right.booked_on) || left.id.localeCompare(right.id));
   const window = mcpWindow(input, INBOX_LIMIT);
   const page = mcpSlice(rows, window);

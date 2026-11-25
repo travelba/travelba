@@ -203,3 +203,31 @@ test("une confirmation n’est pas une alerte", () => {
   assert.equal(verdict.alerte, false);
   assert.equal(verdict.suivi, null);
 });
+
+test("deux chambres Negresco ne s’alertent pas l’une l’autre", () => {
+  const verdict = supplierCancellationVerdict(
+    stay({
+      confirmation: "6755SH018666",
+      people: ["Camille Queyrel"],
+      active: false,
+      leId: 666,
+      hotel: "Le Negresco",
+      hotelId: 6755,
+      checkIn: "2026-11-18",
+      checkOut: "2026-11-20",
+    }),
+    [
+      stay({
+        confirmation: "6755SH018675",
+        people: ["Autre Client"],
+        leId: 675,
+        hotel: "Le Negresco",
+        hotelId: 6755,
+        checkIn: "2026-12-01",
+        checkOut: "2026-12-04",
+      }),
+    ]
+  );
+  assert.equal(verdict.alerte, false);
+  assert.equal(verdict.suivi, null);
+});

@@ -5,10 +5,12 @@ import {
   findHotelExactStay,
   findHotelSameStay,
   findMatchingItem,
+  flagMissingHotelCards,
   joinConfirmationRefs,
   hotelMatchKeepsStay,
   hotelSameStay,
   hotelRefsShareBooking,
+  HOTEL_CONFIRMATION_GAP,
   itemMatchKey,
   keptHotelStayFields,
   collapseSharedTicketPrice,
@@ -163,7 +165,7 @@ describe("itemMatchKey", () => {
     };
     assert.equal(findHotelSameStay(existing, incoming), null);
     assert.equal(findMatchingItem(existing, incoming), null);
-    assert.equal(findHotelExactStay(existing, incoming)?.title, "Hotel Eden");
+    assert.equal(findHotelExactStay(existing, incoming), null);
   });
 
   it("ne choisit pas entre deux hôtels au même nom", () => {
@@ -195,9 +197,10 @@ describe("itemMatchKey", () => {
     );
   });
 
-  it("reconnaît le numéro court et une autre chambre de la même réservation", () => {
+  it("ne prend pas deux chambres du même hôtel pour une seule réservation", () => {
     assert.equal(hotelRefsShareBooking("64570", "64570SH046795"), true);
-    assert.equal(hotelRefsShareBooking("64570SH046734", "64570SH046795"), true);
+    assert.equal(hotelRefsShareBooking("64570SH046734", "64570SH046795"), false);
+    assert.equal(hotelRefsShareBooking("71986SH009279", "71986SH009280"), false);
     assert.equal(hotelRefsShareBooking("97620170", "97620171"), false);
     const existing = [
       { kind: "hotel", confirmation_ref: "64570SH046795", title: "Four Seasons Hotel Milan" },
@@ -246,6 +249,40 @@ describe("itemMatchKey", () => {
     assert.equal(kept.end_at, "2026-12-09");
     assert.deepEqual(kept.details.included, ["Petit-déjeuner", "Surclassement"]);
     assert.equal(kept.details.hotel_name, "Four Seasons Hotel Milan");
+  });
+
+  it("retient chaque fichier sur les deux segments du même PNR", () => {
+    const merged = mergeExtractItems([
+      {
+        kind: "flight",
+        confirmation_ref: "ZU5TCO",
+        start_at: "2027-04-13T10:00:00",
+        details: { flight_number: "EK 78", source_file_name: "a.pdf" },
+      },
+      {
+        kind: "flight",
+        confirmation_ref: "ZU5TCO",
+        start_at: "2027-04-20T10:00:00",
+        details: { flight_number: "EK 209", source_file_name: "a.pdf" },
+      },
+      {
+        kind: "flight",
+        confirmation_ref: "ZU5TCO",
+        start_at: "2027-04-13T10:00:00",
+        details: { flight_number: "EK 78", source_file_name: "b.pdf" },
+      },
+      {
+        kind: "flight",
+        confirmation_ref: "ZU5TCO",
+        start_at: "2027-04-20T10:00:00",
+        details: { flight_number: "EK 209", source_file_name: "b.pdf" },
+      },
+    ]);
+    assert.equal(merged.length, 2);
+    for (const card of merged) {
+      const files = ((card.details as { source_files?: string[] }).source_files || []).slice().sort();
+      assert.deepEqual(files, ["a.pdf", "b.pdf"]);
+    }
   });
 
   it("fusionne cinq e-tickets du même segment", () => {
@@ -422,5 +459,87 @@ describe("collapseSharedTicketPrice", () => {
     ]);
     assert.equal(items[0]?.details?.document_amount, 800);
     assert.equal(items[1]?.details?.document_amount, 900);
+  });
+});
+
+function alpaga(ref: string) {
+  return {
+    kind: "hotel",
+    title: "L'Alpaga",
+    supplier: "Little Emperors",
+    confirmation_ref: ref,
+    start_at: "2026-12-13",
+    end_at: "2026-12-18",
+    details: { hotel_name: "L'Alpaga", city: "Megève", le_hotel_id: 71986 },
+  };
+}
+
+describe("une confirmation d’hôtel distincte", () => {
+  it("ouvre deux cartes Alpaga pour deux numéros 71986SH", () => {
+    const merged = mergeExtractItems([alpaga("71986SH009279"), alpaga("71986SH009280")]);
+    assert.equal(merged.length, 2);
+    assert.deepEqual(
+      merged.map((item) => item.confirmation_ref).sort(),
+      ["71986SH009279", "71986SH009280"]
+    );
+  });
+
+  it("garde 6755SH018675 et 549014 sur la même carte", () => {
+    const merged = mergeExtractItems([
+      {
+        kind: "hotel",
+        title: "Le Negresco",
+        confirmation_ref: "6755SH018675",
+        start_at: "2026-11-18",
+        end_at: "2026-11-20",
+        details: { hotel_name: "Le Negresco", city: "Nice" },
+      },
+      {
+        kind: "hotel",
+        title: "Le Negresco",
+        confirmation_ref: "549014",
+        start_at: "2026-11-18",
+        end_at: "2026-11-20",
+        details: { hotel_name: "Le Negresco", city: "Nice" },
+      },
+    ]);
+    assert.equal(merged.length, 1);
+    assert.match(merged[0]?.confirmation_ref || "", /6755SH018675/);
+    assert.match(merged[0]?.confirmation_ref || "", /549014/);
+    assert.equal((merged[0]?.details as { needs_review?: boolean } | undefined)?.needs_review, undefined);
+  });
+
+  it("ne crée pas de doublon au réimport du même numéro", () => {
+    const once = alpaga("71986SH009279");
+    const merged = mergeExtractItems([once, { ...once, title: "Alpaga" }]);
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0]?.confirmation_ref, "71986SH009279");
+  });
+
+  it("signale deux confirmations réduites à une seule carte", () => {
+    const source = [alpaga("71986SH009279"), alpaga("71986SH009280")];
+    const flagged = flagMissingHotelCards(source, [alpaga("71986SH009279")]);
+    const details = flagged[0]?.details as { needs_review?: boolean; review_reason?: string } | undefined;
+    assert.equal(details?.needs_review, true);
+    assert.equal(details?.review_reason, HOTEL_CONFIRMATION_GAP);
+  });
+
+  it("découpe une réservation qui porte deux numéros SH", () => {
+    const merged = mergeExtractItems([
+      {
+        ...alpaga("71986SH009279;71986SH009280"),
+        details: {
+          hotel_name: "L'Alpaga",
+          city: "Megève",
+          supplier_net: 2400,
+          rooms: [
+            { confirmation_ref: "71986SH009279", guests: "Queyrel" },
+            { confirmation_ref: "71986SH009280", guests: "Queyrel" },
+          ],
+        },
+      },
+    ]);
+    assert.equal(merged.length, 2);
+    assert.equal((merged[1]?.details as { supplier_net?: number } | undefined)?.supplier_net, undefined);
   });
 });

@@ -1,3 +1,5 @@
+import { AddToPhoneCalendar } from "@/components/account/AddToPhoneCalendar";
+
 export function StayConfirmedNote({
   reference,
   confirmation,
@@ -29,9 +31,12 @@ export function StayConfirmedNote({
       {price ? <p>{price} TTC</p> : null}
       <div className="flex flex-col gap-2 pt-1">
         {calendarHref ? (
-          <a href={calendarHref} className="inline-flex h-11 items-center justify-center rounded-xl bg-[#C5A880] font-semibold text-[#0B192C]">
+          <AddToPhoneCalendar
+            href={calendarHref}
+            className="inline-flex h-11 items-center justify-center rounded-xl bg-[#C5A880] font-semibold text-[#0B192C]"
+          >
             Ajouter au calendrier
-          </a>
+          </AddToPhoneCalendar>
         ) : null}
         {manageHref ? (
           <a href={manageHref} className="inline-flex h-11 items-center justify-center rounded-xl border border-[#f7f4ee]/30 font-semibold">

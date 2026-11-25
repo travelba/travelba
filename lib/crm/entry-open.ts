@@ -11,7 +11,7 @@ import { recordCustomerLogin } from "@/lib/crm/customer-login";
 import { PASSWORD_SETUP_COOKIE, mustSetPassword } from "@/lib/crm/session";
 import { deskOpenDecision, deskSetCookie } from "@/lib/crm/desk-mode";
 import { isStaffAccount } from "@/lib/crm/desk-open";
-import { clientStayFace } from "./client-stay-face";
+import { clientStayFace, shownStayDestination } from "./client-stay-face";
 import { stayHasPublishedCover, stayPlaceName } from "./concierge-notices";
 import {
   entryDestination,
@@ -111,13 +111,17 @@ async function stayBehindCode(origin: string, code: string): Promise<{ stay: Ent
       destination: booking.destination,
       items: items || [],
     });
-    const place = stayPlaceName(face.destination || booking.destination, face.title || booking.title, face.fromCards ? face.items : items || []);
+    const place = stayPlaceName(
+      shownStayDestination(face, booking.destination),
+      face.title || booking.title,
+      face.fromCards ? face.items : items || []
+    );
     const hasCover =
       alive &&
       link.show_cover === true &&
       Boolean(booking.visible_to_client) &&
       stayHasPublishedCover({
-        destination: face.destination || booking.destination,
+        destination: shownStayDestination(face, booking.destination),
         title: face.title || booking.title,
         cover_image_path: booking.cover_image_path,
       });

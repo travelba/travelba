@@ -36,10 +36,10 @@ function thread(partial: Partial<InboxThread>): InboxThread {
   };
 }
 
-describe("Boîte de réception : trois onglets, une file par source", () => {
-  it("les onglets sont Fournisseurs, Hôtels, WhatsApp", () => {
-    assert.deepEqual(BOITE_TAB_IDS, ["fournisseurs", "hotels", "whatsapp"]);
-    assert.deepEqual(Object.values(BOITE_TAB_LABELS), ["Fournisseurs", "Hôtels", "WhatsApp"]);
+describe("Boîte de réception : quatre onglets, une file par source", () => {
+  it("les onglets sont Fournisseurs, Hôtels, WhatsApp et Messages", () => {
+    assert.deepEqual(BOITE_TAB_IDS, ["fournisseurs", "hotels", "whatsapp", "messages"]);
+    assert.deepEqual(Object.values(BOITE_TAB_LABELS), ["Fournisseurs", "Hôtels", "WhatsApp", "Messages"]);
   });
 
   it("un paramètre inconnu ouvre Fournisseurs ; les anciens noms et vues sont des alias", () => {

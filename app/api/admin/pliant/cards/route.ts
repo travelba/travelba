@@ -66,6 +66,7 @@ export async function POST(request: Request) {
     const message = err instanceof Error ? err.message : "";
     const known =
       message.startsWith("Pliant") ||
+      message.startsWith("Le plafond est chez Pliant") ||
       message === "Pliant n’est pas branché." ||
       message.startsWith("Indiquez ") ||
       message.startsWith("Le montant ");

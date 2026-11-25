@@ -1,4 +1,5 @@
 import type { CrmBooking, CrmBookingItem } from "@/lib/crm/types";
+import type { NativeCalendarEvent } from "@/lib/crm/calendar-native";
 import { BOOKING_ITEM_LABELS, isLedgerExpenseKind, visibleServiceCopy } from "@/lib/crm/types";
 import { itemClock, flightCities, flightIata, hotelDisplayName, detailStr } from "@/lib/crm/carnet";
 import { accueilVipTitle, readAccueilVipLegs } from "@/lib/crm/accueil-vip";
@@ -18,8 +19,8 @@ export {
   chosenCalendarHref,
   isAndroidUa,
   isAppleMobileBrowser,
+  isIosWebView,
   itemCalendarHref,
-  showGoogleCalendarFallback,
   type CalendarClickPlan,
   type PhoneCalendarLink,
   type PhoneCalendarLinks,
@@ -301,6 +302,101 @@ export function veventFromItem(item: CrmBookingItem, booking: CrmBooking): strin
     .map((unit) => veventLines(unit, booking, zones))
     .filter((lines): lines is string[] => Boolean(lines));
   return blocks.length ? blocks.map((lines) => lines.join("\r\n")).join("\r\n") : null;
+}
+
+function civilFromStamp(stamp: string) {
+  const match = stamp.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/);
+  if (!match) return "";
+  return `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}`;
+}
+
+function draftBase(uid: string, title: string, notes: string, location: string): NativeCalendarEvent {
+  return {
+    uid,
+    title,
+    notes,
+    location,
+    allDay: false,
+    startDate: "",
+    endDate: "",
+    start: "",
+    end: "",
+    timeZone: "",
+    endTimeZone: "",
+  };
+}
+
+/** Même découpage que le .ics : journée d’hôtel, heure locale du vol, une heure pour l’accueil. */
+function draftFromUnit(item: CrmBookingItem, booking: CrmBooking): NativeCalendarEvent | null {
+  if (!itemHasCalendarDate(item)) return null;
+  const startDay = (item.start_at || "").slice(0, 10);
+  const draft = draftBase(icsUid(item.id), itemSummary(item), itemDescription(item, booking), itemLocation(item));
+  if (item.kind === "accueil_vip" && hasRealTime(item.start_at)) {
+    const zone = timeZones(item).start || "";
+    const stamp = timedStamp(item.start_at!);
+    draft.start = civilFromStamp(stamp);
+    draft.end = civilFromStamp(plusHours(stamp, 1));
+    draft.timeZone = zone;
+    draft.endTimeZone = zone;
+    return draft.start ? draft : null;
+  }
+  if (item.kind === "hotel" || !hasRealTime(item.start_at)) {
+    const endExclusive = item.end_at ? item.end_at.slice(0, 10) : addIsoDays(startDay, 1);
+    const end = endExclusive > startDay ? endExclusive : addIsoDays(startDay, 1);
+    draft.allDay = true;
+    draft.startDate = startDay;
+    draft.endDate = end;
+    return draft;
+  }
+  const zonesForItem = timeZones(item);
+  draft.start = civilFromStamp(timedStamp(item.start_at!));
+  draft.timeZone = zonesForItem.start || "";
+  if (item.end_at && hasRealTime(item.end_at)) {
+    draft.end = civilFromStamp(timedStamp(item.end_at));
+    draft.endTimeZone = zonesForItem.end || zonesForItem.start || "";
+  } else {
+    draft.endTimeZone = zonesForItem.start || "";
+  }
+  return draft.start ? draft : null;
+}
+
+function draftFromStay(booking: CrmBooking): NativeCalendarEvent | null {
+  const start = (booking.start_date || "").slice(0, 10);
+  const end = (booking.end_date || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return null;
+  const endExclusive = /^\d{4}-\d{2}-\d{2}$/.test(end) && end > start ? addIsoDays(end, 1) : addIsoDays(start, 1);
+  const draft = draftBase(
+    icsUid(`stay-${booking.id}`),
+    `Séjour · ${booking.title}`,
+    [booking.reference, booking.destination].filter(Boolean).join(" · "),
+    booking.destination || ""
+  );
+  draft.allDay = true;
+  draft.startDate = start;
+  draft.endDate = endExclusive;
+  return draft;
+}
+
+/** Événements du bouton, pour l’application iOS. Le .ics du site reste la voie Safari, écran d’accueil et Android. */
+export function bookingCalendarEvents(opts: {
+  booking: CrmBooking;
+  items: CrmBookingItem[];
+  itemId?: string | null;
+}): NativeCalendarEvent[] {
+  const named = opts.itemId ? opts.items.find((row) => row.id === opts.itemId) : null;
+  const listed = opts.itemId ? (named ? [named] : []) : opts.items;
+  const events: NativeCalendarEvent[] = [];
+  if (!opts.itemId) {
+    const stay = draftFromStay(opts.booking);
+    if (stay) events.push(stay);
+  }
+  for (const item of listed) {
+    for (const unit of calendarUnits(item)) {
+      const draft = draftFromUnit(unit, opts.booking);
+      if (draft) events.push(draft);
+    }
+  }
+  return events;
 }
 
 export function veventFromStay(booking: CrmBooking): string | null {

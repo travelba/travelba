@@ -35,10 +35,12 @@ test("le médaillon source reste le PNG 1280 fourni, coins compris", async () =>
     ["public/icon-512.png", 512],
     ["public/icon.png", 512],
     ["public/og-square.png", 600],
+    ["public/og-square-v2.png", 600],
   ] as const) {
     assert.deepEqual(pngSize(await readFile(file)), { width: size, height: size, colorType: 6 });
   }
   assert.deepEqual(pngSize(await readFile("public/og.png")), { width: 1200, height: 630, colorType: 6 });
+  assert.deepEqual(pngSize(await readFile("public/og-v2.png")), { width: 1200, height: 630, colorType: 6 });
   const ico = await readFile("public/favicon.ico");
   assert.ok(ico.length > 32);
   assert.equal(ico[0], 0);

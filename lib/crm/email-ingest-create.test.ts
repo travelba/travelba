@@ -511,8 +511,12 @@ describe("autoCreatePlan", () => {
         },
       ],
     });
-    assert.equal(ask.plan, null);
-    assert.equal(ask.hold, "same_stay");
+    assert.deepEqual(ask.plan, {
+      kind: "apply_stay",
+      bookingId: "b-rome",
+      customerId: "marie",
+      gesture: "replace",
+    });
   });
 
   it("crée la fiche sans e-mail quand le nom et le séjour sont là", () => {

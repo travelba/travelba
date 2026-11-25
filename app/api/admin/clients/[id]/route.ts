@@ -3,6 +3,7 @@ import { agencyFeeColumnMissing, agencyFeeRateColumn, agencyFeeRateField } from 
 import { parseBody, patchCustomerSchema } from "@/lib/crm/admin-schemas";
 import { dbError, jsonError, requireAdmin, requireStaff } from "@/lib/crm/auth";
 import { syncInheritedAgencyFees } from "@/lib/crm/bookings";
+import { applyCustomerZeroFees } from "@/lib/crm/zero-fees";
 import { saveCustomerBillingCompanies } from "@/lib/crm/billing-companies";
 import { CUSTOMER_EMAIL_COPY, otherCustomerEmailBlock } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
@@ -44,6 +45,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
     patch.agency_fee_rate = agencyFeeRateColumn(parsed.rate);
   }
   if (flags.data.on_hold !== undefined) patch.on_hold = flags.data.on_hold;
+  if (flags.data.hide_client_prices !== undefined) patch.hide_client_prices = flags.data.hide_client_prices;
+  if (flags.data.zero_fees !== undefined) patch.zero_fees = flags.data.zero_fees;
 
   const { data: current } = await auth.supabase
     .from("crm_customers")
@@ -97,6 +100,12 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
   }
 
+  let turnOnZeroFees = false;
+  if (patch.zero_fees === true) {
+    const before = await createServiceClient().from("crm_customers").select("zero_fees").eq("id", id).maybeSingle();
+    turnOnZeroFees = Boolean(before.error) || (before.data as { zero_fees?: boolean | null } | null)?.zero_fees !== true;
+  }
+
   // email, iban, company_role, billing_parent_id, spending_allowance, on_hold : hors des grants par colonne
   // du rôle authenticated (B-15). Le staff est déjà vérifié : écriture avec le service role.
   const { data, error } = await createServiceClient()
@@ -109,7 +118,20 @@ export async function PATCH(request: Request, ctx: Ctx) {
     if ("agency_fee_rate" in patch && agencyFeeColumnMissing(error)) {
       return jsonError("Le taux de commission n’est pas encore en place. Appliquez la migration, puis enregistrez.");
     }
+    if ("hide_client_prices" in patch && (error.code === "42703" || error.code === "PGRST204")) {
+      return jsonError("Le masquage des prix n’est pas encore en place. Appliquez la migration, puis enregistrez.");
+    }
+    if ("zero_fees" in patch && (error.code === "42703" || error.code === "PGRST204")) {
+      return jsonError("Zéro frais n’est pas encore en place. Appliquez la migration, puis enregistrez.");
+    }
     return dbError(error, 400);
+  }
+  if (turnOnZeroFees) {
+    try {
+      await applyCustomerZeroFees(createServiceClient(), id);
+    } catch (syncError) {
+      console.error("[crm] zéro frais", syncError instanceof Error ? syncError.message : "error");
+    }
   }
   if ("agency_fee_rate" in patch) {
     try {

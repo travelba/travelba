@@ -2,9 +2,12 @@ import { ETA_IL_PORTAL } from "./eta-il-draft";
 import {
   DEFAULT_PLIANT_TRANSACTIONS,
   PLIANT_SINGLE_USE,
+  PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300,
+  PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D,
   PLIANT_VIRTUAL_TRAVEL,
   pliantConfigIsCommercialChoice,
   pliantConfigIsSingleUse,
+  pliantConfigIsTravel3ds,
 } from "./pliant-controls";
 import {
   centsToEur,
@@ -183,9 +186,48 @@ function designationPlace(
   return parts.slice(1, -1).join(" · ");
 }
 
+function rawStay(client?: string | null, place?: string | null, reference?: string | null) {
+  return [client, place, reference].map((part) => pliantReadable(part || "")).filter(Boolean).join(CAPTION_SEP);
+}
+
+/** Hôtels encore distincts du texte saisi, sans doublon. */
+function hotelsAfterTyped(hotels: string[], typed: string) {
+  const seen = new Set<string>();
+  const typedKey = pliantKey(typed);
+  if (typedKey) seen.add(typedKey);
+  const extras: string[] = [];
+  for (const hotel of hotels) {
+    const key = pliantKey(hotel);
+    if (!key || seen.has(key) || hotelCited(key, typed)) continue;
+    seen.add(key);
+    extras.push(hotel.trim());
+  }
+  return extras;
+}
+
+function placeOf(primary: string, extras: string[]) {
+  return [primary, ...extras].filter(Boolean).join(" · ");
+}
+
+/** Retire des hôtels entiers par la fin tant que la phrase dépasse `max`. */
+function keepFittingHotels(
+  client: string | null | undefined,
+  primary: string,
+  extras: string[],
+  reference: string | null | undefined,
+  max: number
+) {
+  const kept = extras.slice();
+  while (kept.length && rawStay(client, placeOf(primary, kept), reference).length > max) kept.pop();
+  return kept;
+}
+
 /**
- * Libellé (40) et objet (200). L’hôtel prime. La désignation s’ajoute
- * si elle tient encore ; sinon elle reste dans l’objet.
+ * Libellé (40) et objet (200).
+ * Sans nom saisi : l’hôtel prime.
+ * Avec un nom saisi : « Client – saisie – Réf ». L’hôtel se colle
+ * seulement s’il tient encore dans le libellé ; sinon il reste dans l’objet.
+ * La coupe retire l’hôtel en entier avant de raccourcir le texte saisi.
  * Un nom qui cite un hôtel ne garde que celui-là.
  */
 export function pliantStayCaption(input: {
@@ -199,16 +241,29 @@ export function pliantStayCaption(input: {
   const brief = selected.cited ? citedBrief(selected.hotels, middle) : "";
   const hotels = brief ? [brief] : selected.hotels;
   const hotelPlace = pliantCardPlace({ hotels });
-  const designation = middle && pliantKey(middle) !== pliantKey(hotelPlace) ? middle : "";
-  const fullPlace = pliantCardPlace({ hotels, designation });
-  const full = pliantCardCaption({ client: input.client, place: fullPlace, reference: input.reference });
-  const shown = pliantCardCaption({
+  const typed = middle && pliantKey(middle) && pliantKey(middle) !== pliantKey(hotelPlace) ? middle : "";
+  if (!typed) {
+    return pliantCardCaption({
+      client: input.client,
+      place: hotelPlace || middle || input.designation,
+      reference: input.reference,
+    });
+  }
+  const extras = hotelsAfterTyped(hotels, typed);
+  const forPurpose = keepFittingHotels(input.client, typed, extras, input.reference, PURPOSE_MAX);
+  const forLabel = keepFittingHotels(input.client, typed, forPurpose, input.reference, LABEL_MAX);
+  const purposeCaption = pliantCardCaption({
     client: input.client,
-    place: hotelPlace || designation || input.designation,
+    place: placeOf(typed, forPurpose),
     reference: input.reference,
   });
-  const label = full && full.label === full.purpose ? full.label : shown?.label || full?.label || "";
-  const purpose = full?.purpose || shown?.purpose || label;
+  const labelCaption = pliantCardCaption({
+    client: input.client,
+    place: placeOf(typed, forLabel),
+    reference: input.reference,
+  });
+  const label = labelCaption?.label || "";
+  const purpose = purposeCaption?.purpose || label;
   if (!label && !purpose) return null;
   return { label, purpose };
 }
@@ -308,6 +363,8 @@ export function etaIlPliantCard(input: {
     portal: ETA_IL_PORTAL,
     body: {
       organizationId: input.organizationId,
+      // Plusieurs paiements : le corps reste virtuel. À l’émission, le catalogue
+      // préfère Visa Travel sans 3DS, puis l’ancienne carte voyage. Pas d’usage unique.
       cardConfig: input.cardConfig || "PLIANT_VIRTUAL",
       label: name.label,
       customFirstName: name.customFirstName,
@@ -350,20 +407,38 @@ export function pickListedId(preferred: string, ids: string[]) {
 
 type PliantAvailableConfig = { cardConfig?: string | null; canBeIssued?: boolean | null; type?: string | null };
 
-/** `PLIANT_VIRTUAL_TRAVEL` émissible, jamais une variante `_CC`. */
-export function issuableTravelConfig(configs: PliantAvailableConfig[]) {
-  const row = configs.find(
-    (item) => item.canBeIssued !== false && item.cardConfig === PLIANT_VIRTUAL_TRAVEL && !pliantConfigIsCommercialChoice(item.cardConfig)
+function listedIssuable(configs: PliantAvailableConfig[], name: string) {
+  return configs.some(
+    (item) => item.canBeIssued !== false && item.cardConfig === name && !pliantConfigIsCommercialChoice(item.cardConfig || "")
   );
-  return row?.cardConfig || null;
 }
 
 /**
- * Préfère la carte voyage si le compte peut l’émettre.
- * Sinon, le produit demandé : une demande à usage unique ne retombe pas sur `PLIANT_VIRTUAL`.
- * Une demande virtuelle reste sur `PLIANT_VIRTUAL`. Aucune config `_CC`.
+ * Visa Travel 3 % sans 3DS, puis l’ancienne carte voyage.
+ * Jamais une variante `_CC`, jamais le 3DS frictionless (il se demande).
+ */
+export function issuableTravelConfig(configs: PliantAvailableConfig[]) {
+  if (listedIssuable(configs, PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D)) {
+    return PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D;
+  }
+  if (listedIssuable(configs, PLIANT_VIRTUAL_TRAVEL)) return PLIANT_VIRTUAL_TRAVEL;
+  return null;
+}
+
+/**
+ * Préfère Visa Travel sans 3DS, puis `PLIANT_VIRTUAL_TRAVEL`.
+ * Une demande 3DS frictionless est honorée si elle est émissible, sinon rien :
+ * l’appelant refuse, sans retomber sur le défaut. Ensuite, le produit demandé.
+ * Une demande à usage unique ne retombe pas sur `PLIANT_VIRTUAL`.
+ * Une demande virtuelle (formalité, plusieurs paiements) reste sur `PLIANT_VIRTUAL`.
+ * Aucune config `_CC`.
  */
 export function pickTravelConfig(preferred: string, configs: PliantAvailableConfig[]) {
+  if (pliantConfigIsTravel3ds(preferred)) {
+    return listedIssuable(configs, PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300)
+      ? PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300
+      : null;
+  }
   const travel = issuableTravelConfig(configs);
   if (travel) return travel;
   const open = configs.filter(

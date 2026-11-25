@@ -19,6 +19,9 @@ import {
   type StayEvent,
 } from "@/lib/crm/hotel-direct";
 import { clientConfirmationDraft, hotelRequestLetter, outboundHotelRecipient, HOTEL_DIRECT_FROM } from "@/lib/crm/hotel-direct-mail";
+import { autonomousArrivalChannel, type HotelAutoNoticeFacts, type HotelAutoNoticeKind } from "@/lib/crm/hotel-auto";
+import { queueHotelAutoNotice } from "@/lib/crm/hotel-auto-run";
+import { siteConfig } from "@/lib/site";
 import { agencyPayOffered } from "@/lib/crm/hotel-journey";
 import { clientBenefits, leRoomPartyOk, roomsFromStored, type HotelRoomOccupancy } from "@/lib/crm/hotel-search";
 import {
@@ -124,8 +127,9 @@ function cardDetails(
     room: offer.room_label,
     guests,
     ...extra,
+    autonomous: true,
+    arrival_channel: autonomousArrivalChannel({ placed: "email", account: offer.account }),
   };
-  if (offer.account === "little_emperors") details.source_family = "little_emperors";
   const raw = Array.isArray(offer.benefits) ? offer.benefits.filter((line): line is string => typeof line === "string") : [];
   assignLeIncluded(details, raw, leRoomLabels({ room: offer.room_label }));
   return details;
@@ -622,6 +626,41 @@ async function rollbackLe(input: {
     .from("crm_hotel_direct_stays")
     .update({ state: failed.stay, phase: "cancelled", updated_at: new Date().toISOString() })
     .eq("id", input.stayId);
+  await queueHotelAutoNotice(input.admin, noticeFromStay("failed", input.stayId, input.stay, input.offer, input.bookingId, input.reason, null));
+}
+
+function noticeFromStay(
+  kind: HotelAutoNoticeKind,
+  stayId: string,
+  stay: DirectStay,
+  offer: Offer,
+  bookingId: string | null,
+  reason: string | null,
+  cardLast4: string | null
+): HotelAutoNoticeFacts {
+  return {
+    kind,
+    stayId,
+    bookingId,
+    reference: stay.reference || null,
+    client: stay.guests.filter(Boolean).join(", ") || "Client",
+    hotel: stay.hotelName || offer.hotel_name,
+    city: offer.city,
+    checkIn: offer.check_in,
+    checkOut: offer.check_out,
+    room: offer.room_label,
+    rate: offer.rate_title,
+    amountCents: stay.sellCents,
+    currency: stay.currency,
+    payMethod: stay.payMethod,
+    supplier: stay.supplier === "api" ? "Little Emperors" : "Hôtel",
+    confirmation: stay.confirmation,
+    cancellable: stay.freeCancellation,
+    cancelDeadline: stay.cancelDeadline,
+    cardLast4,
+    reason,
+    origin: siteConfig.url,
+  };
 }
 
 function cardFromSecrets(secrets: { pan: string; expiry: string; cvc: string }, name: string) {
@@ -743,6 +782,10 @@ async function placeLeStay(input: {
         .from("crm_hotel_direct_stays")
         .update({ state: step.stay, phase: "confirmed", le_booking_id: current.leBookingId, updated_at: input.now })
         .eq("id", row.id);
+      await queueHotelAutoNotice(
+        input.admin,
+        noticeFromStay("confirmed", row.id, step.stay, input.offer, row.booking_id, null, null)
+      );
       return { ok: true, view: viewOf(row.id, step.stay, input.offer, input.now.slice(0, 10)) };
     }
   }
@@ -1130,6 +1173,8 @@ async function placeLeStay(input: {
         le_hotel_id: hotelId,
         le_booking_id: booking.id,
         source_family: "little_emperors",
+        arrival_channel: "little_emperors",
+        autonomous: true,
         cancellation_deadline: deadline,
         conditions: [clientConditions(stay)],
       };
@@ -1255,6 +1300,10 @@ async function placeLeStay(input: {
     .update({ state: step.stay, phase: step.stay.phase, le_booking_id: booking.id, updated_at: input.now })
     .eq("id", stayId);
   const view = viewOf(stayId, step.stay, input.offer, input.now.slice(0, 10));
+  await queueHotelAutoNotice(
+    input.admin,
+    noticeFromStay("confirmed", stayId, step.stay, input.offer, bookingId, null, cardLast4)
+  );
   return { ok: true, view: { ...view, dossier: /^TB-/.test(reference) ? reference : null } };
 }
 
@@ -1434,6 +1483,7 @@ export async function openDirectStay(input: {
     await remember(admin, stayId, "client", line.action, line.detail, null);
   }
   await admin.from("crm_hotel_direct_stays").update({ state: opened.stay, phase: opened.stay.phase }).eq("id", stayId);
+  await queueHotelAutoNotice(admin, noticeFromStay("confirmed", stayId, opened.stay, offer, bookingId, null, null));
   return { ok: true as const, view: viewOf(stayId, opened.stay, offer, now.slice(0, 10)) };
 }
 
@@ -1503,6 +1553,9 @@ export async function actOnDirectStay(input: { customerId: string; stayId: strin
     clientEmail: person.email || null,
   });
   for (const line of step.audit) await remember(admin, row.id, input.actor, line.action, line.detail, null);
+  if (event.type === "supplier_cancelled" || step.stay.phase === "cancelled") {
+    await queueHotelAutoNotice(admin, noticeFromStay("cancelled", row.id, step.stay, offer, row.booking_id, step.stay.reason || null, null));
+  }
   return { ok: true as const, view: viewOf(row.id, step.stay, offer, now.slice(0, 10)) };
 }
 

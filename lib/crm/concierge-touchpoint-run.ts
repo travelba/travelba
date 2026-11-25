@@ -3,6 +3,7 @@ import { planFollowups } from "./concierge-journey";
 import { factsFromDossier, TOUCHPOINT_KINDS, touchpointDay, touchpointWindow } from "./concierge-touchpoints";
 import { buildConciergeDossier, proactiveWhatsappAllowed } from "./whatsapp-concierge";
 import { toE164 } from "./phone";
+import { loadTravelWhatsappAudience } from "./travel-whatsapp-fanout";
 
 type Admin = SupabaseClient;
 
@@ -109,7 +110,18 @@ export async function draftConciergeTouchpoints(admin: Admin, now = new Date()) 
   for (const booking of bookings) {
     const person = people.get(booking.customer_id);
     const phone = toE164(person?.phone || "");
-    if (!person || !phone || !proactiveWhatsappAllowed(person)) continue;
+    const holderOk = Boolean(person && phone && proactiveWhatsappAllowed(person));
+    let spouses: { phone: string; firstName: string }[] = [];
+    try {
+      const loaded = await loadTravelWhatsappAudience(admin, booking.id);
+      spouses = (loaded?.audience.recipients || [])
+        .filter((row) => row.role === "spouse")
+        .map((row) => ({ phone: row.phone, firstName: row.firstName }));
+    } catch {
+      spouses = [];
+    }
+    if (!person) continue;
+    if (!holderOk && !spouses.length) continue;
     const itemRows = ((items.data || []) as {
       id: string;
       booking_id: string;
@@ -168,7 +180,7 @@ export async function draftConciergeTouchpoints(admin: Admin, now = new Date()) 
     if (!touch) continue;
     const planned = planFollowups({
       now,
-      lastInbound: lastInbound.get(phone) ? new Date(lastInbound.get(phone) as string) : null,
+      lastInbound: phone && lastInbound.get(phone) ? new Date(lastInbound.get(phone) as string) : null,
       stayStart: touch.stay.startDate,
       stayEnd: touch.stay.endDate,
       briefOpen: false,
@@ -179,22 +191,45 @@ export async function draftConciergeTouchpoints(admin: Admin, now = new Date()) 
       slot: booking.id,
       bookingId: booking.id,
     });
-    for (const row of planned) {
-      if (!TOUCHPOINT_KINDS.includes(row.kind as (typeof TOUCHPOINT_KINDS)[number])) continue;
-      const slot = booking.id;
-      if (sent.has(`${phone}|${row.kind}|${slot}`)) continue;
-      rows.push({
-        phone,
-        customer_id: person.id,
-        booking_id: booking.id,
-        kind: row.kind,
-        channel: row.channel,
-        template_key: row.templateKey,
-        draft_body: row.body,
-        due_at: row.dueAt,
-        status: "planned",
-        slot,
+    const audiences = holderOk && phone ? [{ phone, firstName: touch.firstName, customerId: person.id as string | null, planned }] : [];
+    for (const spouse of spouses) {
+      audiences.push({
+        phone: spouse.phone,
+        firstName: spouse.firstName,
+        customerId: null,
+        planned: planFollowups({
+          now,
+          lastInbound: lastInbound.get(spouse.phone) ? new Date(lastInbound.get(spouse.phone) as string) : null,
+          stayStart: touch.stay.startDate,
+          stayEnd: touch.stay.endDate,
+          briefOpen: false,
+          firstName: spouse.firstName || touch.firstName,
+          stay: touch.stay,
+          lang: touch.lang,
+          facts: touch.facts,
+          slot: booking.id,
+          bookingId: booking.id,
+        }),
       });
+    }
+    for (const audience of audiences) {
+      for (const row of audience.planned) {
+        if (!TOUCHPOINT_KINDS.includes(row.kind as (typeof TOUCHPOINT_KINDS)[number])) continue;
+        const slot = booking.id;
+        if (sent.has(`${audience.phone}|${row.kind}|${slot}`)) continue;
+        rows.push({
+          phone: audience.phone,
+          customer_id: audience.customerId,
+          booking_id: booking.id,
+          kind: row.kind,
+          channel: row.channel,
+          template_key: row.templateKey,
+          draft_body: row.body,
+          due_at: row.dueAt,
+          status: "planned",
+          slot,
+        });
+      }
     }
   }
 

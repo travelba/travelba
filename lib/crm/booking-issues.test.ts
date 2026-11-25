@@ -4,6 +4,7 @@ import {
   collectExtractIssues,
   collectManualCreateIssues,
   collectPublishIssues,
+  fieldLabel,
   issuesSummary,
 } from "./booking-issues";
 
@@ -27,7 +28,8 @@ test("extrait identité bloque, les passagers du PDF sont enregistrés même hor
   );
 });
 
-test("prix document facultatif : hôtel, vol et transfert sans montant n’empêchent pas l’enregistrement", () => {
+test("prix d’achat facultatif : hôtel, vol et transfert sans montant n’empêchent pas l’enregistrement", () => {
+  assert.equal(fieldLabel("items.details.document_amount"), "Prix d’achat");
   const card = {
     title: "Nantipa",
     supplier: null,

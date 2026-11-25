@@ -12,6 +12,7 @@ import {
   duplicateTravelerRow,
   duplicateVisaRequestRow,
 } from "@/lib/crm/booking-lifecycle";
+import { copyDiscountLines } from "@/lib/crm/booking-discounts-db";
 import { nextBookingReference, refreshBookingLedger } from "@/lib/crm/bookings";
 import { deleteBookingById } from "@/lib/crm/delete-booking";
 import { copyCrmFile, removeCrmFiles } from "@/lib/crm/files";
@@ -137,6 +138,8 @@ async function copyChildren(
     const { error } = await admin.from("crm_hotel_requests").insert(letterRows);
     if (error) throw new Error(error.message);
   }
+
+  await copyDiscountLines(sourceId, copyId, admin);
 }
 
 export async function duplicateBookingById(bookingId: string) {

@@ -7,7 +7,7 @@ import { loginEmailFromSearch } from "@/lib/crm/login-email";
 import { LOGIN_FAILURE_MESSAGE } from "@/lib/crm/login-message";
 import { pathAfterKnownPassword } from "@/lib/crm/session";
 import { siteConfig } from "@/lib/site";
-import { BrandMark } from "@/components/crm/ui";
+import { AccountBrand } from "@/components/account/AccountBrand";
 import { BusyBar } from "@/components/crm/BusyBar";
 
 const fieldClass =
@@ -46,6 +46,14 @@ function LoginForm() {
       setLoading(false);
       setError(ack.status === 401 ? LOGIN_FAILURE_MESSAGE : json.error || "Connexion impossible.");
       return;
+    }
+    if (json.staff && typeof window !== "undefined") {
+      const cap = (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+      if (cap?.isNativePlatform?.()) {
+        setLoading(false);
+        await signOutAccount("local", "/connexion?error=application");
+        return;
+      }
     }
     setLoading(false);
     router.push(
@@ -308,20 +316,26 @@ function LoginForm() {
 function ConnexionQueryNotice() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
-  if (error !== "auth" && error !== "no-account") return null;
+  if (error !== "auth" && error !== "no-account" && error !== "application") return null;
   return (
     <>
+      {error === "application" ? (
+        <p className="text-sm text-[var(--admin-navy)]">
+          Cette application est réservée à l’espace client. L’agence se connecte sur le site.
+        </p>
+      ) : null}
       {error === "no-account" ? (
         <p className="text-sm text-[var(--admin-red)]">
           Aucun espace client n’est associé à ce compte. Contactez l’agence
           pour recevoir une invitation.
         </p>
-      ) : (
+      ) : null}
+      {error === "auth" ? (
         <p className="text-sm text-[var(--admin-red)]">
           Lien invalide ou expiré. Demandez une nouvelle invitation ou
           réinitialisez votre mot de passe.
         </p>
-      )}
+      ) : null}
       {error === "no-account" ? (
         <button
           type="button"
@@ -342,7 +356,7 @@ export default function ConnexionPage() {
     <div className="account-app admin-af min-h-screen">
       <div className="mx-auto flex min-h-screen max-w-[420px] flex-col justify-center px-4 py-10">
         <div className="mb-8 flex items-center justify-between">
-          <BrandMark href="/" subtitle="Espace client" />
+          <AccountBrand href="/" subtitle="Espace client" />
           <span className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-muted ring-1 ring-[var(--border)]">
             Sécurisé
           </span>

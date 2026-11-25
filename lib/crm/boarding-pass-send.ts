@@ -25,7 +25,10 @@ import { deliverWalletNotice } from "./wallet-pass-notify";
 import { syncCheckinSent } from "./online-checkin-db";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { resolveContentSid } from "./twilio-content-sid";
+import { airportPushCopy, boardingPushCopy } from "./push-copy";
+import { sendCustomerPush } from "./push-notices";
 import { sendContentTemplate } from "./whatsapp";
+import { copyTravelNoticeToSpouses } from "./travel-whatsapp-fanout";
 
 type CardInput = {
   documentId?: string;
@@ -147,7 +150,7 @@ export async function sendBoardingPassWhatsapp(
   });
   if (block || !customer) return { ok: false, error: block || "Client introuvable.", sent: 0 };
 
-  if (input.mode === "aeroport") return sendAirport(input, customerId, customer);
+  if (input.mode === "aeroport") return sendAirport(supabase, input, customerId, customer);
 
   const cards = Array.isArray(input.cards) ? input.cards : [];
   const template = boardingPassTemplateForCount(cards.length);
@@ -191,6 +194,13 @@ export async function sendBoardingPassWhatsapp(
       const detail = result.reason === "rejected" ? "WhatsApp a refusé le message." : "WhatsApp n’est pas configuré.";
       return { ok: false, error: sent ? `${sent} carte est partie. ${detail}` : detail, sent };
     }
+    await copyTravelNoticeToSpouses(supabase, {
+      bookingId: input.bookingId,
+      kind: "carte_embarquement",
+      body: row.preview,
+      visible: true,
+      exceptPhones: customer.phone ? [customer.phone] : [],
+    });
     const noted = boardingPassJournal({
       names: [row.fields.firstName],
       flight: row.fields.flight,
@@ -212,6 +222,19 @@ export async function sendBoardingPassWhatsapp(
     });
     sent += 1;
     sentCards.push({ documentId: row.documentId, flight: row.fields.flight });
+    const reference = String(booking.reference || "");
+    if (/^[A-Za-z0-9-]{4,40}$/.test(reference)) {
+      const copy = boardingPushCopy({ flight: row.fields.flight, route: row.fields.route });
+      await sendCustomerPush({
+        customerId,
+        kind: "documents",
+        title: copy.title,
+        body: copy.body,
+        url: `/mon-compte/reservations/${reference}`,
+        idempotencyKey: `boarding:${row.documentId}`,
+        bookingId: input.bookingId,
+      });
+    }
     const walletId = findWalletDocumentId(wallets, row.fields);
     if (walletId) {
       await deliverWalletNotice({ phone: customer.phone, firstName: row.fields.firstName, documentId: walletId });
@@ -227,6 +250,7 @@ export async function sendBoardingPassWhatsapp(
 }
 
 async function sendAirport(
+  supabase: SupabaseClient,
   input: BoardingPassSendInput & { bookingId: string; staffId: string; staffUserId: string | null },
   customerId: string,
   customer: { phone?: string | null; auth_user_id?: string | null }
@@ -251,6 +275,13 @@ async function sendAirport(
   if (!result.ok) {
     return { ok: false, error: result.reason === "rejected" ? "WhatsApp a refusé le message." : "WhatsApp n’est pas configuré.", sent: 0 };
   }
+  await copyTravelNoticeToSpouses(supabase, {
+    bookingId: input.bookingId,
+    kind: "carte_embarquement",
+    body: preview,
+    visible: true,
+    exceptPhones: customer.phone ? [customer.phone] : [],
+  });
   const noted = checkinJournal(fields);
   await journal({
     customerId,
@@ -263,6 +294,16 @@ async function sendAirport(
     templateKey: "enregistrement_aeroport",
     body: preview,
     twilioSid: result.sid,
+  });
+  const copy = airportPushCopy({ flight: fields.flight, route: fields.route });
+  await sendCustomerPush({
+    customerId,
+    kind: "travel",
+    title: copy.title,
+    body: copy.body,
+    url: "/mon-compte",
+    idempotencyKey: `airport:${input.bookingId}:${fields.flight}`.slice(0, 180),
+    bookingId: input.bookingId,
   });
   return { ok: true, sent: 1 };
 }

@@ -24,9 +24,12 @@ import {
   syncBookingTotalFromItems,
   syncInheritedAgencyFees,
 } from "@/lib/crm/bookings";
+import { discountLineMirror, discountLinePublic } from "@/lib/crm/commercial-discount";
+import { missingDbColumn } from "@/lib/crm/optional-column";
 import { deleteEmptyBillingCompany, upsertBillingCompany, type BillingCompanyInput } from "@/lib/crm/billing-companies";
 import { customerEmailError, normalizeCustomerEmail, otherCustomerEmailBlock, CUSTOMER_EMAIL_COPY } from "@/lib/crm/customer-email";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
+import { applyCustomerZeroFees } from "@/lib/crm/zero-fees";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import { extraMomentOf, extraPlaceOf, extraServiceLeg } from "@/lib/crm/extras";
 import { isCancellationExtract } from "@/lib/crm/ingest-types";
@@ -257,6 +260,16 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
   if (particulier && societeId) {
     throw new McpWriteError("Un séjour particulier ne se facture pas à une société.");
   }
+  if (input.prix_par_carte === true) {
+    patch.price_mode = "cartes";
+    patch.forfait_amount = null;
+  }
+  if ("prix_forfait" in input && input.prix_forfait != null && input.prix_forfait !== "") {
+    const amount = Number(String(input.prix_forfait).replace(",", "."));
+    if (!(amount > 0)) throw new McpWriteError("Indiquez le prix forfait du voyage.");
+    patch.price_mode = "forfait";
+    patch.forfait_amount = Math.round(amount * 100) / 100;
+  }
   const billing = particulier || societeId ? { particulier, societeId } : null;
   if (!Object.keys(patch).length && !billing && !cover) throw new McpWriteError("Rien à modifier.");
   return { ...target, patch, billing, cover };
@@ -462,6 +475,14 @@ export function prepareClientUpdate(input: Record<string, unknown>) {
     const parsed = agencyFeeRateField(input.commission_agence);
     if ("error" in parsed) throw new McpWriteError(parsed.error);
     patch.agency_fee_rate = agencyFeeRateColumn(parsed.rate);
+  }
+  if ("masquer_prix" in input) {
+    if (typeof input.masquer_prix !== "boolean") throw new McpWriteError("masquer_prix : vrai ou faux.");
+    patch.hide_client_prices = input.masquer_prix;
+  }
+  if ("zero_frais" in input) {
+    if (typeof input.zero_frais !== "boolean") throw new McpWriteError("zero_frais : vrai ou faux.");
+    patch.zero_fees = input.zero_frais;
   }
   const removeCompanyId =
     input.supprimer_societe_id == null || input.supprimer_societe_id === ""
@@ -767,6 +788,69 @@ function coverPhotoId(booking: CrmBooking, items: { kind?: string | null; title?
   return catalogPhotoFromPlan(plan);
 }
 
+function remiseDraft(row: Record<string, unknown>, current?: { label: string; kind: "amount" | "percent"; quantity: number; unitPrice: number | null; percent: number | null }) {
+  const legacy =
+    "valeur" in row &&
+    !("libelle" in row) &&
+    !("prix_unitaire" in row) &&
+    !("pourcentage" in row) &&
+    !("montant" in row) &&
+    !("id" in row);
+  if (legacy) {
+    const percent = row.type === "pourcentage" || row.type === "percent";
+    return {
+      label: "Remise commerciale",
+      kind: row.type,
+      quantity: 1,
+      unit_price: percent ? undefined : row.valeur,
+      percent: percent ? row.valeur : undefined,
+    };
+  }
+  const kind = row.type ?? (current ? (current.kind === "percent" ? "pourcentage" : "montant") : undefined);
+  const percentKind = kind === "pourcentage" || kind === "percent";
+  return {
+    label: row.libelle ?? current?.label,
+    kind,
+    quantity: row.quantite ?? current?.quantity,
+    unit_price: "prix_unitaire" in row ? row.prix_unitaire : !percentKind ? current?.unitPrice ?? undefined : undefined,
+    percent: "pourcentage" in row ? row.pourcentage : percentKind ? current?.percent ?? undefined : undefined,
+    amount: "montant" in row ? row.montant : undefined,
+  };
+}
+
+/** Ajoute, modifie ou retire des lignes. null retire toutes les remises. L’ancienne forme { type, valeur } ajoute une ligne. */
+async function applyBookingRemise(db: SupabaseClient, bookingId: string, remise: unknown) {
+  const { deleteBookingDiscounts, deleteDiscountLine, insertDiscountLine, loadDiscountLines, updateDiscountLine, DISCOUNT_MIGRATION_MESSAGE } =
+    await import("@/lib/crm/booking-discounts-db");
+  try {
+    if (remise == null) {
+      await deleteBookingDiscounts(bookingId, db);
+      return;
+    }
+    if (typeof remise !== "object" || Array.isArray(remise)) throw new McpWriteError("Remise invalide.");
+    const row = remise as Record<string, unknown>;
+    if (row.retirer === true) {
+      const lineId = String(row.id || "").trim();
+      if (!lineId) throw new McpWriteError("Indiquez la remise à retirer.");
+      await deleteDiscountLine(bookingId, lineId, db);
+      return;
+    }
+    const lineId = typeof row.id === "string" ? row.id.trim() : "";
+    if (lineId) {
+      const loaded = await loadDiscountLines([bookingId], db);
+      if (!loaded) throw new Error(DISCOUNT_MIGRATION_MESSAGE);
+      const current = (loaded.get(bookingId) || []).find((line) => line.id === lineId);
+      if (!current) throw new McpWriteError("Cette remise n’est pas sur le dossier.");
+      await updateDiscountLine(bookingId, lineId, remiseDraft(row, current), db);
+      return;
+    }
+    await insertDiscountLine(bookingId, remiseDraft(row), db);
+  } catch (err) {
+    if (err instanceof McpWriteError) throw err;
+    throw new McpWriteError(err instanceof Error && err.message ? err.message : "Remise non enregistrée.");
+  }
+}
+
 export async function updateBooking(input: Record<string, unknown>, admin?: McpAdmin) {
   const { id, reference, patch, billing, cover } = prepareBookingUpdate(input);
   const db = client(admin);
@@ -872,13 +956,28 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
       .eq("id", prev.id)
       .select(MCP_BOOKING_COLUMNS)
       .single();
-    if (error || !data) failDb(error, "Dossier non enregistré.");
+    if (error || !data) {
+      if (
+        ("remise_type" in nextPatch || "remise_value" in nextPatch) &&
+        (missingDbColumn(error, "remise_type") || missingDbColumn(error, "remise_value"))
+      ) {
+        throw new McpWriteError("La remise commerciale n’est pas encore en place. Appliquez la migration, puis réessayez.");
+      }
+      if (
+        ("price_mode" in nextPatch || "forfait_amount" in nextPatch) &&
+        (missingDbColumn(error, "price_mode") || missingDbColumn(error, "forfait_amount"))
+      ) {
+        throw new McpWriteError("Le prix forfait n’est pas encore en place. Appliquez la migration, puis réessayez.");
+      }
+      failDb(error, "Dossier non enregistré.");
+    }
     booking = data as CrmBooking;
   } else {
     const { data, error } = await db.from("crm_bookings").select(MCP_BOOKING_COLUMNS).eq("id", prev.id).maybeSingle();
     if (error || !data) failDb(error, "Dossier non enregistré.");
     booking = data as CrmBooking;
   }
+  if ("remise" in input) await applyBookingRemise(db, booking.id, input.remise);
   try {
     await syncBookingTotalFromItems(db, booking.id);
     const { data: priced } = await db.from("crm_bookings").select(MCP_BOOKING_COLUMNS).eq("id", booking.id).maybeSingle();
@@ -955,6 +1054,14 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     if (auditError) console.error("[mcp] journal titre", auditError.code ?? "?");
   }
   const shownPhoto = coverPhotoId(row as CrmBooking, coverItems);
+  let remises: ReturnType<typeof discountLinePublic>[] | undefined;
+  if ("remise" in input) {
+    const { loadStayPricedDiscounts } = await import("@/lib/crm/displayed-stay");
+    const loaded = await loadStayPricedDiscounts(db, booking.id);
+    remises = loaded.source === "lines" ? loaded.lines.map(discountLinePublic) : [];
+  }
+  const seule = remises?.length === 1 ? remises[0] : null;
+  const remise = discountLineMirror(seule);
   return {
     id: row.id,
     reference: row.reference,
@@ -971,6 +1078,12 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
     notes_internes: row.notes_internal,
     commission_agence,
     commission_source,
+    ...(remises
+      ? {
+          remises,
+          remise,
+        }
+      : {}),
     paye_par: factureSociete ? ("société" as const) : ("particulier" as const),
     societe: factureSociete ? societe : null,
     societe_id: factureSociete ? row.billing_company_id || null : null,
@@ -1254,6 +1367,11 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
       }
     }
   }
+  let turnOnZeroFees = false;
+  if (patch.zero_fees === true) {
+    const before = await db.from("crm_customers").select("zero_fees").eq("id", id).maybeSingle();
+    turnOnZeroFees = Boolean(before.error) || (before.data as { zero_fees?: boolean | null } | null)?.zero_fees !== true;
+  }
   let row = holder as Pick<CrmCustomer, "id" | "first_name" | "last_name" | "email"> & {
     phone?: string | null;
     company_name?: string | null;
@@ -1265,7 +1383,15 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
       .eq("id", id)
       .select("id, first_name, last_name, email, phone, company_name")
       .single();
-    if (error || !data) failDb(error, "Client non enregistré.");
+    if (error || !data) {
+      if ("hide_client_prices" in patch && (error?.code === "42703" || error?.code === "PGRST204")) {
+        throw new McpWriteError("Le masquage des prix n’est pas encore en place. Appliquez la migration, puis réessayez.");
+      }
+      if ("zero_fees" in patch && (error?.code === "42703" || error?.code === "PGRST204")) {
+        throw new McpWriteError("Zéro frais n’est pas encore en place. Appliquez la migration, puis réessayez.");
+      }
+      failDb(error, "Client non enregistré.");
+    }
     row = data as typeof row;
   }
   let saved: { id: string; company_name: string | null; siret: string | null; vat_number: string | null } | null = null;
@@ -1284,6 +1410,17 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
       row = { ...row, company_name: (refreshed.data as { company_name?: string | null }).company_name ?? null };
     }
   }
+  let frais_retires = 0;
+  let frais_laisses = 0;
+  if (turnOnZeroFees) {
+    try {
+      const cleared = await applyCustomerZeroFees(db, id);
+      frais_retires = cleared.retires;
+      frais_laisses = cleared.laisses;
+    } catch (err) {
+      console.error("[mcp] zéro frais", err instanceof Error ? err.message : "error");
+    }
+  }
   if ("agency_fee_rate" in patch) {
     try {
       await syncInheritedAgencyFees(db, id);
@@ -1292,12 +1429,20 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
     }
   }
   const rateRead = await db.from("crm_customers").select("agency_fee_rate").eq("id", id).maybeSingle();
+  const withZero = await db.from("crm_customers").select("hide_client_prices, zero_fees").eq("id", id).maybeSingle();
+  const hideRead =
+    withZero.error && /zero_fees/i.test(withZero.error.message || "")
+      ? await db.from("crm_customers").select("hide_client_prices").eq("id", id).maybeSingle()
+      : withZero;
   const storedRate = rateRead.error
     ? "agency_fee_rate" in patch
       ? patch.agency_fee_rate
       : null
     : rateRead.data?.agency_fee_rate;
   const commission_agence = formatAgencyFeePercent(typeof storedRate === "number" ? storedRate : Number(storedRate));
+  const flags = hideRead.data as { hide_client_prices?: boolean | null; zero_fees?: boolean | null } | null;
+  const masquer_prix = hideRead.error ? patch.hide_client_prices === true : flags?.hide_client_prices === true;
+  const zero_frais = hideRead.error ? patch.zero_fees === true : flags?.zero_fees === true;
   return {
     id: row.id,
     nom: customerFullName(row),
@@ -1309,5 +1454,9 @@ export async function updateClient(input: Record<string, unknown>, admin?: McpAd
     tva: saved?.vat_number ?? null,
     societe_retiree: societeRetiree,
     commission_agence,
+    masquer_prix,
+    zero_frais,
+    frais_retires,
+    frais_laisses,
   };
 }

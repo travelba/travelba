@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AgencyLogo } from "@/components/AgencyLogo";
+import { BrowserAlertPrompt } from "@/components/admin/BrowserAlertPrompt";
 import { HotelReplyToastStack } from "@/components/admin/HotelReplyToasts";
 import { Icon } from "@/components/crm/icons";
 import type { HotelReplyNotice } from "@/lib/crm/hotel-reply-notice";
@@ -28,6 +29,16 @@ const SAMPLES: HotelReplyNotice[] = [
     receivedAt: new Date(Date.now() - 2 * 60_000).toISOString(),
     href: `/admin/reservations/${BOOKING}?hotel=${ITEM}`,
   },
+  {
+    id: "apercu-mail",
+    bookingId: BOOKING,
+    itemId: ITEM,
+    hotel: "Message reçu",
+    excerpt: "Un e-mail est arrivé dans la file.",
+    receivedAt: new Date(Date.now() - 60_000).toISOString(),
+    href: "/admin/boite?onglet=fournisseurs",
+    kicker: "E-mail",
+  },
 ];
 
 export function HotelReplyPreview() {
@@ -41,7 +52,7 @@ export function HotelReplyPreview() {
     document.getElementById("hotel-desk-apercu")?.scrollIntoView({ block: "center" });
     messageRef.current?.focus();
   }, [opened]);
-  const visible = queue.slice(0, 4);
+  const visible = queue.slice(0, 1);
 
   function reveal(notice: HotelReplyNotice) {
     setOpenId(notice.id);
@@ -65,7 +76,7 @@ export function HotelReplyPreview() {
         <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#9e7e51]">Fermé en production</p>
         <h1 className="mt-2 font-display text-2xl font-semibold tracking-[-0.03em]">Quand l’hôtel répond</h1>
         <p className="mt-2 text-sm leading-relaxed text-[#3d4654]">
-          Elle reste affichée jusqu’à la croix. Le bouton à droite ouvre le message.
+          Elle reste affichée jusqu’à la croix. Ouvrir mène au message. S’il y en a plusieurs, les suivantes attendent.
         </p>
         <article className="mt-6 overflow-hidden rounded-3xl border border-[#e5e0d4] bg-white shadow-[0_8px_30px_rgba(11,25,44,0.05)]">
           <div className="flex items-start gap-3 px-4 py-4">
@@ -101,12 +112,13 @@ export function HotelReplyPreview() {
                   </form>
                 </div>
               ) : (
-                <p className="mt-3 text-sm text-[#3d4654]">Le bouton à droite de la notification ouvre cet endroit.</p>
+                <p className="mt-3 text-sm text-[#3d4654]">Ouvrir, sur la notification, ouvre cet endroit.</p>
               )}
             </div>
           </div>
         </article>
       </main>
+      <BrowserAlertPrompt preview />
       <HotelReplyToastStack
         notices={visible}
         waiting={Math.max(0, queue.length - visible.length)}

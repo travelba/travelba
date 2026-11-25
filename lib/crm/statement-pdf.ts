@@ -1,7 +1,14 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import { siteConfig } from "@/lib/site";
 import { loadBrandLogoPng } from "./brand-logo";
-import type { StatementModel, StatementRow, StatementSection, StatementStay, StatementSummary } from "./statement";
+import type {
+  StatementModel,
+  StatementRow,
+  StatementSection,
+  StatementStay,
+  StatementSummary,
+  StatementTransfer,
+} from "./statement";
 
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
@@ -367,33 +374,31 @@ function drawStay(draw: Draw, stay: StatementStay) {
   draw.y -= 6;
 }
 
-function drawSection(draw: Draw, section: StatementSection) {
-  if (!section.stays.length && !section.rows.length) return;
-  ensure(draw, 24);
-  drawLine(draw, section.heading, MARGIN, draw.y - 12, 13, draw.bold, INK);
-  draw.y -= 24;
-  for (const stay of section.stays) drawStay(draw, stay);
-  drawRows(draw, section.rows);
-  draw.y -= 8;
-}
-
-function drawWire(draw: Draw, lines: string[]) {
-  if (!lines.length) return;
+function drawTransfer(draw: Draw, transfer: StatementTransfer) {
   const inner = PAGE_W - MARGIN * 2 - 24;
-  const rows = lines.flatMap((line) => {
-    const strong = line.startsWith("IBAN") || line.startsWith("Référence") || line.startsWith("Montant");
-    const font = strong ? draw.bold : draw.regular;
-    const size = line.startsWith("IBAN") ? 11 : 9;
-    return wrap(font, line, size, inner).map((text) => ({ text, font, size }));
+  const fields: Array<[string, string]> = [
+    ["Titulaire", transfer.holder],
+    ["IBAN", transfer.iban],
+  ];
+  if (transfer.bic) fields.push(["BIC", transfer.bic]);
+  if (transfer.bank) fields.push(["Banque", transfer.bank]);
+  fields.push(["Référence à indiquer", transfer.reference]);
+  const rows = fields.map(([label, value]) => {
+    const caption = pdfSafe(draw.regular, `${label} : `);
+    const captionW = draw.regular.widthOfTextAtSize(caption, 10);
+    return { caption, captionW, lines: wrap(draw.bold, value, 10, Math.max(80, inner - captionW)) };
   });
-  const height = 22 + rows.length * 14 + 12;
+  const note = wrap(draw.regular, "Indiquez cette référence sur l'ordre de virement.", 8, inner);
+  const body = rows.reduce((sum, row) => sum + Math.max(1, row.lines.length) * 14, 0);
+  const height = 30 + body + 4 + note.length * 11 + 16;
   ensure(draw, height);
   const top = draw.y;
+  const boxH = height - 8;
   draw.page.drawRectangle({
     x: MARGIN,
-    y: top - height,
+    y: top - boxH,
     width: PAGE_W - MARGIN * 2,
-    height,
+    height: boxH,
     color: CREAM,
   });
   draw.page.drawRectangle({
@@ -403,13 +408,39 @@ function drawWire(draw: Draw, lines: string[]) {
     height: 2,
     color: GOLD,
   });
-  drawLine(draw, "Virement", MARGIN + 12, top - 16, 8, draw.bold, GOLD);
-  let baseline = top - 32;
+  drawLine(draw, "Règlement par virement", MARGIN + 12, top - 18, 11, draw.bold, INK);
+  let baseline = top - 38;
   for (const row of rows) {
-    drawLine(draw, row.text, MARGIN + 12, baseline, row.size, row.font, INK);
-    baseline -= 14;
+    if (row.caption) {
+      draw.page.drawText(row.caption, {
+        x: MARGIN + 12,
+        y: baseline,
+        size: 10,
+        font: draw.regular,
+        color: MUTED,
+      });
+    }
+    row.lines.forEach((line, index) => {
+      drawLine(draw, line, MARGIN + 12 + (index === 0 ? row.captionW : 0), baseline - index * 14, 10, draw.bold, INK);
+    });
+    baseline -= Math.max(1, row.lines.length) * 14;
   }
-  draw.y = top - height - 12;
+  baseline -= 2;
+  for (const line of note) {
+    drawLine(draw, line, MARGIN + 12, baseline, 8, draw.regular, MUTED);
+    baseline -= 11;
+  }
+  draw.y = top - boxH - 16;
+}
+
+function drawSection(draw: Draw, section: StatementSection) {
+  if (!section.stays.length && !section.rows.length) return;
+  ensure(draw, 24);
+  drawLine(draw, section.heading, MARGIN, draw.y - 12, 13, draw.bold, INK);
+  draw.y -= 24;
+  for (const stay of section.stays) drawStay(draw, stay);
+  drawRows(draw, section.rows);
+  draw.y -= 8;
 }
 
 function stampPages(draw: Draw) {
@@ -442,14 +473,13 @@ export async function renderStatementPdf(model: StatementModel) {
   openPage(draw, false);
   drawIdentity(draw, model);
   drawSummaries(draw, model.summaries);
+  if (model.transfer) drawTransfer(draw, model.transfer);
   drawAllowances(draw, model);
   for (const section of model.sections) drawSection(draw, section);
   if (model.emptyNote) {
     ensure(draw, 24);
     drawLine(draw, model.emptyNote, MARGIN, draw.y - 12, 10, draw.regular, MUTED);
-    draw.y -= 28;
   }
-  drawWire(draw, model.wireLines || []);
   stampPages(draw);
   return doc.save();
 }

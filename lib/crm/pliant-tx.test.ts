@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   annotatePliantPayload,
+  pliantCardLimits,
+  pliantLimitMismatchMessage,
+  pliantLimitsApplied,
+  pliantLimitUpdateBody,
   mapPliantTransaction,
   pliantAuthorizationAt,
   pliantAvailableLimit,
@@ -176,4 +180,59 @@ test("une carte de dossier nomme le séjour et le client avant le membre Pliant"
   assert.equal(labels[0].client, "Andréa Bensaïd");
   assert.equal(labels[0].company, "AB GLOBAL VENTURES");
   assert.equal(labels[0].last4, "5701");
+});
+
+const OLD = 165_228;
+const NEXT = 168_597;
+
+test("le plafond et le montant par transaction partent ensemble, le nombre reste", () => {
+  const body = pliantLimitUpdateBody({
+    limit: { value: NEXT, currency: "EUR" },
+    transactionLimit: { value: NEXT, currency: "EUR" },
+    count: 1,
+  });
+  assert.deepEqual(body.limit, { value: NEXT, currency: "EUR" });
+  assert.deepEqual(body.transactionLimit, { value: NEXT, currency: "EUR" });
+  assert.equal(body.limitRenewFrequency, "TOTAL");
+  assert.equal(body.maxTransactionCount, 1);
+  assert.equal("additionalLimits" in body, false);
+  assert.equal("cardControls" in body, false);
+  const open = pliantLimitUpdateBody({ limit: { value: NEXT, currency: "EUR" }, count: null });
+  assert.equal("maxTransactionCount" in open, false);
+  assert.deepEqual(open.transactionLimit, open.limit);
+});
+
+test("la relecture refuse un montant par transaction resté à l’ancien plafond", () => {
+  const stale = {
+    data: {
+      limit: { value: NEXT, currency: "EUR" },
+      transactionLimit: { value: OLD, currency: "EUR" },
+      maxTransactionCount: 1,
+    },
+  };
+  const applied = pliantLimitsApplied(stale, {
+    limit: { value: NEXT, currency: "EUR" },
+    transactionLimit: { value: NEXT, currency: "EUR" },
+  });
+  assert.equal(applied.ok, false);
+  if (applied.ok) return;
+  assert.equal(applied.limitCents, NEXT);
+  assert.equal(applied.transactionLimitCents, OLD);
+  const message = pliantLimitMismatchMessage(applied);
+  assert.match(message, /n’a pas appliqué/);
+  assert.match(message, /1 685,97 €/);
+  assert.match(message, /1 652,28 €/);
+  const live = {
+    limit: { value: NEXT, currency: "EUR" },
+    transactionLimit: { value: NEXT, currency: "EUR" },
+    maxTransactionCount: 1,
+  };
+  assert.equal(
+    pliantLimitsApplied(live, {
+      limit: { value: NEXT, currency: "EUR" },
+      transactionLimit: { value: NEXT, currency: "EUR" },
+    }).ok,
+    true
+  );
+  assert.equal(pliantCardLimits(live).maxTransactionCount, 1);
 });

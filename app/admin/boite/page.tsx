@@ -1,5 +1,6 @@
 import { FournisseursPanel } from "@/components/admin/boite/FournisseursPanel";
 import { HotelsPanel } from "@/components/admin/boite/HotelsPanel";
+import { MessagesPanel } from "@/components/admin/boite/MessagesPanel";
 import { WhatsappPanel } from "@/components/admin/boite/WhatsappPanel";
 import { TabLinks } from "@/components/admin/TabLinks";
 import { PageEyebrow, PageTitle } from "@/components/crm/ui";
@@ -10,13 +11,18 @@ import { BOITE_TAB_HELP, BOITE_TAB_IDS, BOITE_TAB_LABELS, boiteHref, boiteTabFro
 
 export const metadata = { title: "Boîte de réception" };
 
-/** Boîte de réception : Fournisseurs, Hôtels, WhatsApp. Un onglet par file ; les anciennes pages redirigent ici. */
+/** Boîte de réception : Fournisseurs, Hôtels, WhatsApp, Messages. Un onglet par file ; les anciennes pages redirigent ici. */
 export default async function BoitePage({ searchParams }: { searchParams: Promise<Record<string, SearchParamValue>> }) {
   console.time("[boite] vague 1");
   const [{ supabase }, params, badges] = await Promise.all([requireStaffPage(), searchParams, cachedAdminBadges()]);
   console.timeEnd("[boite] vague 1");
   const tab = boiteTabFromParam(params.onglet);
-  const counts = { fournisseurs: badges.emails + badges.le, hotels: badges.hotels, whatsapp: badges.whatsapp };
+  const counts = {
+    fournisseurs: badges.emails + badges.le,
+    hotels: badges.hotels,
+    whatsapp: badges.whatsapp,
+    messages: badges.messages,
+  };
 
   return (
     <div className="min-w-0">
@@ -33,6 +39,8 @@ export default async function BoitePage({ searchParams }: { searchParams: Promis
           <FournisseursPanel supabase={supabase} params={params} />
         ) : tab === "hotels" ? (
           <HotelsPanel params={params} counts={{ reponses: badges.hotels }} />
+        ) : tab === "messages" ? (
+          <MessagesPanel params={params} />
         ) : (
           <WhatsappPanel params={params} />
         )}

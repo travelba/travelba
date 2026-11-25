@@ -44,6 +44,7 @@ export function AccountNightTabs({
             <Link
               key={tab.href}
               href={tab.href}
+              prefetch
               transitionTypes={[tab.transition]}
               aria-current={tab.active ? "page" : undefined}
               className="account-press account-hotel-tab relative flex h-14 min-h-11 min-w-11 flex-1 flex-col items-center"
@@ -59,6 +60,7 @@ export function AccountNightTabs({
             <Link
               key={tab.href}
               href={tab.href}
+              prefetch
               transitionTypes={[tab.transition]}
               aria-current={tab.active ? "page" : undefined}
               className="account-press relative flex h-14 min-h-11 min-w-11 flex-1 flex-col items-center"

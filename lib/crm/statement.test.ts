@@ -11,11 +11,11 @@ import {
   statementNumber,
   statementObjectPath,
   statementWhatsappBody,
-  statementWireAmount,
   statementWhatsappFailure,
   type StatementHolder,
 } from "./statement";
 import { renderStatementPdf } from "./statement-pdf";
+import { statementTransfer, statementWireFromParts } from "./statement-wire";
 import type { CrmTransaction } from "./types";
 
 const ISSUED = new Date("2026-10-06T12:00:00.000Z");
@@ -92,8 +92,6 @@ test("le relevé reprend l’encours signé et les mouvements visibles", () => {
   assert.equal(model.summaries[1]?.value, "500,00 EUR");
   assert.equal(model.summaries[2]?.value, "200,00 EUR");
   assert.equal(model.emptyNote, null);
-  assert.equal(model.includeWire, true);
-  assert.equal(model.wireAmount, "300,00 EUR");
   const rows = model.sections.flatMap((section) => section.rows);
   assert.equal(rows.some((row) => row.title === "Séjour" && row.debit.includes("500,00")), true);
   assert.equal(rows.some((row) => row.title === "Virement" && row.credit.includes("200,00")), true);
@@ -172,8 +170,6 @@ test("un collaborateur reçoit un relevé de frais, pas l’encours société", 
     issuedAt: ISSUED,
   });
   assert.equal(model.title, "Relevé de frais");
-  assert.equal(model.includeWire, false);
-  assert.equal(model.wireAmount, null);
   assert.equal(model.summaries.length, 1);
   assert.equal(model.summaries[0]?.label, "Total de vos dossiers");
   assert.equal(model.summaries[0]?.value, "80,00 EUR");
@@ -197,8 +193,6 @@ test("sans mouvement, le relevé le dit", () => {
     issuedAt: ISSUED,
   });
   assert.equal(model.emptyNote, "Aucun mouvement comptabilisé à cette date.");
-  assert.equal(model.includeWire, true);
-  assert.equal(model.wireAmount, null);
 });
 
 test("montants, chemin et message WhatsApp", () => {
@@ -244,73 +238,65 @@ test("le PDF porte l’agence, le titulaire et les mouvements", async () => {
   assert.match(text, /Virement/);
   assert.match(text, /991 614 694 00016/);
   assert.match(text, /pas une facture/);
-  assert.equal(text.includes("IBAN"), false);
+  assert.equal(model.transfer, null);
+  assert.doesNotMatch(text, /Règlement par virement/);
 });
 
-test("le PDF imprime le RIB pour le virement", async () => {
-  const model = buildStatement({
+test("le PDF indique le virement, l’IBAN groupé et la référence du dossier", async () => {
+  const wire = statementWireFromParts(
+    { holder: "Travel Business Agency", iban: "FR7630006000011234567890189", bic: "REVOFRP2" },
+    null,
+    null
+  );
+  const base = buildStatement({
+    view: ledger(),
+    holderName: "Camille Morel",
+    holderLines: statementHolderLines(holder),
+    issuedAt: ISSUED,
+  });
+  const transfer = statementTransfer(wire, "TB-2026-0038");
+  assert.equal(transfer?.iban, "FR76 3000 6000 0112 3456 7890 189");
+  assert.equal(transfer?.bank, "Revolut");
+  assert.doesNotMatch(
+    [transfer?.holder, transfer?.iban, transfer?.bic, transfer?.bank, transfer?.reference].join(" "),
+    /IATA|APST/
+  );
+  const bytes = await renderStatementPdf({ ...base, transfer });
+  const { text } = await pdfPlainText(bytes);
+  assert.match(text, /Règlement par virement/);
+  assert.match(text, /Travel Business Agency/);
+  assert.match(text, /FR76 3000 6000 0112 3456 7890 189/);
+  assert.match(text, /REVOFRP2/);
+  assert.match(text, /Banque/);
+  assert.match(text, /Revolut/);
+  assert.match(text, /Référence à indiquer/);
+  assert.match(text, /TB-2026-0038/);
+  assert.match(text, /ordre de virement/);
+  assert.doesNotMatch(text, /IATA/);
+});
+
+test("sans banque, le PDF garde le virement et omet la ligne Banque", async () => {
+  const wire = statementWireFromParts(null, null, {
+    holder: "Travel Business Agency",
+    iban: "FR7630006000011234567890189",
+    bic: "REVOFRP2",
+  });
+  const base = buildStatement({
     view: ledger(),
     holderName: "Camille Morel",
     holderLines: statementHolderLines(holder),
     issuedAt: ISSUED,
   });
   const bytes = await renderStatementPdf({
-    ...model,
-    wireLines: [
-      "Montant à virer 300,00 EUR",
-      "Titulaire Travel Business Agency",
-      "IBAN FR76 3000 6000 0112 3456 7890 189",
-      "BIC REVOFRP2",
-      "Référence Camille Morel",
-      "Indiquez cette référence sur l'ordre de virement. L'agence le rapproche dès réception sur son compte Revolut.",
-    ],
+    ...base,
+    transfer: statementTransfer(wire, base.number),
   });
-  const { text, pages } = await pdfPlainText(bytes);
-  assert.equal(pages, 1);
-  assert.match(text, /Virement/);
-  assert.match(text, /Montant à virer 300,00 EUR/);
-  assert.match(text, /Titulaire Travel Business Agency/);
+  const { text } = await pdfPlainText(bytes);
+  assert.match(text, /Règlement par virement/);
   assert.match(text, /FR76 3000 6000 0112 3456 7890 189/);
-  assert.match(text, /REVOFRP2/);
-  assert.match(text, /Référence Camille Morel/);
-  assert.match(text, /compte Revolut/);
-  assert.equal(text.includes("Stripe"), false);
-});
-
-test("le montant à virer suit le seul encours en euros", () => {
-  const due = statementWireAmount({
-    member: false,
-    pockets: null,
-    wallets: [{ currency: "EUR", balanceValue: -300, debits: 500, remaining: 300, remainingPct: 40, creditCount: 1 }],
-  });
-  assert.equal(due, "300,00 EUR");
-  assert.equal(
-    statementWireAmount({
-      member: false,
-      pockets: [{ label: "Crédit", name: "Crédit", balance: -10, debits: 10, due: 10, funding: "advance", companyId: "a", creditCount: 0, remainingPct: null }],
-      wallets: [{ currency: "EUR", balanceValue: -10, debits: 10, remaining: 10, remainingPct: null, creditCount: 0 }],
-    }),
-    null
-  );
-  assert.equal(
-    statementWireAmount({
-      member: false,
-      pockets: null,
-      wallets: [
-        { currency: "EUR", balanceValue: -10, debits: 10, remaining: 10, remainingPct: null, creditCount: 0 },
-        { currency: "USD", balanceValue: -5, debits: 5, remaining: 5, remainingPct: null, creditCount: 0 },
-      ],
-    }),
-    "10,00 EUR"
-  );
-  assert.equal(
-    statementWireAmount({
-      member: true,
-      pockets: null,
-      wallets: [{ currency: "EUR", balanceValue: -10, debits: 10, remaining: 10, remainingPct: null, creditCount: 0 }],
-    }),
-    null
-  );
+  assert.match(text, /REL-20261006/);
+  assert.doesNotMatch(text, /Banque/);
+  assert.doesNotMatch(text, /IATA/);
 });
 
 test("un long relevé tient sur plusieurs pages", async () => {

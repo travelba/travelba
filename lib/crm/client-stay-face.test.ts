@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clientStayFace } from "./client-stay-face";
+import { clientStayFace, dossierShownName } from "./client-stay-face";
+import { stayHeroPlace, coverQuery } from "./carnet";
 import { bookingCoverPlan } from "./covers";
 import { stayTitleFromItems } from "./staff-stay";
 import type { StayFaceItem } from "./client-stay-face";
@@ -90,4 +91,65 @@ test("sans carte visible, le client retrouve les champs saisis du dossier", () =
   assert.equal(face.destination, "Nice · Bordeaux");
   assert.equal(face.start, "2026-11-11");
   assert.equal(face.end, "2026-12-12");
+});
+
+function flight(from: string, to: string, start: string): StayFaceItem {
+  return {
+    kind: "flight",
+    title: `${from} → ${to}`,
+    start_at: start,
+    end_at: start,
+    visible_to_client: true,
+    details: { city_from: from, city_to: to },
+  };
+}
+
+/** Titre « Mayakoba », destination stockée « Nice » : Nice est le départ, pas le sous-titre. */
+const MAYA = [
+  flight("Paris", "Cancún", "2026-12-15T13:10:00"),
+  hotel("Mayakoba", "Fairmont Mayakoba", "2026-12-15", "2026-12-22", true),
+  flight("Cancún", "Paris", "2026-12-28T21:00:00"),
+];
+
+test("le titre saisi reste le nom, la destination stockée ne devient pas le sous-titre", () => {
+  const face = clientStayFace({
+    title: "Mayakoba",
+    destination: "Nice",
+    startDate: "2026-11-11",
+    endDate: "2026-12-29",
+    items: MAYA,
+    homeCity: "Paris",
+  });
+  assert.equal(face.title, "Mayakoba");
+  assert.equal(face.destination, "Mayakoba");
+  assert.equal(stayHeroPlace(face.title, face.destination, face.items), null);
+  assert.equal(stayHeroPlace("Mayakoba", "Nice", face.items), null);
+  assert.equal(coverQuery(face.destination, face.title), "Mayakoba");
+  assert.equal(dossierShownName({ title: "Mayakoba", items: MAYA, fallback: "TB-2026-0075" }), "Mayakoba");
+});
+
+test("un titre effacé n’affiche pas la ville de départ : la ville du séjour, sans sous-titre", () => {
+  const face = clientStayFace({
+    title: "",
+    destination: "Nice",
+    items: MAYA,
+    homeCity: "Paris",
+    fallback: "Séjour",
+  });
+  assert.equal(face.title, "Mayakoba");
+  assert.equal(face.destination, "Mayakoba");
+  assert.equal(stayHeroPlace(face.title, "Nice", face.items), null);
+});
+
+test("un titre saisi avec plusieurs villes reste entier, le premier segment n’est pas le sous-titre", () => {
+  const face = clientStayFace({
+    title: "Nice · Bordeaux · Mayakoba",
+    destination: "Nice",
+    items: MAYA,
+    homeCity: "Paris",
+  });
+  assert.equal(face.title, "Nice · Bordeaux · Mayakoba");
+  assert.equal(face.destination, "Mayakoba");
+  assert.equal(stayHeroPlace(face.title, face.destination, face.items), null);
+  assert.equal(stayHeroPlace(face.title, "Nice"), null);
 });

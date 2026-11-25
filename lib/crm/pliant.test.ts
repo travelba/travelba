@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "node:test";
 import { emptyPliantCardControls } from "./pliant-controls";
-import { issuePliantCard, PliantSecretsError, readIssuedPliantCardSecrets, readPliantCardholderName, readPliantCardSecrets, readPliantHealth, resetPliantAvailableCardsCache } from "./pliant";
-import { PLIANT_TRAVEL_WARNING, PLIANT_VIRTUAL_TRAVEL } from "./pliant-controls";
+import { issuePliantCard, PliantSecretsError, readIssuedPliantCardSecrets, readPliantCardholderName, readPliantCardSecrets, readPliantHealth, resetPliantAvailableCardsCache, setPliantCardLimit } from "./pliant";
+import {
+  PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300,
+  PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D,
+  PLIANT_TRAVEL_WARNING,
+  PLIANT_VIRTUAL,
+  PLIANT_VIRTUAL_TRAVEL,
+} from "./pliant-controls";
 import { maskPliantPath, scrubPliantLog } from "./pliant-tx";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -42,7 +48,7 @@ describe("lectures Pliant", { concurrency: 1 }, () => {
   let restoreFetch: (() => void) | null = null;
   const originalError = console.error;
 
-  function install(mode: "holder-400" | "holder-ok" | "org-400" | "issue" | "issue-travel" | "issue-travel-stuck") {
+  function install(mode: "holder-400" | "holder-ok" | "org-400" | "issue" | "issue-travel" | "issue-travel-stuck" | "issue-visa" | "issue-virtual") {
     calls.length = 0;
     logs.length = 0;
     const prior = globalThis.fetch;
@@ -77,6 +83,29 @@ describe("lectures Pliant", { concurrency: 1 }, () => {
               { cardConfig: "PLIANT_SINGLE_USE", canBeIssued: true, type: "SINGLE_USE" },
               { cardConfig: "PLIANT_VIRTUAL_TRAVEL_CC_150", canBeIssued: true, type: "VIRTUAL" },
               { cardConfig: "PLIANT_VIRTUAL_TRAVEL", canBeIssued: true, type: "VIRTUAL" },
+            ],
+          });
+        }
+        if (mode === "issue-visa") {
+          return Response.json({
+            cardConfigs: [
+              { cardConfig: "PLIANT_SINGLE_USE", canBeIssued: true, type: "SINGLE_USE" },
+              { cardConfig: "PLIANT_VIRTUAL", canBeIssued: true, type: "VIRTUAL" },
+              { cardConfig: "PLIANT_VIRTUAL_TRAVEL_CC", canBeIssued: true, type: "VIRTUAL" },
+              { cardConfig: "PLIANT_VIRTUAL_TRAVEL_CC_150", canBeIssued: true, type: "VIRTUAL" },
+              { cardConfig: "PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_CC", canBeIssued: true, type: "VIRTUAL" },
+              { cardConfig: "PLIANT_VIRTUAL_TRAVEL", canBeIssued: true, type: "VIRTUAL" },
+              { cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300, canBeIssued: true, type: "VIRTUAL" },
+              { cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D, canBeIssued: true, type: "VIRTUAL" },
+            ],
+          });
+        }
+        if (mode === "issue-virtual") {
+          return Response.json({
+            cardConfigs: [
+              { cardConfig: "PLIANT_SINGLE_USE", canBeIssued: true, type: "SINGLE_USE" },
+              { cardConfig: PLIANT_VIRTUAL, canBeIssued: true, type: "VIRTUAL" },
+              { cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300, canBeIssued: true, type: "VIRTUAL" },
             ],
           });
         }
@@ -228,6 +257,88 @@ describe("lectures Pliant", { concurrency: 1 }, () => {
     assert.equal(JSON.stringify(posts).includes("TRAVEL_CC"), false);
   });
 
+  test("le défaut est Visa Travel sans 3DS, le 3DS part seulement s’il est demandé, jamais une config _CC", async () => {
+    arm();
+    install("issue-visa");
+    resetPliantAvailableCardsCache();
+    const issued = await issuePliantCard(HOLDER, {
+      organizationId: ORG,
+      cardConfig: "PLIANT_SINGLE_USE",
+      limit: { value: 150000, currency: "EUR" },
+      transactionLimit: { value: 40000, currency: "EUR" },
+      type: "VIRTUAL",
+    });
+    assert.equal(issued.cardConfig, PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D);
+    assert.equal(issued.avertissement, null);
+    const frictionless = await issuePliantCard(HOLDER, {
+      organizationId: ORG,
+      cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300,
+      limit: { value: 80000, currency: "EUR" },
+      maxTransactionCount: 2,
+    });
+    assert.equal(frictionless.cardConfig, PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300);
+    assert.equal(frictionless.avertissement, null);
+    const posts = calls.filter((call) => call.method === "POST" && call.url.includes(`/cards/${HOLDER}`));
+    const configs = posts.map((call) => (call.body as { cardConfig?: string; type?: string }).cardConfig);
+    assert.deepEqual(configs, [PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D, PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300]);
+    assert.equal(JSON.stringify(posts).includes("_CC"), false);
+    assert.equal(JSON.stringify(posts).includes('"type"'), false);
+    const first = posts[0]?.body as { maxTransactionCount?: number; limitRenewFrequency?: string; transactionLimit?: { value: number } };
+    assert.equal(first.maxTransactionCount, 1);
+    assert.equal(first.limitRenewFrequency, "TOTAL");
+    assert.equal(first.transactionLimit?.value, 150000);
+  });
+
+  test("une demande 3DS sans ce produit est refusée, rien n’est créé", async () => {
+    arm();
+    install("issue-travel");
+    resetPliantAvailableCardsCache();
+    await assert.rejects(
+      () =>
+        issuePliantCard(HOLDER, {
+          organizationId: ORG,
+          cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300,
+          limit: { value: 1000, currency: "EUR" },
+        }),
+      /Pliant : la carte 3DS frictionless n’est pas disponible sur ce compte\./
+    );
+    const posts = calls.filter((call) => call.method === "POST" && call.url.includes(`/cards/${HOLDER}`));
+    assert.equal(posts.length, 0);
+  });
+
+  test("sans Visa Travel ni ancienne carte voyage, la formalité reste virtuelle et l’usage unique reste unique", async () => {
+    arm();
+    install("issue-virtual");
+    resetPliantAvailableCardsCache();
+    const formalite = await issuePliantCard(HOLDER, {
+      organizationId: ORG,
+      cardConfig: PLIANT_VIRTUAL,
+      limit: { value: 4000, currency: "EUR" },
+      transactionLimit: { value: 4000, currency: "EUR" },
+      maxTransactionCount: 2,
+    });
+    assert.equal(formalite.cardConfig, PLIANT_VIRTUAL);
+    assert.equal(formalite.avertissement, PLIANT_TRAVEL_WARNING);
+    resetPliantAvailableCardsCache();
+    const once = await issuePliantCard(HOLDER, {
+      organizationId: ORG,
+      cardConfig: "PLIANT_SINGLE_USE",
+      limit: { value: 1000, currency: "EUR" },
+    });
+    assert.equal(once.cardConfig, "PLIANT_SINGLE_USE");
+    assert.equal(once.avertissement, PLIANT_TRAVEL_WARNING);
+    const asked = await issuePliantCard(HOLDER, {
+      organizationId: ORG,
+      cardConfig: PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300,
+      limit: { value: 1000, currency: "EUR" },
+    });
+    assert.equal(asked.cardConfig, PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300);
+    assert.equal(asked.avertissement, null);
+    const posts = calls.filter((call) => call.method === "POST" && call.url.includes(`/cards/${HOLDER}`));
+    assert.equal(JSON.stringify(posts).includes("_CC"), false);
+    assert.equal(JSON.stringify(posts).includes(PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300_N3D), false);
+  });
+
   test("sans carte voyage, l’émission reste à usage unique et prévient du 3DS", async () => {
     arm();
     install("issue");
@@ -272,6 +383,110 @@ describe("lectures Pliant", { concurrency: 1 }, () => {
     assert.match(health.reason, /400/);
     assert.equal(health.reason.includes(PAN), false);
     assert.equal(health.reason.includes(ORG), false);
+  });
+
+  test("le plafond est écrit par PUT /cards/limits puis relu, jamais sur l’API de production", async () => {
+    arm();
+    const cardId = "8c269177-4030-4477-b759-f2584df6f484";
+    const calls: { url: string; method: string; body: unknown }[] = [];
+    let live = { limit: 165228, transaction: 165228, count: 1 };
+    const prior = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method || "GET";
+      if (url.includes("getpliant.com") && !url.includes("sandbox")) throw new Error("production Pliant");
+      if (url.includes("pliant-test.supabase.co")) {
+        if (url.includes("/rpc/crm_claim_integration_refresh")) return Response.json(true);
+        if (url.includes("/crm_integrations") && method === "GET") return Response.json([]);
+        return Response.json(null, { status: 201 });
+      }
+      if (url.includes("/oauth/token")) return Response.json({ access_token: "test-token", expires_in: 3600 });
+      let body: unknown = null;
+      if (typeof init?.body === "string") body = JSON.parse(init.body);
+      calls.push({ url, method, body });
+      if (method === "PUT" && url.includes(`/cards/limits/${cardId}`)) {
+        const sent = body as { limit?: { value?: number }; transactionLimit?: { value?: number } };
+        if (sent.limit?.value === 168597 && sent.transactionLimit?.value === 168597) {
+          live = { limit: 168597, transaction: 168597, count: 1 };
+        }
+        return new Response(null, { status: 204 });
+      }
+      if (method === "GET" && url.includes(`/cards/${cardId}`)) {
+        return Response.json({
+          cardId,
+          limit: { value: live.limit, currency: "EUR" },
+          transactionLimit: { value: live.transaction, currency: "EUR" },
+          limitRenewFrequency: "TOTAL",
+          maxTransactionCount: live.count,
+        });
+      }
+      return new Response("unexpected", { status: 500 });
+    }) as typeof fetch;
+    restoreFetch = () => {
+      globalThis.fetch = prior;
+    };
+    try {
+      await setPliantCardLimit(cardId, { value: 168597, currency: "EUR" }, 1, { value: 168597, currency: "EUR" });
+      const put = calls.find((call) => call.method === "PUT");
+      assert.ok(put);
+      assert.match(put.url, /sandbox\.partner-api\.getpliant\.com\/api\/cards\/limits\//);
+      assert.equal(calls.some((call) => call.method === "PATCH"), false);
+      const sent = put.body as {
+        limit: { value: number; currency: string };
+        transactionLimit: { value: number; currency: string };
+        limitRenewFrequency: string;
+        maxTransactionCount: number;
+        additionalLimits?: unknown;
+      };
+      assert.deepEqual(sent.limit, { value: 168597, currency: "EUR" });
+      assert.deepEqual(sent.transactionLimit, { value: 168597, currency: "EUR" });
+      assert.equal(sent.limitRenewFrequency, "TOTAL");
+      assert.equal(sent.maxTransactionCount, 1);
+      assert.equal(sent.additionalLimits, undefined);
+      assert.equal(calls.filter((call) => call.method === "GET" && call.url.includes(`/cards/${cardId}`)).length, 1);
+    } finally {
+      restoreFetch();
+      restoreFetch = null;
+    }
+  });
+
+  test("un PUT accepté qui laisse l’ancien montant par transaction n’est pas un succès", async () => {
+    arm();
+    const cardId = "8c269177-4030-4477-b759-f2584df6f484";
+    const prior = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method || "GET";
+      if (url.includes("getpliant.com") && !url.includes("sandbox")) throw new Error("production Pliant");
+      if (url.includes("pliant-test.supabase.co")) {
+        if (url.includes("/rpc/crm_claim_integration_refresh")) return Response.json(true);
+        if (url.includes("/crm_integrations") && method === "GET") return Response.json([]);
+        return Response.json(null, { status: 201 });
+      }
+      if (url.includes("/oauth/token")) return Response.json({ access_token: "test-token", expires_in: 3600 });
+      if (method === "PUT" && url.includes("/cards/limits/")) return new Response(null, { status: 204 });
+      if (method === "GET" && url.includes(`/cards/${cardId}`)) {
+        return Response.json({
+          cardId,
+          limit: { value: 165228, currency: "EUR" },
+          transactionLimit: { value: 165228, currency: "EUR" },
+          maxTransactionCount: 1,
+        });
+      }
+      return new Response("unexpected", { status: 500 });
+    }) as typeof fetch;
+    restoreFetch = () => {
+      globalThis.fetch = prior;
+    };
+    try {
+      await assert.rejects(
+        () => setPliantCardLimit(cardId, { value: 168597, currency: "EUR" }, 1),
+        /n’a pas appliqué le nouveau plafond/
+      );
+    } finally {
+      restoreFetch();
+      restoreFetch = null;
+    }
   });
 
   const CARD = "33333333-3333-4333-8333-333333333333";

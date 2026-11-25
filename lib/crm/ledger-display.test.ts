@@ -196,6 +196,7 @@ test("le titre dit de quoi il s’agit, la ligne du dessous la date et le lieu",
   );
   assert.equal(ledgerSubjectTitle("Frais de billeterie (4 billets)", "TB-2026-0033"), "Frais de billeterie (4 billets)");
   assert.equal(ledgerPlace({ title: "Tel Aviv", destination: "Tel Aviv", reference: "TB-1" }), "Tel Aviv");
+  assert.equal(ledgerPlace({ title: "Mayakoba", destination: "Nice", reference: "TB-2026-0075" }), "Mayakoba");
   assert.equal(ledgerPlace({ title: "Séjour ski", destination: null, reference: "TB-1" }), "Séjour ski");
   assert.equal(ledgerPlace(null), null);
   assert.equal(ledgerWhenWhere("14 — 23 décembre 2026", "Tel Aviv"), "14 — 23 décembre 2026 · Tel Aviv");
@@ -347,4 +348,70 @@ test("la réservation client liste les frais d’agence puis les dépenses libre
   });
   assert.equal(four[0]?.title, "Frais de billeterie (4 billets)");
   assert.equal(four[0]?.amountLabel, formatMoney(100, "EUR"));
+});
+
+test("le carnet porte la remise une seule fois, masquée si les prix sont cachés", () => {
+  const discount = { type: "amount" as const, value: 12.5 };
+  const shown = clientStayExpenseLines({
+    expenses: [],
+    agencyCommission: false,
+    stayTotal: 100,
+    currency: "EUR",
+    pricesVisible: true,
+    discount,
+  });
+  assert.deepEqual(
+    shown.filter((line) => line.title === "Remise commerciale").map((line) => line.amountLabel),
+    [formatMoney(-12.5, "EUR")]
+  );
+  assert.equal(
+    clientStayPriceLabel({
+      stayTotal: 100,
+      currency: "EUR",
+      pricesVisible: true,
+      agencyCommission: false,
+      expenses: [],
+      discount,
+    }),
+    formatMoney(87.5, "EUR")
+  );
+  const hidden = clientStayExpenseLines({
+    expenses: [],
+    agencyCommission: false,
+    stayTotal: 100,
+    currency: "EUR",
+    pricesVisible: false,
+    discount,
+  });
+  assert.equal(hidden.filter((line) => line.title === "Remise commerciale").length, 1);
+  assert.equal(hidden[0]?.amountLabel, null);
+  assert.equal(
+    clientStayPriceLabel({
+      stayTotal: 100,
+      currency: "EUR",
+      pricesVisible: false,
+      agencyCommission: false,
+      expenses: [],
+      discount,
+    }),
+    HIDDEN_PRICE_LABEL
+  );
+  const several = clientStayExpenseLines({
+    expenses: [],
+    agencyCommission: false,
+    stayTotal: 1000,
+    currency: "EUR",
+    pricesVisible: true,
+    discounts: [
+      { id: "a", label: "Groupe", kind: "amount", quantity: 2, unitPrice: 25, percent: null },
+      { id: "b", label: "Fidélité", kind: "percent", quantity: 1, unitPrice: null, percent: 10 },
+    ],
+  });
+  assert.deepEqual(
+    several.map((line) => [line.title, line.amountLabel]),
+    [
+      ["Groupe", formatMoney(-50, "EUR")],
+      ["Fidélité", formatMoney(-100, "EUR")],
+    ]
+  );
 });

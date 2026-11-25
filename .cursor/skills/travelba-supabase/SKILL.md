@@ -68,6 +68,13 @@ Avant d’écrire du SQL : lister les tables (`crm_*`), lire la **dernière** mi
 | `20261103071000_hotels_index_slim.sql` | retire les GIN jsonb de `hotels` jamais lus, ajoute les filtres ville / nom / fil hôtel. Pas de déplacement de colonne. À jouer à la main |
 | `20261104140000_dossier_trois_statuts.sql` | aligne `status` et `visible_to_client` : Visible, Non visible, Annulé. N’écrit pas les paiements. L’archive reste. À jouer à la main |
 | `20261110100000_expense_presets.sql` | `crm_expense_presets` : raccourcis du bloc Dépenses. Trois lignes seulement si la table est vide. Aucune dépense existante. Lecture staff, écriture service_role |
+| `20261118190000_stay_step_commit.sql` | index d’empreinte partiel (`booking_item_id` non nul) et `crm_commit_stay_steps` (transaction). À jouer à la main |
+| `20261118223000_customer_hide_client_prices.sql` | `crm_customers.hide_client_prices` (défaut faux). Pas de grant client. À jouer à la main |
+| `20261119100000_crm_hotel_profiles.sql` | fiche hôtel hors Little Emperors (`crm_hotel_profiles`, bucket public `hotel-photos`). Reprend la table vide déjà en prod. Lecture staff, écriture service role. À jouer à la main |
+| `20261119143000_omnibar_rank.sql` | barre agence v2 : mots en ET, sans accent, pertinence (mot entier, préfixe, fragment), e-mail, téléphone, voyageurs. À jouer à la main. L’application classe déjà sans elle |
+| `20261119201000_crm_grouped_invoice_mb3m.sql` | référence de la pro forma MB3M sur `crm_grouped_invoices`. À jouer à la main. Le CRM répond sans elle |
+| `20261119220000_customer_twins.sql` | `crm_customer_twins` : paire de fiches, mêmes dossiers visibles, un seul grand livre. À jouer à la main |
+| `20261119223000_customer_zero_fees.sql` | `crm_customers.zero_fees` : aucun frais automatique sur les dossiers de la fiche. À jouer à la main |
 
 Toute évolution = **nouveau fichier** `supabase/migrations/YYYYMMDDHHMMSS_slug.sql` (idempotent : `if not exists`, `drop policy if exists`). Appliquer via MCP `apply_migration` ou SQL Editor. Ne pas éditer une migration déjà poussée en prod.
 

@@ -553,7 +553,7 @@ describe("little emperors staging client", () => {
         check_out: "2026-11-05",
       }
     );
-    assert.deepEqual(byStay, ["hotel-conf"]);
+    assert.deepEqual(byStay, []);
     const otherNight = leItemsForHotelStamp(
       [{ ...hotelNumber, end_at: "2026-11-06" }],
       {
@@ -608,7 +608,7 @@ describe("little emperors staging client", () => {
       [nico]
     );
     assert.equal(suggestion.autoBookingId, "b-mail");
-    assert.equal(suggestion.candidates[0]?.reason, "Hôtel, dates et voyageur");
+    assert.equal(suggestion.candidates[0]?.reason, "Nom, destination et dates");
     assert.equal(
       decideLittleEmperorsAuto({ booking, suggestion, customers: [nico] }).kind,
       "link"

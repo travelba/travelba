@@ -18,7 +18,7 @@ Deux mondes, un Supabase Auth.
 | Rôle JWT | `app_metadata.crm_role` = `admin` \| `agent` | `crm_role=client` |
 | Après login | `/admin` | mot de passe à définir → bienvenue (une fois) → profil si pas de téléphone, sinon `/mon-compte` |
 
-Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ensureCustomerForUser` **lie** un user à un customer existant par email, ne crée pas de fiche.
+Compagnons = **fiche seulement**, pas de compte Auth. Pas d’auto-signup : `ensureCustomerForUser` **lie** un user à un customer existant par email, ne crée pas de fiche. `/inscription` sans jeton n’ouvre aucun formulaire. Une demande ne part que depuis `/inscription/i/{jeton}` (invitation agence ou parrainage) et reste en file (`/admin/inscriptions`) jusqu’au clic Valider, qui réutilise `inviteCustomer`.
 
 ## Créer ≠ Inviter
 
@@ -58,7 +58,7 @@ Chaque connexion reste dans `crm_customer_logins`. Ce que le titulaire fait ensu
 
 ## Ouvrir l’espace d’un client (agence)
 
-Fiche client › « Ouvrir l’espace client » → `POST /api/admin/clients/[id]/ouvrir` (`requireStaff`, 30 par heure et par agent via `crm_rate_limit_hit`). `lib/crm/desk-open.ts` :
+Fiche client et menu **…** du dossier › « Ouvrir l’espace client » (`components/admin/OpenClientSpace.tsx`) → `POST /api/admin/clients/[id]/ouvrir` (`requireStaff`, 30 par heure et par agent via `crm_rate_limit_hit`). `lib/crm/desk-open.ts` :
 - jamais pour un compte de l’agence (`crm_staff` ou rôle Auth staff), ni à la création ni à l’ouverture ;
 - fiche sans compte : compte Auth confirmé, sans mot de passe ni message (`linkCustomerAuth`) ; un e-mail déjà pris par un agent ne se rattache jamais ;
 - lien court `channel = 'desk'`, `created_by_staff_id`, **10 minutes, une ouverture, jamais régénéré** (`DESK_LINK_TTL_MS`, `deskOpenDecision`). Pas de repli sans colonnes : un lien desk sans date deviendrait un lien de 30 jours.
@@ -68,7 +68,7 @@ Fiche client › « Ouvrir l’espace client » → `POST /api/admin/clients/[id
 ## Sessions
 
 - Agence : `AUTH_COOKIE_OPTIONS` inchangé (`maxAge` 400 jours, `sameSite=lax`, `path=/`, lisible par le navigateur, rafraîchissement du client Supabase). Ne pas le passer en HttpOnly.
-- Client (`crm_role=client`) : cookie **HttpOnly**, **Secure** en production, `sameSite=lax`, `maxAge` 400 jours. Le proxy le réécrit à chaque visite (pas au préchargement) et renouvelle le jeton, sauf dans les 15 dernières minutes du jeton. Le navigateur de l’espace client ne rafraîchit pas tout seul : Safari iOS jette un cookie sans date `Expires` en quittant l’app. Le mot de passe passe par `POST /api/auth/login` (Set-Cookie). Déconnexion agence et client : `POST /api/auth/sign-out` (`local` sur le bouton, `global` pour tous les appareils). Le serveur révoque le jeton (sans attendre plus de quelques secondes), efface les cookies `sb-*-auth-token` et `tb_desk`, répond `Cache-Control: private, no-store`, puis le navigateur ouvre `/admin/login` ou `/connexion` par une navigation complète. Pas de `signOut()` navigateur avant ce POST, et pas de `router.push` : si l’appel Auth ne répond pas, la page ne change pas, et le proxy renvoie un collègue encore connecté de `/admin/login` vers `/admin`.
+- Client (`crm_role=client`) : cookie **HttpOnly**, **Secure** en production, `sameSite=lax`, `maxAge` 400 jours. Le proxy le réécrit à chaque visite (pas au préchargement) et renouvelle le jeton, sauf dans les 15 dernières minutes du jeton. Le navigateur de l’espace client ne rafraîchit pas tout seul : Safari iOS jette un cookie sans date `Expires` en quittant l’app. Le mot de passe passe par `POST /api/auth/login` (Set-Cookie). Déconnexion agence et client : formulaire `POST /api/auth/sign-out` (`local` sur le bouton, `global` pour tous les appareils). La réponse 303 efface les cookies `sb-*-auth-token` et `tb_desk` puis ouvre `/admin/login` ou `/connexion`. Pas de `fetch` puis `location.replace` : la webview iOS repart parfois avec l’ancien cookie et le proxy renvoie dans le compte. Pas de `signOut()` navigateur, pas de `router.push`. Le pont natif a une seconde au plus. Face ID passe à off, sinon le prochain lancement rouvre la session. « Utiliser le mot de passe » garde le trousseau.
 - Dashboard Auth : time-box + inactivity **désactivés** (sinon le renouvellement ne suffit pas). `auth.sessions.not_after` vide = time-box non appliqué.
 - Déconnexion explicite seulement. Pas de « rester connecté » checkbox (c’est déjà le cas).
 
@@ -86,9 +86,13 @@ Fiche client › « Ouvrir l’espace client » → `POST /api/admin/clients/[id
 - Départ d’un collègue : `/admin/equipe/[id]` → « Couper l’accès » (ban + `sessions_revoked_at` + `crm_staff_sessions.revoked_at`) et réattribution de ses dossiers en charge (`lib/crm/staff-departure.ts`). Un dossier sans responsable reste « À prendre ».
 - Suppression client (`deleteCustomerById`) : ne **pas** `auth.admin.deleteUser` si le même `auth_user_id` est staff.
 
-## Client : pas de self-delete
+## Suppression du compte client
 
-Pas de bouton « supprimer mon compte ». L’agence peut supprimer une fiche admin (dossiers + fichiers + txs + user Auth si non staff).
+Mon compte › « Supprimer mon compte » (`POST /api/client/account/deletion`, `deleteClientAccount`). Le dialogue `ConfirmDialog` (z-[80], au-dessus de la barre) dit ce qui part tout de suite et ce que la loi garde. Confirmation : « Supprimer définitivement mon compte ».
+
+Effacé tout de suite : utilisateur Auth (connexion impossible), jetons d’appareil, Face ID, préférences, profil (nom, e-mail, téléphone, adresse, naissance), passeports et fichiers du coffre `customers/{id}/`. La fiche reste, anonymisée (`account_deleted_at`, e-mail `supprime+<id>@compte.invalid`), pour les dossiers, factures et règlements. Un second appel ne renvoie pas l’e-mail. Un compte `crm_staff` ou un rôle d’agence est refusé, et son utilisateur Auth n’est pas retiré. L’ouverture desk non plus. Après succès : écran « Votre compte a été supprimé », puis déconnexion vers `/compte-supprime`.
+
+L’agence peut toujours supprimer une fiche entière (`deleteCustomerById`) : dossiers, txs, fichiers, user Auth si non staff. Ce n’est pas le geste du client.
 
 ## Fichiers
 

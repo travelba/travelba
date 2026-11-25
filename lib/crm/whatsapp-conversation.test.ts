@@ -219,12 +219,22 @@ test("oui après une proposition de transmission crée question", async () => {
     },
     store: storeFrom({
       writes,
-      history: [{ direction: "outbound", body: OFFER, twilio_sid: "SMoffer", created_at: "2026-10-05T10:00:00.000Z" }],
+      history: [
+        {
+          direction: "inbound",
+          body: "Est-ce qu’il est possible d’avoir un tarif pour un vol Paris Nice dimanche 21 avril ?",
+          twilio_sid: "SMask",
+          created_at: "2026-10-05T09:00:00.000Z",
+        },
+        { direction: "outbound", body: OFFER, twilio_sid: "SMoffer", created_at: "2026-10-05T10:00:00.000Z" },
+      ],
     }),
     send: async () => ({ ok: true, sid: "SMyesout" }),
   });
   const request = writes.find((write) => write.table === "crm_whatsapp_requests");
   assert.equal(request?.row?.kind, "question");
+  assert.match(String(request?.row?.body), /tarif pour un vol Paris Nice/);
+  assert.notEqual(String(request?.row?.body).trim(), "Oui");
 });
 
 test("une erreur du modèle retombe sur le routeur actuel", async () => {
@@ -239,7 +249,7 @@ test("une erreur du modèle retombe sur le routeur actuel", async () => {
   });
   assert.equal(turn.text, keyword.text);
   assert.equal(turn.handoff, null);
-  assert.match(turn.text, /Souhaitez-vous que j’en parle à Benjamin/);
+  assert.match(turn.text, /Souhaitez-vous que j’en parle à l’agence/);
 
   const asked = await planConciergeConversation({
     message: "Parlez-en à l’agence",

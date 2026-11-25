@@ -5,6 +5,7 @@ import { readLittleEmperorsEnAttente } from "./mcp-read";
 import { guestNameMatches, leLookup, presentLeReservation, readReservationLittleEmperors, selectLeReservations, type LeCandidate } from "./mcp-le";
 import { parseLeBooking, type LeBooking } from "./little-emperors";
 import { McpReadError } from "./mcp-passport";
+import { leStaysInSupplierQueue } from "./le-queue";
 
 const DOSSIER = "22222222-2222-4222-8222-222222222222";
 const OTHER = "33333333-3333-4333-8333-333333333333";
@@ -274,9 +275,79 @@ test("sans lien Little Emperors, la carte hôtel du dossier suffit", async () =>
   });
   const view = await readReservationLittleEmperors({ confirmation: "H998877" }, admin, { listBookings: async () => [] });
   assert.equal(view.statut, "Annulée");
-  assert.equal(view.dossier?.reference, "TB-2026-0090");
+  assert.equal(view.dossier, null);
   assert.equal(view.prix_net, 400);
   assert.equal(view.prix_public, null);
+});
+
+test("6755SH018666 n’est pas lié au dossier d’une autre chambre, et une annulation sans dossier sort de la file", async () => {
+  const admin = memoryAdmin({
+    crm_le_bookings: [
+      {
+        le_booking_id: 666,
+        confirmation_number: "6755SH018666",
+        state: "cancelled",
+        hotel_name: "Le Negresco",
+        city: "Nice",
+        check_in: "2026-11-18",
+        check_out: "2026-11-20",
+        currency: "EUR",
+        total_cost: "900",
+        guest_names: ["Camille Queyrel"],
+        room_types: [],
+        cancellation_policies: [],
+        crm_booking_id: null,
+        status: "unmatched",
+        raw: { id: 666, benefits: [] },
+      },
+    ],
+    crm_bookings: [{ id: DOSSIER, reference: "TB-2026-0239", title: "Nice" }],
+    crm_booking_items: [
+      {
+        booking_id: DOSSIER,
+        kind: "hotel",
+        confirmation_ref: "6755SH018675",
+        details: { hotel_name: "Le Negresco", city: "Nice" },
+      },
+    ],
+  });
+  const view = await readReservationLittleEmperors({ confirmation: "6755SH018666" }, admin, {
+    listBookings: async () => [],
+  });
+  assert.equal(view.dossier, null);
+  assert.equal(view.alerte, false);
+  assert.equal(leStaysInSupplierQueue({ crm_booking_id: null, status: "unmatched", state: "cancelled" }), false);
+  assert.equal(leStaysInSupplierQueue({ crm_booking_id: null, status: "unmatched", state: "booked" }), true);
+
+  const exact = memoryAdmin({
+    crm_le_bookings: [
+      {
+        le_booking_id: 675,
+        confirmation_number: "6755SH018675",
+        state: "booked",
+        hotel_name: "Le Negresco",
+        city: "Nice",
+        check_in: "2026-11-18",
+        check_out: "2026-11-20",
+        currency: "EUR",
+        total_cost: "900",
+        guest_names: ["Camille Queyrel"],
+        room_types: [],
+        cancellation_policies: [],
+        crm_booking_id: null,
+        status: "unmatched",
+        raw: { id: 675, benefits: [] },
+      },
+    ],
+    crm_bookings: [{ id: DOSSIER, reference: "TB-2026-0239", title: "Nice" }],
+    crm_booking_items: [
+      { booking_id: DOSSIER, kind: "hotel", confirmation_ref: "6755SH018675", details: {} },
+    ],
+  });
+  const linked = await readReservationLittleEmperors({ confirmation: "6755SH018675" }, exact, {
+    listBookings: async () => [],
+  });
+  assert.equal(linked.dossier?.reference, "TB-2026-0239");
 });
 
 test("l’ancien numéro NoMad de Laura est remplacé, pas annulé", async () => {

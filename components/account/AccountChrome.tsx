@@ -1,17 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { signOutAccount } from "@/lib/crm/account-sign-out";
-import { BrandMark } from "@/components/crm/ui";
-import { Icon } from "@/components/crm/icons";
-import { siteConfig } from "@/lib/site";
+import { AccountBrand } from "@/components/account/AccountBrand";
+import { AccountIcon } from "@/components/account/AccountIcon";
 import { ONBOARDING_PATH } from "@/lib/crm/session";
 import { accountTabDirection } from "@/lib/crm/account-motion";
 import { AccountNightTabs, type NightTabIcon } from "@/components/account/AccountNightTabs";
 import { AccountUserMenu } from "@/components/account/AccountUserMenu";
 import { SIGN_OUT_LABEL } from "@/lib/crm/user-menu";
+import { PushSettingsBanner } from "@/components/account/PushSettingsBanner";
 
 const TAB_DEFS = [
   { suffix: "", label: "Accueil", exact: true, icon: "explore", night: "home" },
@@ -26,6 +26,30 @@ function tabLabel(label: string) {
   if (label === "Réservations") return "Réserva\u00adtions";
   if (label === "Transactions") return "Transac\u00adtions";
   return label;
+}
+
+function MessageMark({ preview, active }: { preview: boolean; active: boolean }) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (preview || active) return;
+    let cancel = false;
+    void fetch("/api/client/messages?compte=1", { credentials: "same-origin" })
+      .then(async (response) => (response.ok ? ((await response.json()) as { unread?: number }) : null))
+      .then((data) => {
+        if (!cancel) setCount(Math.max(0, Number(data?.unread) || 0));
+      })
+      .catch(() => {});
+    return () => {
+      cancel = true;
+    };
+  }, [preview, active]);
+  const shown = preview || active ? 0 : count;
+  if (!shown) return null;
+  return (
+    <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--admin-gold)] px-1 text-[10px] font-bold text-[var(--admin-navy)]">
+      {shown > 9 ? "9+" : shown}
+    </span>
+  );
 }
 
 function tabsFor(basePath: string, hotels: boolean) {
@@ -59,12 +83,23 @@ export function AccountChrome({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const tabs = tabsFor(basePath, hotels);
   const activeIndex = tabs.findIndex((tab) =>
     tab.exact ? pathname === tab.href : pathname === tab.href || pathname.startsWith(`${tab.href}/`)
   );
-  const title = tabs[activeIndex]?.label ?? "Espace client";
+  const messagesHref = `${basePath}/messages`;
+  const messagesActive = pathname === messagesHref || pathname.startsWith(`${messagesHref}/`);
+  const title = messagesActive ? "Messages" : tabs[activeIndex]?.label ?? "Espace client";
   const phoneWall = needsPhone && !pathname.startsWith(`${basePath}/profil`);
+
+  useEffect(() => {
+    if (preview) return;
+    for (const tab of tabsFor(basePath, hotels)) router.prefetch(tab.href);
+    router.prefetch(`${basePath}/profil/documents`);
+    router.prefetch(`${basePath}/profil/facturation`);
+    router.prefetch(`${basePath}/profil/compagnons`);
+  }, [preview, basePath, hotels, router]);
 
   useEffect(() => {
     if (preview || desk) return;
@@ -83,12 +118,17 @@ export function AccountChrome({
 
   async function signOut() {
     if (!preview && !desk) {
-      await fetch("/api/client/activity", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "sign-out" }),
-        keepalive: true,
-      }).catch(() => {});
+      await Promise.race([
+        fetch("/api/client/activity", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "sign-out" }),
+          keepalive: true,
+        }).catch(() => {}),
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 400);
+        }),
+      ]);
     }
     // Cet appareil seulement : « Se déconnecter de tous les appareils » vit dans Mon compte › Sécurité.
     await signOutAccount("local", "/connexion");
@@ -106,18 +146,17 @@ export function AccountChrome({
       <div className="sticky top-0 z-40 border-b border-[#e5e3dc] bg-[rgba(250,249,246,0.9)] shadow-[0_1px_8px_rgba(11,25,44,0.04)] backdrop-blur-md">
         <header style={{ viewTransitionName: "account-header" }}>
           <div className="mx-auto flex h-16 max-w-[480px] items-center justify-between gap-3 px-4 sm:px-5">
-            <BrandMark href={basePath} subtitle={title} compact />
+            <AccountBrand href={basePath} subtitle={title} compact />
             <div className="flex items-center gap-0.5">
-              <a
-                href={`https://wa.me/${siteConfig.whatsappNumber}`}
-                target="_blank"
-                rel="noreferrer"
-                className="account-press inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--admin-navy)] hover:bg-[var(--surface-2)]"
-                aria-label="Écrire à l’agence sur WhatsApp"
-                title="Écrire à l’agence"
+              <Link
+                href={messagesHref}
+                className="account-press relative inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--admin-navy)] hover:bg-[var(--surface-2)]"
+                aria-label="Messages"
+                title="Messages"
               >
-                <Icon name="chat" className="h-[22px] w-[22px]" />
-              </a>
+                <AccountIcon name="chat" className="h-[22px] w-[22px]" />
+                <MessageMark preview={preview} active={messagesActive} />
+              </Link>
               <AccountUserMenu
                 customerName={customerName}
                 initials={initials}
@@ -141,6 +180,7 @@ export function AccountChrome({
                 <Link
                   key={tab.href}
                   href={tab.href}
+                  prefetch
                   transitionTypes={[accountTabDirection(pathname, tab.href, basePath)]}
                   aria-current={active ? "page" : undefined}
                   className={
@@ -151,7 +191,7 @@ export function AccountChrome({
                         }`
                   }
                 >
-                  {featured ? <Icon name="hotel" className="h-4 w-4" /> : null}
+                  {featured ? <AccountIcon name="hotel" className="h-4 w-4" /> : null}
                   {tab.label}
                   {active && !featured ? (
                     <span
@@ -163,6 +203,17 @@ export function AccountChrome({
                 </Link>
               );
             })}
+            <Link
+              href={messagesHref}
+              className={`account-press relative pb-1 text-sm tracking-wide ${
+                messagesActive ? "font-bold text-[var(--admin-navy)]" : "font-medium text-[#5a5c60] hover:text-[var(--admin-navy)]"
+              }`}
+            >
+              Messages
+              {messagesActive ? (
+                <span aria-hidden className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[var(--admin-gold)]" />
+              ) : null}
+            </Link>
           </nav>
           {preview ? null : (
             <button
@@ -202,9 +253,10 @@ export function AccountChrome({
             >
               Vous
             </Link>{" "}
-            pour écrire à l’agence.
+            pour que l’agence puisse vous joindre.
           </p>
         ) : null}
+        <PushSettingsBanner preview={preview} />
         {children}
       </main>
 
@@ -231,6 +283,7 @@ export function AccountChrome({
               <Link
                 key={tab.href}
                 href={tab.href}
+                prefetch
                 transitionTypes={[accountTabDirection(pathname, tab.href, basePath)]}
                 aria-current={active ? "page" : undefined}
                 className={`account-press flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 text-center text-[12px] leading-none tracking-tight ${
@@ -242,7 +295,7 @@ export function AccountChrome({
                     active ? "bg-[var(--admin-navy)] text-[var(--admin-gold)]" : "text-[var(--admin-navy)]"
                   }`}
                 >
-                  <Icon
+                  <AccountIcon
                     name={tab.icon}
                     className="h-[1.3rem] w-[1.3rem]"
                     filled={active}

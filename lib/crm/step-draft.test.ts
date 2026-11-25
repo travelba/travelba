@@ -81,4 +81,15 @@ describe("étape en attente d’enregistrement", () => {
     assert.deepEqual(plan.deleted, []);
     assert.deepEqual(plan.order, ["b", "a"]);
   });
+
+  it("retient Cacher jusqu’à l’enregistrement", () => {
+    const plan = stepCommitPlan(
+      [step({ id: "a" })],
+      [step({ id: "a", visible_to_client: false, details: { city: "Rome", client_hidden: true } })]
+    );
+    assert.equal(plan.pending, true);
+    assert.equal(plan.updated.length, 1);
+    assert.equal(plan.updated[0]?.visible_to_client, false);
+    assert.equal(plan.updated[0]?.details?.client_hidden, true);
+  });
 });

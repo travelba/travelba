@@ -157,7 +157,11 @@ export type Mb3mLine = {
   refPiece?: string | null;
   /** Vol : PNR, recopié sur la pièce s’il n’y en a qu’un. */
   refCommand?: string | null;
-  /** Nom des fournisseurs des coûts, imprimé en note. Ne crée pas de fournisseur. */
+  /**
+   * Note du « + » MB3M. Seule « Pliant : 1 245,00 € » part, sur la ligne Dépense
+   * (Standard, activité 22) ou sur un complémentaire 12 déjà enregistré avec cette note.
+   * Aucune autre note. Les avoirs suivent la même règle.
+   */
   note?: string | null;
 };
 
@@ -290,7 +294,7 @@ export const MB3M_ALLOWED_CALLS = [
   ["FolderService", "AddPieces"],
   ["FolderService", "CancelInvoice"],
   ["FolderService", "SavePayment"],
-  ["FolderService", "WriteMatching"],
+  ["PieceService", "WriteMatching"],
   ["PieceService", "Get"],
   ["PieceService", "GetInvoice"],
   ["PieceService", "ChangeFolder"],
@@ -700,12 +704,25 @@ export async function mb3mSaveFolder(
 }
 
 /**
- * Activité envoyée telle quelle. 2 = aérien, 1001 = achat direct, 27 = low cost, 5 = train.
+ * Contournement temporaire, en attendant CommissionId (API MB3M 1.78.0).
+ * Les vols (2, 1001, 27) gardent leur activité. La commission fixe de 1 €
+ * suit seulement `MB3M_FLIGHT_EURO_COMMISSION`.
+ * Le train (5, ferroviaire, code 143) et le maritime (9, code 142) sont aussi de la billetterie :
+ * sans commission, MB3M répond -22. Tant que CommissionId n’est pas envoyé, ils partent
+ * toujours en Divers terrestre (22), que le drapeau vol soit ouvert ou à `0`.
+ * Un choix déjà posé sur la carte (`mb3m_activity`) arrive ici comme une autre activité
+ * (22 pour divers terrestres) : il n’est pas dans cette liste, donc il reste.
+ * Low cost (27) et achat direct (1001) ont la commission de 1 € quand le drapeau est ouvert.
+ * FTI TICKET (34, code 144) n’est jamais choisi, donc pas envoyé.
  * Les frais généraux (14) ne sont pas une ligne de facture.
  */
+const MB3M_LAND_ACTIVITY = 22;
+const MB3M_TICKETING_AS_LAND = new Set<number>([5, 9]);
+
 export function mb3mPrestationActivityId(activityId: number | null | undefined) {
   if (activityId == null) return undefined;
   if (activityId === 14) throw new Mb3mError("Les frais généraux ne sont pas une ligne de facture.", -1);
+  if (MB3M_TICKETING_AS_LAND.has(activityId)) return MB3M_LAND_ACTIVITY;
   return activityId;
 }
 
@@ -726,8 +743,9 @@ export function mb3mDefaultProviderId() {
 }
 
 /**
- * Commission fixe de 1 € sur les vols (activités 2, 1001, 27), en attendant l’API MB3M.
- * Activé par défaut. `MB3M_FLIGHT_EURO_COMMISSION=0` le retire et retient à nouveau les vols.
+ * Commission fixe de 1 € sur les vols (activités 2, 1001, 27), en attendant CommissionId
+ * (API MB3M 1.78.0). Activé par défaut. `MB3M_FLIGHT_EURO_COMMISSION=0` la retire
+ * et retient à nouveau les vols. Le train et le maritime restent en activité 22.
  * Ce n’est pas `MB3M_FLIGHT_COMMISSION` : celui-là enverrait un CommissionId, absent du WSDL.
  */
 export const MB3M_FLIGHT_EURO_COMMISSION_AMOUNT = 1;
@@ -778,10 +796,16 @@ export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine
         line.type === "Custom" || line.marginUnit == null || !Number.isFinite(line.marginUnit)
           ? ""
           : tag("MarginUnit", money(line.marginUnit));
-      const note = line.type === "Custom" ? "" : tag("Note", (line.note || "").trim().slice(0, 250));
       const refPiece = tag("RefPiece", (line.refPiece || "").trim().slice(0, 40));
+      const pliantNote = (line.note || "").trim();
+      const custom = line.type === "Custom" || Boolean(line.customType);
+      const note =
+        pliantNote.startsWith("Pliant : ") && (!custom || line.customType?.complementary === "12")
+          ? tag("Note", pliantNote.slice(0, 250))
+          : "";
       // Ordre WCF : ActivityId, CommissionNetTotal, CommissionTotal, CustomType, Label,
       // MarginUnit, NetPriceTotal, NetPriceUnit, Note, ProviderId, Quantity, RefPiece, Type.
+      // Note seulement « Pliant : … », sur une ligne Dépense ou un complémentaire 12 déjà noté.
       // CommissionId n’est pas dans le WSDL.
       return `<${kind}>${activity}${commissionIdXml(line)}${flightEuroCommissionXml(line)}${customTypeXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${providerXml(line, providerFallback)}${tag("Quantity", quantity(line.quantity))}${refPiece}${tag("Type", type)}</${kind}>`;
     })
@@ -898,7 +922,9 @@ export function mb3mPaymentAccount(
     return { mode: "PaymentCard", bank, customModeId: null, warning: null };
   }
   if (source === "stripe" || text.includes("stripe") || text.includes("paiement en ligne") || text.includes("en ligne")) {
-    return { mode: "OnlinePaymentCard", bank, customModeId: null, warning: null };
+    // OnlinePaymentCard (« Carte bancaire (paiement en ligne) ») est refusé par MB3M pour un acompte
+    // client, donc sur une pro forma non imprimée. PaymentCard (carte simple) est le mode sûr.
+    return { mode: "PaymentCard", bank, customModeId: null, warning: null };
   }
   if (source === "pliant" || /carte|card|visa|mastercard|amex/.test(text)) {
     return { mode: "PaymentCard", bank, customModeId: null, warning: null };
@@ -987,15 +1013,19 @@ export async function mb3mSavePayment(
   return { number };
 }
 
-/** Lettrage du règlement sur la facture, pour le montant qui reste dû. */
+/**
+ * Lettrage du règlement sur la facture, pour le montant qui reste dû.
+ * WriteMatching est une opération de PieceService (PieceMatchingRequest), pas de FolderService
+ * (ContractFilter). Source : le règlement. Cible : la facture. Les deux sont des PieceIdentity.
+ */
 export async function mb3mWriteMatching(
   input: { paymentNumber: string; invoiceNumber: string; amount: number },
   fetchImpl?: FetchImpl
 ) {
-  const inner = `<FolderWriteMatchingRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Matching>${tag("Amount", money(input.amount))}${tag("PaymentNumber", input.paymentNumber.trim())}${tag("PieceNumber", input.invoiceNumber.trim())}</Matching></FolderWriteMatchingRequest>`;
-  const xml = await mb3mSoap("FolderService", "IFolderService", "WriteMatching", inner, fetchImpl);
+  const inner = `<PieceMatchingRequest xmlns="http://schemas.mb3m.fr/Partners" xmlns:i="http://www.w3.org/2001/XMLSchema-instance"><Source>${tag("Number", input.paymentNumber.trim())}</Source><Target>${tag("Number", input.invoiceNumber.trim())}</Target>${tag("Amount", money(input.amount))}</PieceMatchingRequest>`;
+  const xml = await mb3mSoap("PieceService", "IPieceService", "WriteMatching", inner, fetchImpl);
   assertOperation(xml);
-  return { id: mb3mXmlText(xml, "Id") || mb3mXmlText(xml, "Number") };
+  return { id: mb3mXmlText(xml, "Uid") || mb3mXmlText(xml, "Id") || mb3mXmlText(xml, "Number") };
 }
 
 export type Mb3mRemotePayment = {
@@ -1061,6 +1091,8 @@ function paymentKind(block: string) {
 function isPaymentBlock(block: string) {
   const tag = /^<([A-Za-z]+)/.exec(block)?.[1] || "";
   if (tag === "Payment" || tag === "PaymentSummary") return true;
+  const flag = /<IsPayment>\s*(true|false)\s*</i.exec(block)?.[1];
+  if (flag) return flag.toLowerCase() === "true";
   return /paye?ment|r[eè]glement|encaissement/i.test(paymentKind(block));
 }
 
@@ -1099,6 +1131,7 @@ function paymentFromBlock(block: string): Mb3mRemotePayment | null {
   const date = (
     mb3mXmlText(head, "Date") ||
     mb3mXmlText(head, "CreationDate") ||
+    mb3mXmlText(head, "DateCreation") ||
     mb3mXmlText(head, "PieceDate") ||
     mb3mXmlText(head, "DatePayment") ||
     mb3mXmlText(head, "PaymentDate")
@@ -1224,6 +1257,146 @@ function firstAmount(block: string, names: string[]) {
     if (Number.isFinite(value)) return value;
   }
   return null;
+}
+
+const LETTRAGE_CENT = 0.005;
+
+export type Mb3mLettrageSnapshot = {
+  /** Un règlement est lettré sur la facture, ou un règlement du dossier a un reste inférieur à son montant. */
+  lettered: boolean;
+  /** Montant TTC de la facture visée, quand la liste le porte. */
+  amount: number | null;
+  /** Solde de la facture visée. */
+  balance: number | null;
+  /** La facture visée était dans la réponse. */
+  seen: boolean;
+};
+
+function lettrageCents(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+/** Reste strictement inférieur au montant : une partie est lettrée. */
+function balanceIsLettered(balance: number, amount: number) {
+  return balance < amount - LETTRAGE_CENT;
+}
+
+/**
+ * Lettrage lu dans une réponse FindAllPieces.
+ * La facture est lettrée si son solde (Balance) est inférieur à son TTC.
+ * Un règlement du dossier l’est aussi si son reste est inférieur à son montant.
+ */
+export function mb3mLettrageFromXml(
+  xml: string,
+  invoiceNumber: string,
+  options?: { folderId?: string | null; folderScoped?: boolean }
+): Mb3mLettrageSnapshot {
+  const wanted = invoiceNumber.trim();
+  const folderId = (options?.folderId || "").trim();
+  const folderScoped = Boolean(options?.folderScoped);
+  let lettered = false;
+  let amount: number | null = null;
+  let balance: number | null = null;
+  let seen = false;
+  for (const block of topLevelBlocks(mb3mLocalNames(xml), PAYMENT_BLOCK_TAGS)) {
+    if (isPaymentBlock(block)) {
+      const payment = paymentFromBlock(block);
+      if (!payment) continue;
+      const actual = (payment.folderId || "").trim();
+      if (folderId && actual && actual !== folderId) continue;
+      if (folderId && !actual && !folderScoped) continue;
+      if (balanceIsLettered(payment.unmatched, payment.amount)) lettered = true;
+      continue;
+    }
+    if (paymentNumber(block) !== wanted) continue;
+    seen = true;
+    const head = paymentHead(block).split(/<Lines>/)[0] || paymentHead(block);
+    const total = firstAmount(head, ["Amount", "Total", "TotalPrice"]);
+    const left = firstAmount(head, ["Balance", "Solde"]);
+    if (total != null && total > 0) amount = lettrageCents(total);
+    if (left != null) balance = lettrageCents(Math.max(0, left));
+    if (amount != null && balance != null && balanceIsLettered(balance, amount)) lettered = true;
+  }
+  return { lettered, amount, balance, seen };
+}
+
+function mergeLettrage(left: Mb3mLettrageSnapshot, right: Mb3mLettrageSnapshot): Mb3mLettrageSnapshot {
+  return {
+    lettered: left.lettered || right.lettered,
+    amount: left.amount ?? right.amount,
+    balance: left.balance ?? right.balance,
+    seen: left.seen || right.seen,
+  };
+}
+
+function lettrageKnown(snap: Mb3mLettrageSnapshot) {
+  return snap.lettered || (snap.seen && snap.amount != null && snap.balance != null);
+}
+
+function mb3mLettragePieceQuery(number: string) {
+  return `<FolderFindPiecesQuery xmlns="http://schemas.mb3m.fr/Partners"><IncludeInvoices>true</IncludeInvoices><IncludePayments>true</IncludePayments><Number>${escapeMb3mXml(number)}</Number><PageIndex>0</PageIndex><PageSize>20</PageSize></FolderFindPiecesQuery>`;
+}
+
+/**
+ * Solde de la facture et règlements du dossier, via FindAllPieces
+ * (Balance, IsPayment, Identity/Number). Ne crée ni n’annule rien.
+ */
+export async function mb3mReadLettrage(
+  input: { number: string; folderId?: string | null; customerUid?: string | null },
+  fetchImpl?: FetchImpl
+): Promise<Mb3mLettrageSnapshot> {
+  const number = input.number.trim();
+  if (!/^[1-9]\d*$/.test(number)) throw new Mb3mError("Numéro de facture MB3M invalide.", -1);
+  const folderId = (input.folderId || "").trim() || null;
+  const customerUid = (input.customerUid || "").trim();
+  let snap: Mb3mLettrageSnapshot = { lettered: false, amount: null, balance: null, seen: false };
+  let folderError: Error | null = null;
+  if (customerUid && folderId) {
+    try {
+      for (let page = 0; page < 40 && !lettrageKnown(snap); page += 1) {
+        const xml = await mb3mSoap(
+          "FolderService",
+          "IFolderService",
+          "FindAllPieces",
+          mb3mFindPaymentsQuery(customerUid, page, PIECE_PAGE_SIZE, folderId),
+          fetchImpl
+        );
+        assertOperation(xml);
+        snap = mergeLettrage(snap, mb3mLettrageFromXml(xml, number, { folderId, folderScoped: true }));
+        const local = mb3mLocalNames(xml);
+        const pageItems = topLevelBlocks(local, PAYMENT_BLOCK_TAGS);
+        const reported = Number(mb3mXmlText(local, "TotalCount"));
+        const done =
+          !pageItems.length ||
+          pageItems.length < PIECE_PAGE_SIZE ||
+          (Number.isFinite(reported) && reported >= 0 && (page + 1) * PIECE_PAGE_SIZE >= reported);
+        if (done || snap.lettered) break;
+      }
+    } catch (err) {
+      folderError = err instanceof Error ? err : new Error("lecture");
+    }
+  }
+  if (!lettrageKnown(snap)) {
+    try {
+      const xml = await mb3mSoap(
+        "FolderService",
+        "IFolderService",
+        "FindAllPieces",
+        mb3mLettragePieceQuery(number),
+        fetchImpl
+      );
+      assertOperation(xml);
+      snap = mergeLettrage(snap, mb3mLettrageFromXml(xml, number, { folderId, folderScoped: false }));
+    } catch (err) {
+      if (!snap.lettered) throw folderError || err;
+    }
+  }
+  if (folderError && !snap.lettered) throw folderError;
+  if (!lettrageKnown(snap)) throw new Mb3mError("Le lettrage de la pro forma n’a pas pu être lu.", -1);
+  console.info(
+    `[mb3m] lettrage ${number} ${snap.lettered ? "lettré" : "ouvert"} solde ${snap.balance ?? "?"} sur ${snap.amount ?? "?"}`
+  );
+  return snap;
 }
 
 export type Mb3mRemotePiece = {

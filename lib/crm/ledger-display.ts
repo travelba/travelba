@@ -1,4 +1,12 @@
 import { HIDDEN_PRICE_LABEL } from "@/lib/crm/carnet";
+import {
+  COMMERCIAL_DISCOUNT_LABEL,
+  applyCommercialDiscount,
+  commercialDiscountAmount,
+  priceDiscountLines,
+  type CommercialDiscount,
+  type DiscountLine,
+} from "@/lib/crm/commercial-discount";
 import { agencyFeeBaseAmount, agencyFeeFromGross, formatMoney } from "@/lib/crm/money";
 import { ticketingFeeLabel } from "@/lib/crm/ticketing-fee";
 import { AGENCY_FEE_LABEL, visibleServiceCopy } from "@/lib/crm/types";
@@ -89,10 +97,10 @@ export function ledgerPlace(
   booking: { title?: string | null; destination?: string | null; reference: string } | null | undefined
 ) {
   if (!booking) return null;
-  const destination = (booking.destination || "").trim();
-  if (destination) return destination;
   const title = (booking.title || "").trim();
   if (title && title !== booking.reference) return title;
+  const destination = (booking.destination || "").trim();
+  if (destination && destination !== booking.reference) return destination;
   return null;
 }
 
@@ -107,19 +115,24 @@ export type ClientExpenseLine = {
   amountLabel: string | null;
 };
 
-/**
- * Prix lu sur la réservation : cartes + frais d’agence + billeterie + dépenses libres.
- * La commission porte sur le total vendu, billeterie comprise.
- * L’assiette stockée (`total_amount`) reste la somme des cartes du séjour.
- */
-export function stayPriceWithExpenses(input: {
+type StayPriceInput = {
   stayTotal: number;
   agencyCommission: boolean;
   expenses: { amount: number | null }[];
   extras?: { amount: number | null }[];
   ticketingFee?: number;
   agencyFeeRate?: number | null;
-}) {
+  /** Après commissions et frais. Absent : le total ne change pas. Ignoré si `discounts` est un tableau. */
+  discount?: CommercialDiscount | null;
+  /** Lignes du dossier. Un tableau, même vide, remplace la remise unique. */
+  discounts?: DiscountLine[] | null;
+};
+
+/**
+ * Cartes + commission + billeterie + dépenses, avant remise.
+ * La commission porte sur le total vendu, billeterie comprise.
+ */
+function stayGrossWithExpenses(input: StayPriceInput) {
   const stay = Number(input.stayTotal);
   let sum = Number.isFinite(stay) ? stay : 0;
   if (input.agencyCommission) {
@@ -143,21 +156,24 @@ export function stayPriceWithExpenses(input: {
   return Math.round(sum * 100) / 100;
 }
 
-export function clientStayPriceLabel(input: {
-  stayTotal: number;
-  currency: string;
-  pricesVisible: boolean;
-  agencyCommission: boolean;
-  expenses: { amount: number | null }[];
-  extras?: { amount: number | null }[];
-  ticketingFee?: number;
-  agencyFeeRate?: number | null;
-}) {
+/**
+ * Prix lu sur la réservation : cartes + frais d’agence + billeterie + dépenses libres, puis remise.
+ * La remise est la dernière opération. L’assiette stockée (`total_amount`) reste la somme des cartes.
+ */
+export function stayPriceWithExpenses(input: StayPriceInput) {
+  const gross = stayGrossWithExpenses(input);
+  if (Array.isArray(input.discounts)) {
+    return Math.round((gross - priceDiscountLines(gross, input.discounts).total) * 100) / 100;
+  }
+  return applyCommercialDiscount(gross, input.discount).total;
+}
+
+export function clientStayPriceLabel(input: StayPriceInput & { currency: string; pricesVisible: boolean }) {
   if (!input.pricesVisible) return HIDDEN_PRICE_LABEL;
   return formatMoney(stayPriceWithExpenses(input), input.currency);
 }
 
-/** Lignes lues sur la réservation client : frais d’agence, billeterie, puis dépenses libres. */
+/** Lignes lues sur la réservation client : frais d’agence, billeterie, dépenses libres, puis la remise. */
 export function clientStayExpenseLines(input: {
   expenses: { id: string; title: string; amount: number | null }[];
   agencyCommission: boolean;
@@ -168,6 +184,9 @@ export function clientStayExpenseLines(input: {
   ticketingFee?: number;
   ticketCount?: number;
   agencyFeeRate?: number | null;
+  discount?: CommercialDiscount | null;
+  /** Tableau : une ligne par remise. Absent : la remise unique. */
+  discounts?: DiscountLine[] | null;
 }): ClientExpenseLine[] {
   const lines: ClientExpenseLine[] = [];
   if (input.agencyCommission) {
@@ -205,6 +224,28 @@ export function clientStayExpenseLines(input: {
       title,
       amountLabel: expenseAmountLabel(expense.amount, input.currency, input.pricesVisible),
     });
+  }
+  if (Array.isArray(input.discounts)) {
+    const priced = priceDiscountLines(stayGrossWithExpenses(input), input.discounts);
+    for (const line of priced.lines) {
+      if (!(line.euros > 0)) continue;
+      const title = visibleServiceCopy(line.label.trim());
+      if (!title) continue;
+      lines.push({
+        id: line.id,
+        title,
+        amountLabel: expenseAmountLabel(-line.euros, input.currency, input.pricesVisible),
+      });
+    }
+  } else {
+    const cut = commercialDiscountAmount(stayGrossWithExpenses(input), input.discount);
+    if (cut > 0) {
+      lines.push({
+        id: "commercial-discount",
+        title: COMMERCIAL_DISCOUNT_LABEL,
+        amountLabel: expenseAmountLabel(-cut, input.currency, input.pricesVisible),
+      });
+    }
   }
   return lines;
 }

@@ -94,6 +94,17 @@ function memoryAdmin(seed: Record<string, Row[]>) {
         filters.push((row) => allowed.has(row[column]));
         return api;
       },
+      like(column: string, pattern: string) {
+        const regex = new RegExp(
+          `^${pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".")}$`,
+          "i"
+        );
+        filters.push((row) => regex.test(String(row[column] ?? "")));
+        return api;
+      },
+      ilike(column: string, pattern: string) {
+        return api.like(column, pattern);
+      },
       order(column: string) {
         orderCol = column;
         return api;
@@ -479,7 +490,9 @@ test("ajouter_vol et ajouter_hotel gardent le grand livre d’un séjour caché"
   const flightRow = db.tables.crm_booking_items.find((row) => row.kind === "flight");
   assert.ok(flightRow);
   assert.equal(flightRow.visible_to_client, false);
-  assert.equal(flightRow.include_in_ledger, false);
+  assert.equal(flightRow.include_in_ledger, true);
+  assert.equal((flightRow.details as Record<string, unknown>).price_mode, "avec");
+  assert.equal(flightRow.price_mode, "avec");
   assert.equal(flightRow.confirmation_ref, "ABC123");
   assert.equal(flightRow.start_at, "2026-11-02T22:10:00");
   assert.equal(flightRow.end_at, "2026-11-03T06:40:00");
@@ -492,11 +505,7 @@ test("ajouter_vol et ajouter_hotel gardent le grand livre d’un séjour caché"
   assert.equal(details.arrival_timezone, "Asia/Bangkok");
   assert.equal(itemClock(String(flightRow.start_at)), "22h10");
   assert.equal(flightCardTitle(card(flightRow)), "Paris → Bangkok");
-  const fee = db.tables.crm_booking_items.find((row) => row.kind === "expense");
-  assert.ok(fee);
-  assert.equal(fee.amount, 25);
-  assert.equal(fee.visible_to_client, false);
-  assert.equal((fee.details as Record<string, unknown>).auto_fee, "ticketing");
+  assert.equal(db.tables.crm_booking_items.some((row) => row.kind === "expense"), false);
   assert.equal(db.tables.crm_transactions?.length || 0, 0);
 
   const hotel = await addHotel(
@@ -780,7 +789,7 @@ test("deux vols à 611,20 et 611,19 sans frais donnent 1 222,39", async () => {
     },
     client
   );
-  assert.equal(db.tables.crm_bookings[0].fee_mode, "ticketing_off");
+  assert.equal(db.tables.crm_bookings[0].fee_mode ?? null, null);
   assert.equal(db.tables.crm_bookings[0].total_amount, 1222.39);
   const moved = await updateVol(
     { dossier_id: dossier.id, carte_id: back.id, voyageur_ids: [lea.voyageur_id, camille.voyageur_id] },
@@ -1046,7 +1055,12 @@ test("un vol à 0 € est accepté, et les frais de billeterie ne s’ouvrent pa
     true
   );
   assert.equal(db.tables.crm_booking_items.some((row) => row.kind === "expense"), false);
-  assert.equal(db.tables.crm_bookings[0].fee_mode, "ticketing_off");
+  assert.equal(db.tables.crm_bookings[0].fee_mode ?? null, null);
+  assert.equal(
+    (db.tables.crm_booking_items.find((row) => row.id === flight.id)?.details as Record<string, unknown>).price_mode,
+    "sans"
+  );
+  assert.equal(db.tables.crm_booking_items.find((row) => row.id === flight.id)?.price_mode, "sans");
   assert.equal(db.tables.crm_bookings[0].total_amount, 0);
   await assert.rejects(
     () =>
@@ -1080,16 +1094,27 @@ test("sans_frais retire les frais déjà créés, et retirer_carte annule le dé
     },
     client
   );
-  const fee = db.tables.crm_booking_items.find((row) => row.kind === "expense");
-  assert.equal(fee?.amount, 25);
-  const debit = db.tables.crm_transactions.find((row) => String(row.external_id).includes(":expense:"));
-  assert.equal(debit?.status, "posted");
-  assert.equal(debit?.amount, 25);
-  const cleared = await updateVol({ dossier_id: dossier.id, carte_id: flight.id, sans_frais: true }, client);
+  db.tables.crm_booking_items.push({
+    id: "frais-existant",
+    booking_id: dossier.id,
+    kind: "expense",
+    title: "Frais de billeterie (1 billet)",
+    amount: 25,
+    include_in_ledger: true,
+    details: { auto_fee: "ticketing" },
+    lifecycle: "active",
+    visible_to_client: false,
+  });
+  const cleared = await updateVol({ dossier_id: dossier.id, carte_id: flight.id, sans_prix: true }, client);
   assert.equal(cleared.notifie, false);
-  assert.equal(db.tables.crm_booking_items.some((row) => row.kind === "expense"), false);
-  assert.equal(db.tables.crm_bookings[0].fee_mode, "ticketing_off");
-  assert.equal(db.tables.crm_transactions.find((row) => row.id === debit?.id)?.status, "void");
+  assert.equal(db.tables.crm_booking_items.find((row) => row.id === flight.id)?.price_mode, "sans");
+  assert.equal(
+    (db.tables.crm_booking_items.find((row) => row.id === flight.id)?.details as Record<string, unknown>).price_mode,
+    "sans"
+  );
+  const kept = db.tables.crm_booking_items.find((row) => row.id === "frais-existant");
+  assert.equal(kept?.amount, 25);
+  assert.equal(db.tables.crm_bookings[0].fee_mode ?? null, null);
   const again = await addVol(
     {
       dossier_id: dossier.id,
@@ -1103,11 +1128,114 @@ test("sans_frais retire les frais déjà créés, et retirer_carte annule le dé
     },
     client
   );
-  assert.equal(db.tables.crm_booking_items.some((row) => row.kind === "expense"), false);
+  assert.equal(db.tables.crm_booking_items.filter((row) => row.kind === "expense").length, 1);
   const removed = await removeCarte({ dossier_id: dossier.id, carte_id: again.id }, client);
   assert.equal(removed.retiree, true);
   assert.equal(removed.notifie, false);
+  assert.equal(removed.justificatifs_retires, 0);
   assert.equal(db.tables.crm_booking_items.some((row) => row.id === again.id), false);
+});
+
+test("retirer_carte retire le justificatif de la carte, pas le PDF encore sur l’autre vol", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Camille", "Martin")],
+    crm_billing_companies: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Tel Aviv", devise: "EUR" }, client);
+  const aller = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "El Al",
+      numero: "LY320",
+      depart_iata: "CDG",
+      arrivee_iata: "TLV",
+      depart: "2026-12-01T10:00",
+      arrivee: "2026-12-01T16:00",
+      prix: 0,
+    },
+    client
+  );
+  const retour = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "El Al",
+      numero: "LY325",
+      depart_iata: "TLV",
+      arrivee_iata: "CDG",
+      depart: "2026-12-08T10:00",
+      arrivee: "2026-12-08T14:00",
+      prix: 0,
+    },
+    client
+  );
+  const sha = "ab".repeat(32);
+  const docAller = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
+  const docRetour = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2";
+  const shared = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3";
+  db.tables.crm_booking_documents = [
+    {
+      id: docAller,
+      booking_id: dossier.id,
+      booking_item_id: aller.id,
+      content_sha256: sha,
+      extracted: null,
+      visible_to_client: true,
+      storage_path: "billets/aller.pdf",
+      created_at: "2026-11-01T10:00:00.000Z",
+    },
+    {
+      id: docRetour,
+      booking_id: dossier.id,
+      booking_item_id: retour.id,
+      content_sha256: sha,
+      extracted: null,
+      visible_to_client: true,
+      storage_path: "billets/retour.pdf",
+      created_at: "2026-11-01T11:00:00.000Z",
+    },
+    {
+      id: shared,
+      booking_id: dossier.id,
+      booking_item_id: aller.id,
+      content_sha256: "cd".repeat(32),
+      extracted: { page: 1 },
+      visible_to_client: true,
+      storage_path: "billets/partage.pdf",
+      created_at: "2026-11-01T12:00:00.000Z",
+    },
+  ];
+  const allerRow = db.tables.crm_booking_items.find((row) => row.id === aller.id);
+  const retourRow = db.tables.crm_booking_items.find((row) => row.id === retour.id);
+  if (allerRow) allerRow.source_document_id = shared;
+  if (retourRow) retourRow.source_document_id = shared;
+
+  const removed = await removeCarte({ dossier_id: dossier.id, carte_id: aller.id }, client);
+  assert.equal(removed.retiree, true);
+  assert.equal(removed.notifie, false);
+  assert.equal(removed.justificatifs_retires, 1);
+  assert.equal(db.tables.crm_booking_items.some((row) => row.id === aller.id), false);
+  assert.equal(db.tables.crm_booking_items.some((row) => row.id === retour.id), true);
+
+  const gone = db.tables.crm_booking_documents.find((row) => row.id === docAller);
+  assert.equal(gone?.content_sha256, null);
+  assert.equal(gone?.booking_item_id, null);
+  assert.equal(gone?.visible_to_client, false);
+  assert.equal(gone?.storage_path, "billets/aller.pdf");
+  const archive = (gone?.extracted as { tri_piece?: { empreinte?: string } } | null)?.tri_piece;
+  assert.equal(archive?.empreinte, sha);
+
+  const kept = db.tables.crm_booking_documents.find((row) => row.id === docRetour);
+  assert.equal(kept?.booking_item_id, retour.id);
+  assert.equal(kept?.content_sha256, sha);
+  assert.equal(kept?.storage_path, "billets/retour.pdf");
+  assert.equal((kept?.extracted as { tri_piece?: unknown } | null)?.tri_piece, undefined);
+
+  const still = db.tables.crm_booking_documents.find((row) => row.id === shared);
+  assert.equal(still?.booking_item_id, retour.id);
+  assert.equal(still?.content_sha256, "cd".repeat(32));
+  assert.equal(still?.storage_path, "billets/partage.pdf");
+  assert.equal((still?.extracted as { page?: number; tri_piece?: unknown }).page, 1);
+  assert.equal((still?.extracted as { tri_piece?: unknown }).tri_piece, undefined);
 });
 
 test("ajouter le titulaire avec sa date et ses prénoms ne crée pas de compagnon", async () => {
@@ -1387,6 +1515,26 @@ test("le nom d’usage et le premier prénom rattachent le compagnon, et le doub
   assert.deepEqual(dropped?.party_keys, ["holder"]);
   assert.deepEqual(dropped?.passengers, [{ first_name: "A" }]);
   assert.equal(dropped?.ticket_count, 1);
+  const byName = dropPartyFromDetails(
+    {
+      pnr: "ZLFJIN",
+      flight_number: "LY 9843",
+      passengers: [
+        { first_name: "Zoe", last_name: "Benillouche", ticket_number: "1143812456790" },
+        { first_name: "Zlfjin", last_name: "Af" },
+        { first_name: "Zlfjin", last_name: "Ly" },
+      ],
+      ticket_count: 3,
+      ticket_numbers: ["1143812456790"],
+    },
+    "",
+    { first_name: "Zlfjin", last_name: "Af" }
+  );
+  assert.deepEqual(
+    (byName?.passengers as { last_name: string }[]).map((row) => row.last_name),
+    ["Benillouche", "Ly"]
+  );
+  assert.equal(byName?.ticket_count, 1);
   const moved = retargetCompanionDetails(
     { party_keys: [`companion:${thin}`], passengers: [{ first_name: "Victoria", last_name: "Martin" }] },
     thin,
@@ -1398,6 +1546,76 @@ test("le nom d’usage et le premier prénom rattachent le compagnon, et le doub
   assert.equal(removed.retire, true);
   assert.equal(removed.notifie, false);
   assert.equal(db.tables.crm_booking_travelers.some((row) => row.companion_id === kept), false);
+});
+
+test("retirer un voyageur l’ôte des passagers de chaque vol et recalcule les billets", async () => {
+  const { db, client } = adminOf({
+    crm_customers: [customer(CLIENT, "Zoe", "Benillouche")],
+    crm_billing_companies: [],
+    crm_travel_companions: [],
+    crm_travel_documents: [],
+  });
+  const dossier = await createDossier({ client_id: CLIENT, titre: "Tel Aviv" }, client);
+  const zoe = await addVoyageur({ dossier_id: dossier.id, prenoms: "Zoe", nom: "Benillouche" }, client);
+  const ghost = await addVoyageur({ dossier_id: dossier.id, prenoms: "Zlfjin", nom: "Af" }, client);
+  const outbound = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "El Al",
+      numero: "LY315",
+      depart_iata: "CDG",
+      arrivee_iata: "TLV",
+      depart: "2026-11-20T10:00",
+      arrivee: "2026-11-20T16:00",
+      voyageurs: [zoe.voyageur_id],
+      prix_total: 900,
+      pnr: "ZLFJIN",
+    },
+    client
+  );
+  const inbound = await addVol(
+    {
+      dossier_id: dossier.id,
+      compagnie: "El Al",
+      numero: "LY9843",
+      depart_iata: "TLV",
+      arrivee_iata: "CDG",
+      depart: "2026-11-24T18:00",
+      arrivee: "2026-11-24T22:00",
+      voyageurs: [zoe.voyageur_id],
+      prix_total: 900,
+      pnr: "ZLFJIN",
+    },
+    client
+  );
+  for (const id of [outbound.id, inbound.id]) {
+    const item = db.tables.crm_booking_items.find((row) => row.id === id);
+    const details = item?.details as {
+      passengers: { first_name: string; last_name: string; ticket_number?: string }[];
+      ticket_count?: number;
+    };
+    details.passengers.push(
+      { first_name: "Zlfjin", last_name: "Af" },
+      { first_name: "Zlfjin", last_name: "Ly" }
+    );
+    details.passengers[0].ticket_number = "1143812456790";
+    details.ticket_count = 3;
+  }
+  const removed = await removeVoyageur({ dossier_id: dossier.id, voyageur_id: ghost.voyageur_id }, client);
+  assert.equal(removed.retire, true);
+  assert.equal(removed.notifie, false);
+  assert.equal(db.tables.crm_booking_travelers.some((row) => row.id === ghost.voyageur_id), false);
+  for (const id of [outbound.id, inbound.id]) {
+    const details = db.tables.crm_booking_items.find((row) => row.id === id)?.details as {
+      passengers: { last_name: string }[];
+      ticket_count?: number;
+    };
+    assert.deepEqual(
+      details.passengers.map((row) => row.last_name),
+      ["Benillouche", "Ly"]
+    );
+    assert.equal(details.ticket_count, 1);
+  }
 });
 
 test("ces outils n’envoient ni message ni synchro de formalité", () => {
@@ -1828,7 +2046,7 @@ test("definir_visibilite_carte suit l’agence, sans message et sans deuxième l
       lifecycle: "active",
       visible_to_client: false,
       include_in_ledger: false,
-      details: { client_hidden: true },
+      details: { client_hidden: true, price_mode: "sans" },
     }
   );
   const shown = await setCarteVisibilite({ dossier_id: dossier.id, carte_id: hotelId, visible: true }, client);
@@ -2104,6 +2322,8 @@ test("inclure_transactions coche la case, reprend la même ligne, et garde 492,9
   assert.equal(lines()[0]?.amount, 492.99);
   const flight = db.tables.crm_booking_items.find((item) => item.id === flightId);
   assert.equal(flight?.include_in_ledger, true);
+  assert.equal(flight?.price_mode, "avec");
+  assert.equal((flight?.details as Record<string, unknown>).price_mode, "avec");
   assert.equal(flight?.visible_to_client, false);
   assert.equal((flight?.details as Record<string, unknown>).client_hidden, true);
   const audit = db.tables.crm_audit_events.find((row) => row.action === "transactions_carte");
@@ -2129,6 +2349,7 @@ test("inclure_transactions coche la case, reprend la même ligne, et garde 492,9
   assert.equal(removed.notifie, false);
   assert.equal(removed.grand_livre.compte, false);
   assert.equal(removed.grand_livre.effet, "annule");
+  assert.equal(db.tables.crm_booking_items.find((item) => item.id === flightId)?.price_mode, "sans");
   assert.equal(lines().length, 1);
   assert.equal(lines()[0]?.status, "void");
   assert.equal(db.tables.crm_audit_events.filter((row) => row.action === "transactions_carte").at(-1)?.summary, "Carte retirée des transactions");

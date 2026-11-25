@@ -5,6 +5,9 @@ import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
 import { customerFullName } from "@/lib/crm/types";
 import { brandShareImages, CONCIERGE_SHARE_DESCRIPTION, CONCIERGE_SHARE_TITLE, siteConfig } from "@/lib/site";
 import { AccountChrome } from "@/components/account/AccountChrome";
+import { AccountCacheProvider } from "@/components/account/AccountCache";
+import { BiometricUnlock } from "@/components/account/BiometricUnlock";
+import { OfflineDocuments } from "@/components/account/OfflineDocuments";
 import { hotelBookingEnabled, showHotelButton } from "@/lib/crm/hotel-access";
 import { readHotelButtonVisibility } from "@/lib/crm/hotel-access-run";
 
@@ -53,8 +56,13 @@ export default async function AccountLayout({
   const hotels = showHotelButton({ enabled, visibility: await readHotelButtonVisibility() });
 
   return (
-    <AccountChrome customerName={name} initials={initials} needsPhone={!customer.phone && !desk} desk={desk} hotels={hotels}>
-      {children}
-    </AccountChrome>
+    <AccountCacheProvider userId={customer.id}>
+      <AccountChrome customerName={name} initials={initials} needsPhone={!customer.phone && !desk} desk={desk} hotels={hotels}>
+        <OfflineDocuments userId={customer.id}>
+          <BiometricUnlock />
+          {children}
+        </OfflineDocuments>
+      </AccountChrome>
+    </AccountCacheProvider>
   );
 }

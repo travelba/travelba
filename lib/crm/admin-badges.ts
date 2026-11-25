@@ -24,6 +24,8 @@ export type AdminBadges = {
   hotels: number;
   /** Sorties Pliant et débits Revolut pas encore pointés sur un dossier. */
   costs: number;
+  /** Fils de l’application avec un message client non lu. */
+  messages: number;
 };
 
 export const EMPTY_ADMIN_BADGES: AdminBadges = {
@@ -35,6 +37,7 @@ export const EMPTY_ADMIN_BADGES: AdminBadges = {
   whatsapp: 0,
   hotels: 0,
   costs: 0,
+  messages: 0,
 };
 
 /**
@@ -44,7 +47,7 @@ export const EMPTY_ADMIN_BADGES: AdminBadges = {
 export const adminBadges = cache(async (): Promise<AdminBadges> => {
   try {
     const admin = createServiceClient();
-    const [revolut, stripe, emails, le, pieces, whatsappRows, hotels, pliantCosts, revolutCosts] = await Promise.all([
+    const [revolut, stripe, emails, le, pieces, whatsappRows, hotels, pliantCosts, revolutCosts, messages] = await Promise.all([
       admin
         .from("crm_revolut_transactions")
         .select("id", { count: "exact", head: true })
@@ -76,6 +79,7 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
         .select("id", { count: "exact", head: true })
         .eq("status", "unmatched")
         .eq("direction", "debit"),
+      admin.from("crm_app_threads").select("id", { count: "exact", head: true }).gt("agency_unread", 0),
     ]);
     const whatsapp = whatsappRows || (await fallbackWhatsappRows(admin));
     return {
@@ -87,6 +91,7 @@ export const adminBadges = cache(async (): Promise<AdminBadges> => {
       whatsapp: unreadWhatsapp(whatsapp),
       hotels,
       costs: (pliantCosts.error ? 0 : pliantCosts.count ?? 0) + (revolutCosts.error ? 0 : revolutCosts.count ?? 0),
+      messages: messages.error ? 0 : messages.count ?? 0,
     };
   } catch (err) {
     console.error("[admin/badges]", err instanceof Error ? err.message : err);

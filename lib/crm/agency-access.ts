@@ -29,6 +29,7 @@ export const PERMISSIONS = [
   "manage_users",
   "view_journal",
   "view_inbox",
+  "review_signups",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -50,6 +51,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   manage_users: "Gérer l’équipe",
   view_journal: "Voir le journal de toute l’agence",
   view_inbox: "Voir les boîtes de réception",
+  review_signups: "Valider les inscriptions",
 };
 
 /** Rôles dont la matrice est réglable. L’administrateur n’y figure pas : il a tout. */

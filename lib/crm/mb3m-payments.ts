@@ -15,7 +15,7 @@ import {
   unattachedCreditBelongsToFolder,
   type Mb3mCreditPeer,
 } from "@/lib/crm/mb3m-credit-match";
-import { formatMoney } from "@/lib/crm/money";
+import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { mb3mPaymentUnchanged } from "@/lib/crm/sync-delta";
 
 export type Mb3mCredit = {
@@ -81,6 +81,71 @@ export function mb3mPaymentGapMessage(invoiceNumber: string, amount: number) {
 
 export function mb3mIsPaymentGap(message: string | null | undefined) {
   return (message || "").includes(PAYMENT_GAP_PREFIX);
+}
+
+function joinFrenchAmounts(amounts: string[]) {
+  if (amounts.length <= 1) return amounts[0] || "";
+  if (amounts.length === 2) return `${amounts[0]} et ${amounts[1]}`;
+  return `${amounts.slice(0, -1).join(", ")} et ${amounts[amounts.length - 1]}`;
+}
+
+/**
+ * Crédits écartés parce qu’ils sont déjà lettrés sur une autre pièce.
+ * « 1 700 € et 5 200 € sont lettrés sur la pièce 2258. »
+ */
+export function mb3mLetteredElsewhereWarning(rows: { amount: number; invoice: string }[]) {
+  const groups = new Map<string, number[]>();
+  for (const row of rows) {
+    const invoice = row.invoice.trim();
+    if (!invoice || !(row.amount > CENT)) continue;
+    const list = groups.get(invoice) || [];
+    list.push(row.amount);
+    groups.set(invoice, list);
+  }
+  if (!groups.size) return null;
+  return (
+    [...groups.entries()]
+      .map(([invoice, amounts]) => {
+        const shown = joinFrenchAmounts(amounts.map((amount) => formatMoney(amount)));
+        const verb = amounts.length > 1 ? "sont lettrés" : "est lettré";
+        return `${shown} ${verb} sur la pièce ${invoice}`;
+      })
+      .join(". ") + "."
+  );
+}
+
+function rememberLetteredElsewhere(
+  bucket: { amount: number; invoice: string }[] | undefined,
+  amount: number,
+  invoice: string | null | undefined,
+  currentInvoice: string
+) {
+  const other = (invoice || "").trim();
+  if (!bucket || !other || other === currentInvoice || !(amount > CENT)) return;
+  bucket.push({ amount, invoice: other });
+}
+
+/** Avertissement français : un règlement ou un lettrage en échec ne casse pas la facture groupée. */
+export function groupedMb3mPaymentWarning(reglements: Mb3mReglement[]) {
+  const lines: string[] = [];
+  for (const row of reglements) {
+    if (row.statut !== "erreur") {
+      if (row.avertissement) lines.push(row.avertissement);
+      continue;
+    }
+    if (mb3mIsPaymentGap(row.erreur)) {
+      if (row.erreur) lines.push(row.erreur);
+      continue;
+    }
+    const when = row.date ? ` du ${formatDateFr(row.date)}` : "";
+    const amount = row.montant > 0 ? ` de ${formatMoney(row.montant)}` : "";
+    lines.push(
+      `Le règlement${when}${amount} n’a pas été envoyé sur la facture groupée. ${row.erreur || "Le lettrage n’a pas abouti."} La facture groupée reste en place.`
+        .replace(/\s+/g, " ")
+        .trim()
+    );
+  }
+  return lines.filter(Boolean).join(" ") || null;
 }
 
 /**
@@ -184,8 +249,15 @@ function creditNamedForFolder(credit: Mb3mCredit, invoiceNumber: string, input: 
  */
 export function planMb3mPayments(input: {
   bookingId: string;
+  /** Facture groupée : crédits de chacun de ces dossiers. Défaut : le seul `bookingId`. */
+  bookingIds?: string[];
   invoiceNumber: string;
   invoiceAmount: number;
+  /**
+   * Plafond de lettrage supplémentaire (solde MB3M restant).
+   * Le lettrage ne dépasse ni ce solde, ni le reste de la pièce.
+   */
+  maxLetter?: number | null;
   credits: Mb3mCredit[];
   otherOpenBookings: number;
   links: Mb3mPaymentLink[];
@@ -194,10 +266,24 @@ export function planMb3mPayments(input: {
   remoteReady: boolean;
   /** Dossier de la facture. Les règlements de ce dossier passent avant les autres. */
   folderId?: string | null;
+  /**
+   * Facture groupée : un crédit sans dossier est pris même s’il reste d’autres séjours ouverts.
+   * Un crédit déjà lettré sur une autre pièce reste écarté.
+   */
+  includeWallet?: boolean;
+  /** Faux : ne pose pas le dossier sur un crédit du portefeuille. */
+  attributeWallet?: boolean;
+  /**
+   * Rempli quand un crédit est écarté parce qu’il est lettré sur une autre pièce.
+   * Le plan lui-même ne change pas : le crédit n’est pas renvoyé.
+   */
+  letteredElsewhere?: { amount: number; invoice: string }[];
 } & Mb3mFolderCreditMatch): Mb3mPlannedPayment[] {
   const linked = new Map(input.links.map((link) => [link.transactionId, link]));
   const taken = new Set(input.links.map((link) => link.paymentNumber));
   const invoiceNumber = input.invoiceNumber.trim();
+  const allowed = new Set((input.bookingIds?.length ? input.bookingIds : [input.bookingId]).map((id) => id.trim()).filter(Boolean));
+  const attributeWallet = input.attributeWallet !== false;
   let remaining = cents(
     input.invoiceAmount -
       input.links.reduce(
@@ -206,13 +292,16 @@ export function planMb3mPayments(input: {
       )
   );
   if (remaining < 0) remaining = 0;
+  if (typeof input.maxLetter === "number" && Number.isFinite(input.maxLetter)) {
+    remaining = cents(Math.min(remaining, Math.max(0, input.maxLetter)));
+  }
   const plans: Mb3mPlannedPayment[] = [];
   const credits = [...input.credits].sort(
     (left, right) => left.date.localeCompare(right.date) || left.id.localeCompare(right.id)
   );
   for (const credit of credits) {
     const known = linked.get(credit.id);
-    if (credit.bookingId && credit.bookingId !== input.bookingId) continue;
+    if (credit.bookingId && !allowed.has(credit.bookingId)) continue;
     if (remaining <= CENT) continue;
     const matched = cents(Math.min(credit.amount, remaining));
     if (matched <= CENT) continue;
@@ -263,9 +352,18 @@ export function planMb3mPayments(input: {
       .filter((link) => link.transactionId === credit.id && link.invoiceNumber?.trim() === invoiceNumber)
       .reduce((sum, link) => sum + link.matchedAmount, 0);
     if (remoteLeft && remote && coveredHere + CENT >= Math.min(remote.unmatched, remaining)) continue;
-    if (!remoteLeft && (known?.invoiceNumber || (known && known.matchedAmount > CENT))) continue;
+    if (!remoteLeft && (known?.invoiceNumber || (known && known.matchedAmount > CENT))) {
+      rememberLetteredElsewhere(
+        input.letteredElsewhere,
+        credit.amount,
+        known?.invoiceNumber || remote?.invoiceNumber,
+        invoiceNumber
+      );
+      continue;
+    }
     if (
       !credit.bookingId &&
+      !input.includeWallet &&
       input.otherOpenBookings > 0 &&
       !remote &&
       !known?.paymentNumber &&
@@ -292,6 +390,9 @@ export function planMb3mPayments(input: {
       const cap = remote.unmatched == null ? (remote.invoiceNumber ? 0 : remote.amount) : remote.unmatched;
       if (cap <= CENT) {
         const here = remote.invoiceNumber?.trim() === invoiceNumber;
+        if (!here) {
+          rememberLetteredElsewhere(input.letteredElsewhere, credit.amount, remote.invoiceNumber, invoiceNumber);
+        }
         plans.push({
           ...base,
           matched: here ? matched : 0,
@@ -311,6 +412,7 @@ export function planMb3mPayments(input: {
         ...base,
         matched: use,
         attributeBooking:
+          attributeWallet &&
           input.otherOpenBookings === 0 &&
           !credit.bookingId &&
           credit.amount <= remaining + CENT &&
@@ -328,7 +430,7 @@ export function planMb3mPayments(input: {
     plans.push({
       ...base,
       matched,
-      attributeBooking: !credit.bookingId && credit.amount <= remaining + CENT,
+      attributeBooking: attributeWallet && !credit.bookingId && credit.amount <= remaining + CENT,
       existingNumber: known?.paymentNumber || null,
       alreadyMatched: false,
       lockedInvoice: null,
@@ -561,23 +663,32 @@ export async function recordMb3mInvoicePayments(
     customerKind?: Mb3mCustomerKind | null;
     invoiceNumber: string;
     invoiceAmount: number;
+    /** Solde MB3M restant. Le lettrage ne le dépasse pas. Absent : le reste calculé sur la pièce. */
+    balance?: number | null;
+    /** Facture groupée : plusieurs dossiers, portefeuille du payeur, échec non bloquant. */
+    grouped?: boolean;
+    /** Dossiers inclus. Défaut : `bookingId` seul. */
+    bookingIds?: string[];
     gdsInvoices?: Mb3mGdsInvoiceTarget[];
   }
 ): Promise<Mb3mReglement[]> {
+  const bookingIds = [
+    ...new Set((input.bookingIds?.length ? input.bookingIds : [input.bookingId]).map((id) => id.trim()).filter(Boolean)),
+  ];
   const booking = await supabase
     .from("crm_bookings")
     .select("id, customer_id, billing_customer_id, billing_company_id, payer_kind, status")
-    .eq("id", input.bookingId)
-    .maybeSingle();
-  if (booking.error || !booking.data) return [];
-  const stay = booking.data as {
+    .in("id", bookingIds);
+  if (booking.error || !booking.data?.length) return [];
+  const stays = booking.data as {
     id: string;
     customer_id: string;
     billing_customer_id: string | null;
     billing_company_id: string | null;
     payer_kind: string | null;
     status: string | null;
-  };
+  }[];
+  const stay = stays.find((row) => row.id === input.bookingId) || stays[0];
   const payerId = stay.billing_customer_id || stay.customer_id;
   const dossierCustomer = await supabase
     .from("crm_customers")
@@ -617,7 +728,7 @@ export async function recordMb3mInvoicePayments(
     supabase
       .from("crm_transactions")
       .select("id, booking_id, customer_id, billing_company_id, amount, occurred_on, source, label, status, direction, currency")
-      .eq("booking_id", stay.id)
+      .in("booking_id", bookingIds)
       .eq("direction", "credit")
       .eq("status", "posted"),
     supabase
@@ -631,7 +742,6 @@ export async function recordMb3mInvoicePayments(
       .from("crm_bookings")
       .select("id, status, billing_company_id")
       .or(`customer_id.eq.${payerId},billing_customer_id.eq.${payerId}`)
-      .neq("id", stay.id)
       .neq("status", "cancelled"),
     supabase
       .from("crm_mb3m_payments")
@@ -643,6 +753,9 @@ export async function recordMb3mInvoicePayments(
   if (direct.error || wallet.error || peers.error || links.error) {
     throw new Mb3mError("Les règlements du dossier n’ont pas pu être lus.", -1);
   }
+  const peerRows = ((peers.data || []) as { id: string; billing_company_id: string | null }[]).filter(
+    (row) => !bookingIds.includes(row.id)
+  );
   const walletCredits = mb3mWalletCreditRows(stay.billing_company_id, (wallet.data || []) as Mb3mCreditRow[]);
   const credits = [...((direct.data || []) as Mb3mCreditRow[]), ...walletCredits].flatMap((row) => {
     const credit = asCredit(row);
@@ -652,9 +765,8 @@ export async function recordMb3mInvoicePayments(
   const unique = credits.filter((credit) => (seen.has(credit.id) ? false : (seen.add(credit.id), true)));
   let remote: Mb3mRemotePayment[] = [];
   const remoteReady = Boolean(input.customerUid.trim());
-  const peerRows = (peers.data || []) as { id: string; billing_company_id: string | null }[];
   const peerIds = peerRows.map((row) => row.id);
-  const folderScope = peerIds.length ? [stay.id, ...peerIds] : [stay.id];
+  const folderScope = [...new Set([...bookingIds, ...peerIds])];
   const companyIds = [
     ...new Set(
       [stay.billing_company_id, ...peerRows.map((row) => row.billing_company_id)].filter((id): id is string => Boolean(id))
@@ -748,8 +860,13 @@ export async function recordMb3mInvoicePayments(
       }
     ),
   ];
+  const letteredElsewhere: { amount: number; invoice: string }[] = [];
   const plans = planMb3mPayments({
     bookingId: stay.id,
+    bookingIds,
+    includeWallet: input.grouped === true,
+    attributeWallet: input.grouped === true ? false : undefined,
+    maxLetter: input.balance == null ? undefined : input.balance,
     invoiceNumber: input.invoiceNumber,
     invoiceAmount: input.invoiceAmount,
     credits: unique,
@@ -761,6 +878,7 @@ export async function recordMb3mInvoicePayments(
     folderCompanyId: stay.billing_company_id,
     folderCompanyName: matchContext.folderCompanyName,
     peers: matchContext.peers,
+    letteredElsewhere,
   });
   const gdsPlans = planMb3mGdsMatchings({
     bookingId: stay.id,
@@ -774,6 +892,7 @@ export async function recordMb3mInvoicePayments(
     folderCompanyName: matchContext.folderCompanyName,
     peers: matchContext.peers,
   });
+  const elsewhereWarning = mb3mLetteredElsewhereWarning(letteredElsewhere);
   const reglements = await applyMb3mPaymentPlans(
     { folderId: input.folderId, invoiceNumber: input.invoiceNumber, plans: [...plans, ...gdsPlans] },
     {
@@ -845,7 +964,7 @@ export async function recordMb3mInvoicePayments(
         }
         const row = {
           transaction_id: plan.credit.id,
-          booking_id: plan.lockedInvoice ? null : stay.id,
+          booking_id: plan.lockedInvoice ? null : input.grouped ? plan.credit.bookingId : stay.id,
           realm,
           mb3m_payment_number: paymentNumber,
           mb3m_invoice_number: settled ? plan.lockedInvoice || target : null,
@@ -863,12 +982,22 @@ export async function recordMb3mInvoicePayments(
       },
     }
   );
+  if (elsewhereWarning) {
+    reglements.push({
+      date: "",
+      montant: 0,
+      numero_mb3m: null,
+      statut: "deja_dans_mb3m",
+      avertissement: elsewhereWarning,
+    });
+  }
   const already = cents(
     linkRows
       .filter((link) => link.invoiceNumber?.trim() === input.invoiceNumber.trim())
       .reduce((sum, link) => sum + (Number(link.matchedAmount) || 0), 0)
   );
-  const due = cents(Math.max(0, input.invoiceAmount - already));
+  const due =
+    input.balance != null ? cents(Math.max(0, input.balance)) : cents(Math.max(0, input.invoiceAmount - already));
   const lettered = reglements.some((row) => row.statut !== "erreur" && row.montant > CENT);
   const notes = reglements.flatMap((row) => (row.avertissement ? [row.avertissement] : []));
   if (due > CENT && !lettered) {
@@ -878,8 +1007,10 @@ export async function recordMb3mInvoicePayments(
   } else {
     await rememberPaymentNotes(supabase, input.bookingId, input.invoiceNumber, null, notes);
   }
-  const failed = reglements.find((row) => row.statut === "erreur" && !mb3mIsPaymentGap(row.erreur));
-  if (failed) throw new Mb3mError(failed.erreur || "Les règlements n’ont pas pu être enregistrés.", -1);
+  if (!input.grouped) {
+    const failed = reglements.find((row) => row.statut === "erreur" && !mb3mIsPaymentGap(row.erreur));
+    if (failed) throw new Mb3mError(failed.erreur || "Les règlements n’ont pas pu être enregistrés.", -1);
+  }
   return reglements;
 }
 

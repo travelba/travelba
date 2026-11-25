@@ -1,79 +1,140 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { buildStatement, statementHolderLines } from "./statement";
+import { buildStatement, statementHolderLines, type StatementSection } from "./statement";
+import {
+  statementTransfer,
+  statementTransferReference,
+  statementWireFromParts,
+} from "./statement-wire";
 import { shapeClientLedger } from "./client-ledger";
-import { attachStatementWire, loadStatementWire, statementWireLines, type StatementWire } from "./statement-wire";
 import type { CrmTransaction } from "./types";
 
 const FR = "FR7630006000011234567890189";
-const WIRE: StatementWire = { iban: ` ${FR.toLowerCase()} `, bic: "revofrp2", holder: "Travel Business Agency" };
+const ISSUED = new Date("2026-10-06T12:00:00.000Z");
 
-test("le RIB du relevé reprend titulaire, IBAN, BIC et le nom du client", () => {
-  const lines = statementWireLines(WIRE, "Camille Morel", "300,00 EUR");
-  assert.deepEqual(lines, [
-    "Montant à virer 300,00 EUR",
-    "Titulaire Travel Business Agency",
-    "IBAN FR76 3000 6000 0112 3456 7890 189",
-    "BIC REVOFRP2",
-    "Référence Camille Morel",
-    "Indiquez cette référence sur l'ordre de virement. L'agence le rapproche dès réception sur son compte Revolut.",
-  ]);
-  assert.equal(lines.join(" ").includes("Stripe"), false);
+function section(metas: Array<string | null>, stayMeta = ""): StatementSection {
+  return {
+    heading: "Mouvements",
+    stays: stayMeta
+      ? [{ title: "Séjour", meta: stayMeta, amount: "", rows: [] }]
+      : [],
+    rows: metas.map((meta) => ({ date: "", title: "Ligne", meta, debit: "", credit: "" })),
+  };
+}
+
+test("le module ne contient pas d’IBAN, ni IATA, ni APST", () => {
+  const source = readFileSync(new URL("./statement-wire.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/);
+  assert.doesNotMatch(source, /IATA|APST/);
 });
 
-test("sans reste à payer, le RIB reste et le montant disparaît", () => {
-  const lines = statementWireLines({ iban: FR, bic: "", holder: "" }, "Camille Morel", null);
-  assert.equal(lines.some((line) => line.startsWith("Montant")), false);
-  assert.equal(lines.some((line) => line.startsWith("BIC")), false);
-  assert.match(lines.join("\n"), /Titulaire Travel Business Agency/);
-});
-
-test("un IBAN illisible ne s’imprime pas", () => {
-  const lines = statementWireLines({ iban: "123", bic: "REVOFRP2", holder: "Travel Business Agency" }, "Camille", null);
-  assert.deepEqual(lines, ["Les coordonnées de virement sont confirmées par l'agence."]);
-  assert.equal(lines.join(" ").includes("123"), false);
-});
-
-test("Revolut prime sur le réglage Facture", async () => {
-  let settings = 0;
-  const wire = await loadStatementWire({
-    revolut: async () => WIRE,
-    settings: async () => {
-      settings += 1;
-      return { iban: "FR7611111111111111111111111", bic: "AUTRE", holder: "Autre" };
-    },
-  });
+test("Revolut prime sur le réglage et les variables", () => {
+  const wire = statementWireFromParts(
+    { holder: " Travel Business Agency ", iban: ` ${FR.toLowerCase()} `, bic: " revofrp2 " },
+    { iban: "FR7611111111111111111111111", bic: "BNPAFRPP", holder: "Réglage" },
+    { iban: "DE89370400440532013000", bic: "COBADEFFXXX", holder: "Environnement", bank: "" }
+  );
+  assert.equal(wire?.source, "revolut");
   assert.equal(wire?.iban, FR);
   assert.equal(wire?.bic, "REVOFRP2");
-  assert.equal(settings, 0);
-});
-
-test("le réglage Facture ne s’imprime que si Revolut ne fournit pas d’IBAN", async () => {
-  const wire = await loadStatementWire({
-    revolut: async () => null,
-    settings: async () => ({ iban: "fr76 3000 6000 0112 3456 7890 189", bic: "revofrp2", holder: "Travel Business Agency" }),
-  });
-  assert.equal(wire?.iban, FR);
   assert.equal(wire?.holder, "Travel Business Agency");
+  assert.equal(wire?.bank, "Revolut");
 });
 
-test("le relevé de frais n’ajoute pas de virement", async () => {
+test("TBA_RIB_BANK remplace le libellé de banque, sans inventer l’IBAN", () => {
+  const wire = statementWireFromParts(
+    { iban: FR, bic: "REVOFRP2", holder: "" },
+    null,
+    { bank: "Revolut Bank UAB" }
+  );
+  assert.equal(wire?.source, "revolut");
+  assert.equal(wire?.holder, "TRAVEL BUSINESS AGENCY");
+  assert.equal(wire?.bank, "Revolut Bank UAB");
+  assert.equal(statementWireFromParts({ iban: "FR76" }, { iban: " " }, { holder: "X" }), null);
+});
+
+test("sans Revolut, le réglage Facture prime sur les variables", () => {
+  const wire = statementWireFromParts(
+    { iban: "compte principal" },
+    { iban: FR, bic: "REVOFRP2", holder: "Travel Business Agency" },
+    { iban: "DE89370400440532013000", bic: "COBADEFFXXX", bank: "Banque saisie" }
+  );
+  assert.equal(wire?.source, "reglage");
+  assert.equal(wire?.iban, FR);
+  assert.equal(wire?.bank, "Banque saisie");
+});
+
+test("les variables seules n’affichent pas de banque si TBA_RIB_BANK est vide", () => {
+  const wire = statementWireFromParts(null, { iban: null }, {
+    holder: "Travel Business Agency",
+    iban: "FR76 3000 6000 0112 3456 7890 189",
+    bic: "REVOFRP2",
+  });
+  assert.equal(wire?.source, "env");
+  assert.equal(wire?.bank, "");
+  const block = statementTransfer(wire, "REL-20261006");
+  assert.equal(block?.iban, "FR76 3000 6000 0112 3456 7890 189");
+  assert.equal(block?.bic, "REVOFRP2");
+  assert.equal(block?.bank, "");
+  assert.equal(block?.reference, "REL-20261006");
+  assert.doesNotMatch(`${block?.holder} ${block?.iban} ${block?.bic} ${block?.bank} ${block?.reference}`, /IATA|APST/);
+});
+
+test("la référence est le dossier unique, sinon le numéro du relevé", () => {
+  assert.equal(
+    statementTransferReference({
+      number: "REL-20261006",
+      sections: [section(["Rome · tb-2026-0038"])],
+    }),
+    "TB-2026-0038"
+  );
+  assert.equal(
+    statementTransferReference({
+      number: "REL-20261006",
+      sections: [section([], "12 oct. · TB-2026-0145")],
+    }),
+    "TB-2026-0145"
+  );
+  assert.equal(
+    statementTransferReference({
+      number: "REL-20261006",
+      sections: [section(["TB-2026-0038", "TB-2026-0040"])],
+    }),
+    "REL-20261006"
+  );
+  assert.equal(
+    statementTransferReference({ number: "REL-20261006", sections: [section([null])] }),
+    "REL-20261006"
+  );
+});
+
+test("le relevé de compte à un seul dossier reprend cette référence", () => {
   const view = shapeClientLedger({
-    companyRole: "member",
-    travelerBookingIds: ["b1"],
-    walletBalance: 0,
+    companyRole: null,
+    travelerBookingIds: [],
+    walletBalance: -300,
     currency: "EUR",
     audience: "client",
-    bookings: [],
+    bookings: [
+      {
+        id: "b1",
+        title: "Rome",
+        destination: "Rome",
+        reference: "TB-2026-0038",
+        start_date: "2026-10-12",
+        end_date: "2026-10-18",
+        visible_to_client: true,
+      },
+    ],
     rows: [
       {
-        id: "fee",
+        id: "debit",
         customer_id: "c1",
         booking_id: "b1",
         currency: "EUR",
         occurred_on: "2026-10-06",
-        label: "Train",
+        label: "Séjour Rome",
         source: "manual",
         external_id: null,
         status: "posted",
@@ -81,32 +142,16 @@ test("le relevé de frais n’ajoute pas de virement", async () => {
         updated_at: "2026-10-06T00:00:00Z",
         direction: "debit",
         kind: "booking",
-        amount: 80,
-      } as CrmTransaction,
+        amount: 500,
+      } satisfies CrmTransaction,
     ],
   });
-  const model = await attachStatementWire(
-    buildStatement({
-      view,
-      holderName: "Camille Morel",
-      holderLines: statementHolderLines({}),
-      issuedAt: new Date("2026-10-06T12:00:00.000Z"),
-    }),
-    async () => WIRE
-  );
-  assert.deepEqual(model.wireLines, []);
-});
-
-test("les relevés passent par le PDF qui lit le RIB", () => {
-  const files = [
-    "lib/crm/statement-dispatch.ts",
-    "app/api/client/ledger/releve/route.ts",
-    "app/api/exemple/releve/route.ts",
-    "lib/crm/concierge-space-live.ts",
-  ];
-  for (const file of files) {
-    const source = readFileSync(new URL(`../../${file}`, import.meta.url), "utf8");
-    assert.equal(source.includes("renderAccountStatementPdf"), true, file);
-    assert.equal(source.includes("renderStatementPdf"), false, file);
-  }
+  const model = buildStatement({
+    view,
+    holderName: "Camille Morel",
+    holderLines: statementHolderLines({}),
+    issuedAt: ISSUED,
+  });
+  assert.equal(model.transfer, null);
+  assert.equal(statementTransferReference(model), "TB-2026-0038");
 });

@@ -27,6 +27,12 @@ import {
   suggestedCustomerId,
   type RevolutMatchCandidate,
 } from "@/lib/crm/revolut-match";
+import {
+  emptyPaymentTarget,
+  paymentTargetReady,
+  PaymentTargetFields,
+  type PaymentTargetValue,
+} from "@/components/admin/PaymentTargetFields";
 
 /** Crédits Revolut reçus : chaque ligne attend le clic Créditer. Les sorties sont dans À pointer. */
 export function RevolutInbox({
@@ -57,6 +63,7 @@ export function RevolutInbox({
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [accountFor, setAccountFor] = useState<Record<string, string>>({});
+  const [linkFor, setLinkFor] = useState<Record<string, PaymentTargetValue>>({});
   const [pickerRow, setPickerRow] = useState<string | null>(null);
   const [scope, setScope] = useState<"unmatched" | "all">("unmatched");
   const shown = useMemo(() => {
@@ -149,14 +156,26 @@ export function RevolutInbox({
       return "Choisissez le client à créditer.";
     }
     const choices = accounts[customerId] || [];
-    const billingCompanyId = accountFor[id] || "";
+    const link = linkFor[id] || emptyPaymentTarget();
+    const billingCompanyId =
+      choices.length > 1 ? accountFor[id] || "" : link.payerKind === "company" ? link.companyId : "";
     if (choices.length > 1 && !choices.some((choice) => choice.id === billingCompanyId)) {
       setError("Choisissez le compte : crédit ou Pro.");
       return "Choisissez le compte : crédit ou Pro.";
     }
+    if (!paymentTargetReady(link)) {
+      setError("Choisissez le dossier et le payeur.");
+      return "Choisissez le dossier et le payeur.";
+    }
     const json = await post(
       id,
-      { customer_id: customerId, billing_company_id: billingCompanyId || null },
+      {
+        customer_id: customerId,
+        lier: true,
+        booking_id: link.bookingId,
+        payer_kind: link.payerKind,
+        billing_company_id: billingCompanyId || null,
+      },
       "Crédit impossible. Réessayez."
     );
     if (!json) return "Crédit impossible. Réessayez.";
@@ -305,6 +324,17 @@ export function RevolutInbox({
                           ))}
                         </select>
                       </label>
+                    ) : null}
+                    {chosen ? (
+                      <div className="w-full basis-full">
+                        <PaymentTargetFields
+                          customerId={chosen.id}
+                          label={`${sender} ${designation}`}
+                          value={linkFor[r.id] || emptyPaymentTarget()}
+                          onChange={(next) => setLinkFor((current) => ({ ...current, [r.id]: next }))}
+                          disabled={rowBusy === r.id}
+                        />
+                      </div>
                     ) : null}
                     {chosen ? (
                       <ConfirmAction

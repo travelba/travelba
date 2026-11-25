@@ -150,8 +150,9 @@ describe("redactIngestText", () => {
     });
     assert.equal(cleaned.total_amount, 0);
     assert.equal(cleaned.document_status, "quote");
-    assert.equal((cleaned.notes_client || "").includes("8445"), false);
-    assert.match(cleaned.notes_client || "", /Devis/);
+    assert.equal(cleaned.notes_client, null);
+    assert.equal((cleaned.notes_internal || "").includes("8445"), false);
+    assert.match(cleaned.notes_internal || "", /Devis/);
   });
 
   it("masque une ligne Numéro de la carte maeva", () => {
@@ -361,6 +362,48 @@ Distance 3 610,00 km
     assert.equal(glued[0]?.first_name, "Lea");
     assert.equal(glued[0]?.last_name, "Martin");
     assert.equal(parseTicketPassengers("Référence du dossier compagnie AF/ABC123").length, 0);
+    assert.equal(parseTicketPassengers("Référence du dossier compagnie AF/ZLFJIN, LY/ZLFJIN").length, 0);
+    assert.equal(parseTicketPassengers("Référence du dossier compagnie AF/XETHOS").length, 0);
+    assert.equal(parseTicketPassengers("Référence du dossier compagnie AF/XFTSWW").length, 0);
+    assert.equal(parseTicketPassengers("Référence du dossier compagnie AF/ZFSBMS").length, 0);
+  });
+});
+
+const ZOE_RECEIPT = `
+Reçu de Billet Electronique
+Référence du dossier ZLFJIN
+Passager / Numéro De Billet
+BENILLOUCHE/ZOE MS 114-3812456790
+Compagnie émettrice : EL AL
+Mardi 24 novembre 2026
+El Al LY 9843 (Opéré Par El Al, LY)
+24 November 18:00 Ben Gurion TEL AVIV Terminal : 3Départ
+24 November 22:00 Charles-de-Gaulle PARIS Terminal : 2EArrivée
+Siège 12A - Confirmé pour Ms Zoe Benillouche
+Référence du dossier compagnie AF/ZLFJIN, LY/ZLFJIN
+Numéro de billet : 114-3812456790 Ms Zoe Benillouche
+`;
+
+describe("reçu compagnie, une passagère et des références AF/PNR", () => {
+  it("garde Zoe Benillouche et ignore AF/ZLFJIN et LY/ZLFJIN", () => {
+    const people = parseTicketPassengers(ZOE_RECEIPT);
+    assert.deepEqual(
+      people.map((row) => `${row.first_name} ${row.last_name}`),
+      ["Zoe Benillouche"]
+    );
+    assert.equal(people[0]?.ticket_number, "1143812456790");
+    const parsed = parsedItemsFromText(ZOE_RECEIPT);
+    assert.equal(parsed.travelers.length, 1);
+    assert.equal(parsed.travelers[0]?.first_name, "Zoe");
+    assert.equal(parsed.travelers[0]?.last_name, "Benillouche");
+    const flight = parsed.items.find((item) => item.kind === "flight");
+    const details = flight?.details as { passengers?: { first_name: string; last_name: string }[]; ticket_count?: number };
+    assert.equal(details?.ticket_count, 1);
+    assert.deepEqual(
+      (details?.passengers || []).map((row) => `${row.first_name} ${row.last_name}`),
+      ["Zoe Benillouche"]
+    );
+    assert.equal(JSON.stringify(parsed).includes("Zlfjin"), false);
   });
 });
 

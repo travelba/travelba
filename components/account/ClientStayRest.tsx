@@ -34,6 +34,9 @@ import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
+import { readForfaitAmount, readStayPriceMode } from "@/lib/crm/card-price";
+import { readCommercialDiscount } from "@/lib/crm/commercial-discount";
+import { loadDiscountLines } from "@/lib/crm/booking-discounts-db";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
 import { chargeableTicketingFee, ticketingTicketCount } from "@/lib/crm/ticketing-fee";
 import { loadClientLedger } from "@/lib/crm/client-ledger-load";
@@ -50,6 +53,7 @@ import {
   type CrmCompanion,
   type CrmCustomer,
   type CrmTravelDocument,
+  customerFullName,
 } from "@/lib/crm/types";
 import { expenseCountsForClient } from "@/lib/crm/expense-validation";
 import { bookingPayerLabel, type FundingCompany } from "@/lib/crm/funding-wallet";
@@ -58,8 +62,19 @@ import { clientHotelCancelOffers, type LeCancelRow } from "@/lib/crm/le-free-can
 import { DESK_COOKIE, deskBypass } from "@/lib/crm/desk-mode";
 import { loadClientRestaurantEvenings } from "@/lib/crm/client-tables";
 import { VosTables } from "@/components/account/VosTables";
+import { stripClientMoneyItem, withoutClientInvoices } from "@/lib/crm/client-price-privacy";
+import { walletSigningReady } from "@/lib/crm/wallet-sign";
 
 type VisaRow = { country: string; step?: ClientVisaStep; status?: string; accepted_at?: string | null };
+
+function stayGuestLabel(travelers: CrmBookingTraveler[], customer: CrmCustomer) {
+  const people = travelers
+    .map((row) => [row.first_name, row.last_name].filter(Boolean).join(" ").trim())
+    .filter(Boolean);
+  if (people.length) return people.slice(0, 4).join(", ");
+  const name = customerFullName(customer);
+  return name === "Client" ? null : name;
+}
 
 async function loadLeCancelRows(bookingId: string): Promise<LeCancelRow[]> {
   try {
@@ -97,6 +112,7 @@ export async function ClientStayRest({
   companions,
   refusals,
   visaRows,
+  hidePrices = false,
 }: {
   supabase: SupabaseClient;
   customer: CrmCustomer;
@@ -109,16 +125,18 @@ export async function ClientStayRest({
   companions: CrmCompanion[];
   refusals: ServiceRefusal[];
   visaRows: VisaRow[];
+  /** Le client ne reçoit aucun montant. L’itinéraire et les pièces de voyage restent. */
+  hidePrices?: boolean;
 }) {
-  const b = booking;
+  const b = hidePrices ? { ...booking, prices_visible: false } : booking;
   const pub = toPublicBooking(b);
   const party = travelers;
-  const visibleDocs = docs;
+  const visibleDocs = hidePrices ? withoutClientInvoices(docs) : docs;
   const identity = identityDocs;
 
   const [catalogItems, ledger, settled, expenseChoices, payerCompanies, shareUrl, leRows, tableEvenings, checkinByItem] = await Promise.all([
     loadHotelContacts(b.id, rawItems),
-    loadClientLedger(supabase, customer, "client"),
+    hidePrices ? Promise.resolve(null) : loadClientLedger(supabase, customer, "client"),
     settledCountries(b, party, identity, customer),
     loadExpenseChoices(b.id, rawItems),
     loadPayerCompanies(supabase, b),
@@ -128,7 +146,7 @@ export async function ClientStayRest({
     loadClientCheckinStatus(b.id),
   ]);
 
-  const visibleItems = withoutHotelRosterItems(catalogItems);
+  const visibleItems = (hidePrices ? withoutHotelRosterItems(catalogItems).map((item) => stripClientMoneyItem(item)) : withoutHotelRosterItems(catalogItems));
   const jar = await cookies();
   const desk = Boolean(customer.auth_user_id && deskBypass(jar.get(DESK_COOKIE)?.value, customer.auth_user_id));
   const hotelCancels =
@@ -165,8 +183,15 @@ export async function ClientStayRest({
     feeMode: b.fee_mode,
   });
   const agencyFee = await agencyFeeForBooking(supabase, b);
-  const stayTotal = bookingTotalFromItems(allItems);
-  const expenseLines = clientStayExpenseLines({
+  const stayMode = readStayPriceMode(b);
+  const stayTotal = bookingTotalFromItems(allItems, { stayMode, forfaitAmount: readForfaitAmount(b) });
+  const storedDiscounts = await loadDiscountLines([b.id]).catch(() => null);
+  const discountLines = storedDiscounts ? storedDiscounts.get(b.id) || [] : null;
+  const discount = readCommercialDiscount(b);
+  const discountInput = discountLines ? { discounts: discountLines } : { discount };
+  const expenseLines = hidePrices
+    ? []
+    : clientStayExpenseLines({
     expenses: expenseChoices,
     agencyCommission: b.agency_commission === true,
     agencyFeeRate: agencyFee.rate,
@@ -176,15 +201,18 @@ export async function ClientStayRest({
     extras: feeExtras,
     ticketingFee,
     ticketCount,
+    ...discountInput,
   });
-  const payerLabel = bookingPayerLabel(b, payerCompanies);
+  const payerLabel = hidePrices ? null : bookingPayerLabel(b, payerCompanies);
   const encoursPay =
-    ledger.member || (ledger.owed.total <= 0 && !ledger.pockets?.some((pocket) => pocket.due >= 0.5)) ? null : (
+    hidePrices || !ledger || ledger.member || (ledger.owed.total <= 0 && !ledger.pockets?.some((pocket) => pocket.due >= 0.5)) ? null : (
       <section id="reglement" className="rounded-xl border border-[#e9e8e5]/60 bg-white p-4 shadow-sm">
         <SepaInFlight holds={ledger.sepaHolds || []} failures={ledger.sepaFailures || []} />
         <EncoursPayment
           company={ledger.owed.company}
           personal={ledger.owed.personal}
+          pooled={ledger.owed.pooled}
+          total={ledger.owed.total}
           currency={ledger.currency}
           soleCompanyName={ledger.soleCompanyName}
           stripeKey={stripePublishableKey()}
@@ -196,7 +224,9 @@ export async function ClientStayRest({
       </section>
     );
   const passportRows = passportVaultRows(party, identity, todayIsoDate(), holder, b, companions);
-  const looseDocs = unlinkedDocuments(visibleDocs, visibleItems).filter((doc) => !isBoardingPassDocument(doc));
+  const looseDocs = unlinkedDocuments(hidePrices ? withoutClientInvoices(visibleDocs) : visibleDocs, visibleItems).filter(
+    (doc) => !isBoardingPassDocument(doc)
+  );
 
   return (
     <ClientTripBody
@@ -211,9 +241,13 @@ export async function ClientStayRest({
           booking={pub}
           items={visibleItems}
           docs={visibleDocs}
-          pricesVisible={b.prices_visible !== false}
+          pricesVisible={!hidePrices && b.prices_visible !== false}
+          cardPrices={stayMode !== "forfait"}
           calendarBase={`/mon-compte/reservations/${b.reference}/agenda.ics`}
           phones={googlePhoneMap(b, visibleItems)}
+          walletReady={walletSigningReady()}
+          guestLabel={stayGuestLabel(party, customer)}
+          messagesHref={`/mon-compte/messages?sejour=${encodeURIComponent(b.reference)}`}
           services={{
             variant: "client",
             travelers: party,
@@ -240,10 +274,10 @@ export async function ClientStayRest({
           booking={pub}
           items={visibleItems}
           travelers={party}
-          holder={customer}
+          holder={hidePrices ? { ...customer, iban: null, spending_allowance: null, stripe_customer_id: null } : customer}
           companions={companions}
           whatsappHref={modifyHref}
-          formalities={formalities}
+          formalities={hidePrices ? { ...formalities, amount: 0 } : formalities}
           refusals={refusals}
         />
       }
@@ -296,6 +330,7 @@ export async function ClientStayRest({
         ) : null
       }
       amount={
+        hidePrices ? null : (
         <section className="aura-card space-y-2 rounded-[1.35rem] bg-white p-4">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
             Montant du séjour
@@ -307,12 +342,13 @@ export async function ClientStayRest({
             {clientStayPriceLabel({
               stayTotal,
               currency: b.currency,
-              pricesVisible: b.prices_visible !== false,
+              pricesVisible: !hidePrices && b.prices_visible !== false,
               agencyCommission: b.agency_commission === true,
               agencyFeeRate: agencyFee.rate,
               expenses: expenseChoices,
               extras: feeExtras,
               ticketingFee,
+              ...discountInput,
             })}
           </p>
           {insurances.map((item) => {
@@ -325,6 +361,7 @@ export async function ClientStayRest({
             );
           })}
         </section>
+        )
       }
       expenses={expenseLines.length ? <StayExpenses lines={expenseLines} /> : null}
       tail={

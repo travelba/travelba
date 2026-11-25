@@ -167,10 +167,24 @@ test("Raphael voit l’encours société, les trois droits et le compte de chaqu
     bookings,
     spendAccounts: [raphael, gaelle],
     rows,
-    openCarnetOwnerIds: ["raphael", "gaelle"],
+    openCarnetOwnerIds: ["raphael"],
+  });
+  assert.equal(shared.movements.find((row) => row.bookingId === "b-gaelle")?.carnetHref, null);
+  const travels = shapeClientLedger({
+    companyRole: "admin",
+    viewerId: "raphael",
+    travelerBookingIds: ["b-raphael"],
+    walletBalance: 35600,
+    currency: "EUR",
+    audience: "client",
+    bookings,
+    spendAccounts: [raphael, gaelle],
+    rows,
+    openCarnetOwnerIds: ["raphael"],
+    openCarnetBookingIds: ["b-gaelle"],
   });
   assert.equal(
-    shared.movements.find((row) => row.bookingId === "b-gaelle")?.carnetHref,
+    travels.movements.find((row) => row.bookingId === "b-gaelle")?.carnetHref,
     "/mon-compte/reservations/TB-G"
   );
   assert.equal(

@@ -17,6 +17,7 @@ import { pliantBookingCards, pliantCardRecaps, type PliantCardRecap } from "@/li
 import { companionsForShare, isTripShareCode, tripShareUrl } from "@/lib/crm/trip-share";
 import { loadEstaForBookingId } from "@/lib/crm/esta-run";
 import { readUkEtaLines } from "@/lib/crm/uk-eta-run";
+import { loadStayPricedDiscounts } from "@/lib/crm/displayed-stay";
 import { buildMb3mInvoiceContext, mb3mInvoiceBlocker } from "@/lib/crm/mb3m-invoice";
 import { mb3mCreditNoteAllowed, mb3mRealm } from "@/lib/crm/mb3m";
 import { mb3mFicheBlocker } from "@/lib/crm/mb3m-party";
@@ -622,6 +623,11 @@ function startDossierPanels(input: {
       if (!number) return [];
       return [{ label: (line?.label || "Vol").trim(), invoiceNumber: number, placement }];
     });
+    const pricedDiscounts = await loadStayPricedDiscounts(createServiceClient(), id).catch(() => null);
+    const discountCuts = pricedDiscounts?.lines
+      .filter((line) => line.euros > 0)
+      .map((line) => ({ id: line.id, label: line.label, euros: line.euros }));
+    const discountEuros = pricedDiscounts ? pricedDiscounts.lines.reduce((sum, line) => sum + line.euros, 0) : 0;
     const mb3mContext = buildMb3mInvoiceContext({
       booking: b,
       items: bookingItems,
@@ -631,6 +637,8 @@ function startDossierPanels(input: {
       charges: accountingInputs.charges,
       coveredIds: accountingInputs.coveredIds,
       costs: accountingInputs.costs,
+      discountEuros,
+      ...(discountCuts ? { discountCuts } : {}),
     });
     return {
       ledger: ledgers.ledger,

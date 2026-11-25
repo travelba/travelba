@@ -9,6 +9,7 @@ export const CHROMIUM_TRACE_INCLUDES: Record<string, string[]> = {
   "/api/admin/bookings/[id]/visa": [`./${CHROMIUM_PACK_DIR}/**`],
   "/api/client/bookings/[id]/visa": [`./${CHROMIUM_PACK_DIR}/**`],
   "/api/cron/visa-portal": [`./${CHROMIUM_PACK_DIR}/**`],
+  "/api/cron/hotel-charge": [`./${CHROMIUM_PACK_DIR}/**`],
 };
 
 export const CHROMIUM_BUNDLE_MESSAGE =

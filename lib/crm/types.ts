@@ -192,6 +192,10 @@ export type CrmCustomer = {
   /** Droit de dépense en euros sur le wallet société. Null = pas de plafond personnel. */
   spending_allowance?: number | null;
   language: string;
+  /** Platinum dès la validation. Vide tant que la migration n’est pas jouée ou le membre pas encore validé par ce parcours. */
+  club_rank?: "platinum" | null;
+  club_started_on?: string | null;
+  club_ends_on?: string | null;
   /** Le client a ouvert un lien WhatsApp. Sans cette date, aucun message proactif. */
   whatsapp_opt_in_at?: string | null;
   /** Le client a demandé l’arrêt. Les messages proactifs s’arrêtent. */
@@ -199,6 +203,10 @@ export type CrmCustomer = {
   stripe_customer_id: string | null;
   /** Badge / filtre admin — aucun effet côté espace client. */
   on_hold?: boolean;
+  /** Espace client : aucun prix, aucun solde, aucune transaction. Défaut faux. L’agence seule l’écrit. */
+  hide_client_prices?: boolean;
+  /** Aucun frais de billeterie ni commission automatique sur les dossiers de cette fiche. Défaut faux. */
+  zero_fees?: boolean;
   /** Réservation d’hôtels en autonomie. Faux par défaut. L’agence seule l’écrit. */
   hotel_booking_enabled?: boolean;
   /** Compte de démonstration : jamais de mode réel. */
@@ -227,6 +235,10 @@ export type CrmCompanion = {
   phone?: string | null;
   /** Contact seulement. N’ouvre pas de compte. */
   email?: string | null;
+  /** Stop WhatsApp de ce numéro. Ne coupe pas le titulaire. */
+  whatsapp_opt_out_at?: string | null;
+  /** Premier message d’infos voyage déjà envoyé à ce numéro. */
+  whatsapp_intro_sent_at?: string | null;
   /** Numéros de programmes (Flying Blue, Grand Voyageur, Great Members, …). */
   loyalty?: Record<string, string | null> | null;
   created_at: string;
@@ -289,10 +301,18 @@ export type CrmBooking = {
   include_in_ledger: boolean;
   /** Si true : commission d’agence des étapes et des dépenses, en une ligne du dossier. */
   agency_commission?: boolean;
+  /** Remise commerciale : amount (euros) ou percent (0 à 100). Null : pas de remise. */
+  remise_type?: "amount" | "percent" | null;
+  /** Valeur de la remise, appliquée après commissions et frais. */
+  remise_value?: number | string | null;
   /** Dérogation du dossier. Null = taux du compte, sinon 10 %. */
   agency_fee_rate?: number | string | null;
-  /** `ticketing_off` : la billeterie automatique ne se recrée pas après un retrait. */
+  /** `ticketing_off` : ancien marqueur. Les frais automatiques ne sont plus créés ni retirés. */
   fee_mode?: string | null;
+  /** cartes : un prix par carte. forfait : un seul prix de voyage. Absent avant la migration. */
+  price_mode?: "cartes" | "forfait" | null;
+  /** Prix unique du voyage quand price_mode vaut forfait. */
+  forfait_amount?: number | string | null;
   /** Si true : le client règle le séjour sur sa carte. Le montant sort du grand livre. */
   client_settles_stay?: boolean;
   cover_image_path: string | null;
@@ -329,8 +349,10 @@ export type CrmBookingItem = {
   start_at: string | null;
   end_at: string | null;
   amount: number | null;
-  /** Si true : ce prix vendu apparaît dans Transactions et l’encours. */
+  /** Si true : ce prix vendu apparaît dans Transactions et l’encours. Une carte « Avec prix » l’est toujours. */
   include_in_ledger: boolean;
+  /** avec ou sans. Absent : déduit du prix de vente. La colonne arrive avec la migration. */
+  price_mode?: "avec" | "sans" | null;
   /** Société de facturation de la dépense, si elle diffère du séjour. */
   billing_company_id?: string | null;
   sort_order: number;
@@ -529,6 +551,10 @@ export type CrmBookingTraveler = {
   first_name: string | null;
   last_name: string | null;
   created_at: string;
+  /** Conjoint : infos voyage WhatsApp de ce dossier. Vrai par défaut. Absent tant que la migration n’est pas jouée. */
+  whatsapp_travel_updates?: boolean | null;
+  whatsapp_travel_updates_at?: string | null;
+  whatsapp_travel_updates_by?: string | null;
 };
 
 export type CrmBookingDocument = {
@@ -738,6 +764,7 @@ export type EmailIngestCandidate = {
   start_date?: string | null;
   end_date?: string | null;
   covers_passengers?: boolean;
+  destination?: string | null;
 };
 
 export type LeBookingLinkStatus = "unmatched" | "linked" | "ignored";

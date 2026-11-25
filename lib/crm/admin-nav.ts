@@ -3,7 +3,7 @@
 import type { Permission } from "@/lib/crm/agency-access";
 import type { StaffRole } from "@/lib/crm/staff-team";
 
-export type AdminBadgeKey = "revolut" | "stripe" | "emails" | "le" | "pieces" | "whatsapp" | "hotels" | "costs";
+export type AdminBadgeKey = "revolut" | "stripe" | "emails" | "le" | "pieces" | "whatsapp" | "hotels" | "costs" | "messages";
 
 export type AdminNavCounts = Record<AdminBadgeKey, number>;
 
@@ -16,6 +16,7 @@ export const EMPTY_NAV_COUNTS: AdminNavCounts = {
   whatsapp: 0,
   hotels: 0,
   costs: 0,
+  messages: 0,
 };
 
 export type AdminNavItem = {
@@ -103,6 +104,9 @@ export function adminNavGroups(input: {
       items: [
         { href: ADMIN_ROUTES.clients, label: "Clients", icon: "group" },
         { href: `${ADMIN_ROUTES.clients}?filtre=echeance`, label: "Pièces à échéance", icon: "id_card", badge: "pieces" },
+        ...(admin || input.allows?.review_signups
+          ? [{ href: "/admin/inscriptions", label: "Inscriptions", icon: "person_add" } satisfies AdminNavItem]
+          : []),
       ],
     },
     {
@@ -113,6 +117,7 @@ export function adminNavGroups(input: {
         { href: `${ADMIN_ROUTES.boite}?onglet=fournisseurs`, label: "Fournisseurs", icon: "inbox", badge: ["emails", "le"] },
         { href: `${ADMIN_ROUTES.boite}?onglet=hotels`, label: "Hôtels", icon: "hotel", badge: "hotels" },
         { href: `${ADMIN_ROUTES.boite}?onglet=whatsapp`, label: "WhatsApp", icon: "forum", badge: "whatsapp" },
+        { href: `${ADMIN_ROUTES.boite}?onglet=messages`, label: "Messages", icon: "chat", badge: "messages" },
       ],
     },
     {
@@ -139,6 +144,7 @@ export function adminNavGroups(input: {
             { href: `${ADMIN_ROUTES.reglages}/mails`, label: "E-mails au client", icon: "mail" },
             { href: `${ADMIN_ROUTES.reglages}/facture`, label: "Facture", icon: "description" },
             { href: `${ADMIN_ROUTES.reglages}/depenses`, label: "Dépenses types", icon: "receipt_long" },
+            { href: `${ADMIN_ROUTES.reglages}/billeterie`, label: "Frais de billeterie", icon: "airplane_ticket" },
             { href: "/admin/concierge", label: "Savoir du Concierge", icon: "menu_book" },
             { href: `${ADMIN_ROUTES.reglages}/hotels`, label: "Accès Hôtels", icon: "lock" },
             { href: `${ADMIN_ROUTES.reglages}/gmail`, label: "Diagnostic Gmail", icon: "activity" },
@@ -153,6 +159,7 @@ export function adminNavGroups(input: {
               : []),
             { href: `${ADMIN_ROUTES.reglages}/whatsapp`, label: "Modèles WhatsApp", icon: "chat" },
             { href: `${ADMIN_ROUTES.reglages}/mails`, label: "E-mails au client", icon: "mail" },
+            { href: `${ADMIN_ROUTES.reglages}/billeterie`, label: "Frais de billeterie", icon: "airplane_ticket" },
           ],
     },
   ];
@@ -250,14 +257,14 @@ export const ADMIN_MOBILE_TABS: AdminMobileTab[] = [
     paths: ["/admin/reservations", "/admin/restaurants", "/admin/formalites", "/admin/services", "/admin/ratehawk"],
     badges: [],
   },
-  { id: "clients", label: "Clients", icon: "group", href: ADMIN_ROUTES.clients, paths: ["/admin/clients"], badges: [] },
+  { id: "clients", label: "Clients", icon: "group", href: ADMIN_ROUTES.clients, paths: ["/admin/clients", "/admin/inscriptions"], badges: [] },
   {
     id: "boite",
     label: "Boîte",
     icon: "inbox",
     href: ADMIN_ROUTES.boite,
     paths: ["/admin/boite", "/admin/emails", "/admin/whatsapp", "/admin/little-emperors", "/admin/hotels-demandes"],
-    badges: ["emails", "le", "whatsapp", "hotels"],
+    badges: ["emails", "le", "whatsapp", "hotels", "messages"],
   },
   {
     id: "argent",
@@ -283,6 +290,7 @@ export function adminPageTitle(groups: AdminNavGroup[], pathname: string, search
   if (pathname === "/admin/reservations/nouveau") return "Nouveau dossier";
   if (/^\/admin\/reservations\/[^/]+/.test(pathname)) return "Dossier";
   if (/^\/admin\/clients\/[^/]+/.test(pathname)) return "Fiche client";
+  if (pathname.startsWith("/admin/inscriptions")) return "Inscriptions";
   if (pathname.startsWith("/admin/transactions/client/")) return "Transactions du client";
   if (pathname === "/admin/restaurants/catalogue") return "Catalogue";
   if (pathname === "/admin/restaurants/aujourdhui" || pathname === "/admin/restaurants") return "Restaurants";

@@ -9,6 +9,7 @@ import { loadClientLedger } from "@/lib/crm/client-ledger-load";
 import { ibanLast4 } from "@/lib/crm/billing";
 import { stripePublishableKey } from "@/lib/crm/stripe-publishable";
 import { siteConfig } from "@/lib/site";
+import { CLIENT_MONEY_NOTICE, clientHidesPrices } from "@/lib/crm/client-price-privacy";
 
 export const metadata = { title: `Transactions — ${siteConfig.shortName}` };
 
@@ -19,8 +20,9 @@ export default async function TransactionsPage() {
   const customer = await ensureCustomerForUser(user);
   if (!customer) redirect("/connexion");
 
+  const hidePrices = clientHidesPrices(customer);
   console.time("[espace] transactions");
-  const view = await loadClientLedger(supabase, customer, "client", { reconcile: false });
+  const view = hidePrices ? null : await loadClientLedger(supabase, customer, "client", { reconcile: false });
   console.timeEnd("[espace] transactions");
 
   return (
@@ -32,6 +34,11 @@ export default async function TransactionsPage() {
           Transactions
         </h1>
       </div>
+      {hidePrices || !view ? (
+        <p className="rounded-2xl border border-[#e5e3dc] bg-white px-4 py-4 text-sm text-[var(--admin-navy)]">
+          {CLIENT_MONEY_NOTICE}
+        </p>
+      ) : (
       <ClientTransactionsPanel
         view={view}
         billingHref="/mon-compte/profil/facturation"
@@ -43,6 +50,8 @@ export default async function TransactionsPage() {
               compact
               company={view.owed.company}
               personal={view.owed.personal}
+              pooled={view.owed.pooled}
+              total={view.owed.total}
               currency={view.currency}
               soleCompanyName={view.soleCompanyName}
               stripeKey={stripePublishableKey()}
@@ -54,6 +63,7 @@ export default async function TransactionsPage() {
           )
         }
       />
+      )}
     </div>
     </AccountPage>
   );

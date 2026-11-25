@@ -63,8 +63,21 @@ export async function modifierPlafondPliant(input: Record<string, unknown>, effe
   const euros = eurosOf(input.plafond);
   const body = preview("plafond", card, { plafond_nouveau: euros.raw });
   if (!confirmed(input)) return body;
-  await (effects.changeLimit ?? missing("plafond"))(card, euros.raw);
-  return { ...body, ecrit: true, apercu: false };
+  try {
+    await (effects.changeLimit ?? missing("plafond"))(card, euros.raw);
+  } catch (err) {
+    if (err instanceof McpWriteError) throw err;
+    const message = err instanceof Error ? err.message : "";
+    const clear = message.startsWith("Pliant") || message.startsWith("Le plafond est chez Pliant");
+    throw new McpWriteError(clear ? message : "Pliant n’a pas modifié le plafond.");
+  }
+  return {
+    ...body,
+    ecrit: true,
+    apercu: false,
+    plafond_euros: euros.cents / 100,
+    montant_transaction: euros.cents / 100,
+  };
 }
 
 /** Clôture la carte. Sans confirmer, elle reste active. */

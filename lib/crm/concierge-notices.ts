@@ -1,6 +1,6 @@
 import { isTripShareCode } from "./trip-share-check";
 import { isEntryCode } from "./entry-code";
-import { clientStayFace } from "./client-stay-face";
+import { clientStayFace, shownStayDestination } from "./client-stay-face";
 import { stayDestinationPhrase, stayPhrase } from "./stay-phrase";
 import type { TripStep } from "./layover";
 import { generatedCityCoverSpec } from "./cover-catalog";
@@ -337,7 +337,7 @@ export function planStayNotice(input: {
     homeCity: input.homeCity,
   });
   const place = stayPlaceName(
-    face.destination || input.destination,
+    shownStayDestination(face, input.destination),
     face.title || input.title,
     face.fromCards ? face.items : input.items,
     input.homeCity
@@ -498,7 +498,7 @@ export function planPiecesNotices(input: {
     homeCity: input.homeCity,
   });
   const place = stayPlaceName(
-    face.destination || input.destination || null,
+    shownStayDestination(face, input.destination) || null,
     face.title || input.title || null,
     face.fromCards ? face.items : input.items,
     input.homeCity

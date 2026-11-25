@@ -83,21 +83,26 @@ async function sendStatement(customerId: string) {
   if (!allowed) return { ok: false, message: RATE_LIMITED_MESSAGE };
   const { createServiceClient } = await import("@/lib/supabase/admin");
   const { loadClientLedger } = await import("@/lib/crm/client-ledger-load");
+  const { statementExportName } = await import("@/lib/crm/statement-filename");
   const { buildStatement, statementHolderLines } = await import("@/lib/crm/statement");
-  const { renderAccountStatementPdf } = await import("@/lib/crm/statement-wire");
+  const { attachStatementTransfer } = await import("@/lib/crm/statement-wire");
+  const { renderStatementPdf } = await import("@/lib/crm/statement-pdf");
   const { deliverStatementWhatsapp } = await import("@/lib/crm/statement-send");
   const admin = createServiceClient();
   const { data } = await admin.from("crm_customers").select("*").eq("id", customerId).maybeSingle();
   const customer = data as CrmCustomer | null;
   if (!customer) return { ok: false, message: "Le relevé part depuis Transactions. Je vous ouvre l’espace." };
+  const issuedAt = new Date();
   const view = await loadClientLedger(admin, customer, "client");
-  const pdf = await renderAccountStatementPdf(
-    buildStatement({
-      view,
-      holderName: customerFullName(customer),
-      holderLines: statementHolderLines(customer),
-      issuedAt: new Date(),
-    })
+  const pdf = await renderStatementPdf(
+    await attachStatementTransfer(
+      buildStatement({
+        view,
+        holderName: customerFullName(customer),
+        holderLines: statementHolderLines(customer),
+        issuedAt,
+      })
+    )
   );
   const sent = await deliverStatementWhatsapp({
     customerId: customer.id,
@@ -105,6 +110,7 @@ async function sendStatement(customerId: string) {
     firstName: customer.first_name,
     member: view.member,
     pdf,
+    filename: statementExportName(customer, { issuedAt }),
     audience: "client",
     optOutAt: customer.whatsapp_opt_out_at,
   });

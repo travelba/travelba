@@ -23,10 +23,29 @@ export function securityHeaders() {
 
 /** Fichiers publics versionnés (vidéo du hero, badge). Le HTML Next reste en revalidation. */
 const IMMUTABLE_ASSET = "public, max-age=31536000, immutable";
+const REVALIDATE = "public, max-age=0, must-revalidate";
+
+const ICON_SOURCES = [
+  "/icon.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/apple-touch-icon.png",
+  "/favicon.ico",
+  "/favicon.png",
+  "/favicon-16.png",
+  "/favicon-32.png",
+  "/favicon-48.png",
+  "/manifest.webmanifest",
+];
 
 export function staticCacheHeaders() {
   return [
     { source: "/videos/:path*", headers: [{ key: "Cache-Control", value: IMMUTABLE_ASSET }] },
     { source: "/brand/:path*", headers: [{ key: "Cache-Control", value: IMMUTABLE_ASSET }] },
+    { source: "/tba-sw.js", headers: [{ key: "Cache-Control", value: REVALIDATE }] },
+    ...ICON_SOURCES.map((source) => ({
+      source,
+      headers: [{ key: "Cache-Control", value: IMMUTABLE_ASSET }],
+    })),
   ];
 }

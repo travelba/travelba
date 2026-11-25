@@ -37,9 +37,9 @@ export function CompanyRoleFields({
           </p>
         ) : null}
         <p className={`text-sm text-muted ${heading ? "mt-1" : ""}`}>
-          Un voyageur peut être payé par une société. L’admin voit les voyages publiés de ses
-          collaborateurs, pas ceux des autres admins. Le collaborateur voit son droit de dépense et
-          les frais de ses voyages, pas les versements de la société.
+          Un voyageur peut être payé par une société. L’admin voit les dépenses de son équipe, pas
+          le voyage d’un collaborateur. Il garde ses dossiers et ceux où il voyage. Le collaborateur
+          voit son droit de dépense et les frais de ses voyages, pas les versements de la société.
         </p>
       </div>
       <Field label="Rôle">
@@ -59,7 +59,7 @@ export function CompanyRoleFields({
       {role === "member" ? (
         <Field
           label="Facturé par (admin société)"
-          hint="Wallet qui reçoit les virements et les débits des dossiers. Cet admin voit le carnet publié."
+          hint="Wallet qui reçoit les virements et les débits. Cet admin ne voit pas le carnet du collaborateur."
         >
           <select
             value={billingParentId}
@@ -95,8 +95,8 @@ export function CompanyRoleFields({
       ) : null}
       {role === "admin" ? (
         <p className="text-xs text-[#9e7e51]">
-          Ce client est le wallet société : rapprochements Revolut et encours global ici. Il voit
-          les voyages publiés de ses collaborateurs.
+          Ce client est le wallet société : rapprochements Revolut et encours global ici. Il voit les
+          dépenses de son équipe, pas le voyage d’un collaborateur.
         </p>
       ) : null}
     </section>

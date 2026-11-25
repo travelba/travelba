@@ -269,13 +269,19 @@ function creditPayload(row: CrmStripeTransaction, customerId: string) {
 export async function applyStripeToCustomer(
   admin: StripeAdmin,
   row: CrmStripeTransaction,
-  customerId: string
+  customerId: string,
+  link?: { bookingId?: string | null; payerKind?: "company" | "personal" | null; companyId?: string | null } | null
 ) {
   if (row.status === "matched") return { ok: false as const, error: "already_matched" };
   if (row.direction === "debit") return { ok: false as const, error: "not_a_credit" };
   if (!row.stripe_payment_intent_id) return { ok: false as const, error: "missing_intent" };
 
   const payload = creditPayload(row, customerId);
+  if (link?.bookingId) payload.booking_id = link.bookingId;
+  if (link?.payerKind) {
+    payload.payer_kind = link.payerKind;
+    payload.billing_company_id = link.payerKind === "company" ? link.companyId || null : null;
+  }
   const { data: tx, error } = await admin
     .from("crm_transactions")
     .insert(payload)

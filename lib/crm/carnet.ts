@@ -6,12 +6,14 @@ import {
   isLedgerExpenseKind,
   visibleServiceCopy,
 } from "@/lib/crm/types";
+import { clientSeesCardPrice } from "@/lib/crm/card-price";
 import { formatDateFr, formatMoney, todayIsoDate } from "@/lib/crm/money";
 import { cityLabel, cityPlaceKey, isOriginHub } from "./city-names";
 import { labelIncludesCity, splitPlaceLabel, tripCityPlan } from "./layover";
 import { stayDestinationLine } from "./stay-phrase";
 import { accueilVipTimelineDays, placeAccueilVipBesideFlights, withLiveAccueilVip } from "./accueil-vip";
 import { statedTicketCount } from "./item-match";
+import { coversSharedFlight, dedupeSharedTickets } from "./ticket-share";
 
 export function detailStr(item: CrmBookingItem, key: string) {
   const value = item.details?.[key];
@@ -104,6 +106,19 @@ export function hotelCityLine(item: CrmBookingItem) {
   return city;
 }
 
+/** Première nuit ou « nuit N sur N ». L’index suit les nuits affichées, fin exclue. */
+export function hotelNightFace(item: DayItem, day: string | null | undefined) {
+  const nights = stayNightDates(item.start_at ?? null, item.end_at ?? null);
+  const total = nightsBetween(item.start_at ?? null, item.end_at ?? null);
+  const index = day ? nights.indexOf(day) : 0;
+  const place = index >= 0 ? index : 0;
+  return {
+    index: place + 1,
+    total,
+    first: place === 0,
+  };
+}
+
 export function stayNightDates(start: string | null, end: string | null) {
   const from = (start || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return [] as string[];
@@ -143,11 +158,19 @@ export function itemFirstDayKey(item: DayItem) {
   return itemDayKey(item);
 }
 
-/** Jours où la carte apparaît : hôtel et location répétés, vol/autres = jour de début. */
+/** Jours où la carte apparaît. L’hôtel s’arrête avant le départ. La location ajoute le matin de la restitution. */
 export function itemTimelineDays(item: DayItem) {
-  if (item.kind === "hotel" || item.kind === "car") {
+  if (item.kind === "hotel") {
     const nights = stayNightDates(item.start_at, item.end_at);
     return nights.length ? nights : [itemDayKey(item)];
+  }
+  if (item.kind === "car") {
+    const nights = stayNightDates(item.start_at, item.end_at);
+    const days = (nights.length ? nights : [itemDayKey(item)]).filter((key): key is string => Boolean(key));
+    const end = (item.end_at || "").slice(0, 10);
+    const start = days[0] || "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(end) && start && end > start && !days.includes(end)) days.push(end);
+    return days.length ? days : [itemDayKey(item)];
   }
   if (item.kind === "accueil_vip") {
     const days = accueilVipTimelineDays(item);
@@ -189,6 +212,37 @@ export function timelineItems(items: CrmBookingItem[]) {
   return items.filter((item) => isTimelineKind(item.kind));
 }
 
+/** Prise, jours du milieu, ou restitution. Une location d’une journée reste « same ». */
+export function carDayRole(item: DayItem, day: string | null | undefined): "same" | "pickup" | "during" | "return" {
+  if (item.kind !== "car") return "same";
+  const start = (item.start_at || "").slice(0, 10);
+  const end = (item.end_at || "").slice(0, 10);
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end <= start) return "same";
+  if (day === start) return "pickup";
+  if (day === end) return "return";
+  return "during";
+}
+
+/** Heure de l’étape ce jour-là. Une nuit d’hôtel déjà commencée n’en a pas. */
+function clockOnDay(item: CrmBookingItem, day: string) {
+  const role = carDayRole(item, day);
+  if (role === "return") return itemClock(item.end_at) ? item.end_at || "" : "";
+  if (role === "during") return "";
+  const startDay = (item.start_at || "").slice(0, 10);
+  if (startDay !== day) return "";
+  return itemClock(item.start_at) ? item.start_at || "" : "";
+}
+
+/** Le matin de la restitution, l’heure gagne : la voiture avant un vol plus tardif. */
+function compareReturnMorning(day: string, a: CrmBookingItem, b: CrmBookingItem) {
+  const aClock = clockOnDay(a, day);
+  const bClock = clockOnDay(b, day);
+  if (aClock && bClock && aClock !== bClock) return aClock.localeCompare(bClock);
+  if (aClock && !bClock) return 1;
+  if (!aClock && bClock) return -1;
+  return compareItemsByOrder(a, b);
+}
+
 export function groupByDay(items: CrmBookingItem[]) {
   const live = withLiveAccueilVip(items);
   const map = new Map<string, CrmBookingItem[]>();
@@ -202,7 +256,8 @@ export function groupByDay(items: CrmBookingItem[]) {
     }
   }
   for (const [day, list] of map) {
-    list.sort(compareItemsByOrder);
+    const restitution = list.some((item) => carDayRole(item, day) === "return");
+    list.sort((a, b) => (restitution ? compareReturnMorning(day, a, b) : compareItemsByOrder(a, b)));
     map.set(day, placeAccueilVipBesideFlights(list, day));
   }
   return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
@@ -221,6 +276,111 @@ export function itemClock(iso: string | null | undefined) {
   if (!match) return "";
   if (match[1] === "00" && match[2] === "00") return "";
   return `${match[1]}h${match[2]}`;
+}
+
+/** AUTOMATICO, AUTOMATIC : français à l’affichage. Les mots en capitales redeviennent un nom. */
+export function frenchVehicleName(value: string) {
+  const swapped = value
+    .replace(/\bautom[aá]tico\b/gi, "automatique")
+    .replace(/\bautomatic\b/gi, "automatique");
+  return swapped
+    .replace(/\p{Lu}{4,}/gu, (word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .replace(/\bautomatique\b/gi, "automatique");
+}
+
+export function vehicleDisplayName(item: Pick<CrmBookingItem, "title" | "details">) {
+  const raw = detailStr(item as CrmBookingItem, "vehicle") || (item.title || "").trim() || "Voiture";
+  return frenchVehicleName(raw);
+}
+
+/** « Palma de Majorque (PMI) » devient « Aéroport de Palma (PMI) ». Un lieu déjà nommé reste. */
+export function airportPlaceLabel(place: string) {
+  const trimmed = place.trim();
+  if (!trimmed) return "";
+  if (/a[eé]roport|airport/i.test(trimmed)) return trimmed;
+  const iata = trimmed.match(/\(([A-Z]{3})\)/);
+  if (!iata) return trimmed;
+  const city = trimmed.replace(/\s*\([A-Z]{3}\)\s*/g, " ").replace(/\s+/g, " ").trim();
+  const name = city.split(/\s+de\s+/i)[0] || city;
+  return name ? `Aéroport de ${name} (${iata[1]})` : trimmed;
+}
+
+function dayMonthFr(iso: string) {
+  const date = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+}
+
+export function carDetailPlace(item: Pick<CrmBookingItem, "details">) {
+  const pickup = detailStr(item as CrmBookingItem, "pickup");
+  const dropoff = detailStr(item as CrmBookingItem, "dropoff");
+  if (pickup && dropoff && foldPlace(pickup) === foldPlace(dropoff)) return pickup;
+  return [pickup, dropoff].filter(Boolean).join(" → ");
+}
+
+export type CarClosedFace = {
+  role: "same" | "pickup" | "during" | "return";
+  kicker: string;
+  title: string;
+  subtitle: string;
+  quiet: boolean;
+};
+
+/** Ligne fermée de la location. Le grossiste et la référence n’y sont pas. */
+export function carClosedFace(item: CrmBookingItem, day: string | null | undefined): CarClosedFace {
+  const role = carDayRole(item, day);
+  const vehicle = vehicleDisplayName(item);
+  const label = visibleServiceCopy(BOOKING_ITEM_LABELS.car);
+  const startClock = itemClock(item.start_at);
+  const endClock = itemClock(item.end_at);
+  const pickup = detailStr(item, "pickup");
+  const dropoff = detailStr(item, "dropoff");
+  const samePlace = Boolean(pickup && dropoff && foldPlace(pickup) === foldPlace(dropoff));
+  const subtitle =
+    role === "during"
+      ? ""
+      : role === "return"
+        ? airportPlaceLabel(dropoff || pickup)
+        : role === "same" && pickup && dropoff && !samePlace
+          ? `${airportPlaceLabel(pickup)} → ${airportPlaceLabel(dropoff)}`
+          : airportPlaceLabel(pickup || dropoff);
+  if (role === "during") {
+    const until = dayMonthFr(item.end_at || "");
+    return {
+      role,
+      kicker: label,
+      title: until ? `${vehicle} · avec vous jusqu’au ${until}` : vehicle,
+      subtitle,
+      quiet: true,
+    };
+  }
+  if (role === "pickup") {
+    return {
+      role,
+      kicker: startClock ? `${label} · prise en charge ${startClock}` : `${label} · prise en charge`,
+      title: vehicle,
+      subtitle,
+      quiet: false,
+    };
+  }
+  if (role === "return") {
+    return {
+      role,
+      kicker: endClock ? `${label} · restitution ${endClock}` : `${label} · restitution`,
+      title: vehicle,
+      subtitle,
+      quiet: false,
+    };
+  }
+  const range =
+    startClock && endClock && startClock !== endClock ? `${startClock} → ${endClock}` : startClock || endClock;
+  return {
+    role,
+    kicker: range ? `${label} · ${range}` : label,
+    title: vehicle,
+    subtitle,
+    quiet: false,
+  };
 }
 
 export function dayHeading(isoDate: string) {
@@ -255,29 +415,38 @@ export function documentLabel(doc: CrmBookingDocument, items: CrmBookingItem[]) 
  * visibles) ne montre déjà. Une pièce rattachée à une carte cachée au client reste listée ici.
  */
 export function unlinkedDocuments(docs: CrmBookingDocument[], items: CrmBookingItem[]) {
-  const linked = new Set(items.map((item) => item.source_document_id).filter(Boolean));
-  const shownIds = new Set(items.map((item) => item.id));
-  return docs.filter(
-    (doc) => !linked.has(doc.id) && !(doc.booking_item_id && shownIds.has(doc.booking_item_id))
-  );
+  const shown = new Set(documentsForItems(items, docs, items).map((doc) => doc.id));
+  return docs.filter((doc) => !shown.has(doc.id));
 }
 
-export function documentsForItem(item: CrmBookingItem, docs: CrmBookingDocument[]) {
-  return documentsForItems([item], docs);
+export function documentsForItem(item: CrmBookingItem, docs: CrmBookingDocument[], dossier?: CrmBookingItem[]) {
+  return documentsForItems([item], docs, dossier);
 }
 
-export function documentsForItems(items: CrmBookingItem[], docs: CrmBookingDocument[]) {
+/**
+ * Pièces de ces cartes. Un e-ticket du même PNR, du même n° de billet ou des segments
+ * lus s’affiche sur chaque vol qu’il couvre. Le fichier reste unique.
+ * `dossier` est l’ensemble des cartes : sans lui, seules les cartes demandées comptent.
+ */
+export function documentsForItems(
+  items: CrmBookingItem[],
+  docs: CrmBookingDocument[],
+  dossier?: CrmBookingItem[]
+) {
+  const universe = dossier?.length ? dossier : items;
   const seen = new Set<string>();
   const list: CrmBookingDocument[] = [];
   for (const item of items) {
     for (const doc of docs) {
-      const hit = doc.booking_item_id === item.id || doc.id === item.source_document_id;
-      if (!hit || seen.has(doc.id)) continue;
+      if (!doc.id || seen.has(doc.id)) continue;
+      const direct = doc.booking_item_id === item.id || doc.id === item.source_document_id;
+      const shared = !direct && coversSharedFlight(doc, item, universe);
+      if (!direct && !shared) continue;
       seen.add(doc.id);
       list.push(doc);
     }
   }
-  return list;
+  return dedupeSharedTickets(list, items.map((item) => item.id)).filter((doc): doc is CrmBookingDocument => Boolean(doc));
 }
 
 export function kindIcon(kind: string) {
@@ -371,12 +540,15 @@ export function insuranceLineLabel(title: string | null | undefined) {
 export function itemPriceLabel(
   item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at" | "amount"> & {
     details?: Record<string, unknown> | null;
+    price_mode?: string | null;
   },
   currency: string,
   onDay?: string | null,
-  pricesVisible = true
+  pricesVisible = true,
+  stayMode: "cartes" | "forfait" = "cartes"
 ) {
-  if (item.amount == null || Number.isNaN(Number(item.amount))) return null;
+  if (!clientSeesCardPrice(item, stayMode)) return null;
+  if (item.amount == null || Number.isNaN(Number(item.amount)) || Number(item.amount) === 0) return null;
   if (onDay) {
     const first = itemFirstDayKey(item);
     if (first && onDay !== first) return null;
@@ -402,6 +574,36 @@ export function keptHiddenFromClient(details: Record<string, unknown> | null | u
   return details?.client_hidden === true;
 }
 
+export type ClientHiddenCard = {
+  id?: string;
+  kind: string;
+  lifecycle?: string | null;
+  visible_to_client?: boolean | null;
+  details?: Record<string, unknown> | null;
+};
+
+/**
+ * Carte que le client ne voit pas, à repérer dans la fiche agence.
+ * Cacher (`client_hidden`) reste marqué même si le séjour est encore Non visible.
+ * Sinon, une carte `visible_to_client` faux ne compte que quand le séjour est déjà montré :
+ * Montrer au client la révèle, et le compteur disparaît.
+ */
+export function cardHiddenFromClient(item: ClientHiddenCard, stayVisible: boolean) {
+  if (!isActiveItem(item) || !countsAsCarnetCard(item.kind)) return false;
+  if (keptHiddenFromClient(item.details)) return true;
+  return stayVisible && item.visible_to_client === false;
+}
+
+export function hiddenClientCards<T extends ClientHiddenCard>(items: T[], stayVisible: boolean) {
+  return items.filter((item) => cardHiddenFromClient(item, stayVisible));
+}
+
+/** Null quand il n’y a rien à signaler : le compteur disparaît. */
+export function hiddenCardsLabel(count: number) {
+  if (count <= 0) return null;
+  return count === 1 ? "1 carte cachée" : `${count} cartes cachées`;
+}
+
 /**
  * Montrer retire le masquage. Un enregistrement avec `visible_to_client` faux
  * ne cache pas la carte : ce drapeau n’existe que si l’agence a choisi Cacher.
@@ -413,6 +615,24 @@ export function detailsForCardVisibility(
   const next = { ...(details || {}) };
   if (visible) delete next.client_hidden;
   return next;
+}
+
+/**
+ * Geste Cacher / Montrer d’une carte.
+ * Cacher pose `client_hidden` et `visible_to_client` faux. Montrer retire le masquage.
+ * Un enregistrement seul ne cache pas : le drapeau n’existe que par ce geste.
+ */
+export function cardVisibilityUpdate(
+  item: { lifecycle?: string | null; details?: Record<string, unknown> | null },
+  visible: boolean
+): { error: string } | { visible_to_client: boolean; details: Record<string, unknown> } {
+  if (visible && !isActiveItem(item)) {
+    return { error: "Cette carte est archivée. Elle ne revient pas dans le carnet." };
+  }
+  const details = visible
+    ? detailsForCardVisibility(item.details, true)
+    : { ...(item.details || {}), client_hidden: true };
+  return { visible_to_client: visible, details };
 }
 
 /** Cartes du séjour encore à montrer. Une dépense n’est pas une carte du carnet. */
@@ -590,6 +810,60 @@ export function tripPlaceLine(title: string | null | undefined, destination: str
   return place;
 }
 
+/** Villes où l’on dort, dans l’ordre des hôtels, sans répétition. */
+export function staySleepCities(items: Array<{ kind?: string | null; details?: Record<string, unknown> | null }>) {
+  const found: string[] = [];
+  for (const item of items) {
+    if (item.kind !== "hotel") continue;
+    const city = detailStr(item as CrmBookingItem, "city");
+    if (!city) continue;
+    const key = cityPlaceKey(city);
+    if (!key || found.some((row) => cityPlaceKey(row) === key)) continue;
+    found.push(cityLabel(city) || city);
+  }
+  return found;
+}
+
+/** Sous le titre choisi : la ville de l’hôtel si le titre ne la dit pas. Pas la ville de départ, pas le premier segment d’un titre. */
+export function stayHeroPlace(
+  title: string | null | undefined,
+  destination: string | null | undefined,
+  items: Array<{
+    kind?: string | null;
+    title?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    sort_order?: number | null;
+    lifecycle?: string | null;
+    details?: Record<string, unknown> | null;
+  }> | null = null
+) {
+  const named = new Set(titleCityParts(title || "").map((part) => cityPlaceKey(part)).filter(Boolean));
+  const rows = items || [];
+  const sleep = staySleepCities(rows).filter((city) => !named.has(cityPlaceKey(city)));
+  if (sleep.length) return sleep.join(" · ");
+  if (!(title || "").trim()) return null;
+  if (rows.length) {
+    const plan = tripCityPlan(rows);
+    const stayKeys = new Set(plan.destinations.map((city) => cityPlaceKey(city)).filter(Boolean));
+    const blocked = new Set([...plan.origins, ...plan.layovers].map((city) => cityPlaceKey(city)).filter(Boolean));
+    const parts = titleCityParts(destination || "").filter((part) => {
+      const key = cityPlaceKey(part);
+      return Boolean(key && stayKeys.has(key) && !blocked.has(key) && !named.has(key));
+    });
+    return parts.length ? parts.join(" · ") : null;
+  }
+  const place = tripPlaceLine(title, destination);
+  if (!place) return null;
+  const titleParts = titleCityParts(title || "");
+  const placeParts = titleCityParts(place);
+  const first = titleParts[0] || "";
+  if (titleParts.length > 1 && placeParts.length === 1 && first && cityPlaceKey(placeParts[0]) === cityPlaceKey(first)) {
+    return null;
+  }
+  return place;
+}
+
 function pushArrival(found: string[], value: string) {
   const label = cityLabel(value);
   const key = cityPlaceKey(label);
@@ -642,11 +916,21 @@ function titleTracksCities(named: string, cities: string[], extra: string[] = []
   return parts.every((part) => keys.has(cityPlaceKey(part)));
 }
 
+/** Au moins une ville du titre est une ville où l’on séjourne, pas seulement un départ ou un domicile. */
+function titleCitesStay(named: string, cities: string[]) {
+  const keys = new Set(cities.map((city) => cityPlaceKey(city)).filter(Boolean));
+  if (!keys.size) return false;
+  return titleCityParts(named).some((part) => keys.has(cityPlaceKey(part)));
+}
+
 /**
  * Le titre suit les villes où l’on séjourne.
  * Un nom choisi (« 40 ans ») reste. Une liste de villes s’allonge.
  * Le domicile et les escales, passés à part, sortent de la liste : un titre
  * recalculé ne remet pas Paris devant Tel Aviv.
+ * Un seul lieu qui ne nomme pas les villes de séjour reste tel quel, même
+ * s’il est une ville du trajet ou du domicile. Une liste multi-villes qui
+ * cite déjà le séjour est recalculée. Un titre vide garde les villes lues.
  */
 export function stayHeadline(
   title: string | null | undefined,
@@ -662,12 +946,14 @@ export function stayHeadline(
   const cities = stayed.length ? stayed : listed;
   const stored = (title || "").trim();
   const dest = (destination || "").trim();
-  const named = stored || dest;
-  if (!named && cities.length) return cities.join(" · ");
+  if (!stored) return cities.join(" · ") || dest || fallback;
+  const named = stored;
+  const multi = titleCityParts(named).length >= 2;
   const tracks = titleTracksCities(named, cities, stops);
   const echoesDestination = Boolean(dest && foldPlace(named) === foldPlace(dest));
-  if (cities.length >= 2 && (tracks || echoesDestination)) return cities.join(" · ");
-  if (stops.length && tracks && cities.length) return cities.join(" · ");
+  const citesStay = titleCitesStay(named, cities);
+  if (citesStay && cities.length >= 2 && (tracks || echoesDestination)) return cities.join(" · ");
+  if (multi && citesStay && stops.length && tracks && cities.length) return cities.join(" · ");
   return named || fallback;
 }
 

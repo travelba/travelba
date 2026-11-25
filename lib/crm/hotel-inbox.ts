@@ -182,7 +182,7 @@ function kindLabel(kind: string) {
 }
 
 const HOTEL_BRANDS = new Set([
-  "edition", "senses", "six", "marriott", "hilton", "hyatt", "sofitel", "fairmont", "ritz", "carlton",
+  "edition", "senses", "six", "marriott", "hilton", "hyatt", "park", "sofitel", "fairmont", "ritz", "carlton",
   "seasons", "aman", "rosewood", "peninsula", "mandarin", "oriental", "intercontinental", "westin",
   "sheraton", "waldorf", "kempinski", "belmond", "andaz", "accor", "ihg", "wyndham", "radisson",
   "movenpick", "oberoi", "anantara", "banyan", "como", "bulgari", "armani", "fourseasons", "autograph",
@@ -199,25 +199,22 @@ function merchantTokens(value: string | null | undefined) {
     .filter((token) => token.length >= 3 && !/^\d+$/.test(token));
 }
 
-function tokenHits(token: string, words: string[]) {
-  return words.some((word) => {
-    if (word === token) return true;
-    return token.length >= 5 && word.length >= 3 && token.startsWith(word);
-  });
-}
-
 /**
  * Le commerçant ressemble au nom de l’hôtel.
- * Une marque seule (Hyatt, Marriott) ne suffit pas. « PARK HYATT SAI » retrouve Park Hyatt Saigon,
- * pas Park Hyatt Phu Quoc.
+ * Une marque seule (Hyatt, Park, Marriott) ne suffit pas.
+ * « PARK HYATT SAI » retrouve Park Hyatt Saigon, « PARK HYATT PHU » retrouve Park Hyatt Phu Quoc.
+ * PHU ne retrouve pas Saigon, SAI ne retrouve pas Phu Quoc.
  */
 export function merchantResemblesHotel(merchant: string | null | undefined, hotel: string | null | undefined) {
-  const distinctive = merchantTokens(hotel).filter((token) => token.length >= 4 && !GENERIC_HOTEL_WORDS.has(token) && !HOTEL_BRANDS.has(token));
-  const words = merchantTokens(merchant).filter((token) => !GENERIC_HOTEL_WORDS.has(token));
-  if (!distinctive.length || !words.length) return false;
-  const places = distinctive.filter((token) => token.length >= 5);
-  if (places.length) return places.some((token) => tokenHits(token, words));
-  return distinctive.every((token) => tokenHits(token, words));
+  const place = merchantTokens(hotel).filter((token) => !GENERIC_HOTEL_WORDS.has(token) && !HOTEL_BRANDS.has(token));
+  const words = merchantTokens(merchant).filter((token) => !GENERIC_HOTEL_WORDS.has(token) && !HOTEL_BRANDS.has(token));
+  if (!place.length || !words.length) return false;
+  const joined = place.join("");
+  return words.some((word) => {
+    if (place.some((token) => token === word)) return true;
+    if (place.some((token) => token.length >= 5 && word.length >= 3 && token.startsWith(word))) return true;
+    return word.length >= 3 && joined.startsWith(word);
+  });
 }
 
 /**
@@ -238,9 +235,7 @@ export function reopensAfterPayment(text: string, paidCents: number | null) {
 }
 
 function mentionsPaid(text: string) {
-  return /payment (?:has been )?(?:received|successful|completed|confirmed)|paiement (?:a été )?(?:reçu|effectué|effectue|confirmé)|paid in full/i.test(
-    text
-  );
+  return paymentSettledText(text);
 }
 
 /** Lien ou mots de paiement. Le type de demande ne décide pas. */
@@ -401,7 +396,9 @@ function recognizePayment(request: HotelInboxRequest, evidence: HotelPaymentEvid
     const money = moneyOf(row);
     if (row.place === "proposal") {
       if (row.confidence !== "haute" || row.bookingId !== request.bookingId) continue;
-      if (!merchantResemblesHotel(row.merchant, request.hotelName) || !money || money.amount <= 0) continue;
+      if (!money || money.amount <= 0) continue;
+      const sameHotel = Boolean(row.bookingItemId && row.bookingItemId === request.itemId);
+      if (!sameHotel && !merchantResemblesHotel(row.merchant, request.hotelName)) continue;
       hits.push({
         outcome: "probable",
         amount: money.amount,
@@ -571,7 +568,6 @@ function readRequest(
     outcome !== "none" &&
     hotelWroteLast &&
     reopensAfterPayment(text, paidCents) &&
-    !paymentSettledText(text) &&
     (!Number.isFinite(time(paidAt)) || (latestReal != null && time(latestReal.at) > time(paidAt)));
   const settledText = Boolean(signal) && paymentSettledText(text);
   const confirmed = !signal && hotelWroteLast && hotelConfirmedText(text);

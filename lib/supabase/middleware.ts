@@ -32,6 +32,7 @@ import {
   isOnboardingReplay,
   needsClientOnboarding,
 } from "@/lib/crm/session";
+import { isNativeAppUserAgent } from "@/lib/crm/native-portal";
 import { publicSupabaseEnv } from "@/lib/supabase/env";
 import { readVerifiedUser } from "@/lib/crm/verified-user";
 
@@ -116,6 +117,7 @@ export async function updateSession(request: NextRequest) {
     staff,
     setupCookie,
   });
+  const nativeApp = isNativeAppUserAgent(request.headers.get("user-agent"));
 
   function seal(response: NextResponse) {
     if (response !== supabaseResponse) {
@@ -216,13 +218,18 @@ export async function updateSession(request: NextRequest) {
             : needsClientOnboarding(user)
               ? ONBOARDING_PATH
               : "/mon-compte";
-      url.search = "";
+      if (nativeApp && url.pathname.startsWith("/admin")) {
+        url.pathname = "/connexion";
+        url.search = "?error=application";
+      } else {
+        url.search = "";
+      }
       return seal(NextResponse.redirect(url));
     }
     return seal(supabaseResponse);
   }
 
-  if (user && ratehawk && (isClient || (isConnexion && !isSetPassword))) {
+  if (!nativeApp && user && ratehawk && (isClient || (isConnexion && !isSetPassword))) {
     const url = request.nextUrl.clone();
     url.pathname = RATEHAWK_ADMIN_HOME;
     url.search = "";
@@ -254,6 +261,7 @@ export async function updateSession(request: NextRequest) {
     if (request.nextUrl.searchParams.get("error") === "no-account") {
       return seal(supabaseResponse);
     }
+    if (nativeApp && staff) return seal(supabaseResponse);
     if (pathname === "/connexion") {
       const dest = destinationForConnexionVisit({
         staff,

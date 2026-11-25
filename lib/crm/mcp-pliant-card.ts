@@ -5,7 +5,7 @@ import { recordAgencyJournal } from "@/lib/crm/agency-log";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { parseMoneyToCents, principalGuest } from "./hotel-arrival";
 import { bookingCardValidity, manualStayCardBody, sameCardNameCount } from "./manual-stay-card";
-import { parsePliantTransactionCount } from "./pliant-controls";
+import { parsePliantTransactionCount, PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300 } from "./pliant-controls";
 import { currentMcpAccess } from "./mcp-auth";
 import { McpReadError, journalReference } from "./mcp-passport";
 import { McpWriteError } from "./mcp-write";
@@ -302,6 +302,7 @@ export async function createPliantCard(
     montant_transaction?: unknown;
     prenom?: string;
     nom_titulaire?: string;
+    trois_ds?: boolean;
   },
   admin: Admin = openDb(),
   deps: CardDeps = defaultDeps
@@ -416,6 +417,7 @@ export async function createPliantCard(
     transactionCount: counted.count,
     currency,
   });
+  if (input.trois_ds === true) body.cardConfig = PLIANT_TRAVEL_PURCHASING_VIRTUAL_VISA_300;
 
   if (!deps.configured()) {
     await writeCardAudit(admin, {

@@ -155,3 +155,61 @@ test("Android : Google Agenda crée l’événement", () => {
   assert.equal(response.status, 302);
   assert.match(response.headers.get("location") || "", /^https:\/\/calendar\.google\.com\/calendar\/render\?/);
 });
+
+test("application iOS : JSON des événements, pas le fichier dans la page", async () => {
+  const response = calendarHttpResponse({
+    request: new Request("https://travelba.fr/mon-compte/reservations/TBA-1001/agenda/vol.ics", {
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Capacitor",
+        accept: "application/json",
+      },
+    }),
+    booking: booking(),
+    items: [flight()],
+    itemId: flight().id,
+  });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") || "", /^application\/json/);
+  assert.equal(response.headers.get("content-disposition"), null);
+  assert.equal(response.headers.get("location"), null);
+  const body = (await response.json()) as { events: { uid: string; start: string; timeZone: string }[] };
+  assert.equal(body.events.length, 1);
+  assert.equal(body.events[0]?.uid, `${flight().id}@travelba.fr`);
+  assert.equal(body.events[0]?.start, "2026-08-12T09:45:00");
+  assert.equal(body.events[0]?.timeZone, "Europe/Paris");
+});
+
+test("Android sans JSON : Google Agenda, inchangé", () => {
+  const response = calendarHttpResponse({
+    request: new Request("https://travelba.fr/mon-compte/reservations/TBA-1001/agenda/vol.ics", {
+      headers: { "user-agent": ANDROID, accept: "text/html" },
+    }),
+    booking: booking(),
+    items: [flight()],
+    itemId: flight().id,
+  });
+  assert.equal(response.status, 302);
+  assert.match(response.headers.get("location") || "", /^https:\/\/calendar\.google\.com\/calendar\/render\?/);
+});
+
+test("application iOS : le .ics part en téléchargement, pas vers Google Agenda", async () => {
+  const response = calendarHttpResponse({
+    request: request(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Capacitor"
+    ),
+    booking: booking(),
+    items: [flight()],
+    itemId: flight().id,
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "text/calendar; charset=utf-8");
+  assert.equal(
+    response.headers.get("content-disposition"),
+    'attachment; filename="travelba-TBA-1001-etape.ics"'
+  );
+  assert.equal(response.headers.get("location"), null);
+  const body = await response.text();
+  assert.match(body, /BEGIN:VEVENT/);
+  assert.equal(body.includes("calendar.google.com"), false);
+});

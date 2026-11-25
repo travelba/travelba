@@ -87,6 +87,8 @@ const detailsObjectLoose = z
     duration: looseString,
     notes: looseString,
     source_file_name: looseString,
+    source_files: z.array(z.string()).optional(),
+    ticket_numbers: z.array(z.string()).optional(),
     needs_review: z.boolean().nullable().optional(),
     review_reason: looseString,
     document_amount: looseNumber,
@@ -101,6 +103,7 @@ const detailsObjectLoose = z
         z.object({
           first_name: looseString,
           last_name: looseString,
+          ticket_number: looseString,
           ticket_last4: looseString,
         })
       )
@@ -122,6 +125,7 @@ const detailsObjectLoose = z
         })
       )
       .optional(),
+    price_mode: z.enum(["avec", "sans"]).nullable().optional(),
   });
 
 export const detailsSchemaLoose = detailsObjectLoose.optional().default({});
@@ -562,7 +566,7 @@ export function sanitizeExtractedPrices(extract: BookingExtract): BookingExtract
     total_amount: sellingTotalFromExtract(priced),
     items: sortItemsByOrder(merged),
   };
-  return redactIngestValue(next);
+  return parkAgencyNotes(redactIngestValue(next));
 }
 
 /** Parse tolérant : renvoie un extract vide si le payload est invalide (jamais d'exception). */

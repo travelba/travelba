@@ -88,7 +88,17 @@ test("TB-2026-0100 : 611,20 et 611,19 sans frais font 1 222,39, pas 661,20", () 
   const stored = { ...stay(611.2), status: "draft" as const, fee_mode: "ticketing_off" };
   assert.equal(displayedStayAmount(stored, items, 2), 611.2);
   assert.equal(ledgerCountedStayAmount(stored, items, 2), 1222.39);
-  assert.equal(displayedStayAmount({ ...stay(611.2), status: "draft" }, items, 2), 661.2);
+  assert.equal(displayedStayAmount({ ...stay(611.2), status: "draft" }, items, 2), 611.2);
+});
+
+test("une remise en pourcentage suit le total déjà commissionné", () => {
+  const priced = { ...stay(1971.96), agency_commission: true };
+  const gross = displayedStayAmount(priced, items0082, 1, 0.1);
+  const net = displayedStayAmount({ ...priced, remise_type: "percent", remise_value: 10 }, items0082, 1, 0.1);
+  const cut = Math.round(gross * 10) / 100;
+  assert.ok(gross > 1971.96);
+  assert.equal(net, Math.round((gross - cut) * 100) / 100);
+  assert.ok(net < gross);
 });
 
 test("un séjour réglé par le client ne reprend pas le total, il garde frais et visa inclus", () => {

@@ -21,7 +21,7 @@ import {
 } from "@/lib/crm/bookings";
 import { toAuditRow } from "@/lib/crm/audit-events";
 import { noteCarnetAdditions } from "@/lib/crm/carnet-addition";
-import { detailsForCardVisibility, keptHiddenFromClient } from "@/lib/crm/carnet";
+import { cardVisibilityUpdate, keptHiddenFromClient } from "@/lib/crm/carnet";
 import { resolveBillingCustomerId } from "@/lib/crm/company-role";
 import { customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-email";
 import { addIsoDays } from "@/lib/crm/dates";
@@ -32,8 +32,10 @@ import { leCardFill, loadLeReservation } from "@/lib/crm/mcp-le";
 import { McpReadError } from "@/lib/crm/mcp-passport";
 import { parseMoney } from "@/lib/crm/money";
 import { defaultBillingCompany, type PayerCompany } from "@/lib/crm/payer";
-import { addedTravelerNames, holderMatchesAddedTraveler, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
-import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
+import { addedTravelerNames, holderMatchesAddedTraveler, namesReferToSamePerson, sameAddedTraveler, type PersonIdentity } from "@/lib/crm/person-match";
+import { countRealTickets, realTicketList } from "@/lib/crm/ticket-party";
+import { readStayPriceMode, withCardPriceMode } from "@/lib/crm/card-price";
+import { missingDbColumn } from "@/lib/crm/optional-column";
 import { dossierFace } from "@/lib/crm/dossier-status";
 import { withoutHomeCity } from "@/lib/crm/staff-stay";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
@@ -43,6 +45,8 @@ import { countsAsCarnetCard, isActiveItem, isLedgerExpenseKind, type CrmBooking,
 import { createServiceClient } from "@/lib/supabase/admin";
 import { MCP_BOOKING_COLUMNS, MCP_ITEM_COLUMNS } from "@/lib/crm/mcp-columns";
 import { McpWriteError } from "@/lib/crm/mcp-write";
+import { applyStayCommit, planDeletedCardDocuments } from "@/lib/crm/stay-commit";
+import { recordStepJournals } from "@/lib/crm/step-journal";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOCAL = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/;
@@ -694,6 +698,15 @@ export async function createDossier(input: Record<string, unknown>, admin?: Admi
       db
     );
     const billed = companies.find((company) => company.id === created.booking.billing_company_id);
+    if ("prix_forfait" in input && input.prix_forfait != null && input.prix_forfait !== "") {
+      const amount = Number(String(input.prix_forfait).replace(",", "."));
+      if (!(amount > 0)) throw new McpWriteError("Indiquez le prix forfait du voyage.");
+      const { error: forfaitError } = await db
+        .from("crm_bookings")
+        .update({ price_mode: "forfait", forfait_amount: Math.round(amount * 100) / 100 })
+        .eq("id", created.booking.id);
+      if (forfaitError) throw new McpWriteError("Le prix forfait n’est pas encore en place. Appliquez la migration, puis réessayez.");
+    }
     return {
       id: created.booking.id,
       reference: created.booking.reference,
@@ -991,7 +1004,9 @@ export async function addVol(input: Record<string, unknown>, admin?: Admin) {
   const fournisseur = optionalText(input.fournisseur, "Fournisseur", 120);
   const prix = optionalMoney(input.prix, "Prix");
   const prixTotal = optionalMoney(input.prix_total, "Prix total");
-  const sansFrais = flag(input.sans_frais, "Sans frais");
+  if (input.avec_prix === true && input.sans_prix === true) {
+    throw new McpWriteError("Choisissez avec prix ou sans prix.");
+  }
   const devise = currencyOf(input.devise);
   const voyageurs = idList(input.voyageurs, "Voyageur");
   const db = client(admin);
@@ -1020,9 +1035,10 @@ export async function addVol(input: Record<string, unknown>, admin?: Admin) {
     },
     passengers
   );
-  if (sansFrais || (await freeFlights(db, booking.id, prix, prixTotal))) {
-    await dismissTicketing(db, booking.id);
-  }
+  const selling = Number(body.amount) > 0;
+  if (input.avec_prix === true && !selling) throw new McpWriteError("Indiquez le prix de vente.");
+  if (input.sans_prix === true && selling) throw new McpWriteError("Sans prix ne porte pas de montant.");
+  body.details = withCardPriceMode(body.details as Record<string, unknown>, selling && input.sans_prix !== true ? "avec" : "sans");
   const saved = await addStaffBookingCard(db, booking.id, body);
   if ("error" in saved) throw new McpWriteError(saved.error);
   return cardReply(saved.item, booking, price, saved.ledgerWarning);
@@ -1161,7 +1177,9 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
 
   const prix = optionalMoney(input.prix, "Prix");
   const prixTotal = optionalMoney(input.prix_total, "Prix total");
-  const sansFrais = flag(input.sans_frais, "Sans frais");
+  if (input.avec_prix === true && input.sans_prix === true) {
+    throw new McpWriteError("Choisissez avec prix ou sans prix.");
+  }
   const count = passengers ? passengers.length : statedTicketCount({ kind: "flight", details }) ?? 0;
   let price = priceFromFlight(item, originalDetails, booking);
   if (prix != null || prixTotal != null) {
@@ -1208,9 +1226,13 @@ export async function updateVol(input: Record<string, unknown>, admin?: Admin) {
     delete details.needs_review;
     delete details.review_reason;
   }
-  if (sansFrais || (await freeFlights(db, booking.id, prix, prixTotal, carteId))) {
-    await dismissTicketing(db, booking.id);
+  const sold = Number("amount" in patch ? patch.amount : item.amount) > 0;
+  if (input.avec_prix === true && !sold) throw new McpWriteError("Indiquez le prix de vente.");
+  if (input.sans_prix === true && (prix != null && prix > 0 || prixTotal != null && prixTotal > 0) && sold) {
+    throw new McpWriteError("Sans prix ne porte pas de montant.");
   }
+  if (input.sans_prix === true) details.price_mode = "sans";
+  else if (input.avec_prix === true || prix != null || prixTotal != null) details.price_mode = sold ? "avec" : "sans";
   const saved = await patchStaffBookingCard(db, booking.id, carteId, patch);
   if ("error" in saved) throw new McpWriteError(saved.error);
   await resyncAccueilVip(db, booking.id);
@@ -1263,6 +1285,9 @@ export async function addHotel(input: Record<string, unknown>, admin?: Admin) {
   const departHeure = clockField(input.heure_depart, "Heure de départ");
   const photos = hotelPhotoInput(input.photos);
   const prix = optionalMoney(input.prix, "Prix");
+  if (input.avec_prix === true && input.sans_prix === true) {
+    throw new McpWriteError("Choisissez avec prix ou sans prix.");
+  }
   const devise = currencyOf(input.devise);
   const voyageurs = idList(input.voyageurs, "Voyageur");
   const db = client(admin);
@@ -1288,6 +1313,13 @@ export async function addHotel(input: Record<string, unknown>, admin?: Admin) {
     price,
     guests,
   });
+  const hotelSelling = Number(body.amount) > 0;
+  if (input.avec_prix === true && !hotelSelling) throw new McpWriteError("Indiquez le prix de vente.");
+  if (input.sans_prix === true && hotelSelling) throw new McpWriteError("Sans prix ne porte pas de montant.");
+  body.details = withCardPriceMode(
+    (body.details || {}) as Record<string, unknown>,
+    hotelSelling && input.sans_prix !== true ? "avec" : "sans"
+  );
   const saved = await addStaffBookingCard(db, booking.id, body);
   if ("error" in saved) throw new McpWriteError(saved.error);
   return cardReply(saved.item, booking, price, saved.ledgerWarning);
@@ -1737,39 +1769,6 @@ export async function addAccueilVip(input: Record<string, unknown>, admin?: Admi
   };
 }
 
-/** Un prix explicitement nul, et aucun autre vol du dossier à un prix vendu. */
-async function freeFlights(
-  db: Admin,
-  bookingId: string,
-  prix: number | null,
-  prixTotal: number | null,
-  exceptId?: string
-) {
-  const explicitZero = prix === 0 || prixTotal === 0;
-  const explicitPositive = (prix != null && prix > 0) || (prixTotal != null && prixTotal > 0);
-  if (!explicitZero || explicitPositive) return false;
-  const { data, error } = await db
-    .from("crm_booking_items")
-    .select("id, kind, amount, lifecycle")
-    .eq("booking_id", bookingId);
-  if (error) throw new McpWriteError("Frais de billeterie non retirés.");
-  return !(
-    (data || []) as { id: string; kind: string | null; amount: number | null; lifecycle?: string | null }[]
-  ).some((row) => {
-    if (exceptId && row.id === exceptId) return false;
-    if (row.kind !== "flight" || !isActiveItem(row)) return false;
-    return Number(row.amount) > 0;
-  });
-}
-
-async function dismissTicketing(db: Admin, bookingId: string) {
-  const { error } = await db.from("crm_bookings").update({ fee_mode: TICKETING_FEE_OFF }).eq("id", bookingId);
-  if (error) {
-    console.error("[mcp] fee_mode", error.code);
-    throw new McpWriteError("Frais de billeterie non retirés.");
-  }
-}
-
 type PartyPerson = { id: string; first_name: string | null; last_name: string | null };
 
 /** Remplace un compagnon sur les listes de la carte (vols, chambres). */
@@ -1808,22 +1807,65 @@ export function retargetCompanionDetails(
   return changed ? next : null;
 }
 
-/** Retire un voyageur des listes de la carte. */
-export function dropPartyFromDetails(details: Record<string, unknown>, partyKey: string): Record<string, unknown> | null {
+function samePartyPassenger(
+  person: { first_name?: string | null; last_name?: string | null },
+  row: unknown
+) {
+  if (!row || typeof row !== "object") return false;
+  const named = row as { first_name?: unknown; last_name?: unknown };
+  return namesReferToSamePerson(
+    { first_name: person.first_name ?? null, last_name: person.last_name ?? null },
+    { first_name: typeof named.first_name === "string" ? named.first_name : null, last_name: typeof named.last_name === "string" ? named.last_name : null }
+  );
+}
+
+/** Retire un voyageur des listes de la carte, par clé ou par nom, et recalcule les billets. */
+export function dropPartyFromDetails(
+  details: Record<string, unknown>,
+  partyKey: string,
+  person?: { first_name?: string | null; last_name?: string | null }
+): Record<string, unknown> | null {
   let changed = false;
   const next: Record<string, unknown> = { ...details };
   const keys = Array.isArray(details.party_keys) ? details.party_keys.map(String) : null;
+  let passengers = Array.isArray(details.passengers) ? [...details.passengers] : null;
   if (keys?.includes(partyKey)) {
     changed = true;
     const kept = keys
       .map((key, index) => ({ key, index }))
       .filter((entry) => entry.key !== partyKey);
     next.party_keys = kept.map((entry) => entry.key);
-    if (Array.isArray(details.passengers)) {
-      const passengers = details.passengers as unknown[];
-      next.passengers = kept.map((entry) => passengers[entry.index]).filter((person) => person != null);
+    if (passengers) {
+      passengers = kept.map((entry) => passengers?.[entry.index]).filter((row) => row != null);
     }
-    if (typeof details.ticket_count === "number") next.ticket_count = kept.length;
+  }
+  if (person && (person.first_name || person.last_name) && passengers) {
+    const currentKeys = Array.isArray(next.party_keys) ? (next.party_keys as string[]) : keys;
+    const aligned = Boolean(currentKeys && currentKeys.length === passengers.length);
+    const keptPassengers: unknown[] = [];
+    const keptKeys: string[] = [];
+    passengers.forEach((row, index) => {
+      if (samePartyPassenger(person, row)) {
+        changed = true;
+        return;
+      }
+      keptPassengers.push(row);
+      if (aligned && currentKeys) keptKeys.push(currentKeys[index]);
+    });
+    if (changed) {
+      passengers = keptPassengers;
+      if (aligned && currentKeys) next.party_keys = keptKeys;
+    }
+  }
+  if (changed && passengers) {
+    next.passengers = passengers;
+    const numbers = realTicketList(passengers);
+    const real = countRealTickets(passengers);
+    next.ticket_count = real ?? passengers.length;
+    if (numbers.length) next.ticket_numbers = numbers;
+    else delete next.ticket_numbers;
+  } else if (changed && typeof details.ticket_count === "number" && Array.isArray(next.party_keys)) {
+    next.ticket_count = next.party_keys.length;
   }
   if (Array.isArray(details.rooms)) {
     next.rooms = details.rooms.map((room) => {
@@ -1885,19 +1927,7 @@ function ledgerInclusion(
   return requested;
 }
 
-/** Même geste que Cacher / Montrer dans l’agence : le masquage n’existe que si on le choisit. */
-export function cardVisibilityUpdate(
-  item: { lifecycle?: string | null; details?: Record<string, unknown> | null },
-  visible: boolean
-): { error: string } | { visible_to_client: boolean; details: Record<string, unknown> } {
-  if (visible && !isActiveItem(item)) {
-    return { error: "Cette carte est archivée. Elle ne revient pas dans le carnet." as const };
-  }
-  const details = visible
-    ? detailsForCardVisibility(item.details, true)
-    : { ...(item.details || {}), client_hidden: true };
-  return { visible_to_client: visible, details };
-}
+export { cardVisibilityUpdate } from "@/lib/crm/carnet";
 
 type LedgerRow = {
   id?: string;
@@ -1988,13 +2018,33 @@ export async function setCarteVisibilite(input: Record<string, unknown>, admin?:
     patch.visible_to_client = next.visible_to_client;
     patch.details = next.details;
   }
-  if (ledgerChanged) patch.include_in_ledger = includeNext;
+  if (include === true) {
+    if (!(Number(item.amount) > 0)) throw new McpWriteError("Indiquez le prix de vente.");
+    const details = (patch.details && typeof patch.details === "object" ? patch.details : item.details) || {};
+    patch.details = withCardPriceMode(details as Record<string, unknown>, "avec");
+    patch.price_mode = "avec";
+    patch.include_in_ledger = true;
+  } else if (include === false) {
+    const details = (patch.details && typeof patch.details === "object" ? patch.details : item.details) || {};
+    patch.details = withCardPriceMode(details as Record<string, unknown>, "sans");
+    patch.price_mode = "sans";
+    patch.include_in_ledger = false;
+  } else if (ledgerChanged) patch.include_in_ledger = includeNext;
   if (Object.keys(patch).length) {
-    const { error: updateError } = await db
+    let { error: updateError } = await db
       .from("crm_booking_items")
       .update(patch)
       .eq("id", carteId)
       .eq("booking_id", booking.id);
+    if (updateError && "price_mode" in patch && missingDbColumn(updateError, "price_mode")) {
+      const nextPatch = { ...patch };
+      delete nextPatch.price_mode;
+      ({ error: updateError } = await db
+        .from("crm_booking_items")
+        .update(nextPatch)
+        .eq("id", carteId)
+        .eq("booking_id", booking.id));
+    }
     if (updateError) throw new McpWriteError("Carte non mise à jour.");
   }
   const noted: boolean[] = [];
@@ -2072,8 +2122,14 @@ export async function setCarteVisibilite(input: Record<string, unknown>, admin?:
     message_pret: draft.prepared,
     sejour_visible: booking.visible_to_client === true,
     incluse_transactions: itemIncludedInLedger(
-      { kind: row.kind, include_in_ledger: row.include_in_ledger, details: row.details },
-      booking.client_settles_stay === true
+      {
+        kind: row.kind,
+        amount: item.amount,
+        include_in_ledger: row.include_in_ledger,
+        details: row.details,
+      },
+      booking.client_settles_stay === true,
+      readStayPriceMode(booking)
     ),
     grand_livre: {
       compte,
@@ -2139,24 +2195,58 @@ export async function prepareCarnetMessage(input: Record<string, unknown>, admin
   };
 }
 
-/** Retire une carte. Les frais de billeterie ne reviennent pas, et leur débit est annulé. Aucun message. */
+/**
+ * Retire une carte et les justificatifs qui ne sont plus liés à aucune autre carte.
+ * Le fichier reste stocké (retrait restaurable). Une pièce encore sur une autre carte reste.
+ * Les frais de billeterie ne reviennent pas, et leur débit est annulé. Aucun message.
+ */
 export async function removeCarte(input: Record<string, unknown>, admin?: Admin) {
   const booking = await loadBooking(client(admin), dossierTarget(input));
   const carteId = uuid(input.carte_id, "Carte");
   const db = client(admin);
   const { data, error } = await db
     .from("crm_booking_items")
-    .select("id, kind, title, details")
+    .select("id, kind, title, supplier, confirmation_ref, start_at, end_at, details")
     .eq("id", carteId)
     .eq("booking_id", booking.id)
     .maybeSingle();
   if (error || !data) throw new McpWriteError("Carte introuvable sur ce dossier.");
-  const item = data as { id: string; kind: string; title: string | null; details: Record<string, unknown> | null };
-  if (isAutoTicketingExpense(item) || (item.kind === "expense" && /^Frais de billeterie/.test(item.title || ""))) {
-    await dismissTicketing(db, booking.id);
-  }
-  const { error: deleteError } = await db.from("crm_booking_items").delete().eq("id", carteId).eq("booking_id", booking.id);
-  if (deleteError) throw new McpWriteError("Carte non retirée.");
+  const documents = await planDeletedCardDocuments(db, booking.id, [carteId]);
+  if (!documents.ok) throw new McpWriteError("Carte non retirée.");
+  const written = await applyStayCommit(db, {
+    bookingId: booking.id,
+    updates: [],
+    deleted: [carteId],
+    created: [],
+    release: documents.release,
+    relink: documents.relink,
+  });
+  if (!written.ok) throw new McpWriteError("Carte non retirée.");
+  const removed = data as {
+    kind?: string | null;
+    title?: string | null;
+    supplier?: string | null;
+    confirmation_ref?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    details?: Record<string, unknown> | null;
+  };
+  await recordStepJournals({
+    bookingId: booking.id,
+    staffId: null,
+    deleted: [
+      {
+        kind: removed.kind,
+        title: removed.title,
+        supplier: removed.supplier,
+        confirmation_ref: removed.confirmation_ref,
+        start_at: removed.start_at,
+        end_at: removed.end_at,
+        details: removed.details,
+      },
+    ],
+    updated: [],
+  });
   await resyncAccueilVip(db, booking.id);
   const warning = await ledgerWarning("Carte retirée", () => refreshBookingLedger(db, booking.id));
   await import("@/lib/crm/dossier-refresh")
@@ -2167,6 +2257,7 @@ export async function removeCarte(input: Record<string, unknown>, admin?: Admin)
     dossier_id: booking.id,
     reference: booking.reference,
     retiree: true,
+    justificatifs_retires: documents.release.length,
     notifie: false,
     ...(warning ? { avertissement: warning } : {}),
   };
@@ -2201,7 +2292,12 @@ export async function removeVoyageur(input: Record<string, unknown>, admin?: Adm
     .eq("id", traveler.id)
     .eq("booking_id", booking.id);
   if (deleteError) throw new McpWriteError("Voyageur non retiré.");
-  if (party) await rewriteBookingParty(db, booking.id, (details) => dropPartyFromDetails(details, party));
+  await rewriteBookingParty(db, booking.id, (details) =>
+    dropPartyFromDetails(details, party, {
+      first_name: traveler.first_name,
+      last_name: traveler.last_name,
+    })
+  );
   const warning = await ledgerWarning("Voyageur retiré", () => refreshTicketingFee(db, booking.id));
   return {
     voyageur_id: traveler.id,

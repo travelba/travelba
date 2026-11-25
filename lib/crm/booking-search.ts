@@ -21,6 +21,8 @@ export function bookingListSearchText(input: {
   places?: string[] | null;
   routes?: string[] | null;
   layovers?: string[] | null;
+  /** Voyageurs et accompagnants, en plus du client du dossier. */
+  people?: string[] | null;
   amount?: number | null;
   /** Collègue en charge, ou « À prendre ». */
   assignee?: string | null;
@@ -48,6 +50,7 @@ export function bookingListSearchText(input: {
     amount,
     ...places,
     ...routes,
+    ...(input.people || []),
   ]
     .filter(Boolean)
     .join(" ");

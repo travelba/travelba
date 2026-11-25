@@ -166,6 +166,7 @@ const COUNTRY_ISO: Record<string, string> = {
 export type ArrivalPlan =
   | { action: "wait" }
   | { action: "task"; note: string; reason: string }
+  | { action: "request"; relance: boolean }
   | { action: "pay" }
   | { action: "close" };
 
@@ -191,6 +192,10 @@ export type ArrivalTick = {
   cardId: string | null;
   cardClosed: boolean;
   blockedReason: string | null;
+  /** Séjour réservé par le client dans l’application. */
+  autonomous?: boolean;
+  /** Interrupteur demande de lien. Éteint : le mail hôtel reste en pause. */
+  autoPayRequest?: boolean;
 };
 
 export function parisIsoDate(now: Date) {
@@ -503,6 +508,8 @@ export function itemStayChannel(item: {
   details?: Record<string, unknown> | null;
 }): HotelArrivalChannel {
   const details = item.details || {};
+  const explicit = details.arrival_channel;
+  if (explicit === "direct" || explicit === "little_emperors" || explicit === "expedia") return explicit;
   const family = typeof details.source_family === "string" ? details.source_family : "";
   let leHotelId: number | null = null;
   for (const key of ["le_hotel_id", "little_emperors_hotel_id", "hotel_id"]) {
@@ -552,6 +559,12 @@ export function stayProvision(input: {
     ceilingCents,
     currency: base.currency,
   };
+}
+
+/** Paiement automatique : le plafond est le montant du séjour, en euros seulement. */
+export function exactStayCeiling(provision: StayProvision): StayProvision {
+  if (provision.currency !== "EUR") return provision;
+  return { ...provision, ceilingCents: provision.baseCents, marginCents: 0 };
 }
 
 export function shownStayProvision(
@@ -1008,10 +1021,19 @@ function gapNote(tick: ArrivalTick) {
   return parts.join(" ") || null;
 }
 
-/** Le cron ne contacte plus l’hôtel. L’agence reprend la main. */
+/** Le cron ne contacte plus l’hôtel, sauf une réservation autonome dont l’interrupteur est ouvert. */
 function pausedHotelMail(purpose: string, extra: string | null = null): ArrivalPlan {
   const note = ["Le mail automatique vers l’hôtel est en pause.", purpose, extra].filter(Boolean).join(" ");
   return { action: "task", note, reason: "manual" };
+}
+
+function autonomousLink(tick: ArrivalTick) {
+  return tick.autonomous === true && tick.autoPayRequest === true && tick.channel !== "expedia";
+}
+
+function paymentAsk(tick: ArrivalTick, purpose: string, extra: string | null, relance: boolean): ArrivalPlan {
+  if (autonomousLink(tick) && tick.emails.length > 0 && tick.amountCents != null) return { action: "request", relance };
+  return pausedHotelMail(purpose, extra);
 }
 
 function holidaySet(tick: ArrivalTick) {
@@ -1053,24 +1075,24 @@ export function planHotelArrival(tick: ArrivalTick): ArrivalPlan {
   }
   const note = gapNote(tick);
   if (tick.channel === "expedia") return pausedHotelMail("Transmettre le traitement VIP autrement.", note);
-  return pausedHotelMail("Demander le lien de paiement autrement.", note);
+  return paymentAsk(tick, "Demander le lien de paiement autrement.", note, false);
 }
 
 function relancePlan(tick: ArrivalTick, holidays: ReadonlySet<string>): ArrivalPlan {
   const note = gapNote(tick);
   if (tick.relanceCount <= 0) {
     if (tick.requestedAtMs != null && tick.nowMs >= tick.requestedAtMs + FOUR_HOURS_MS) {
-      return pausedHotelMail("Relancer l’hôtel autrement.", note);
+      return paymentAsk(tick, "Relancer l’hôtel autrement.", note, true);
     }
     return { action: "wait" };
   }
-  if (tick.relanceCount === 1) {
-    const fromMs = tick.lastRelanceAtMs ?? tick.requestedAtMs ?? tick.nowMs;
-    const from = parisIsoDate(new Date(fromMs));
-    if (tick.parisToday >= nextBusinessDay(from, holidays)) return pausedHotelMail("Relancer l’hôtel autrement.", note);
-    return { action: "wait" };
+  if (tick.relanceCount >= 2 && !autonomousLink(tick)) {
+    return { action: "task", note: "L'hôtel n'a pas renvoyé de lien de paiement.", reason: "no_reply" };
   }
-  return { action: "task", note: "L'hôtel n'a pas renvoyé de lien de paiement.", reason: "no_reply" };
+  const fromMs = tick.lastRelanceAtMs ?? tick.requestedAtMs ?? tick.nowMs;
+  const from = parisIsoDate(new Date(fromMs));
+  if (tick.parisToday >= nextBusinessDay(from, holidays)) return paymentAsk(tick, "Relancer l’hôtel autrement.", note, true);
+  return { action: "wait" };
 }
 
 export type StayCardSlot = {

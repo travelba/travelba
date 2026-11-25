@@ -3,7 +3,8 @@ import { BookingIssuesError } from "@/lib/crm/booking-issues";
 import { confirmationRefsAlign } from "@/lib/crm/email-match";
 import { assignLeIncluded, leRoomLabels } from "@/lib/crm/le-included";
 import { leBookingExtract } from "@/lib/crm/little-emperors-match";
-import { joinConfirmationRefs } from "@/lib/crm/item-match";
+import { cityPlaceKey } from "@/lib/crm/city-names";
+import { expandDistinctHotelCards, joinConfirmationRefs } from "@/lib/crm/item-match";
 import type { BookingExtract } from "@/lib/crm/ingest-types";
 import {
   benefitsFromLeRaw,
@@ -236,6 +237,7 @@ export function leImportExtract(booking: LeBooking, extra: Person[] = [], force 
       leRoomLabels({ room_types: booking.room_types, rooms: booking.rooms })
     );
     item.details = details;
+    extract.items = expandDistinctHotelCards(extract.items || []);
   }
   const seen = new Set(
     (extract.travelers || []).map((person) => `${foldName(person.first_name)}|${foldName(person.last_name)}`)
@@ -267,7 +269,9 @@ function mergeExtracts(parts: BookingExtract[]): BookingExtract {
     const city = typeof item.details?.city === "string" ? item.details.city.trim() : "";
     if (city && !cities.some((row) => foldName(row) === foldName(city))) cities.push(city);
   }
-  const place = cities.join(" · ");
+  const keys = cities.map((city) => cityPlaceKey(city)).filter(Boolean);
+  const sameCity = keys.length > 0 && keys.every((key) => key === keys[0]);
+  const place = sameCity || cities.length <= 1 ? cities[0] || "" : "";
   return {
     ...base,
     destination: place || base.destination,

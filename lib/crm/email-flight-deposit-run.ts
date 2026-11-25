@@ -8,11 +8,13 @@ import {
 import {
   decideFlightAutoAttach,
   flightOnlyExtract,
+  guardAutoFlightTravelers,
   hasUsableFlight,
   planFlightDeposit,
   sumFlightTicketCounts,
   type FlightAutoDecision,
 } from "@/lib/crm/email-flight-deposit";
+import { guardAutomaticExtract } from "@/lib/crm/auto-card-guard-run";
 import { applyBookingSteps } from "@/lib/crm/email-step-run";
 import { enterFlightRematch, leaveFlightRematch } from "@/lib/crm/email-flight-rematch";
 import { parseExtractPayloadSafe, type BookingExtract } from "@/lib/crm/ingest-types";
@@ -85,12 +87,14 @@ export function flightDepositSummary(extract: BookingExtract) {
     })
     .join(" · ");
   const notes = (extract.items || [])
-    .map((item) => {
-      const note = (item.details as { party_note?: unknown } | null | undefined)?.party_note;
-      return typeof note === "string" ? note.trim() : "";
+    .flatMap((item) => {
+      const details = item.details as { party_note?: unknown; review_reason?: unknown } | null | undefined;
+      return [details?.party_note, details?.review_reason];
     })
-    .filter(Boolean);
-  const tail = notes.length ? ` ${notes.join(" ")}` : "";
+    .filter((note): note is string => typeof note === "string" && note.trim().length > 0)
+    .map((note) => note.trim());
+  const uniqueNotes = [...new Set(notes)];
+  const tail = uniqueNotes.length ? ` ${uniqueNotes.join(" ")}` : "";
   return `Vols déposés, cachés, prix de vente 0 € : ${vols}.${tail} Aucun message. Aucun débit.`;
 }
 
@@ -110,7 +114,9 @@ export async function depositFlightsOnBooking(
   if (!extract || !hasUsableFlight(extract)) return { wrote: false as const, message: "" };
   enterFlightRematch();
   try {
-  const prepared = await prepareFlightDepositExtract(admin, bookingId, extract, row.id);
+  const summed = await prepareFlightDepositExtract(admin, bookingId, extract, row.id);
+  const guarded = opts?.automatic ? guardAutoFlightTravelers(summed) : null;
+  const prepared = guarded?.extract ?? summed;
   if (!(prepared.items || []).length) return { wrote: false as const, message: "" };
   if (prepared.document_status === "cancelled") {
     await admin
@@ -119,18 +125,32 @@ export async function depositFlightsOnBooking(
       .eq("id", row.id);
     return { wrote: false as const, message: "Plus aucun passager : le mail reste une annulation. La carte n’est pas retirée." };
   }
+  let toWrite = prepared;
+  if (opts?.automatic) {
+    const kept = await guardAutomaticExtract(admin, {
+      bookingId,
+      extract: prepared,
+      emailIngestId: row.id,
+      customerId,
+    });
+    if (!kept) return { wrote: false as const, message: "" };
+    toWrite = kept;
+  }
   await applyBookingSteps({
     admin,
     bookingId,
     customerId,
-    extract: prepared,
+    extract: toWrite,
     staffUserId: actorId,
     emailIngestId: row.id,
     visibleToClient: false,
     skipTicketingFee: opts?.automatic ? false : true,
+    recordTravelers: guarded?.record,
+    freezeClientVisibility: opts?.automatic ? true : undefined,
+    reopenIfCancelled: opts?.automatic ? false : undefined,
   });
-  const cardIds = await flightCardIdsForExtract(admin, bookingId, prepared);
-  const cardId = cardIds[0] || (await resolveEmailCardId(admin, bookingId, prepared));
+  const cardIds = await flightCardIdsForExtract(admin, bookingId, toWrite);
+  const cardId = cardIds[0] || (await resolveEmailCardId(admin, bookingId, toWrite));
   const deposited = await depositEmailAttachments(
     admin,
     bookingId,
@@ -144,7 +164,7 @@ export async function depositFlightsOnBooking(
     },
     cardIds
   );
-  const message = flightDepositSummary(prepared);
+  const message = flightDepositSummary(toWrite);
   const reason = opts?.reason ? ` (${opts.reason})` : "";
   const lead = opts?.automatic ? `Billet rattaché automatiquement${reason}. ` : "";
   await markEmailAttached(admin, row, {
@@ -155,7 +175,7 @@ export async function depositFlightsOnBooking(
     cards: true,
     auditAction: opts?.automatic ? "auto_attach" : "attach_flights",
   });
-  return { wrote: true as const, message, pieces: deposited.added, cartes: planFlightDeposit(prepared).cartes.length };
+  return { wrote: true as const, message, pieces: deposited.added, cartes: planFlightDeposit(toWrite).cartes.length };
   } finally {
     leaveFlightRematch();
   }

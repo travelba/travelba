@@ -10,6 +10,11 @@ const SEND = new Set([
   "inviter_client",
   "renvoyer_acces_whatsapp",
   "annoncer_option_hotel",
+  "messages_app",
+  "valider_inscription",
+  "refuser_inscription",
+  "completer_inscription",
+  "creer_invitation",
 ]);
 
 const CREATE = new Set([
@@ -40,8 +45,10 @@ const FINANCE = new Set([
   "crediter_stripe",
   "completer_payeurs_stripe",
   "remettre_non_rattache",
+  "rattacher_credit",
   "rapprocher_pliant",
   "preparer_facture_mb3m",
+  "facture_groupee",
   "reprendre_facture_mb3m",
   "creer_fiche_mb3m",
   "comptabilite_sortie",
@@ -55,6 +62,7 @@ const PHRASES: Record<string, string> = {
   crediter_stripe: "Paiement Stripe crédité",
   completer_payeurs_stripe: "Payeurs Stripe complétés",
   remettre_non_rattache: "Crédit remis en non rattaché",
+  rattacher_credit: "Crédit rattaché",
   rapprocher_pliant: "Dépense Pliant rapprochée",
   creer_carte_pliant: "Carte Pliant créée",
   bloquer_carte_pliant: "Carte Pliant gelée ou rouverte",
@@ -73,6 +81,11 @@ const PHRASES: Record<string, string> = {
   inviter_client: "Invitation envoyée",
   renvoyer_acces_whatsapp: "Accès renvoyés par WhatsApp",
   annoncer_option_hotel: "Accès Hôtels annoncé",
+  messages_app: "Message application envoyé",
+  valider_inscription: "Demande d’inscription validée",
+  refuser_inscription: "Demande d’inscription refusée",
+  completer_inscription: "Complément d’inscription demandé",
+  creer_invitation: "Invitation d’inscription créée",
   ajouter_piece: "Pièce déposée",
   requalifier_piece: "Pièce requalifiée",
   notifier_piece: "Pièce notifiée",
@@ -94,9 +107,11 @@ const PHRASES: Record<string, string> = {
   modifier_hotel: "Hôtel modifié",
   ajouter_accueil_vip: "Accueil ajouté",
   classer_courrier_hotel: "Courrier hôtel classé",
+  deplacer_courrier_hotel: "Courrier hôtel déplacé",
   enregistrement_en_ligne: "Enregistrement en ligne mis à jour",
   envoyer_releve: "Relevé envoyé",
   preparer_facture_mb3m: "Facture MB3M préparée",
+  facture_groupee: "Facture groupée préparée",
   envoyer_facture: "Facture envoyée",
   create_restaurant: "Restaurant créé",
   update_restaurant: "Restaurant modifié",
@@ -175,6 +190,16 @@ export function mcpWriteJournalDraft(tool: string, args: Record<string, unknown>
   } else if (!dossierId && !clientId && SETTINGS.has(tool)) {
     entityType = "setting";
     entityId = "expense-presets";
+  }
+  if (
+    tool === "valider_inscription" ||
+    tool === "refuser_inscription" ||
+    tool === "completer_inscription" ||
+    tool === "creer_invitation" ||
+    tool === "lister_parrainages"
+  ) {
+    entityType = "client";
+    entityId = firstUuid(args, ["demande_id", "client_id", "customer_id"]);
   }
   return {
     action,

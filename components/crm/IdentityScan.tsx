@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
+import { isNativeAppBridge } from "@/lib/native/detect";
 import { AlertTriangle, Camera, CheckCircle2, Loader2, ScanLine } from "lucide-react";
 import type { ExtractedIdentity } from "@/lib/crm/identity";
 import { listedIdentities, identitySummary } from "@/lib/crm/passport-extract";
@@ -73,6 +74,11 @@ export function IdentityScan({
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const native = useSyncExternalStore(
+    () => () => {},
+    () => isNativeAppBridge(),
+    () => false
+  );
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -124,15 +130,33 @@ export function IdentityScan({
           <p className="font-display text-sm font-bold text-[var(--admin-navy)] sm:text-base">{title}</p>
           {compact ? null : <p className="mt-1 text-sm text-muted">{description}</p>}
         </div>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => inputRef.current?.click()}
-          className="admin-af-btn admin-tap inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm"
-        >
-          <Camera className="h-4 w-4" />
-          {busy ? "Lecture…" : "Choisir un fichier"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {native ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                void import("@/lib/native/camera").then(async (mod) => {
+                  const file = await mod.captureDocumentPhoto();
+                  if (file) void handleFile(file);
+                });
+              }}
+              className="admin-af-btn admin-tap inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm"
+            >
+              <Camera className="h-4 w-4" />
+              {busy ? "Lecture…" : "Photographier"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => inputRef.current?.click()}
+            className="admin-af-btn admin-tap inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm"
+          >
+            <Camera className="h-4 w-4" />
+            {busy ? "Lecture…" : native ? "Importer" : "Choisir un fichier"}
+          </button>
+        </div>
         <input
           ref={inputRef}
           type="file"

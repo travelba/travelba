@@ -15,11 +15,11 @@ import { clientRateTitle, frenchClientProse, readStayRate } from "@/lib/crm/hote
 import { HotelCardHold } from "@/components/account/HotelCardHold";
 import { LE_PAY_COPY, PAY_COPY } from "@/lib/crm/hotel-direct";
 import { lePrimaryGuest, leWidgetSignal, safeCardWidgetUrl } from "@/lib/crm/le-self-book";
+import { readHotelFicheCache, writeHotelFicheCache } from "@/lib/crm/hotel-fiche-cache";
 import {
   BOOKING_STEPS,
   collapseRooms,
   guestNameOk,
-  initialRate,
   offeredPayMethods,
   payStepAction,
   presentRates,
@@ -139,18 +139,6 @@ function shownLabel(value: string) {
   return line.charAt(0).toLocaleUpperCase("fr") + line.slice(1);
 }
 
-function Fact({ icon, label, value }: { icon: string; label: string; value: string }) {
-  return (
-    <div className="flex items-center gap-3 py-1.5">
-      <Icon name={icon} className="h-4 w-4 shrink-0 h-muted" strokeWidth={1.5} />
-      <span className="min-w-0">
-        <span className="block text-[11px] leading-4 h-muted">{label}</span>
-        <span className="block text-sm h-ink">{shownLabel(value)}</span>
-      </span>
-    </div>
-  );
-}
-
 function StayBenefits({ lines, discreet, reminder = false }: { lines: string[]; discreet: string; reminder?: boolean }) {
   if (reminder) {
     const text = lines.length > 1 ? `${lines.length} avantages réservés` : lines[0] || discreet;
@@ -195,7 +183,7 @@ function StepNav({
 }) {
   return (
     <div className="h-dock shrink-0" data-hotel-dock="1">
-      <div className="px-4 pt-2 pb-9 md:pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div className="px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {price ? (
           <div className="mb-2 flex items-baseline justify-between gap-3">
             <p className="h-kicker">{priceLabel}</p>
@@ -203,7 +191,7 @@ function StepNav({
           </div>
         ) : null}
         <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={onPrevious} className="h-press h-btn-line h-11 text-sm font-semibold" data-hotel-prev="1">
+          <button type="button" onClick={onPrevious} className="h-press h-btn-line h-12 text-sm font-semibold" data-hotel-prev="1">
             Précédent
           </button>
           <button
@@ -212,7 +200,7 @@ function StepNav({
             disabled={nextDisabled}
             data-hotel-next="1"
             data-hotel-rate-cta={marker ? "1" : undefined}
-            className="h-press h-btn h-11 text-sm font-semibold disabled:opacity-40"
+            className="h-press h-btn h-search-go h-12 text-sm font-semibold disabled:opacity-40"
           >
             {nextLabel}
           </button>
@@ -338,6 +326,99 @@ function RoomParty({
   );
 }
 
+function RateChoices({
+  rooms,
+  rate,
+  lines,
+  onChoose,
+}: {
+  rooms: ClientRoom[];
+  rate: ClientRate | null;
+  lines: string[];
+  onChoose: (room: ClientRoom, rate: ClientRate) => void;
+}) {
+  return (
+    <div className="space-y-6" data-hotel-rates="1" data-hotel-rate="1">
+      {rooms.map((item) => {
+        const rates = presentRates(item.rates);
+        if (!rates.length) return null;
+        const outlook = splitOutlook(item.outlook || "");
+        return (
+          <section key={item.name} className="space-y-3">
+            {item.images.length > 1 ? (
+              <div className="relative aspect-[5/4] overflow-hidden bg-[#eceae6]">
+                <HotelPhotoStrip images={item.images} alt={item.name} />
+              </div>
+            ) : item.images[0] ? (
+              <span className="relative block aspect-[5/4] overflow-hidden bg-[#eceae6]">
+                <Photo src={item.images[0]} alt="" />
+              </span>
+            ) : null}
+            <h3 className="h-serif text-[1.05rem] font-semibold leading-tight h-ink">{item.name}</h3>
+            {item.area || item.bed || outlook.view ? (
+              <p className="text-[12px] h-muted">
+                {[item.area, item.bed, outlook.view ? shownLabel(outlook.view) : ""].filter(Boolean).join(" · ")}
+              </p>
+            ) : null}
+            <div className="space-y-3" role="radiogroup" aria-label={`Tarifs, ${item.name}`}>
+              {rates.map((offer) => {
+                const line = readStayRate({ ...offer, freeCancellation: offer.perks.freeCancellation });
+                const selected =
+                  Boolean(rate) &&
+                  rate?.offerId === offer.offerId &&
+                  rate.title === offer.title &&
+                  rate.sellCents === offer.sellCents &&
+                  rate.cancellation === offer.cancellation;
+                const chips = rateChips({ breakfast: offer.perks.breakfast, freeCancellation: false, benefits: lines });
+                const badge = rateCancelBadge({
+                  free: offer.perks.freeCancellation,
+                  deadlineLabel: offer.deadlineLabel,
+                  cancellation: line.cancellation,
+                });
+                const board = rateBoardLine(line.board, lines);
+                return (
+                  <button
+                    key={`${offer.offerId || ""}-${line.title}-${line.cancellation}-${offer.sellCents}`}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    data-hotel-rate-choice={selected ? "on" : "off"}
+                    disabled={!offer.offerId}
+                    onClick={() => onChoose(item, offer)}
+                    className={`h-recap h-press flex w-full items-start gap-3 border-2 text-left disabled:opacity-40 ${selected ? "border-[#C5A880] bg-[#f4efe6]" : "border-[#e7e1d6]"}`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-[10px] border ${selected ? "border-[#C5A880] bg-[#C5A880] text-[#0B192C]" : "border-[#1a1a1a]/30 bg-white"}`}
+                    >
+                      {selected ? <Icon name="check" className="h-3 w-3" strokeWidth={3} /> : null}
+                    </span>
+                    <span className="min-w-0 flex-1 space-y-2">
+                      <span className="h-serif block text-[1.05rem] font-semibold h-ink">{clientRateTitle(offer.title)}</span>
+                      {board ? <span className="block text-sm h-ink">{board}</span> : null}
+                      <span className={`h-pill inline-block text-[12px] font-semibold ${offer.perks.freeCancellation ? "text-[#8c7352]" : "bg-[#0B192C] text-white"}`} data-hotel-cancel-badge="1">
+                        {badge}
+                      </span>
+                      {chips.length ? (
+                        <span className="flex flex-wrap gap-2">
+                          {chips.map((chip) => (
+                            <span key={chip} className="h-pill">{chip}</span>
+                          ))}
+                        </span>
+                      ) : null}
+                      <span className="block text-lg font-semibold h-ink">{euros(offer.sellCents, offer.currency)} TTC</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 function Dock({
   label,
   price,
@@ -355,9 +436,9 @@ function Dock({
 }) {
   return (
     <div className="h-dock shrink-0" data-hotel-dock="1">
-      <div className={`px-4 pt-2 pb-9 md:pb-[max(0.5rem,env(safe-area-inset-bottom))] ${price ? "flex items-center justify-between gap-3" : ""}`}>
+      <div className="px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {price ? (
-          <div className="min-w-0">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
             <p className="h-kicker">{label}</p>
             <p className="truncate text-lg font-semibold h-ink">{price}</p>
           </div>
@@ -367,7 +448,7 @@ function Dock({
           disabled={disabled}
           onClick={onAction}
           data-hotel-rate-cta={marker ? "1" : undefined}
-          className={`h-press h-11 text-sm font-semibold disabled:opacity-40 ${marker ? "h-select" : "h-btn"} ${price ? "shrink-0 px-5" : "w-full"}`}
+          className="h-press h-btn h-search-go h-12 w-full text-sm font-semibold disabled:opacity-40"
         >
           {action}
         </button>
@@ -389,6 +470,7 @@ export function HotelJourney({
   onOpenOther,
   trial = true,
   leApi = false,
+  focusRates = false,
 }: {
   hotel: ClientHotel;
   stayRooms: HotelRoomOccupancy[];
@@ -403,20 +485,23 @@ export function HotelJourney({
   trial?: boolean;
   /** Réservation par l’API. Les autres clients gardent le parcours e-mail. */
   leApi?: boolean;
+  /** Ouvre la fiche déjà calée sur les tarifs. */
+  focusRates?: boolean;
 }) {
   const requestKey = hotel.hotelId
     ? `${hotel.hotelId}|${query.destination}|${query.checkIn}|${query.checkOut}|${query.rooms.length}`
     : "";
+  const cachedFile = requestKey ? readHotelFicheCache(requestKey) : null;
   const [seenKey, setSeenKey] = useState(requestKey);
-  const [file, setFile] = useState<ClientHotelFile | null>(hotel.hotelId ? null : fileFromCard(hotel));
-  const [ratesState, setRatesState] = useState<"loading" | "ready" | "error">(hotel.hotelId ? "loading" : "ready");
+  const [file, setFile] = useState<ClientHotelFile | null>(cachedFile || (hotel.hotelId ? null : fileFromCard(hotel)));
+  const [ratesState, setRatesState] = useState<"loading" | "ready" | "error">(cachedFile || !hotel.hotelId ? "ready" : "loading");
   if (seenKey !== requestKey) {
+    const nextFile = requestKey ? readHotelFicheCache(requestKey) : null;
     setSeenKey(requestKey);
-    setFile(hotel.hotelId ? null : fileFromCard(hotel));
-    setRatesState(hotel.hotelId ? "loading" : "ready");
+    setFile(nextFile || (hotel.hotelId ? null : fileFromCard(hotel)));
+    setRatesState(nextFile || !hotel.hotelId ? "ready" : "loading");
   }
   const [note, setNote] = useState("");
-  const [room, setRoom] = useState<ClientRoom | null>(null);
   const [rate, setRate] = useState<ClientRate | null>(null);
   const [ackNonRefundable, setAckNonRefundable] = useState(false);
   const [selfName, setSelfName] = useState("");
@@ -508,15 +593,22 @@ export function HotelJourney({
       .then((response) => (response.ok ? response.json() : null))
       .then((json: { file?: ClientHotelFile } | null) => {
         if (json?.file) {
-          setFile({ ...json.file, rooms: collapseRooms(json.file.rooms) });
+          const next = { ...json.file, rooms: collapseRooms(json.file.rooms) };
+          if (requestKey) writeHotelFicheCache(requestKey, next);
+          setFile(next);
           setRatesState("ready");
-        } else setRatesState("error");
+        } else if (!readHotelFicheCache(requestKey)) setRatesState("error");
       })
       .catch(() => {
-        if (!controller.signal.aborted) setRatesState("error");
+        if (!controller.signal.aborted && !readHotelFicheCache(requestKey)) setRatesState("error");
       });
     return () => controller.abort();
-  }, [hotel, query]);
+  }, [hotel, query, requestKey]);
+
+  useEffect(() => {
+    if (!focusRates || ratesState !== "ready") return;
+    roomsRef.current?.scrollIntoView({ behavior: smoothScroll() ? "smooth" : "auto", block: "start" });
+  }, [focusRates, ratesState]);
 
   const images = file?.images.length ? file.images : hotel.photo ? [hotel.photo] : [];
   const whatsapp = `https://wa.me/${siteConfig.whatsappNumber}`;
@@ -534,9 +626,7 @@ export function HotelJourney({
           ? "recap"
           : step === "guests" && rate
             ? "guests"
-            : step === "room" && room
-              ? "room"
-              : "hotel";
+            : "hotel";
   const fromOffer =
     ratesState === "ready"
       ? file?.rooms
@@ -545,21 +635,7 @@ export function HotelJourney({
           .sort((left, right) => left.sellCents - right.sellCents)[0]
       : undefined;
 
-  function chooseRoom(next: ClientRoom) {
-    const picked = collapseRooms([next])[0] || next;
-    const rates = presentRates(picked.rates);
-    setRoom({ ...picked, rates });
-    setRate(initialRate(rates));
-    postHotelActivity({
-      kind: "room",
-      hotel: file?.name || hotel.name,
-      room: picked.name,
-      rate: picked.rates[0]?.title,
-    });
-    onStep("room");
-  }
-
-  function chooseRate(next: ClientRate) {
+  function chooseRate(_nextRoom: ClientRoom, next: ClientRate) {
     if (!next.offerId) return;
     const same = rate?.offerId === next.offerId && rate.title === next.title && rate.sellCents === next.sellCents;
     setRate(next);
@@ -625,8 +701,7 @@ export function HotelJourney({
       onBack();
       return;
     }
-    if (view === "room") onStep("hotel");
-    else if (view === "guests") onStep("room");
+    if (view === "guests") onStep("hotel");
     else if (view === "recap") onStep("guests");
     else if (view === "pay") onStep("recap");
     else onStep("back");
@@ -844,7 +919,7 @@ export function HotelJourney({
         </div>
         {placing || view === "hotel" ? null : (
           <ol data-hotel-stepper="1" className="flex items-center gap-1.5 overflow-hidden px-3 pb-2">
-            {BOOKING_STEPS.map((item, index) => {
+            {BOOKING_STEPS.filter((item) => item.id !== "room").map((item, index) => {
               const current = item.id === view;
               return (
                 <li key={item.id} aria-current={current ? "step" : undefined} className={current ? "min-w-0 flex-1" : "shrink-0"}>
@@ -906,60 +981,12 @@ export function HotelJourney({
             </div>
             <div className="space-y-8 px-5 pt-6">
               {ratesState === "ready" && file?.rooms.length ? (
-                <div data-hotel-rooms="1" ref={roomsRef}>
+                <div data-hotel-rooms="1" ref={roomsRef} className="scroll-mt-24">
                   <p className="h-section">
                     {file.rooms.length > 1 ? `${file.rooms.length} types de chambres disponibles` : "1 type de chambre disponible"}
                   </p>
-                  <div className="mt-4 -mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2">
-                    {file.rooms.map((item) => {
-                      const offer = item.rates[0];
-                      const photo = item.images[0];
-                      const perk = programme.lines.length ? "" : programme.discreet;
-                      const outlook = splitOutlook(item.outlook || "");
-                      return (
-                        <button
-                          key={item.name}
-                          type="button"
-                          onClick={() => chooseRoom(item)}
-                          className="h-room h-press w-[78%] shrink-0 snap-start overflow-hidden text-left"
-                        >
-                          <span className="relative block aspect-[5/4] overflow-hidden bg-[#eceae6]">
-                            {photo ? <Photo src={photo} alt="" /> : null}
-                            {item.images.length > 1 ? <span className="h-pin absolute bottom-2 right-2">{`1/${item.images.length}`}</span> : null}
-                          </span>
-                          <span className="block space-y-2 px-3 py-3">
-                            <span className="h-serif block text-[1.05rem] font-semibold leading-tight h-ink">{item.name}</span>
-                            <span className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] h-muted">
-                              {outlook.view ? (
-                                <span className="inline-flex items-center gap-1">
-                                  <Icon name="eye" className="h-3.5 w-3.5" strokeWidth={1.5} />
-                                  {shownLabel(outlook.view)}
-                                </span>
-                              ) : null}
-                              {item.bed ? (
-                                <span className="inline-flex items-center gap-1">
-                                  <Icon name="bed" className="h-3.5 w-3.5" strokeWidth={1.5} />
-                                  {shownLabel(item.bed)}
-                                </span>
-                              ) : null}
-                              {item.area ? (
-                                <span className="inline-flex items-center gap-1">
-                                  <Icon name="ruler" className="h-3.5 w-3.5" strokeWidth={1.5} />
-                                  {item.area}
-                                </span>
-                              ) : null}
-                            </span>
-                            {offer ? (
-                              <span className="block">
-                                <span className="block text-base font-semibold tracking-tight h-ink">{euros(offer.sellCents, offer.currency)}</span>
-                                <span className="block text-[11px] h-muted">Total TTC</span>
-                              </span>
-                            ) : null}
-                            {perk ? <span className="inline-block text-[12px] text-[#8c7352]">{perk}</span> : null}
-                          </span>
-                        </button>
-                      );
-                    })}
+                  <div className="mt-4">
+                    <RateChoices rooms={file.rooms} rate={rate} lines={programme.lines} onChoose={chooseRate} />
                   </div>
                 </div>
               ) : ratesState === "ready" && file ? (
@@ -1033,93 +1060,6 @@ export function HotelJourney({
           </div>
         ) : null}
 
-        {view === "room" && room && rate ? (
-          <div data-hotel-rate="1" className="h-paper pb-8">
-            <Gallery images={room.images.length ? room.images : images} alt={room.name} />
-            <div className="space-y-5 px-4 pb-8 pt-4">
-              <article className="h-recap">
-                <p className="text-sm h-muted">{file?.city || hotel.city}</p>
-                <h2 className="h-serif mt-1 text-[1.2rem] font-semibold leading-tight h-ink">{file?.name || hotel.name}</h2>
-                <p className="h-serif mt-3 text-[1.05rem] font-semibold leading-tight h-ink">{room.name}</p>
-              </article>
-              {room.area || room.bed || room.outlook ? (
-                <div className="space-y-1">
-                  {room.area ? <Fact icon="ruler" label="Surface intérieure" value={room.area} /> : null}
-                  {splitOutlook(room.outlook || "").exterior ? <Fact icon="eye" label="Extérieur" value={splitOutlook(room.outlook || "").exterior} /> : null}
-                  {splitOutlook(room.outlook || "").view ? <Fact icon="eye" label="Vue" value={splitOutlook(room.outlook || "").view.replace(/^vue\s+/i, "")} /> : null}
-                  {room.bed ? <Fact icon="bed" label="Couchage" value={room.bed} /> : null}
-                </div>
-              ) : null}
-              <div className="space-y-3" role="radiogroup" aria-label="Tarifs" data-hotel-rates="1">
-                {presentRates(room.rates).map((item) => {
-                  const line = readStayRate({ ...item, freeCancellation: item.perks.freeCancellation });
-                  const selected =
-                    Boolean(rate) &&
-                    rate.offerId === item.offerId &&
-                    rate.title === item.title &&
-                    rate.sellCents === item.sellCents &&
-                    rate.cancellation === item.cancellation;
-                  const chips = rateChips({ breakfast: item.perks.breakfast, freeCancellation: false, benefits: programme.lines });
-                  const badge = rateCancelBadge({
-                    free: item.perks.freeCancellation,
-                    deadlineLabel: item.deadlineLabel,
-                    cancellation: line.cancellation,
-                  });
-                  const board = rateBoardLine(line.board, programme.lines);
-                  return (
-                    <button
-                      key={`${item.offerId || ""}-${line.title}-${line.cancellation}-${item.sellCents}`}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      data-hotel-rate-choice={selected ? "on" : "off"}
-                      disabled={!item.offerId}
-                      onClick={() => chooseRate(item)}
-                      className={`h-recap h-press flex w-full items-start gap-3 text-left border-2 disabled:opacity-40 ${selected ? "border-[#C5A880] bg-[#f4efe6]" : "border-[#e7e1d6]"}`}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-[10px] border ${selected ? "border-[#C5A880] bg-[#C5A880] text-[#0B192C]" : "border-[#1a1a1a]/30 bg-white"}`}
-                      >
-                        {selected ? <Icon name="check" className="h-3 w-3" strokeWidth={3} /> : null}
-                      </span>
-                      <span className="min-w-0 flex-1 space-y-2">
-                        <span className="h-serif block text-[1.05rem] font-semibold h-ink">{clientRateTitle(item.title)}</span>
-                        {board ? <span className="block text-sm h-ink">{board}</span> : null}
-                        <span className={`h-pill inline-block text-[12px] font-semibold ${item.perks.freeCancellation ? "text-[#8c7352]" : "bg-[#0B192C] text-white"}`} data-hotel-cancel-badge="1">
-                          {badge}
-                        </span>
-                        {chips.length ? (
-                          <span className="flex flex-wrap gap-2">
-                            {chips.map((chip) => (
-                              <span key={chip} className="h-pill">{chip}</span>
-                            ))}
-                          </span>
-                        ) : null}
-                        <span className="block text-lg font-semibold h-ink">{euros(item.sellCents, item.currency)} TTC</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div>
-                {rate.footnotes.length ? (
-                  <details className="h-fold">
-                    <summary className="text-sm h-ink">Conditions</summary>
-                    <div className="space-y-2 pb-1">
-                      {rate.footnotes.map((line) => (
-                        <p key={line} className="text-xs leading-relaxed h-muted">{line}</p>
-                      ))}
-                    </div>
-                  </details>
-                ) : null}
-                <div className="mt-5">
-                  <StayBenefits lines={programme.lines} discreet={programme.discreet} />
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
 
         {view === "guests" && rate && reading ? (
           <div data-hotel-guests="1" className="h-paper space-y-6 px-4 py-4">
@@ -1350,32 +1290,23 @@ export function HotelJourney({
       </div>
       </div>
 
-      {view === "hotel" && fromOffer ? (
+      {view === "hotel" && (rate || fromOffer) ? (
         <Dock
-          label="À partir de"
-          price={`${euros(fromOffer.sellCents, fromOffer.currency)} TTC`}
-          action="Voir les chambres"
-          onAction={() => roomsRef.current?.scrollIntoView({ behavior: smoothScroll() ? "smooth" : "auto", block: "start" })}
-        />
-      ) : null}
-      {view === "room" && rate ? (
-        <StepNav
-          priceLabel="Séjour"
-          price={`${euros(rate.sellCents, rate.currency)} TTC`}
-          onPrevious={() => onStep("hotel")}
-          onNext={() => {
-            if (rate.offerId) onStep("guests");
-          }}
-          nextLabel="Suivant"
-          nextDisabled={!rate.offerId}
+          label={rate ? "Séjour" : "À partir de"}
+          price={`${euros((rate ?? fromOffer)!.sellCents, (rate ?? fromOffer)!.currency)} TTC`}
+          action="Suivant"
+          disabled={!rate?.offerId}
           marker
+          onAction={() => {
+            if (rate?.offerId) onStep("guests");
+          }}
         />
       ) : null}
       {view === "guests" && rate ? (
         <StepNav
           priceLabel="Séjour"
           price={`${euros(rate.sellCents, rate.currency)} TTC`}
-          onPrevious={() => onStep("room")}
+          onPrevious={() => onStep("hotel")}
           onNext={() => (guestsReady() ? onStep("recap") : setNote("Indiquez le prénom et le nom de chaque voyageur, une personne par ligne."))}
           nextLabel="Suivant"
         />

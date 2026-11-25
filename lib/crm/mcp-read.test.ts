@@ -415,7 +415,7 @@ test("une lecture société ou cartes en échec remonte, elle ne vide pas la fic
 test("fiche_client nomme les compagnons et les dossiers qui les retiennent", async () => {
   const lines = clientCompanionLines(
     [
-      { id: "c-leo", first_name: "Leo", last_name: "Periol" },
+      { id: "c-leo", first_name: "Leo", last_name: "Periol", relationship: "enfant", loyalty: { flying_blue: "fb 1" } },
       { id: "c-dupin", first_name: "Guillian", last_name: "Dupin" },
     ],
     [
@@ -426,6 +426,10 @@ test("fiche_client nomme les compagnons et les dossiers qui les retiennent", asy
   );
   assert.equal(lines[0]?.compagnon_id, "c-leo");
   assert.equal(lines[0]?.nom, "Leo Periol");
+  assert.equal(lines[0]?.lien, "enfant");
+  assert.deepEqual(lines[0]?.fidelite, [{ programme: "Flying Blue", numero: "FB1" }]);
+  assert.equal(lines[1]?.lien, null);
+  assert.deepEqual(lines[1]?.fidelite, []);
   assert.deepEqual(lines[0]?.dossiers, [{ dossier_id: "b-203", reference: "TB-2026-0203" }]);
   assert.equal(lines[1]?.dossiers[0]?.reference, "TB-2026-0203");
 });

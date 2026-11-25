@@ -193,4 +193,30 @@ describe("mise à jour des étapes depuis un mail", () => {
     assert.equal(preview.etapes[0]?.prix_fournisseur, 337.23);
     assert.equal(preview.etapes[0]?.prix_vente, 0);
   });
+
+  it("ouvre deux cartes pour deux chambres Alpaga", () => {
+    const preview = planEmailSteps([], {
+      travelers: [{ first_name: "Camille", last_name: "Martin" }],
+      items: ["71986SH009279", "71986SH009280"].map((ref) => ({
+        kind: "hotel",
+        title: "L'Alpaga",
+        supplier: "Little Emperors",
+        confirmation_ref: ref,
+        start_at: "2026-12-13",
+        end_at: "2026-12-18",
+        amount: null,
+        details: { hotel_name: "L'Alpaga", city: "Megève", document_amount: 900 },
+      })),
+    });
+    assert.equal(preview.etapes.length, 2);
+    assert.deepEqual(
+      preview.etapes.map((step) => step.action),
+      ["creer", "creer"]
+    );
+    assert.deepEqual(
+      preview.etapes.map((step) => step.confirmation).sort(),
+      ["71986SH009279", "71986SH009280"]
+    );
+    assert.equal(preview.etapes[0]?.prix_vente, 0);
+  });
 });

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { whatsappThreadHref } from "@/lib/crm/boite-tabs";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useVisiblePoll } from "@/components/crm/useVisiblePoll";
 import { PAGE_POLL_MS } from "@/lib/crm/page-poll";
@@ -26,7 +26,7 @@ import {
   type InboxMessage,
   type InboxThread,
 } from "@/lib/crm/whatsapp-inbox";
-import { askBrowserAlerts, browserAlert } from "@/lib/crm/browser-alert";
+import { askBrowserAlerts } from "@/lib/crm/browser-alert";
 import { isHandoffNote } from "@/lib/crm/whatsapp-takeover";
 import { VoiceNote } from "@/components/admin/VoiceNote";
 
@@ -87,14 +87,6 @@ export function WhatsappInbox({
   ]);
 
   useVisiblePoll(() => router.refresh(), PAGE_POLL_MS.whatsappInbox, !embedded);
-
-  useEffect(() => {
-    if (embedded || typeof Notification === "undefined") return;
-    const unread = threads.reduce((sum, thread) => sum + thread.unread, 0);
-    const previous = Number(sessionStorage.getItem("tba-wa-unread") || "0");
-    if (unread > previous && document.hidden) browserAlert("WhatsApp", "Un nouveau message est arrivé.");
-    sessionStorage.setItem("tba-wa-unread", String(unread));
-  }, [embedded, threads]);
 
   async function post(payload: Record<string, unknown>, options?: { keepDraft?: boolean }) {
     setBusy(true);

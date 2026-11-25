@@ -165,7 +165,11 @@ export function sepaIntentMatches(
   return intent.status === "processing" || intent.status === "succeeded" || intent.status === "requires_action";
 }
 
-export function livePartSentence(owed: { company: number; personal: number }, currency: string) {
+export function livePartSentence(
+  owed: { company: number; personal: number; pooled?: boolean; total?: number },
+  currency: string
+) {
+  if (owed.pooled && (owed.total || 0) >= 0.5) return `le reste à régler (${formatMoney(owed.total || 0, currency)})`;
   const parts: string[] = [];
   if (owed.company >= 0.5) parts.push(`la société (${formatMoney(owed.company, currency)})`);
   if (owed.personal >= 0.5) parts.push(`le particulier (${formatMoney(owed.personal, currency)})`);
@@ -185,7 +189,7 @@ export function payFollowUpIsFresh(createdAt: string, now = Date.now(), days = 1
 export function agencyPayFollowUp(input: {
   summary: string;
   detail?: string | null;
-  owed?: { company: number; personal: number };
+  owed?: { company: number; personal: number; pooled?: boolean; total?: number };
   currency?: string;
   createdAt?: string | null;
   now?: number;
@@ -195,7 +199,8 @@ export function agencyPayFollowUp(input: {
   const owed = input.owed;
   const currency = input.currency || "EUR";
   const live = owed ? livePartSentence(owed, currency) : null;
-  const stillDue = !owed || owed.company >= 0.5 || owed.personal >= 0.5;
+  const stillDue =
+    !owed || owed.company >= 0.5 || owed.personal >= 0.5 || Boolean(owed.pooled && (owed.total || 0) >= 0.5);
   if (!stillDue) return null;
 
   if (/demandé un virement/i.test(summary)) {

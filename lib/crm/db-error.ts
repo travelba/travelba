@@ -53,13 +53,24 @@ function columnLabel(column: string | null) {
   return COLUMN_LABELS[column] || column.replace(/_/g, " ");
 }
 
+/** Contrainte nommée → phrase utile. Le code 23505 seul ne dit pas quelle valeur. */
+function constraintMessage(message: string | null | undefined) {
+  const text = String(message || "");
+  if (text.includes("crm_booking_documents_booking_sha")) {
+    return "Ce billet est déjà dans le dossier. Les cartes n’ont pas été supprimées, rien n’a été enregistré.";
+  }
+  return null;
+}
+
 /** Message FR neutre pour une erreur Supabase/Postgres ; le détail part dans les logs serveur. */
 export function dbErrorMessage(error: DbErrorLike, fallback = "Opération impossible. Réessayez.") {
   const code = error?.code ?? "";
   const column = columnLabel(dbColumnFromMessage(error?.message));
   switch (code) {
     case "23505":
-      return column ? `Cette valeur existe déjà (${column}).` : "Cette valeur existe déjà.";
+      return constraintMessage(error?.message) || (column ? `Cette valeur existe déjà (${column}).` : "Cette valeur existe déjà.");
+    case "P0002":
+      return "Carte introuvable.";
     case "23503":
       return column ? `Élément lié introuvable (${column}).` : "Élément lié introuvable.";
     case "23502":

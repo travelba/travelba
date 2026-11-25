@@ -496,7 +496,7 @@ test("hors dossier : conseil sans fait inventé, sinon l’agence", () => {
   assert.equal(advice.handoff, null);
 
   const unknown = planConciergeTurn("Comment vont les baleines cette année ?", dossier);
-  assert.match(unknown.text, /Souhaitez-vous que j’en parle à Benjamin/);
+  assert.match(unknown.text, /Souhaitez-vous que j’en parle à l’agence/);
   assert.equal(unknown.text.includes("00h"), false);
   assert.equal(unknown.handoff, null);
 
@@ -1395,4 +1395,260 @@ test("une note vocale qui demande le partage de Nice part vers Victoria", async 
   const inbound = writes.find((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "inbound");
   assert.equal(inbound?.row?.body, `Note vocale : ${SHARE_SENTENCE}`);
   assert.equal(inbound?.row?.transcript, SHARE_SENTENCE);
+});
+
+test("une promesse vide ouvre une demande, un outil déjà appelé non", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "Comment vont les baleines cette année ?",
+    MessageSid: "SMvide",
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store: storeFrom({
+      writes,
+      customers: [{ id: "cust-1", first_name: "Simon" }],
+      dossier: { bookings: [published] },
+    }),
+    converse: async () => ({
+      text: "Je vérifie le statut de votre ESTA et je vous fais un retour.",
+      bookingReference: null,
+      handoff: null,
+    }),
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMvideout" };
+    },
+  });
+  assert.equal(writes.find((row) => row.table === "crm_whatsapp_requests")?.row?.kind, "question");
+  assert.equal(writes.find((row) => row.table === "crm_whatsapp_requests")?.row?.body, "Comment vont les baleines cette année ?");
+  const outbound = writes.find((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "outbound");
+  assert.deepEqual(outbound?.row?.tools, ["ouvrir_demande"]);
+
+  const kept: { table: string; row?: Record<string, unknown> }[] = [];
+  const again = { ...params, MessageSid: "SMoutil" };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(again),
+    params: again,
+    authToken: TOKEN,
+    store: storeFrom({
+      writes: kept,
+      customers: [{ id: "cust-1", first_name: "Simon" }],
+      dossier: { bookings: [published] },
+    }),
+    converse: async () => ({
+      text: "Je vérifie le statut de votre ESTA et je vous fais un retour.",
+      bookingReference: null,
+      handoff: null,
+      tools: ["verifier_esta"],
+    }),
+    send: async () => ({ ok: true, sid: "SMoutilout" }),
+  });
+  assert.equal(kept.some((row) => row.table === "crm_whatsapp_requests"), false);
+});
+
+test("le statut ESTA connu se dit, la mise à jour appelle le même contrôle", async () => {
+  const esta = {
+    bookingId: "stay-pub",
+    travelerId: "trav-1",
+    traveler: "Simon",
+    kind: "esta" as const,
+    status: "approuve",
+    validUntil: "2027-03-26",
+    checkedAt: "2026-11-25T10:00:00Z",
+  };
+  const sent: { body: string }[] = [];
+  const known = {
+    From: "whatsapp:+33601020304",
+    Body: "Vérifie si mon ESTA est autorisé",
+    MessageSid: "SMesta",
+  };
+  let launched = 0;
+  const store = storeFrom({
+    writes: [],
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: { bookings: [published], authorizations: [esta] },
+  });
+  store.requestAuthorizationCheck = async () => {
+    launched += 1;
+    return { ok: true };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(known),
+    params: known,
+    authToken: TOKEN,
+    store,
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMestaout" };
+    },
+  });
+  assert.match(sent.map((row) => row.body).join("\n"), /approuvée, valable jusqu’au 26\/03\/2027/);
+  assert.equal(launched, 0);
+  assert.equal(/je vérifie/i.test(sent.map((row) => row.body).join("\n")), false);
+
+  const refreshSent: { body: string }[] = [];
+  const refresh = { ...known, Body: "Mets à jour mon ESTA", MessageSid: "SMestarun" };
+  const refreshStore = storeFrom({
+    writes: [],
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: { bookings: [published], authorizations: [{ ...esta, status: "a_verifier", checkedAt: null, validUntil: null }] },
+  });
+  refreshStore.requestAuthorizationCheck = async (input) => {
+    launched += 1;
+    assert.equal(input.kind, "esta");
+    assert.equal(input.travelerId, "trav-1");
+    assert.equal(input.bookingId, "stay-pub");
+    return { ok: true };
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(refresh),
+    params: refresh,
+    authToken: TOKEN,
+    store: refreshStore,
+    send: async (message) => {
+      refreshSent.push(message);
+      return { ok: true, sid: "SMestarunout" };
+    },
+  });
+  assert.equal(launched, 1);
+  assert.match(refreshSent.map((row) => row.body).join("\n"), /je lance la vérification/i);
+});
+
+test("une pièce suit le dossier nommé et reste cachée", async () => {
+  const attached: { bookingId: string; travelerId: string | null; visible?: boolean }[] = [];
+  const photo = {
+    From: "whatsapp:+33601020304",
+    Body: "",
+    NumMedia: "1",
+    MediaUrl0: "https://api.twilio.com/2010-04-01/Accounts/ACtest/Media/ME2",
+    MediaContentType0: "image/jpeg",
+    MessageSid: "SMpiece",
+  };
+  const store = storeFrom({
+    writes: [],
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: {
+      bookings: [published, { ...published, id: "stay-ny", reference: "TB-2026-0261", destination: "New York", title: "New York" }],
+      travelers: [{ id: "trav-1", bookingId: "stay-ny", firstName: "Simon", lastName: "Martin" }],
+    },
+    savePiece: async () => "saved",
+  });
+  store.peekPiecePath = () => "customers/cust-1/whatsapp/piece.jpg";
+  store.takePiecePath = () => "customers/cust-1/whatsapp/piece.jpg";
+  store.conversationHistory = async () => [
+    { direction: "inbound", body: "Pour TB-2026-0261", twilio_sid: "SMavant", created_at: "2026-11-25T09:00:00Z" },
+  ];
+  store.attachHiddenPiece = async (input) => {
+    attached.push({ bookingId: input.bookingId, travelerId: input.travelerId, visible: false });
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(photo),
+    params: photo,
+    authToken: TOKEN,
+    accountSid: "ACtest",
+    store,
+    fetchImpl: async () => new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-type": "image/jpeg" } }),
+    send: async () => ({ ok: true, sid: "SMpieceout" }),
+  });
+  assert.deepEqual(attached, [{ bookingId: "stay-ny", travelerId: "trav-1", visible: false }]);
+});
+
+test("le Stop d’un conjoint coupe son numéro, pas celui du titulaire", async () => {
+  let holderStopped = false;
+  let companionStopped = "";
+  const threads: { phone: string | null | undefined }[] = [];
+  const sent: string[] = [];
+  const params = { From: "whatsapp:+33611223344", Body: "Stop", MessageSid: "SMconjointstop" };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store: {
+      ...storeFrom({ writes: [], customers: [] }),
+      async companionByPhone() {
+        return { id: "spouse", customerId: "holder", firstName: "Hugo", bookingIds: ["stay-pub"] };
+      },
+      async optOut() {
+        holderStopped = true;
+      },
+      async optOutCompanion(phone) {
+        companionStopped = phone;
+      },
+      async recentThread(_customerId, phone) {
+        threads.push({ phone });
+        return [];
+      },
+      async conversationHistory(_customerId, phone) {
+        threads.push({ phone });
+        return [];
+      },
+      async loadDossier() {
+        return {
+          bookings: [published],
+          balances: [{ currency: "EUR", balance: -120 }],
+          transactions: [{ booking_id: "stay-pub", direction: "debit", kind: "booking", amount: 120, currency: "EUR", occurred_on: "2026-01-01", label: "séjour", status: "posted" }],
+          travelDocuments: [{ doc_type: "passport", first_name: "Hugo", last_name: "Martin", expires_on: null, number: "SECRET" }],
+        };
+      },
+    },
+    send: async (message) => {
+      sent.push(message.body);
+      return { ok: true, sid: "SMstopconjoint" };
+    },
+  });
+  assert.equal(holderStopped, false);
+  assert.equal(companionStopped, "+33611223344");
+  assert.equal(threads.every((row) => row.phone === "+33611223344"), true);
+  assert.equal(sent.join("\n").includes("mon-compte"), false);
+});
+
+test("une pièce reçue d’un conjoint est signalée, pas déposée sur la fiche", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  let saved = false;
+  const params = {
+    From: "whatsapp:+33611223344",
+    Body: "",
+    NumMedia: "1",
+    MediaUrl0: "https://api.twilio.com/media",
+    MediaContentType0: "image/jpeg",
+    MessageSid: "SMconjointpiece",
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store: {
+      ...storeFrom({
+        writes,
+        customers: [],
+        savePiece: async () => {
+          saved = true;
+          return "saved";
+        },
+      }),
+      async companionByPhone() {
+        return { customerId: "holder", firstName: "Hugo", bookingIds: ["stay-pub"] };
+      },
+      async loadDossier() {
+        return { bookings: [published], balances: [{ currency: "EUR", balance: -40 }], transactions: [], travelDocuments: [] };
+      },
+    },
+    send: async () => ({ ok: true, sid: "SMpiececonjoint" }),
+  });
+  assert.equal(saved, false);
+  const request = writes.find((row) => row.table === "crm_whatsapp_requests");
+  assert.match(String(request?.row?.body || ""), /accompagnant/);
+  assert.equal(String(request?.row?.body || "").includes("SECRET"), false);
 });

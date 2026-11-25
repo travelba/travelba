@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { HotelMapPreview } from "@/components/account/HotelMapPreview";
 import { HotelOsmMap } from "@/components/account/HotelOsmMap";
+import { HotelWait } from "@/components/account/HotelWait";
 import { publicMapboxStyle, publicMapboxToken } from "@/lib/crm/hotel-map";
 import type { ClientHotel } from "@/lib/crm/hotel-search";
 import "mapbox-gl/dist/mapbox-gl.css";
@@ -12,7 +13,11 @@ const HotelMapboxView = dynamic(
   () => import("@/components/account/HotelMapboxView").then((mod) => mod.HotelMapboxView),
   {
     ssr: false,
-    loading: () => <div className="h-field h-80 animate-pulse h-skel" aria-hidden />,
+    loading: () => (
+      <div className="h-80">
+        <HotelWait quiet />
+      </div>
+    ),
   }
 );
 
@@ -21,7 +26,7 @@ export function HotelMap({
   onOpen,
 }: {
   hotels: ClientHotel[];
-  onOpen?: (hotel: ClientHotel) => void;
+  onOpen?: (hotel: ClientHotel, focus?: "tarifs") => void;
 }) {
   const placed = hotels.filter((hotel) => hotel.coords);
   const token = publicMapboxToken(process.env.NEXT_PUBLIC_MAPBOX_TOKEN);

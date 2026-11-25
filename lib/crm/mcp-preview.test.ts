@@ -8,6 +8,7 @@ const GATED = [
   "crediter_virement",
   "crediter_revolut",
   "crediter_stripe",
+  "rattacher_credit",
   "creer_carte_pliant",
   "publier_carnet",
   "inviter_client",

@@ -31,6 +31,7 @@ const EXPECTED = [
   "crediter_stripe",
   "completer_payeurs_stripe",
   "remettre_non_rattache",
+  "rattacher_credit",
   "rapprocher_pliant",
   "creer_carte_pliant",
   "lire_carte_pliant",
@@ -55,6 +56,7 @@ const EXPECTED = [
   "creer_dossier",
   "ajouter_voyageur",
   "modifier_voyageur",
+  "infos_voyage_whatsapp",
   "retirer_voyageur",
   "fusionner_compagnon",
   "supprimer_compagnon",
@@ -64,9 +66,12 @@ const EXPECTED = [
   "definir_visibilite_carte",
   "preparer_message_carnet",
   "ajouter_hotel",
+  "fiche_hotel",
+  "enrichir_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
   "classer_courrier_hotel",
+  "deplacer_courrier_hotel",
   "enregistrement_en_ligne",
   "envoyer_releve",
   "preparer_facture_mb3m",
@@ -146,6 +151,16 @@ const EXPECTED = [
   "reprendre_formalite",
   "ratehawk",
   "carte_arrivee",
+  "facture_groupee",
+  "compte_jumeau",
+  "messages_app",
+  "lister_inscriptions",
+  "voir_inscription",
+  "valider_inscription",
+  "refuser_inscription",
+  "completer_inscription",
+  "creer_invitation",
+  "lister_parrainages",
 ];
 
 const WRITE_TOOLS = [
@@ -158,6 +173,7 @@ const WRITE_TOOLS = [
   "crediter_stripe",
   "completer_payeurs_stripe",
   "remettre_non_rattache",
+  "rattacher_credit",
   "rapprocher_pliant",
   "creer_carte_pliant",
   "bloquer_carte_pliant",
@@ -181,6 +197,7 @@ const WRITE_TOOLS = [
   "creer_dossier",
   "ajouter_voyageur",
   "modifier_voyageur",
+  "infos_voyage_whatsapp",
   "retirer_voyageur",
   "fusionner_compagnon",
   "supprimer_compagnon",
@@ -190,9 +207,11 @@ const WRITE_TOOLS = [
   "definir_visibilite_carte",
   "preparer_message_carnet",
   "ajouter_hotel",
+  "enrichir_hotel",
   "modifier_hotel",
   "ajouter_accueil_vip",
   "classer_courrier_hotel",
+  "deplacer_courrier_hotel",
   "enregistrement_en_ligne",
   "envoyer_releve",
   "preparer_facture_mb3m",
@@ -257,6 +276,13 @@ const WRITE_TOOLS = [
   "reprendre_formalite",
   "ratehawk",
   "carte_arrivee",
+  "facture_groupee",
+  "compte_jumeau",
+  "messages_app",
+  "valider_inscription",
+  "refuser_inscription",
+  "completer_inscription",
+  "creer_invitation",
 ];
 
 test("mcp tools stay unique, named, and under the cap", () => {
@@ -316,6 +342,11 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(MCP_TOOLS.find((tool) => tool.name === "pliant_debits")?.description || "", /client_nom/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "pliant_debits")?.description || "", /refusé/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /card_config/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "", /Ryanair/);
+  assert.match(
+    MCP_TOOLS.find((tool) => tool.name === "creer_carte_pliant")?.description || "",
+    /3DS seulement pour un commerçant qui l’exige/
+  );
   assert.match(MCP_TOOLS.find((tool) => tool.name === "comptabilite_sortie")?.description || "", /sortie_id seul/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_vol")?.description || "", /effacer_avertissement/);
   assert.match(MCP_TOOLS.find((tool) => tool.name === "modifier_hotel")?.description || "", /effacer_avertissement/);
@@ -346,6 +377,10 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(titulaire?.description || "", /pays_passeport/);
   assert.match(titulaire?.description || "", /compagnon_id/);
   assert.match(titulaire?.description || "", /expiration/);
+  assert.match(titulaire?.description || "", /fidelite/);
+  assert.match(titulaire?.description || "", /sans effacer les autres/);
+  assert.match(titulaire?.description || "", /lien/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "fiche_client")?.description || "", /fidelite/);
   const accompagnant = MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_accompagnant");
   assert.equal(accompagnant?.write, true);
   assert.equal(accompagnant?.openWorld, undefined);

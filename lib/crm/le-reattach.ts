@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { toAuditRow } from "@/lib/crm/audit-events";
-import { hotelBrandsAlign, hotelRefTokens, hotelRefsShareBooking, hotelStaysOverlapNights } from "@/lib/crm/item-match";
+import { hotelRefTokens, hotelRefsShareBooking } from "@/lib/crm/item-match";
 import { LittleEmperorsError, splitGuestName } from "@/lib/crm/little-emperors";
 import { formatDateRangeShort } from "@/lib/crm/money";
 import { foldName, lastNamesMatch, namesReferToSamePerson, type PersonName } from "@/lib/crm/person-match";
@@ -95,44 +95,35 @@ export function leConfirmationExact(stored: string | null | undefined, query: st
   return asked.every((token) => have.has(token));
 }
 
-function dayStamp(value: string | null | undefined) {
-  const day = (value || "").slice(0, 10);
-  const time = Date.parse(day);
-  return Number.isFinite(time) ? time : null;
-}
-
-function datesAreClose(
-  start: string | null | undefined,
-  end: string | null | undefined,
-  otherStart: string | null | undefined,
-  otherEnd: string | null | undefined
-) {
-  if (hotelStaysOverlapNights({ start_at: start, end_at: end }, { start_at: otherStart, end_at: otherEnd })) return true;
-  const left = dayStamp(start);
-  const right = dayStamp(otherStart);
-  if (left == null || right == null) return false;
-  return Math.abs(left - right) <= 3 * 24 * 60 * 60 * 1000;
+function dayOf(value: string | null | undefined) {
+  return (value || "").slice(0, 10);
 }
 
 /**
- * Carte déjà sur le dossier cible : même confirmation, ou préfixe Little Emperors
- * avec le même hôtel et des dates proches. On relie, on ne copie pas la carte.
+ * Carte déjà sur le dossier cible : confirmation exacte, ou numéro court
+ * quand une seule carte a ces dates. Deux numéros `…SH…` ne se relient pas.
  */
 export function probableHotelLink(
   cards: HotelCard[],
   stay: { reference: string; hotel: string | null; checkIn: string | null; checkOut: string | null }
 ) {
-  return cards.filter((card) => {
-    if (card.kind !== "hotel") return false;
-    const exact = leConfirmationExact(card.confirmation_ref, stay.reference);
-    const prefix = !exact && hotelRefsShareBooking(card.confirmation_ref, stay.reference);
-    if (!exact && !prefix) return false;
-    if (exact) return true;
-    const hotelName = typeof card.details?.hotel_name === "string" ? card.details.hotel_name : "";
-    const names = [card.title, hotelName].map((name) => (name || "").trim()).filter(Boolean);
-    const sameHotel = Boolean(stay.hotel) && names.some((name) => hotelBrandsAlign(name, stay.hotel));
-    return sameHotel && datesAreClose(card.start_at, card.end_at, stay.checkIn, stay.checkOut);
+  const hotels = cards.filter((card) => card.kind === "hotel");
+  const exact = hotels.filter((card) => leConfirmationExact(card.confirmation_ref, stay.reference));
+  if (exact.length) return exact;
+  const short = hotels.filter((card) => {
+    if (!hotelRefsShareBooking(card.confirmation_ref, stay.reference)) return false;
+    const storedRoom = hotelRefTokens(card.confirmation_ref).some((token) => /^\d{4,}SH\d+$/i.test(token));
+    const askedRoom = hotelRefTokens(stay.reference).some((token) => /^\d{4,}SH\d+$/i.test(token));
+    if (storedRoom && askedRoom) return false;
+    const start = dayOf(card.start_at);
+    const end = dayOf(card.end_at);
+    const askedStart = dayOf(stay.checkIn);
+    const askedEnd = dayOf(stay.checkOut);
+    if (!start || !askedStart || start !== askedStart) return false;
+    if (end && askedEnd && end !== askedEnd) return false;
+    return true;
   });
+  return short.length === 1 ? short : [];
 }
 
 function personViews(person: Person): PersonName[] {

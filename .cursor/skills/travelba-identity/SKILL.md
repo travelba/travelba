@@ -16,7 +16,8 @@ description: >-
 - Login = **titulaire** `crm_customers` seulement.
 - `crm_travel_companions` : identité du foyer, **pas** d’invitation / pas de session.
 - Voyageurs dossier : `crm_booking_travelers` (Adulte 1 / 2 si l’ingest n’a que « 2 adults »). On peut rattacher un compagnon **plus tard**. Changer le client du dossier (`changer_client_dossier`, fiche agence) relie les voyageurs : celui qui porte le nom du nouveau titulaire devient le titulaire ; les autres compagnons de l’ancien client le suivent, avec leurs pièces. S’ils restent sur un autre dossier de l’ancien client, la fiche est copiée. `fiche_client` liste `compagnons` (`compagnon_id`, `nom`, dossiers liés).
-- Admin peut **supprimer un client** (`deleteCustomerById`) : dossiers, txs, fichiers, user Auth si non staff. Le client **ne** se supprime **pas** lui-même.
+- Admin peut **supprimer un client** (`deleteCustomerById`) : dossiers, txs, fichiers, user Auth si non staff.
+- Le titulaire supprime **son compte** dans Mon compte (`deleteClientAccount`) : profil, passeports et appareils partent tout de suite ; les dossiers, factures et règlements restent sur la fiche anonymisée. Un compte d’agence est refusé.
 
 ## Téléphones / WhatsApp
 
@@ -48,6 +49,7 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
 ## Fidélité / facturation
 
 - Carte `loyalty` (jsonb) sur le **titulaire** et sur **chaque accompagnateur**. Numéro normalisé (majuscules, sans espaces).
+- MCP, y compris sans dossier : `modifier_titulaire`. `fidelite` (`programme` + `numero`) ajoute ou remplace un programme du titulaire, ou de l’accompagnateur si `compagnon_id`. Les autres programmes restent. `lien` (avec `compagnon_id`) : conjoint, enfant, parent, famille, ami, autre, la même liste que le sélecteur. Aucun message.
 - Programmes : Flying Blue, Miles & More, Executive Club, Skywards, Marriott Bonvoy, ALL Accor, Grand Voyageur (SNCF), Great Members (Club Med).
 - `flying_blue` du titulaire reste recopié depuis la carte (colonne historique).
 - Société : `crm_billing_companies` (plusieurs par client, onglets Facturation). La première est recopiée sur `company_name`, `siret`, `vat_number`, `billing_email`, `billing_address_line`, `billing_postal_code`, `billing_city`, `billing_country` pour la recherche. L’encours reste global, sauf crédit / Pro (`funding`) : skill `travelba-money`. MCP : `fiche_client` liste toutes les sociétés (identifiant et champs, `principale`). `ajouter_societe` en ajoute une sans toucher aux autres ni aux dossiers. `modifier_societe` corrige celle de l’identifiant. `enregistrer_societes` remplace toute la liste. Pays en code ISO (sélecteur). Kosovo = `XK` (`Kosova` aussi). Hors France : pas de SIRET, `registration_number` (identifiant d’entreprise), numéro fiscal sans forme française, code postal facultatif. La facture imprime cet identifiant. La mention de TVA reste le régime de marge déjà en place (297 A) ; une société hors UE ajoute seulement « Client établi hors Union européenne ».
@@ -55,10 +57,10 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
 - Adresse perso ≠ adresse de facturation. Les deux peuvent exister.
 - **Rôle société** (`company_role`) :
   - `null` = particulier (comportement historique)
-  - `admin` = wallet société : grand livre (Revolut, crédit disponible). Il voit les carnets **publiés** de ses collaborateurs (`member` dont `billing_parent_id` est lui). Il ne voit pas le carnet d’un autre admin.
+  - `admin` = wallet société : grand livre (Revolut, crédit disponible). Il voit les **dépenses** de son équipe (montants, factures), pas le carnet d’un collaborateur. Il voit ses dossiers et ceux où il voyage. Il ne voit pas le carnet d’un autre admin. `visible_to_client` ne change pas.
   - `member` = collaborateur rattaché via `billing_parent_id` → ne voit **que** les débits de **ses** dossiers, pas les revenus société, pas le carnet de l’admin. `spending_allowance` (fiche, agence seulement) est son droit sur ce wallet ; null = pas de plafond, l’écran Transactions reste la liste des frais
 - Dossier : `crm_bookings.billing_customer_id` = qui paie (`syncBookingDebit` poste sur ce wallet). Défaut = `billing_parent_id` si member, sinon titulaire.
-- Fiche agence du payeur : les dossiers facturés sur ce compte sont listés avec le nom du voyageur. L’espace client de l’admin montre le carnet publié du collaborateur. Il ne montre pas le carnet d’un autre admin. Chacun garde son propre carnet.
+- Fiche agence du payeur : ses dossiers, et un dossier facturé ici seulement s’il y voyage. Le voyage d’un collaborateur n’est pas une carte. Les dépenses restent dans les transactions. L’espace client suit la même limite, y compris par lien et par API. `visible_to_client` ne change jamais ici : seul « Montrer au client » montre une carte.
 
 ## OCR
 
@@ -67,5 +69,11 @@ UI : bloc pièce **replié** par défaut (passeport). Copy courte, pas « Upload
 ## Admin fiche
 
 L’onglet **Client** d’un dossier résume cette fiche. **Changer de client** (ou **C’est un autre client**) ouvre la recherche : e-mail, téléphone, société, naissance et nombre de dossiers distinguent les homonymes. **Créer un nouveau client** part du nom saisi, sans invitation, puis rattache le dossier après confirmation. Le client du dossier, les voyageurs qui étaient ce client, le grand livre, les paiements et le payeur de ce séjour suivent. Rien n’est envoyé. Le geste est dans l’historique. Les voyageurs cochés pour le séjour restent en dessous, sous **Sur ce séjour**. À côté de chaque date de naissance : l’âge du jour à Paris et le sexe (`12 oct. 1985 · 41 ans · Femme`), sur la fiche, le séjour et la pièce. Le champ Sexe reste le sélecteur.
+
+**Compte jumeau** (`crm_customer_twins`) : deux fiches, deux accès. L’espace de chacune lit les dossiers montrés de l’autre. Pièces de dossier communes, passeports du profil séparés. « Masquer prix et transactions » suit la fiche qui consulte. Aucun message au jumelage.
+
+**Zéro frais** (`zero_fees`, défaut faux, fiche agence seulement) : pas de commission d’agence automatique sur les dossiers dont cette fiche est propriétaire. Les frais de billeterie ne sont plus ajoutés ni retirés tout seuls ; une ligne déjà là reste. Un jumeau ne change pas le réglage du dossier.
+
+**Masquer prix et transactions** (`hide_client_prices`, défaut faux, fiche agence seulement) : l’espace client, le carnet, l’aperçu et les partages de ce client ne reçoivent plus aucun prix, montant, total, débit, virement, relevé, solde ni lien de paiement, sur tous ses dossiers. L’itinéraire, les cartes et les documents de voyage restent. Le relevé PDF et la facture ne partent pas depuis l’espace client. L’agence voit tout, avec le badge « Prix masqués au client ». MCP : `masquer_prix` sur `mettre_a_jour_client`, renvoyé par `fiche_client`.
 
 L’agence change l’e-mail titulaire sur la fiche : `crm_customers.email` et le compte Auth suivent. Une adresse déjà prise par un autre client est refusée. Le client ne change pas son identifiant. Pas de scan dropzone résa sur la fiche client admin. Créer ≠ inviter : skill `travelba-auth`.

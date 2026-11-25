@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { serviceRefusalFromRow, type ServiceRefusal } from "@/lib/crm/extras";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
 import { piecesActives } from "@/lib/crm/dossier-piece";
-import { carnetVisible, clientVisibleItems, tripPlaceLine } from "@/lib/crm/carnet";
+import { carnetVisible, clientVisibleItems, stayHeroPlace } from "@/lib/crm/carnet";
 import { HiddenStayNotice } from "@/components/account/HiddenStayNotice";
 import { applyClientStayFace, clientStayFace } from "@/lib/crm/client-stay-face";
 import { siteConfig } from "@/lib/site";
@@ -15,17 +15,20 @@ import { StayConfirmedNote } from "@/components/account/StayConfirmedNote";
 import { stayTransitionName } from "@/lib/crm/account-motion";
 import { withoutHotelRosterItems } from "@/lib/crm/hotel-contact";
 import { createServiceClient } from "@/lib/supabase/admin";
-import { loadClientStay } from "@/lib/crm/client-stay-load";
+import { loadClientStay, loadClientStayItems } from "@/lib/crm/client-stay-load";
 import { ClientStayRest, StayRestSkeleton } from "@/components/account/ClientStayRest";
 import type { ClientVisaStep } from "@/lib/crm/visa-flow";
 import {
   type CrmBookingDocument,
-  type CrmBookingItem,
   type CrmBookingTraveler,
   type CrmCompanion,
   type CrmTravelDocument,
 } from "@/lib/crm/types";
 import { toPublicBooking } from "@/lib/crm/public-booking";
+import { applyClientBookingScope, type ClientBookingScope } from "@/lib/crm/company-role";
+import { clientBookingScope, clientTwinIds } from "@/lib/crm/company-peers";
+import { clientHidesPrices, foreignPriceOwnerIds, stayHidesPrices, stripClientMoneyItem } from "@/lib/crm/client-price-privacy";
+import { hiddenPriceCustomerIds } from "@/lib/crm/client-price-privacy-load";
 
 type Props = { params: Promise<{ reference: string }>; searchParams: Promise<{ confirme?: string }> };
 
@@ -36,12 +39,9 @@ type Props = { params: Promise<{ reference: string }>; searchParams: Promise<{ c
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { reference } = await params;
   const neutral = { title: `Réservation · ${reference} — ${siteConfig.shortName}` };
-  const { supabase, user, customer, booking } = await loadClientStay(reference);
+  const { user, customer, booking } = await loadClientStay(reference);
   if (!user || !customer || !booking || !booking.visible_to_client || booking.archived_at) return neutral;
-  const { data: itemRows } = await supabase
-    .from("crm_booking_items")
-    .select("kind, title, start_at, end_at, sort_order, details, lifecycle, visible_to_client")
-    .eq("booking_id", booking.id);
+  const itemRows = await loadClientStayItems(booking.id);
   const face = clientStayFace({
     title: booking.title,
     destination: booking.destination,
@@ -55,16 +55,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /** Le dossier est bien à ce client mais la RLS le cache (dépublié, archivé) : on l’explique, pas un 404. */
-async function stayExistsForCustomer(customerId: string, reference: string) {
+async function stayExistsForCustomer(scope: ClientBookingScope, reference: string) {
+  if (!scope.ownerIds.length && !scope.travelerBookingIds.length) return false;
   try {
     const admin = createServiceClient();
-    const { data } = await admin
-      .from("crm_bookings")
-      .select("id")
-      .eq("customer_id", customerId)
-      .eq("reference", reference)
-      .maybeSingle();
-    return Boolean(data);
+    const { data } = await applyClientBookingScope(
+      admin.from("crm_bookings").select("id").eq("reference", reference).limit(1),
+      scope
+    );
+    return Boolean(data?.length);
   } catch {
     return false;
   }
@@ -77,14 +76,15 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
   if (!user) redirect("/connexion");
   if (!customer) redirect("/connexion");
   if (!booking) {
-    if (await stayExistsForCustomer(customer.id, reference)) return <HiddenStayNotice reference={reference} />;
+    const scope = await clientBookingScope(customer);
+    if (await stayExistsForCustomer(scope, reference)) return <HiddenStayNotice reference={reference} />;
     notFound();
   }
   if (booking.archived_at) return <HiddenStayNotice reference={booking.reference} />;
 
-  const [{ data: items }, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }, { data: visaRows }] =
+  const [items, { data: travelers }, { data: docs }, { data: identityDocs }, { data: companions }, { data: declined }, { data: visaRows }] =
     await Promise.all([
-      supabase.from("crm_booking_items").select("*").eq("booking_id", booking.id).order("sort_order"),
+      loadClientStayItems(booking.id),
       supabase.from("crm_booking_travelers").select("*").eq("booking_id", booking.id),
       supabase.from("crm_booking_documents").select("*").eq("booking_id", booking.id).eq("visible_to_client", true),
       supabase.from("crm_travel_documents").select("*").eq("customer_id", customer.id),
@@ -93,7 +93,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
       supabase.from("crm_visa_requests").select("country, step, status, accepted_at").eq("booking_id", booking.id),
     ]);
 
-  const allItems = (items || []) as CrmBookingItem[];
+  const allItems = items;
   const rawItems = clientVisibleItems(allItems);
   if (!carnetVisible(booking, rawItems)) return <HiddenStayNotice reference={booking.reference} />;
 
@@ -108,10 +108,15 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
   const b = applyClientStayFace(booking, face);
   const pub = toPublicBooking(b);
   const headline = face.title || "Séjour";
-  const placeLine = tripPlaceLine(headline, face.destination);
+  const placeLine = stayHeroPlace(headline, face.destination, face.items);
   const refusals = ((declined || []) as { kind?: string | null; service_leg?: string | null; place?: string | null; moment?: string | null }[])
     .map(serviceRefusalFromRow)
     .filter((row): row is ServiceRefusal => Boolean(row));
+  const hiddenOwners = clientHidesPrices(customer)
+    ? new Set<string>()
+    : await hiddenPriceCustomerIds(foreignPriceOwnerIds(customer.id, [b.customer_id], await clientTwinIds(customer.id)));
+  const hideMoney = stayHidesPrices(customer, b.customer_id, hiddenOwners);
+  const heroItems = hideMoney ? withoutHotelRosterItems(face.items).map((item) => stripClientMoneyItem(item)) : withoutHotelRosterItems(face.items);
 
   return (
     <AccountPage>
@@ -121,7 +126,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
             reference={b.reference}
             confirmation={rawItems.find((item) => item.kind === "hotel")?.confirmation_ref}
             summary={`${headline} · ${formatDateFr(b.start_date)} — ${formatDateFr(b.end_date)}`}
-            price={formatMoney(Number(b.total_amount) || 0, b.currency || "EUR")}
+            price={hideMoney ? undefined : formatMoney(Number(b.total_amount) || 0, b.currency || "EUR")}
             calendarHref={`/mon-compte/reservations/${b.reference}/agenda.ics`}
             manageHref="#sejour"
           />
@@ -137,7 +142,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
         <BookingHero
           booking={pub}
           places={face.places}
-          items={withoutHotelRosterItems(face.items)}
+          items={heroItems}
           priority
           className="rounded-2xl shadow-[0_16px_36px_rgba(11,31,58,0.25)]"
           transitionName={stayTransitionName(b.reference)}
@@ -159,7 +164,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
         </BookingHero>
 
         {pub.notes_client ? (
-          <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
+          <p className="aura-card whitespace-pre-line rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
             {pub.notes_client}
           </p>
         ) : null}
@@ -178,6 +183,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
             companions={(companions || []) as CrmCompanion[]}
             refusals={refusals}
             visaRows={(visaRows || []) as { country: string; step?: ClientVisaStep; status?: string; accepted_at?: string | null }[]}
+            hidePrices={hideMoney}
           />
           </div>
         </Suspense>

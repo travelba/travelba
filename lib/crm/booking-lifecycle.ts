@@ -33,6 +33,8 @@ export type DuplicateSource = {
   offer_greeter?: boolean | null;
   offer_checkin?: boolean | null;
   offer_visa?: boolean | null;
+  remise_type?: "amount" | "percent" | null;
+  remise_value?: number | string | null;
 };
 
 export function isBookingArchived(booking: { archived_at?: string | null } | null | undefined) {

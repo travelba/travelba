@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatSiretInput } from "./billing";
+import { scanDirectory } from "./directory-search-run";
 import { loadStaffNames } from "./dossier-responsables";
 import { shownPersonName } from "./identity";
 import { formatDateRangeShort } from "./money";
@@ -92,7 +93,8 @@ function asRows(value: unknown) {
 }
 
 /** Met en forme la réponse SQL : libellés, liens admin, plafond par groupe. */
-export function shapeOmnibar(data: unknown): OmnibarPayload {
+export function shapeOmnibar(data: unknown, limit = OMNIBAR_LIMIT): OmnibarPayload {
+  const cap = Math.min(50, Math.max(1, limit));
   const source = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
   const clients: OmnibarHit[] = [];
   for (const raw of asRows(source.clients)) {
@@ -111,7 +113,7 @@ export function shapeOmnibar(data: unknown): OmnibarPayload {
       title: person || "Client",
       subtitle: clientSubtitle(text(row.company_name), text(row.siret)),
     });
-    if (clients.length >= OMNIBAR_LIMIT) break;
+    if (clients.length >= cap) break;
   }
 
   const dossiers: OmnibarHit[] = [];
@@ -137,7 +139,7 @@ export function shapeOmnibar(data: unknown): OmnibarPayload {
         archived: Boolean(row.archived_at),
       }),
     });
-    if (dossiers.length >= OMNIBAR_LIMIT) break;
+    if (dossiers.length >= cap) break;
   }
 
   const voyageurs: OmnibarHit[] = [];
@@ -177,7 +179,7 @@ export function shapeOmnibar(data: unknown): OmnibarPayload {
       title: person,
       subtitle,
     });
-    if (voyageurs.length >= OMNIBAR_LIMIT) break;
+    if (voyageurs.length >= cap) break;
   }
 
   return { clients, dossiers, voyageurs };
@@ -262,13 +264,23 @@ type OmnibarRpc = {
   ) => PromiseLike<{ data: unknown; error: { message?: string | null; code?: string | null } | null }>;
 };
 
-/** Appelle la fonction indexée. Une saisie trop courte ne part pas. */
-export async function loadOmnibar(supabase: OmnibarRpc, query: string): Promise<OmnibarPayload> {
+/** La migration `20261119143000_omnibar_rank` marque la réponse. Sans ça, l’ancienne fonction coupait à cinq noms. */
+export function omnibarIsRanked(data: unknown) {
+  return Boolean(data && typeof data === "object" && (data as { v?: unknown }).v === 2);
+}
+
+/**
+ * Suggestions de la barre. La fonction v2 classe (mot entier, préfixe, fragment).
+ * Tant qu’elle n’est pas en base, le même classement est fait sur les fiches lues.
+ */
+export async function loadOmnibar(supabase: OmnibarRpc, query: string, limit = OMNIBAR_LIMIT): Promise<OmnibarPayload> {
   const needle = omnibarNeedle(query);
   if (!needle) return emptyOmnibar();
   const { data, error } = await supabase.rpc("crm_omnibar_suggest", { q: needle });
   if (error) throw error;
-  return shapeOmnibar(data);
+  if (omnibarIsRanked(data)) return shapeOmnibar(data, limit);
+  const scanned = await scanDirectory(supabase as SupabaseClient, needle, limit);
+  return shapeOmnibar(scanned, limit);
 }
 
 /**

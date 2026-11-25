@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import type {
   CrmBookingDocument,
   CrmBookingItem,
@@ -10,12 +11,15 @@ import type { PublicBooking } from "@/lib/crm/public-booking";
 import { BOOKING_ITEM_LABELS, isActiveItem, visibleServiceCopy, type BookingItemKind } from "@/lib/crm/types";
 import { Icon } from "@/components/crm/icons";
 import { BrandMark } from "@/components/crm/BrandMark";
+import { AddToAppleWallet } from "@/components/account/AddToAppleWallet";
 import { FilePreviewTile } from "@/components/crm/FilePreview";
+import { walletPassHref } from "@/lib/crm/wallet-pass";
 import { HotelContactButton } from "@/components/crm/HotelContact";
 import { HotelReservationCard } from "@/components/crm/HotelReservationCard";
 import { HotelStayFacts } from "@/components/crm/HotelStayFacts";
 import { hotelPhotos, hotelRoomLine } from "@/lib/crm/hotel-gallery";
 import { withoutHotelRoster } from "@/lib/crm/hotel-contact";
+import { transferOpenedLine } from "@/lib/crm/transfer-contact";
 import {
   BOARDING_PASSES_READY_LABEL,
   boardingPassesReadyStatus,
@@ -23,7 +27,8 @@ import {
   flightTerminal,
   flightWatchBadge,
 } from "@/lib/crm/flight-watch";
-import { ticketTravelerNames } from "@/lib/crm/document-passengers";
+import { ticketTravelerFaces } from "@/lib/crm/document-passengers";
+import { TravelerChips } from "@/components/crm/TravelerChips";
 import {
   documentsForItems,
   dayHeading,
@@ -34,10 +39,14 @@ import {
   flightCities,
   flightIata,
   groupByDay,
+  carClosedFace,
+  carDetailPlace,
   hotelCityLine,
   hotelDisplayName,
+  hotelNightFace,
   hotelStayLabel,
   itemClock,
+  vehicleDisplayName,
   itemPriceLabel,
   undatedTimeline,
 } from "@/lib/crm/carnet";
@@ -98,7 +107,6 @@ function AgendaLink({
       href={href}
       googleHref={phone?.google}
       className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline"
-      fallbackClassName="inline-flex items-center text-xs font-semibold text-[var(--admin-navy)]/70 underline-offset-2 hover:underline"
     >
       <Icon name="event" className="h-4 w-4" />
       {children}
@@ -125,6 +133,8 @@ function CardBody({
   checkinStatus = null,
   returnCheckinStatus = null,
   boarding = null,
+  walletReady = false,
+  guestLabel = null,
 }: {
   item: CrmBookingItem;
   currency: string;
@@ -144,6 +154,8 @@ function CardBody({
   checkinStatus?: string | null;
   returnCheckinStatus?: string | null;
   boarding?: ReactNode;
+  walletReady?: boolean;
+  guestLabel?: string | null;
 }) {
   const price = returnLeg && stayItems
     ? roundTripPriceLabel(item, returnLeg, stayItems, currency, pricesVisible)
@@ -170,6 +182,7 @@ function CardBody({
   const occupancy = detailStr(item, "occupancy");
   const special = detailStr(item, "special_requests");
   const pickupNote = detailStr(item, "pickup_note");
+  const transferOpened = item.kind === "transfer" ? transferOpenedLine(item) : "";
   const baggage = detailStr(item, "baggage");
   const seat = detailStr(item, "seat");
   const terminal = item.kind === "flight" ? flightTerminal(item) : detailStr(item, "terminal");
@@ -183,7 +196,7 @@ function CardBody({
   const city = detailStr(item, "city");
   const hotelName = item.kind === "hotel" ? hotelDisplayName(item) : "";
   const ticketTravelers =
-    item.kind === "flight" || item.kind === "rail" ? ticketTravelerNames(item.details).join(", ") : "";
+    item.kind === "flight" || item.kind === "rail" ? ticketTravelerFaces(item.details) : [];
   const hotelCity = item.kind === "hotel" ? hotelCityLine(item) : "";
   const photos = item.kind === "hotel" ? hotelPhotos(item) : [];
   const checkInDay = (item.start_at || "").slice(0, 10);
@@ -191,7 +204,20 @@ function CardBody({
   const roomLine = item.kind === "hotel" ? hotelRoomLine(item, photos) : "";
   const roomShown =
     roomLine && roomLine.localeCompare(hotelName, "fr", { sensitivity: "accent" }) !== 0 ? roomLine : "";
-  const hotelKicker = [visibleServiceCopy(BOOKING_ITEM_LABELS.hotel), hotelCity].filter(Boolean).join(" · ");
+  const night = item.kind === "hotel" ? hotelNightFace(item, day) : null;
+  const board = item.kind === "hotel" ? detailStr(item, "board") : "";
+  const hotelLabel = visibleServiceCopy(BOOKING_ITEM_LABELS.hotel);
+  const hotelKicker =
+    night?.first && night.total
+      ? `${hotelLabel} · ${night.total} nuit${night.total > 1 ? "s" : ""}`
+      : night && !night.first
+        ? hotelLabel
+        : [hotelLabel, hotelCity].filter(Boolean).join(" · ");
+  const hotelTitle =
+    night && !night.first && night.total ? `${hotelName} · nuit ${night.index} sur ${night.total}` : hotelName;
+  const hotelNote = night?.first ? [night.total ? hotelCity : "", board].filter(Boolean).join(" · ") : "";
+  const laterPhoto = item.kind === "hotel" && night && !night.first ? photos[0] : undefined;
+  const carFace = item.kind === "car" ? carClosedFace(item, day) : null;
 
   const panel = (
     <div className="space-y-2 border-t border-[#e5e3dc] px-3.5 py-3 text-sm text-[var(--admin-navy)]">
@@ -240,14 +266,13 @@ function CardBody({
           <p>
             {[detailStr(item, "pickup"), detailStr(item, "dropoff")].filter(Boolean).join(" → ")}
           </p>
+          {transferOpened ? <p>{transferOpened}</p> : null}
           {pickupNote ? <p>{pickupNote}</p> : null}
         </>
       ) : null}
       {item.kind === "car" ? (
         <p>
-          {[detailStr(item, "vehicle"), detailStr(item, "driver"), detailStr(item, "pickup"), detailStr(item, "dropoff")]
-            .filter(Boolean)
-            .join(" · ")}
+          {[vehicleDisplayName(item), detailStr(item, "driver"), carDetailPlace(item)].filter(Boolean).join(" · ")}
         </p>
       ) : null}
       {item.kind === "activity" || item.kind === "cruise" ? (
@@ -279,7 +304,7 @@ function CardBody({
         />
       ) : null}
       <div className="flex flex-wrap items-end gap-3">
-        {documentsForItems(returnLeg ? [item, returnLeg] : [item], docs).map((doc) => (
+        {documentsForItems(returnLeg ? [item, returnLeg] : [item], docs, stayItems || undefined).map((doc) => (
           <FilePreviewTile
             key={doc.id}
             file={{
@@ -303,6 +328,9 @@ function CardBody({
             Ajouter le retour à l’agenda
           </AgendaLink>
         ) : null}
+        {walletReady && reference && (item.kind !== "hotel" || !night || night.first) ? (
+          <WalletMark reference={reference} item={item} docs={docs} guest={guestLabel || null} />
+        ) : null}
       </div>
     </div>
   );
@@ -314,6 +342,7 @@ function CardBody({
         title={hotelName || item.title}
         kicker={hotelKicker}
         room={roomShown}
+        note={hotelNote}
         price={price}
         item={withoutHotelRoster(item)}
       >
@@ -325,25 +354,41 @@ function CardBody({
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-[#e5e3dc] bg-white">
     <details className="group min-w-0">
-      <summary className="flex min-w-0 cursor-pointer list-none items-start gap-3 overflow-hidden px-3.5 py-3 [&::-webkit-details-marker]:hidden">
-        <BrandMark item={item} className="h-10 w-10" />
+      <summary className={`flex min-w-0 cursor-pointer list-none items-start gap-3 overflow-hidden px-3.5 [&::-webkit-details-marker]:hidden ${carFace?.quiet ? "py-2" : "py-3"}`}>
+        {carFace?.quiet ? null : laterPhoto ? (
+          // eslint-disable-next-line @next/next/no-img-element -- vignette de la nuit, la galerie reste le jour d’arrivée
+          <img
+            src={laterPhoto.thumb || laterPhoto.url}
+            alt=""
+            className="h-10 w-10 shrink-0 rounded-lg object-cover"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <BrandMark item={item} className="h-10 w-10" />
+        )}
         <div className="min-w-0 flex-1 overflow-hidden">
           <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--aura-blue)]">
-            {visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)}
-            {item.kind !== "hotel" && clock ? ` · ${clock}` : ""}
-            {endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
+            {carFace
+              ? carFace.kicker
+              : item.kind === "hotel"
+                ? hotelKicker
+                : visibleServiceCopy(BOOKING_ITEM_LABELS[item.kind as BookingItemKind] || item.kind)}
+            {!carFace && item.kind !== "hotel" && clock ? ` · ${clock}` : ""}
+            {!carFace && endClock && item.kind !== "hotel" ? ` → ${endClock}` : ""}
             {returnLeg ? " · aller-retour" : ""}
             {item.kind === "flight" && tickets > 1 ? ` · ${tickets} billets` : ""}
             {watchLine && watchLine !== BOARDING_PASSES_READY_LABEL ? ` · ${watchLine}` : ""}
           </p>
-          <p className="break-words text-sm font-semibold leading-snug text-[var(--admin-navy)]">
-            {item.kind === "hotel"
-              ? hotelName
-              : item.kind === "flight" || item.kind === "rail"
-                ? flightTitle
-                : item.kind === "accueil_vip"
-                  ? vipTitle
-                  : visibleServiceCopy(item.title)}
+          <p className={`break-words leading-snug text-[var(--admin-navy)] ${carFace?.quiet ? "text-xs font-medium" : "text-sm font-semibold"}`}>
+            {carFace
+              ? carFace.title
+              : item.kind === "hotel"
+                ? hotelTitle
+                : item.kind === "flight" || item.kind === "rail"
+                  ? flightTitle
+                  : item.kind === "accueil_vip"
+                    ? vipTitle
+                    : visibleServiceCopy(item.title)}
           </p>
           {item.kind === "flight" || item.kind === "rail" ? (
             <>
@@ -353,9 +398,7 @@ function CardBody({
               {returnLeg ? (
                 <p className="break-words text-xs leading-snug text-muted">Retour · {flightLegLine(returnLeg)}</p>
               ) : null}
-              {ticketTravelers ? (
-                <p className="break-words text-xs leading-snug text-[var(--admin-navy)]">{ticketTravelers}</p>
-              ) : null}
+              {ticketTravelers.length ? <TravelerChips people={ticketTravelers} /> : null}
               {item.kind === "flight" && (terminal || gate) ? (
                 <p className="break-words text-xs font-semibold leading-snug text-[var(--admin-navy)]">
                   {placeLine(terminal, gate)}
@@ -369,15 +412,22 @@ function CardBody({
             </>
           ) : item.kind === "hotel" ? (
             <>
-              {hotelCity ? <p className="truncate text-xs text-muted">{hotelCity}</p> : null}
-              {compactHotel ? null : (
+              {hotelNote ? <p className="truncate text-xs text-muted">{hotelNote}</p> : null}
+              {!hotelNote && hotelCity ? <p className="truncate text-xs text-muted">{hotelCity}</p> : null}
+              {compactHotel || night ? null : (
                 <p className="truncate text-xs text-muted">{hotelStayLabel(item)}</p>
               )}
             </>
+          ) : item.kind === "car" ? (
+            carFace?.subtitle ? <p className="truncate text-xs text-muted">{carFace.subtitle}</p> : null
           ) : item.kind === "accueil_vip" ? (
             <p className="break-words text-xs text-muted">
               {[item.supplier, vipLeg?.flight_number, vipPlace, item.confirmation_ref].filter(Boolean).join(" · ")}
             </p>
+          ) : item.kind === "transfer" ? (
+            item.confirmation_ref ? (
+              <p className="truncate text-xs text-muted">{item.confirmation_ref}</p>
+            ) : null
           ) : (
             <p className="truncate text-xs text-muted">
               {[item.supplier, item.confirmation_ref].filter(Boolean).join(" · ")}
@@ -423,6 +473,22 @@ function CardBody({
   );
 }
 
+function WalletMark({
+  reference,
+  item,
+  docs,
+  guest,
+}: {
+  reference: string;
+  item: CrmBookingItem;
+  docs: CrmBookingDocument[];
+  guest: string | null;
+}) {
+  const href = walletPassHref({ ready: true, reference, item, docs, guest });
+  if (!href) return null;
+  return <AddToAppleWallet href={href} />;
+}
+
 export function CarnetItinerary({
   booking,
   items,
@@ -433,10 +499,14 @@ export function CarnetItinerary({
   refusals = [],
   partage = null,
   pricesVisible = true,
+  cardPrices = true,
   hotelCancels = [],
   checkinByItem = {},
   passes = [],
   renderPasses,
+  walletReady = false,
+  guestLabel = null,
+  messagesHref = null,
 }: {
   booking: PublicBooking;
   items: CrmBookingItem[];
@@ -448,6 +518,8 @@ export function CarnetItinerary({
   partage?: string | null;
   /** Faux : chaque ligne qui aurait un montant affiche « Prix à la publication ». */
   pricesVisible?: boolean;
+  /** Faux en prix forfait : aucune carte n’affiche de prix. */
+  cardPrices?: boolean;
   /** Titulaire seulement. Absent de l’aperçu, du lien public et de l’exemple. */
   hotelCancels?: ClientHotelCancelOffer[];
   refusals?: ServiceRefusal[];
@@ -456,6 +528,11 @@ export function CarnetItinerary({
   /** Cartes déjà lues (aperçu). L’espace client passe plutôt renderPasses, sans lire le PDF au chargement. */
   passes?: ClientBoardingCard[];
   renderPasses?: (itemIds: string[], showBadge: boolean) => ReactNode;
+  /** Bouton Apple Wallet, seulement si le certificat est posé. */
+  walletReady?: boolean;
+  guestLabel?: string | null;
+  /** Lien vers la messagerie, sur la page du séjour. */
+  messagesHref?: string | null;
   services?: {
     variant: "admin" | "client";
     travelers: CrmBookingTraveler[];
@@ -520,7 +597,7 @@ export function CarnetItinerary({
         variant={services.variant}
         bookingId={booking.id}
         reference={booking.reference}
-        price={price}
+        price={pricesVisible ? price : 0}
         currency={booking.currency}
         pricesVisible={pricesVisible}
         locked={services.variant === "client" && !extraNoticeOk(at, now)}
@@ -583,11 +660,18 @@ export function CarnetItinerary({
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-display text-base font-bold text-[var(--admin-navy)]">Itinéraire</h2>
-          {calendarBase ? (
-            <AgendaLink href={calendarBase} phone={phones?.stay}>
-              Ajouter tout le séjour
-            </AgendaLink>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-3">
+            {messagesHref ? (
+              <Link href={messagesHref} className="text-sm font-semibold text-[var(--admin-navy)] underline-offset-2 hover:underline">
+                Écrire à l’agence
+              </Link>
+            ) : null}
+            {calendarBase ? (
+              <AgendaLink href={calendarBase} phone={phones?.stay}>
+                Ajouter tout le séjour
+              </AgendaLink>
+            ) : null}
+          </div>
         </div>
         {bookedOffers.length ? (
           <div className="space-y-2">{bookedOffers.map((offer) => offerCard(offer))}</div>
@@ -616,12 +700,14 @@ export function CarnetItinerary({
                     day={day}
                     partage={partage}
                     pricesVisible={pricesVisible}
-                    showPrice={flightCountsInStay(row.item, items)}
+                    showPrice={cardPrices && flightCountsInStay(row.item, items)}
                     reference={booking.reference}
                     cancelOffer={hotelCancels.find((offer) => offer.itemId === row.item.id) || null}
                     stayItems={liveItems}
                     checkinStatus={checkinByItem[row.item.id] || null}
                     boarding={boardingFor(row.item, null)}
+                    walletReady={walletReady}
+                    guestLabel={guestLabel}
                   />
               );
             })}
@@ -641,13 +727,15 @@ export function CarnetItinerary({
                 calendarHref={itemHref(item.id)}
                 calendarPhone={phones?.items[item.id]}
                 pricesVisible={pricesVisible}
-                showPrice={flightCountsInStay(item, items)}
+                showPrice={cardPrices && flightCountsInStay(item, items)}
                 partage={partage}
                 reference={booking.reference}
                 cancelOffer={hotelCancels.find((offer) => offer.itemId === item.id) || null}
                 stayItems={liveItems}
                 checkinStatus={checkinByItem[item.id] || null}
                 boarding={boardingFor(item, null)}
+                walletReady={walletReady}
+                guestLabel={guestLabel}
               />
             ))}
           </div>

@@ -15,6 +15,7 @@ export function HotelReservationCard({
   title,
   kicker,
   room,
+  note = "",
   price,
   item,
   children,
@@ -23,6 +24,7 @@ export function HotelReservationCard({
   title: string;
   kicker: string;
   room: string;
+  note?: string;
   price: string | null;
   item: CrmBookingItem;
   children: ReactNode;
@@ -42,6 +44,7 @@ export function HotelReservationCard({
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#9e7e51]">{kicker}</p>
             <p className="break-words text-sm font-semibold leading-snug text-[var(--admin-navy)]">{title}</p>
             {room ? <p className="mt-0.5 line-clamp-2 break-words text-xs leading-snug text-muted">{room}</p> : null}
+            {note ? <p className="mt-0.5 line-clamp-2 break-words text-xs leading-snug text-muted">{note}</p> : null}
             {price ? <p className="mt-1.5 text-sm font-bold text-[var(--admin-navy)]">{price}</p> : null}
           </button>
           <HotelContactButton item={item} roster={false} trailingArrow />
