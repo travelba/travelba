@@ -411,7 +411,7 @@ export const MCP_TOOLS: ToolDef[] = [
   {
     name: "fiche_client",
     description:
-      "Fiche d’un client : coordonnées, toutes les sociétés de facturation (societes : identifiant, raison sociale, SIRET, identifiant d’entreprise, TVA ou numéro fiscal, e-mail, adresse, code postal, ville, pays en code ISO, principale ; pas de téléphone sur la société), encours (signe brut), pièces à échéance (type et date, jamais le numéro), masquer_prix (vrai si l’espace client ne reçoit plus les montants), zero_frais (vrai si cette fiche ne reçoit plus de frais automatiques), jumeaux (id et nom, accès séparés, mêmes dossiers). id ou q.",
+      "Fiche d’un client : coordonnées, toutes les sociétés de facturation (societes : identifiant, raison sociale, SIRET, identifiant d’entreprise, TVA ou numéro fiscal, e-mail, adresse, code postal, ville, pays en code ISO, principale ; pas de téléphone sur la société), encours (signe brut), pièces à échéance (type et date, jamais le numéro), fidelite (programme et numéro du titulaire), compagnons (lien et fidelite), masquer_prix (vrai si l’espace client ne reçoit plus les montants), zero_frais (vrai si cette fiche ne reçoit plus de frais automatiques), jumeaux (id et nom, accès séparés, mêmes dossiers). id ou q.",
     input: { id, q },
     run: (args: ToolArgs) => readFicheClient({ id: str(args, "id"), q: str(args, "q") }),
   },
@@ -1145,7 +1145,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_titulaire",
     write: true,
     description:
-      "Met à jour la fiche du titulaire et son passeport, ou le passeport d’un accompagnateur si compagnon_id est indiqué. Prénoms, nom, nom de passeport, nom d’usage, date de naissance, lieu de naissance, sexe, nationalité, date de délivrance, expiration, numéro. Mêmes champs d’identité que l’accompagnateur. Le nom de passeport peut différer du nom de la fiche. L’adresse personnelle (adresse, code_postal, ville, pays) est le domicile du titulaire, pas la facturation, et ne s’applique pas à un accompagnateur. pays_passeport choisit le livret (FR, IL) et n’est pas recopié dans la nationalité. Plusieurs livrets : la délivrance, l’expiration, le numéro, le lieu ou le nom de passeport exigent pays_passeport. L’autre nationalité reste. Le numéro peut être corrigé. Il n’est ni lu ni renvoyé. Aucun message.",
+      "Met à jour la fiche du titulaire et son passeport, ou le passeport d’un accompagnateur si compagnon_id est indiqué. Prénoms, nom, nom de passeport, nom d’usage, date de naissance, lieu de naissance, sexe, nationalité, date de délivrance, expiration, numéro. Mêmes champs d’identité que l’accompagnateur. Le nom de passeport peut différer du nom de la fiche. L’adresse personnelle (adresse, code_postal, ville, pays) est le domicile du titulaire, pas la facturation, et ne s’applique pas à un accompagnateur. pays_passeport choisit le livret (FR, IL) et n’est pas recopié dans la nationalité. Plusieurs livrets : la délivrance, l’expiration, le numéro, le lieu ou le nom de passeport exigent pays_passeport. L’autre nationalité reste. Le numéro peut être corrigé. Il n’est ni lu ni renvoyé. fidelite (programme et numero) ajoute ou remplace un programme du titulaire ou de l’accompagnateur, sans effacer les autres. lien, avec compagnon_id : conjoint, enfant, parent, famille, ami ou autre. Aucun message.",
     input: {
       id: z.string().trim().describe("Identifiant du client, le titulaire"),
       compagnon_id: z
@@ -1170,6 +1170,34 @@ export const MCP_TOOLS: ToolDef[] = [
       ville: z.string().trim().max(80).optional().describe("Ville du domicile"),
       pays: z.string().trim().max(80).optional().describe("Pays du domicile"),
       pays_passeport: z.string().trim().max(80).optional().describe("Pays émetteur du livret à modifier. Pas la nationalité"),
+      fidelite: z
+        .union([
+          z.object({
+            programme: z
+              .string()
+              .trim()
+              .max(40)
+              .describe("Flying Blue, Miles & More, Executive Club, Skywards, Marriott Bonvoy, ALL Accor, Grand Voyageur ou Great Members"),
+            numero: z.string().trim().max(40).describe("Numéro. Ajouté ou remplacé. Les autres programmes restent"),
+          }),
+          z
+            .array(
+              z.object({
+                programme: z.string().trim().max(40),
+                numero: z.string().trim().max(40),
+              })
+            )
+            .min(1)
+            .max(8),
+        ])
+        .optional()
+        .describe("Un programme, ou une liste. Titulaire, ou accompagnateur si compagnon_id"),
+      lien: z
+        .string()
+        .trim()
+        .max(40)
+        .optional()
+        .describe("Lien de l’accompagnateur : conjoint, enfant, parent, famille, ami, autre. Vide pour l’effacer"),
     },
     run: (args) => updateHolderProfile(args),
   },

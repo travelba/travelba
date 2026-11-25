@@ -4,7 +4,7 @@ import { isIsoDate } from "@/lib/crm/admin-schemas";
 import { resolveNationality } from "@/lib/crm/countries";
 import { customerEmailError, normalizeCustomerEmail } from "@/lib/crm/customer-email";
 import { emptyToNull, greetingGivenName } from "@/lib/crm/identity";
-import { loyaltyFromCustomer, LOYALTY_PROGRAMS, normalizeLoyaltyNumber, type LoyaltyKey, type LoyaltyMap } from "@/lib/crm/loyalty";
+import { loyaltyProgramKey, mergeLoyaltyEntries, type LoyaltyKey, type LoyaltyMap } from "@/lib/crm/loyalty";
 import { McpWriteError } from "@/lib/crm/mcp-write";
 import { storedCompanionPhone } from "@/lib/crm/trip-share";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -91,21 +91,9 @@ function sexOf(value: unknown) {
 function programOf(value: unknown): LoyaltyKey | null {
   if (value == null || value === "") return null;
   if (typeof value !== "string") throw new McpWriteError("Programme inconnu.");
-  const folded = value
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "");
-  const found = LOYALTY_PROGRAMS.find(
-    (program) =>
-      program.key === folded.replace(/\s+/g, "_") ||
-      program.label
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/\p{M}/gu, "") === folded
-  );
+  const found = loyaltyProgramKey(value);
   if (!found) throw new McpWriteError("Programme inconnu.");
-  return found.key;
+  return found;
 }
 
 type TravelerRow = {
@@ -236,8 +224,10 @@ export async function updateVoyageur(input: Record<string, unknown>, admin?: Adm
     champs.push("lien");
   }
   if (program && loyaltyNumber) {
-    const loyalty = loyaltyFromCustomer({ loyalty: person.loyalty, flying_blue: person.flying_blue });
-    loyalty[program] = normalizeLoyaltyNumber(loyaltyNumber);
+    const loyalty = mergeLoyaltyEntries(
+      { loyalty: person.loyalty, flying_blue: person.flying_blue },
+      [{ key: program, number: loyaltyNumber }]
+    );
     patch.loyalty = loyalty;
     if (holder && program === "flying_blue") patch.flying_blue = loyalty.flying_blue;
     champs.push("fidelite");

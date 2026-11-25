@@ -39,6 +39,7 @@ import { loadOpenEstaNotices } from "@/lib/crm/esta-run";
 import { clientLedgerAdminHref, loadClientLedger } from "@/lib/crm/client-ledger";
 import { twinsForCustomers, type TwinPerson } from "@/lib/crm/customer-twins";
 import { ledgerTravelerLabel } from "@/lib/crm/ledger-travelers";
+import { loyaltyLines, type LoyaltyMap } from "@/lib/crm/loyalty";
 import {
   countDossiersByCustomer,
   CUSTOMER_LIST_SELECT,
@@ -601,13 +602,21 @@ async function oneCustomer(admin: SupabaseClient, input: { id?: string; q?: stri
 }
 
 export function clientCompanionLines(
-  companions: { id: string; first_name: string | null; last_name: string | null }[],
+  companions: {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    relationship?: string | null;
+    loyalty?: LoyaltyMap | null;
+  }[],
   stays: { companion_id: string | null; booking_id: string }[],
   bookings: { id: string; reference: string | null }[]
 ) {
   return companions.map((companion) => ({
     compagnon_id: companion.id,
     nom: customerFullName({ first_name: companion.first_name || "", last_name: companion.last_name || "" }),
+    lien: companion.relationship || null,
+    fidelite: loyaltyLines({ loyalty: companion.loyalty }),
     dossiers: stays
       .filter((stay) => stay.companion_id === companion.id)
       .map((stay) => {
@@ -620,10 +629,16 @@ export function clientCompanionLines(
 async function companionsOfClient(admin: SupabaseClient, customerId: string) {
   const listed = await admin
     .from("crm_travel_companions")
-    .select("id, first_name, last_name")
+    .select("id, first_name, last_name, relationship, loyalty")
     .eq("customer_id", customerId);
   if (listed.error) throw new McpReadError("Lecture des accompagnateurs impossible.");
-  const companions = (listed.data || []) as { id: string; first_name: string | null; last_name: string | null }[];
+  const companions = (listed.data || []) as {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    relationship?: string | null;
+    loyalty?: LoyaltyMap | null;
+  }[];
   if (!companions.length) return [];
   const staysQuery = await admin
     .from("crm_booking_travelers")
@@ -690,8 +705,17 @@ export async function readFicheClient(input: { id?: string; q?: string }, admin 
   const priceRow = priceFallback.data as { hide_client_prices?: boolean | null; zero_fees?: boolean | null } | null;
   const masquer_prix = priceFallback.error ? false : priceRow?.hide_client_prices === true;
   const zero_frais = priceFlag.error ? false : priceRow?.zero_fees === true;
+  const loyaltyRead = await admin
+    .from("crm_customers")
+    .select("loyalty, flying_blue")
+    .eq("id", customer.id)
+    .maybeSingle();
+  const fidelite = loyaltyRead.error
+    ? []
+    : loyaltyLines((loyaltyRead.data || {}) as { loyalty?: LoyaltyMap | null; flying_blue?: string | null });
   return {
     ...customerLine(customer),
+    fidelite,
     masquer_prix,
     zero_frais,
     societes: billingCompaniesPublic(companies.companies),

@@ -31,7 +31,8 @@ Légende : **couvert** = le geste admin a déjà un outil. **ajouté** = outil d
 | Créer la fiche dans MB3M | `creer_fiche_mb3m` — ajouté. Un bouton par société : `societe_id` n’envoie que celle-là. Sans code postal, la société est nommée et rien n’est envoyé |
 | Ouvrir l’espace à la place du client | hors API |
 | Lien d’accès magique 24 h (mot de passe déjà posé) | hors API — le bouton « Envoyer un lien d’accès » reste à l’écran |
-| Compte en veille, IBAN, téléphone secondaire, fidélité | partiel : pas de champ dédié sur `mettre_a_jour_client` |
+| Fidélité et lien sur la fiche, sans dossier | `modifier_titulaire` — `fidelite` (`programme` + `numero`, un objet ou une liste) ajoute ou remplace un programme du titulaire, ou de l’accompagnateur si `compagnon_id`. Les autres programmes restent. `lien` (compagnon seulement) : conjoint, enfant, parent, famille, ami, autre. Colonnes `crm_customers.loyalty` et `flying_blue`, `crm_travel_companions.loyalty` et `relationship`. Aucun message. `fiche_client` renvoie `fidelite`, et `lien` + `fidelite` sur chaque compagnon |
+| Compte en veille, IBAN, téléphone secondaire | partiel : pas de champ dédié sur `mettre_a_jour_client` |
 | Retirer un accompagnateur de la fiche | `supprimer_compagnon` (`confirmer` = nom complet) — ajouté. Réservé aux administrateurs. Pièces d’identité et fichiers compris. S’il est voyageur, refus en listant les dossiers, sauf `retirer_des_dossiers` true (lignes voyageur seulement). Réservations, paiements, factures et grand livre inchangés |
 | Compte jumeau | `compte_jumeau` — ajouté. Sans `confirmer`, aperçu. `confirmer` true lie ou délie. Aucun message. `fiche_client` et `chercher_clients` exposent `jumeaux` |
 | Zéro frais | `mettre_a_jour_client` `zero_frais` — ajouté. Retire les frais automatiques des dossiers non facturés de la fiche propriétaire |
