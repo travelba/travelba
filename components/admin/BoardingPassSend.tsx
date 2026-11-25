@@ -217,7 +217,11 @@ export function BoardingPassSend({
                   </div>
                   {filename ? <p className="text-xs text-muted">Fichier joint : {filename}</p> : null}
                   {preview ? <p className="whitespace-pre-wrap text-sm text-[var(--admin-navy)]">{preview}</p> : (
-                    <p className="text-xs text-[var(--admin-red)]">Complétez le prénom, le nom, le vol, le trajet, l’horaire et le siège.</p>
+                    <p className="text-xs text-[var(--admin-red)]">
+                      {!row.firstName || !row.seat
+                        ? "À vérifier : le prénom ou le siège n’est pas certain. Rien n’est envoyé tant que ces champs ne sont pas complétés."
+                        : "Complétez le prénom, le nom, le vol, le trajet, l’horaire et le siège."}
+                    </p>
                   )}
                 </fieldset>
               );

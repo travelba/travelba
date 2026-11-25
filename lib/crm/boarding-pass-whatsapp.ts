@@ -1,6 +1,5 @@
 import { flightCities, flightIata, flightNumber, itemClock } from "./carnet";
 import { formatDateFr } from "./dates";
-import { passengersFromDetails } from "./document-passengers";
 import { greetingGivenName } from "./identity";
 import { maskAuditText } from "./audit-events";
 import { siteConfig } from "../site";
@@ -172,13 +171,23 @@ export type BoardingPassFields = {
   seat: string;
 };
 
+/** Un seul siège (6G, 06G, 12A). « 06G / 06D » n’est pas un siège. */
+export function singleSeat(value: string | null | undefined) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const codes = text.match(/\d{1,2}[A-Z]\b/gi) || [];
+  if (codes.length !== 1) return "";
+  return (codes[0] || "").toUpperCase();
+}
+
 export function boardingPassFields(input: Partial<BoardingPassFields> | null | undefined): BoardingPassFields | null {
   const firstName = cleanTemplateValue(input?.firstName, 40);
   const lastName = cleanTemplateValue(input?.lastName, 40);
   const flight = cleanTemplateValue(input?.flight, 40);
   const route = cleanTemplateValue(input?.route, 80);
   const when = cleanTemplateValue(input?.when, 60);
-  const seat = cleanTemplateValue(input?.seat, 12);
+  const seatSource = cleanTemplateValue(input?.seat, 12);
+  const seat = seatSource ? singleSeat(seatSource) : null;
   if (!firstName || !lastName || !flight || !route || !when || !seat) return null;
   return { firstName, lastName, flight, route, when, seat };
 }
@@ -363,7 +372,99 @@ function matchPerson<T extends { first_name?: string | null; last_name?: string 
   return hits.length === 1 ? hits[0] : null;
 }
 
-/** Champs proposés. Le siège n’est repris que s’il est déjà sur la carte, pour un seul voyageur. */
+type NamedTraveler = {
+  first_name?: string | null;
+  last_name?: string | null;
+  pnr?: string | null;
+  seat?: string | null;
+};
+
+function normPnr(value: string | null | undefined) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+/** Code de dossier (5 à 8 signes, lettre et chiffre). Un numéro de vol n’en est pas un. */
+function pnrTokens(value: string, flightCode = "") {
+  const banned = normPnr(flightCode);
+  const found = value.toUpperCase().match(/\b[A-Z0-9]{5,8}\b/g) || [];
+  return [
+    ...new Set(
+      found.filter((token) => {
+        if (!/[A-Z]/.test(token) || !/\d/.test(token)) return false;
+        if (/^[A-Z]{1,3}\d{2,4}$/.test(token)) return false;
+        if (banned && token === banned) return false;
+        return true;
+      })
+    ),
+  ];
+}
+
+function passengerRecords(details: Record<string, unknown> | null | undefined): NamedTraveler[] {
+  const rows = details?.passengers;
+  if (!Array.isArray(rows)) return [];
+  const people: NamedTraveler[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const record = row as NamedTraveler;
+    const first = String(record.first_name || "").trim();
+    const last = String(record.last_name || "").trim();
+    if (!first && !last) continue;
+    people.push({
+      first_name: first || null,
+      last_name: last || null,
+      pnr: typeof record.pnr === "string" ? record.pnr : null,
+      seat: typeof record.seat === "string" ? record.seat : null,
+    });
+  }
+  return people;
+}
+
+function matchGiven(name: string, people: NamedTraveler[]) {
+  const needle = fold(greetingGivenName(name) || name);
+  if (needle.length < 2) return null;
+  const hits = people.filter((person) => fold(greetingGivenName(person.first_name) || "") === needle);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+function noteBindings(notes: string) {
+  const rows: { name: string; code: string }[] = [];
+  const re = /\bPNR\s+([A-Za-zÀ-ÿ'’.-]{2,40})\s+([A-Z0-9]{5,8})\b/gi;
+  for (const match of notes.matchAll(re)) {
+    const name = (match[1] || "").trim();
+    const code = (match[2] || "").toUpperCase();
+    if (!name || !/[A-Z]/.test(code) || !/\d/.test(code) || /^[A-Z]{1,3}\d{2,4}$/.test(code)) continue;
+    rows.push({ name, code });
+  }
+  return rows;
+}
+
+function sameTraveler(a: NamedTraveler, b: NamedTraveler) {
+  const lastA = fold(a.last_name || "");
+  const lastB = fold(b.last_name || "");
+  const firstA = fold(greetingGivenName(a.first_name) || "");
+  const firstB = fold(greetingGivenName(b.first_name) || "");
+  if (lastA && lastB && lastA !== lastB) return false;
+  if (firstA && firstB && firstA !== firstB) return false;
+  return Boolean(firstA && firstB) || Boolean(lastA && lastB);
+}
+
+function seatFor(person: NamedTraveler, records: NamedTraveler[], cardSeat: string) {
+  const row = records.find((record) => sameTraveler(record, person));
+  const own = singleSeat(row?.seat);
+  if (own) return own;
+  if (row && records.length === 1) return singleSeat(cardSeat);
+  if (!records.length) return singleSeat(cardSeat);
+  return "";
+}
+
+/**
+ * Champs proposés pour le formulaire.
+ * Le passager vient du nom dans le fichier, ou du PNR du fichier rapproché des notes.
+ * Sans cet appariement, le prénom et le siège restent vides : on ne choisit pas le seul passager connu,
+ * et on ne recopie pas un siège combiné.
+ */
 export function suggestBoardingPass(input: {
   doc: Pick<CrmBookingDocument, "id" | "kind" | "file_name" | "booking_item_id" | "mime_type">;
   items: CrmBookingItem[];
@@ -371,18 +472,37 @@ export function suggestBoardingPass(input: {
 }): BoardingPassFields {
   const empty: BoardingPassFields = { firstName: "", lastName: "", flight: "", route: "", when: "", seat: "" };
   const flight = flightForDocument(input.doc, input.items);
-  const passengers = flight ? passengersFromDetails(flight.details) : [];
-  const pool = passengers.length ? passengers : input.travelers;
-  const matched = matchPerson(input.doc.file_name, pool);
-  const person = matched || (pool.length === 1 ? pool[0] : null);
-  const seat = flight && passengers.length <= 1 ? (typeof flight.details?.seat === "string" ? flight.details.seat.trim() : "") : "";
+  const records = flight ? passengerRecords(flight.details) : [];
+  const travelers: NamedTraveler[] = input.travelers.map((person) => ({
+    first_name: person.first_name,
+    last_name: person.last_name,
+  }));
+  const pool = records.length ? records : travelers;
+  const notes = flight && typeof flight.details?.notes === "string" ? flight.details.notes : "";
+  const fileCodes = pnrTokens(input.doc.file_name || "", flight ? flightLabel(flight) : "");
+  const byFile = records.filter((person) => fileCodes.includes(normPnr(person.pnr)));
+  let person: NamedTraveler | null = null;
+  if (byFile.length === 1) person = byFile[0];
+  else if (byFile.length === 0) {
+    const bindings = noteBindings(notes);
+    const linked = fileCodes.length
+      ? bindings.filter((row) => fileCodes.includes(row.code))
+      : bindings.length === 1
+        ? bindings
+        : [];
+    if (linked.length === 1) {
+      person = matchGiven(linked[0]?.name || "", records) || matchGiven(linked[0]?.name || "", travelers);
+    }
+    if (!person) person = matchPerson(input.doc.file_name, pool) || null;
+  }
+  const cardSeat = flight && typeof flight.details?.seat === "string" ? flight.details.seat : "";
   return {
     firstName: greetingGivenName(person?.first_name) || "",
     lastName: (person?.last_name || "").trim(),
     flight: flight ? flightLabel(flight) : empty.flight,
     route: flight ? routeLabel(flight) : empty.route,
     when: flight ? boardingWhen(flight.start_at) : "",
-    seat,
+    seat: person ? seatFor(person, records, cardSeat) : "",
   };
 }
 

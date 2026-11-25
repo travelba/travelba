@@ -5,6 +5,7 @@ import { MCP_ITEM_COLUMNS } from "./mcp-columns";
 import { syncCheckinSent } from "./online-checkin-db";
 import {
   BOARDING_PASS_MISSING,
+  BOARDING_PASS_UNSURE,
   boardingPassPageTexts,
   boardingPassSendKey,
   overrideBoardingPassengers,
@@ -429,6 +430,6 @@ async function passengersFor(
     if (suggested) return { passengers: [{ ...suggested, page: 1 }], slicePages: false };
   }
   const override = overrideBoardingPassengers(input);
-  if (!override.passengers.length) throw new McpWriteError(BOARDING_PASS_MISSING);
-  return { passengers: override.passengers, slicePages: override.passengers.length > 1 };
+  if (override.passengers.length) return { passengers: override.passengers, slicePages: override.passengers.length > 1 };
+  throw new McpWriteError(read.recognized || override.provided ? BOARDING_PASS_MISSING : BOARDING_PASS_UNSURE);
 }

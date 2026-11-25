@@ -1,18 +1,24 @@
 import { PDFDocument } from "pdf-lib";
 import { extractText } from "unpdf";
 import { formatDateFr } from "./dates";
+import { inferAirportIata } from "./ingest-parse";
 import { greetingGivenName } from "./identity";
 import { openPdf } from "./pdf-raster";
 import {
   boardingPassDedupeKey,
   boardingPassFields,
   cleanTemplateValue,
+  singleSeat,
   type BoardingPassFields,
 } from "./boarding-pass-whatsapp";
 
 /** Lecture incomplète : aucun siège, horaire ou nom n’est complété. */
 export const BOARDING_PASS_MISSING =
   "Le prénom, le nom, le vol, le trajet, l’horaire ou le siège manque sur la carte. Rien n’est inventé.";
+
+/** Le PDF n’a pas permis d’identifier le passager. On n’envoie pas un prénom ou un siège deviné. */
+export const BOARDING_PASS_UNSURE =
+  "La carte n’a pas pu être rattachée à un passager. À vérifier avant l’envoi. Le prénom et le siège ne sont pas repris.";
 
 export type BoardingPassPassenger = BoardingPassFields & { page: number };
 
@@ -289,9 +295,137 @@ function readAirFranceBoardingPasses(pages: string[]): BoardingPassRead {
   return { recognized, passengers };
 }
 
+const ENGLISH_LABEL =
+  /^(boarding|pass|from|to|flight|departure|seat|terminal|gate|class|zone|aisle|seq|pnr|date|passenger|name|boarding pass)$/i;
+
+function looksLikeEnglishBoardingPass(page: string) {
+  const lines = linesOf(page);
+  return (
+    lines.some((line) => /^boarding pass\b/i.test(line)) &&
+    lines.some((line) => /^flight\b/i.test(line)) &&
+    lines.some((line) => /^seat\b/i.test(line))
+  );
+}
+
+function englishSlashName(line: string) {
+  const match = line.match(/^([\p{L}][\p{L}'’ .-]{1,40}?)\s*\/\s*([\p{L}][\p{L}'’ .-]{1,60})$/u);
+  if (!match) return null;
+  const last = (match[1] || "").replace(/\s+/g, " ").trim();
+  const given = (match[2] || "").replace(/\s+/g, " ").trim();
+  const givenFirst = given.split(/\s+/)[0] || "";
+  if (/^[A-Za-z]{3}$/.test(last) && /^[A-Za-z]{3}$/.test(givenFirst)) return null;
+  const first = greetingGivenName(given);
+  if (!last || !first || ENGLISH_LABEL.test(last) || ENGLISH_LABEL.test(first)) return null;
+  return { first, last };
+}
+
+/** El Al et IATA : le nom est NOM/PRÉNOM, ou « Nom Prénom » sous Boarding Pass. */
+function englishName(lines: string[]) {
+  for (const line of lines) {
+    if (/\d/.test(line)) continue;
+    const slash = englishSlashName(line);
+    if (slash) return slash;
+  }
+  const at = lines.findIndex((line) => /^boarding pass\b/i.test(line));
+  if (at < 0) return null;
+  const candidate = lines[at + 1] || "";
+  if (!candidate || /\d/.test(candidate) || ENGLISH_LABEL.test(candidate)) return null;
+  const parts = candidate.split(/\s+/).filter(Boolean);
+  if (parts.length < 2 || parts.some((part) => ENGLISH_LABEL.test(part))) return null;
+  const last = parts[0] || "";
+  const first = greetingGivenName(parts.slice(1).join(" "));
+  if (!last || !first) return null;
+  return { first, last };
+}
+
+function englishFlight(lines: string[]) {
+  const raw = valueAfter(lines, /^flight\b/i).replace(/\s+/g, "");
+  const match = raw.match(/^([A-Z]{1,3})(\d{2,4})$/i);
+  if (!match) return "";
+  return `${(match[1] || "").toUpperCase()} ${match[2]}`;
+}
+
+function cityLabel(code: string) {
+  if (!code) return "";
+  const known = inferAirportIata(code);
+  if (!known || known.city.toUpperCase() === code) return code;
+  return known.city;
+}
+
+function englishRoute(lines: string[]) {
+  const fromCode = valueAfter(lines, /^from\b/i).toUpperCase().match(/\b([A-Z]{3})\b/)?.[1] || "";
+  const toCode = valueAfter(lines, /^to\b/i).toUpperCase().match(/\b([A-Z]{3})\b/)?.[1] || "";
+  const from = cityLabel(fromCode);
+  const to = cityLabel(toCode);
+  if (!from || !to) return "";
+  return `${from} → ${to}`;
+}
+
+function printedYear(token: string) {
+  if (/^\d{4}$/.test(token)) return token;
+  if (!/^\d{2}$/.test(token)) return "";
+  const year = Number(token);
+  return String(year >= 70 ? 1900 + year : 2000 + year);
+}
+
+/** Heure de départ, pas l’ouverture de la porte. L’année à deux chiffres est celle imprimée. */
+function englishWhen(lines: string[]) {
+  const at = lines.findIndex((line) => /^departure\b/i.test(line));
+  if (at < 0) return "";
+  const inline = (lines[at] || "").replace(/^departure\b/i, "").replace(/^[\s:/-]+/, "").trim();
+  const timeLine = inline || lines[at + 1] || "";
+  const time = timeLine.match(/^(\d{1,2}):(\d{2})/);
+  if (!time) return "";
+  const clock = `${(time[1] || "").padStart(2, "0")}h${time[2]}`;
+  const dateLine = inline ? lines[at + 1] || "" : lines[at + 2] || "";
+  const match = dateLine.match(/^(\d{1,2})\s+([A-Za-zÀ-ÿ.]+)(?:\s+(\d{2,4}))?$/);
+  if (!match) return "";
+  const month = monthNumber(match[2] || "");
+  const day = Number(match[1]);
+  if (!month || day < 1 || day > 31) return "";
+  const year = match[3] ? printedYear(match[3]) : "";
+  if (year) {
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const label = formatDateFr(iso);
+    if (!label || label === "—") return "";
+    return `${label} à ${clock}`;
+  }
+  return `${day} ${AF_SHORT_MONTHS[month - 1]} à ${clock}`;
+}
+
+function englishPassenger(page: string, pageNumber: number): BoardingPassPassenger | null {
+  const lines = linesOf(page);
+  const name = englishName(lines);
+  const fields = boardingPassFields({
+    firstName: name?.first || "",
+    lastName: name?.last || "",
+    flight: englishFlight(lines),
+    route: englishRoute(lines),
+    when: englishWhen(lines),
+    seat: singleSeat(valueAfter(lines, /^seat\b/i)),
+  });
+  if (!fields) return null;
+  return { ...fields, page: pageNumber };
+}
+
+function readEnglishBoardingPasses(pages: string[]): BoardingPassRead {
+  const passengers: BoardingPassPassenger[] = [];
+  let recognized = false;
+  for (let index = 0; index < pages.length; index += 1) {
+    const page = pages[index] || "";
+    if (!looksLikeEnglishBoardingPass(page)) continue;
+    recognized = true;
+    const passenger = englishPassenger(page, index + 1);
+    if (!passenger) return { recognized: true, passengers: [] };
+    passengers.push(passenger);
+  }
+  return { recognized, passengers };
+}
+
 /**
  * Une page Transavia = un passager. Le bébé indiqué sur la page reste avec l’adulte.
  * Une page Air France (« NOM , Prénom », vol, siège) suit la même règle : une page, un passager.
+ * Une page El Al ou IATA en anglais (« Boarding Pass », nom NOM/PRÉNOM, vol, siège) aussi.
  * Une page reconnue mais incomplète vide la liste : on n’envoie pas un sous-ensemble.
  */
 export function readBoardingPassPages(pages: string[]): BoardingPassRead {
@@ -308,6 +442,7 @@ export function readBoardingPassPages(pages: string[]): BoardingPassRead {
     }
     return { recognized, passengers };
   }
+  if (pages.some((page) => looksLikeEnglishBoardingPass(page))) return readEnglishBoardingPasses(pages);
   return readAirFranceBoardingPasses(pages);
 }
 
@@ -322,7 +457,8 @@ function passengerFromOverride(row: Record<string, unknown>, page: number): Boar
   const flight = cleanTemplateValue(textOf(row.vol), 40);
   const route = cleanTemplateValue(textOf(row.trajet), 80);
   const when = cleanTemplateValue(textOf(row.date_heure), 60);
-  const seat = cleanTemplateValue(textOf(row.siege), 12);
+  const seatSource = cleanTemplateValue(textOf(row.siege), 12);
+  const seat = seatSource ? singleSeat(seatSource) : "";
   if (!firstName || !flight || !route || !when || !seat || (rawLast && !lastName)) return null;
   return { firstName, lastName: lastName || "", flight, route, when, seat, page };
 }

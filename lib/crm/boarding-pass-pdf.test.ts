@@ -140,6 +140,88 @@ test("une page Air France avec l’année la reprend", () => {
   assert.equal(read.passengers[0]?.when, `${formatDateFr("2026-11-11")} à 13h50`);
 });
 
+function elAlPage(input: { name: string; seat: string; pnr: string; seq: string; year?: string }) {
+  return [
+    "Boarding Pass",
+    input.name,
+    "From",
+    "CDG",
+    "Terminal",
+    "2B",
+    "To",
+    "TLV",
+    "Flight",
+    "LY326",
+    "Gate Opens",
+    "21:35",
+    "Departure",
+    "22:30",
+    input.year ? `26 Nov ${input.year}` : "26 Nov 26",
+    "Seat",
+    input.seat,
+    "Aisle",
+    "Class",
+    "Business",
+    "Zone",
+    "2",
+    `SEQ: ${input.seq}`,
+    `PNR ${input.pnr}`,
+    "Arrive at the airport 3 hours before the updated departure time",
+  ].join("\n");
+}
+
+test("deux pages El Al donnent un passager chacune, sans le siège de l’autre ni le PNR", () => {
+  const read = readBoardingPassPages([
+    elAlPage({ name: "Durand Camille", seat: "6G", pnr: "AB12CD", seq: "0086" }),
+    [
+      "BOARDING PASS",
+      "DURAND/LÉA",
+      "From",
+      "CDG",
+      "To",
+      "TLV",
+      "Flight",
+      "LY 326",
+      "Departure",
+      "22:30",
+      "26 Nov 2026",
+      "Seat",
+      "6D",
+      "PNR",
+      "CD34EF",
+      "SEQ 0087",
+    ].join("\n"),
+  ]);
+  assert.equal(read.recognized, true);
+  assert.equal(read.passengers.length, 2);
+  assert.deepEqual(
+    read.passengers.map((row) => [row.firstName, row.lastName, row.seat, row.page]),
+    [
+      ["Camille", "Durand", "6G", 1],
+      ["Léa", "DURAND", "6D", 2],
+    ]
+  );
+  assert.equal(read.passengers[0].flight, "LY 326");
+  assert.equal(read.passengers[0].route, "Paris → Tel Aviv");
+  assert.equal(read.passengers[0].when, `${formatDateFr("2026-11-26")} à 22h30`);
+  assert.equal(read.passengers[0].when.includes("21h35"), false);
+  assert.equal(read.passengers[1].when, `${formatDateFr("2026-11-26")} à 22h30`);
+  const blob = JSON.stringify(read);
+  assert.equal(blob.includes("AB12CD"), false);
+  assert.equal(blob.includes("CD34EF"), false);
+  assert.equal(blob.includes("0086"), false);
+  assert.equal(blob.includes("6G / 6D"), false);
+});
+
+test("une page El Al reconnue sans siège n’envoie personne", () => {
+  const read = readBoardingPassPages([
+    elAlPage({ name: "Durand Camille", seat: "6G", pnr: "AB12CD", seq: "0086" }),
+    elAlPage({ name: "Durand Léa", seat: "Aisle", pnr: "CD34EF", seq: "0087" }),
+  ]);
+  assert.equal(read.recognized, true);
+  assert.deepEqual(read.passengers, []);
+});
+
 test("un texte qui n’est pas une carte n’est pas reconnu", () => {
   const read = readBoardingPassPages(["Facture hôtel\nParis\n1200 EUR"]);
   assert.equal(read.recognized, false);

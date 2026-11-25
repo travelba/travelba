@@ -18,6 +18,7 @@ import {
   boardingPassJournal,
   boardingPassPreview,
   boardingPassTemplateForCount,
+  singleSeat,
   checkinAirportPreview,
   checkinJournal,
   suggestBoardingPass,
@@ -209,6 +210,83 @@ test("la proposition reprend le vol et le siège déjà connus, pas un siège in
   });
   assert.equal(group.seat, "");
   assert.equal(group.firstName, "");
+});
+
+test("sans appariement, on ne choisit pas le seul passager ni un siège combiné", () => {
+  const item = {
+    id: "flight-1",
+    booking_id: "b",
+    kind: "flight" as const,
+    title: "Paris → Tel Aviv",
+    supplier: "El Al",
+    confirmation_ref: "AB12CD",
+    start_at: "2026-11-26T22:30:00",
+    end_at: null,
+    amount: null,
+    include_in_ledger: true,
+    sort_order: 0,
+    details: {
+      flight_number: "LY 326",
+      city_from: "Paris",
+      city_to: "Tel Aviv",
+      from: "CDG",
+      to: "TLV",
+      seat: "06G / 06D",
+      notes: "PNR Camille AB12CD, PNR Léa CD34EF.",
+      passengers: [{ first_name: "Camille", last_name: "Durand", pnr: "AB12CD", seat: "6G" }],
+    },
+    visible_to_client: true,
+    source_document_id: null,
+    created_at: "",
+    updated_at: "",
+  };
+  const guessed = suggestBoardingPass({
+    doc: {
+      id: DOC,
+      kind: BOARDING_PASS_KIND,
+      file_name: "carte.pdf",
+      booking_item_id: "flight-1",
+      mime_type: "application/pdf",
+    },
+    items: [item],
+    travelers: [{ first_name: "Léa", last_name: "Durand" }],
+  });
+  assert.equal(guessed.firstName, "");
+  assert.equal(guessed.lastName, "");
+  assert.equal(guessed.seat, "");
+  assert.equal(guessed.flight, "LY 326");
+  assert.equal(singleSeat("06G / 06D"), "");
+  assert.equal(singleSeat("6G"), "6G");
+
+  const byFile = suggestBoardingPass({
+    doc: {
+      id: DOC,
+      kind: BOARDING_PASS_KIND,
+      file_name: "carte-embarquement-AB12CD.pdf",
+      booking_item_id: "flight-1",
+      mime_type: "application/pdf",
+    },
+    items: [item],
+    travelers: [],
+  });
+  assert.equal(byFile.firstName, "Camille");
+  assert.equal(byFile.lastName, "Durand");
+  assert.equal(byFile.seat, "6G");
+
+  const byNotes = suggestBoardingPass({
+    doc: {
+      id: DOC,
+      kind: BOARDING_PASS_KIND,
+      file_name: "carte-embarquement-CD34EF.pdf",
+      booking_item_id: "flight-1",
+      mime_type: "application/pdf",
+    },
+    items: [item],
+    travelers: [{ first_name: "Léa", last_name: "Durand" }],
+  });
+  assert.equal(byNotes.firstName, "Léa");
+  assert.equal(byNotes.lastName, "Durand");
+  assert.equal(byNotes.seat, "");
 });
 
 test("montrer la carte au client ne prépare pas un message de pièce", () => {
