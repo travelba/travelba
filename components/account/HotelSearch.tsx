@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useSyncExternalStore, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { HotelJourney } from "@/components/account/HotelJourney";
 import { HotelPhotoStrip } from "@/components/account/HotelPhotoStrip";
@@ -21,6 +21,17 @@ import {
 import { postHotelActivity } from "@/lib/crm/hotel-activity-client";
 import { HOTEL_RESULT_PAGE } from "@/lib/crm/hotel-activity";
 import { discreetSearchPerk, hotelJourneySearch, hotelJourneyStep, presentHotels, SEARCH_PERK_LABEL, type HotelJourneyStep, type HotelSort } from "@/lib/crm/hotel-journey";
+import {
+  emptyHotelSearchMemory,
+  hotelListCacheKey,
+  hotelSearchMatches,
+  readHotelListSearch,
+  readHotelSearchMemory,
+  rememberHotelSearch,
+  subscribeHotelSearchMemory,
+  writeHotelListSearch,
+  type HotelListCriteria,
+} from "@/lib/crm/hotel-search-resume";
 import {
   hotelSearchDraft,
   leRoomPartyOk,
@@ -325,28 +336,22 @@ export function HotelSearch({
   const [checkInText, setCheckIn] = useState<string | null>(null);
   const [checkOutText, setCheckOut] = useState<string | null>(null);
   const [roomDraft, setRooms] = useState<DraftRoom[] | null>(null);
-  const destination = destinationText ?? seed.destination;
-  const city = cityText ?? seed.city;
-  const target = targetChoice === undefined ? seed.target : targetChoice;
-  const checkIn = checkInText ?? seed.checkIn;
-  const checkOut = checkOutText ?? seed.checkOut;
-  const rooms = roomDraft ?? seed.rooms.map((room) => ({ adults: room.adults, children: room.children.slice() }));
   const [remoteSuggest, setRemoteSuggest] = useState<{ key: string; items: PlaceSuggestion[] } | null>(null);
   const [sheet, setSheet] = useState(false);
   const [panel, setPanel] = useState<Panel | null>(null);
-  const [hotels, setHotels] = useState<ClientHotel[]>([]);
+  const [hotelRows, setHotels] = useState<ClientHotel[]>([]);
   const [searching, setSearching] = useState(false);
   const searchLock = useRef(false);
-  const [searched, setSearched] = useState(false);
+  const [searchedFlag, setSearched] = useState(false);
   const [note, setNote] = useState("");
   const [serverFirst, setServerFirst] = useState<number | null>(null);
   const [clientFirst, setClientFirst] = useState<number | null>(null);
-  const [needs, setNeeds] = useState<(keyof HotelPerks)[]>([]);
-  const [sort, setSort] = useState<HotelSort>("prix");
-  const [page, setPage] = useState(1);
+  const [needsChoice, setNeeds] = useState<(keyof HotelPerks)[] | null>(null);
+  const [sortChoice, setSort] = useState<HotelSort | null>(null);
+  const [pageChoice, setPage] = useState<number | null>(null);
   const [tool, setTool] = useState<"" | "filtre" | "tri">("");
   const [layout, setLayout] = useState<"liste" | "carte">("liste");
-  const [clubOpen, setClubOpen] = useState(true);
+  const [clubChoice, setClubOpen] = useState<boolean | null>(null);
   const [pricesOpen, setPricesOpen] = useState(false);
   const [heroBroken, setHeroBroken] = useState(false);
   const [heroSeen, setHeroSeen] = useState("");
@@ -356,12 +361,40 @@ export function HotelSearch({
   const params = useSearchParams();
   const hotelToken = params.get("hotel");
   const journeyStep = hotelJourneyStep(params.get("etape"));
-  const [catalog, setCatalog] = useState<Record<string, ClientHotel>>({});
+  const [catalogChoice, setCatalog] = useState<Record<string, ClientHotel> | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [trackedToken, setTrackedToken] = useState<string | null>(hotelToken);
   const recentRaw = useSyncExternalStore(subscribeRecent, readRecentSnapshot, emptyRecentSnapshot);
   const recent = useMemo(() => parseRecent(recentRaw), [recentRaw]);
-  const [committed, setCommitted] = useState<{ rooms: HotelRoomOccupancy[] } | null>(null);
+  const [committedChoice, setCommitted] = useState<{ rooms: HotelRoomOccupancy[] } | null | undefined>(undefined);
+  const [tookOver, setTookOver] = useState(false);
+  const snap = useSyncExternalStore(subscribeHotelSearchMemory, readHotelSearchMemory, emptyHotelSearchMemory);
+  const restored = !tookOver && snap && hotelSearchMatches(snap, params) ? snap : null;
+  const listed = useMemo(() => readHotelListSearch(params), [params]);
+  const hotels = restored ? restored.hotels : hotelRows;
+  const searched = restored ? true : searchedFlag;
+  const needs = needsChoice ?? restored?.needs ?? [];
+  const sort = sortChoice ?? (restored?.sort === "avantages" ? "avantages" : "prix");
+  const page = pageChoice ?? (restored && restored.page > 0 ? restored.page : 1);
+  const clubOpen = clubChoice ?? !restored;
+  const catalog = catalogChoice ?? restored?.catalog ?? {};
+  const committed = useMemo(
+    () => (committedChoice !== undefined ? committedChoice : restored?.rooms?.length ? { rooms: restored.rooms } : null),
+    [committedChoice, restored]
+  );
+  const destination = destinationText ?? listed?.destination ?? seed.destination;
+  const city = cityText ?? listed?.city ?? seed.city;
+  const target = targetChoice === undefined ? (listed?.target ?? seed.target) : targetChoice;
+  const checkIn = checkInText ?? listed?.checkIn ?? seed.checkIn;
+  const checkOut = checkOutText ?? listed?.checkOut ?? seed.checkOut;
+  const rooms = useMemo(
+    () =>
+      roomDraft ??
+      (listed
+        ? listed.rooms.map((room) => ({ adults: room.adults, children: room.children.map((child) => child.age) }))
+        : seed.rooms.map((room) => ({ adults: room.adults, children: room.children.slice() }))),
+    [roomDraft, listed, seed]
+  );
 
   function tokenOf(hotel: ClientHotel) {
     return String(hotel.hotelId || hotel.hotelKey);
@@ -373,12 +406,64 @@ export function HotelSearch({
   }
   const openedLive = (hotelToken ? catalog[hotelToken] : null) || (!hotelToken && pending ? catalog[pending] : null) || null;
 
-  function openHotel(hotel: ClientHotel) {
+  function listCriteria(): HotelListCriteria | null {
+    const stayRooms = committed?.rooms ?? completeRooms(rooms);
+    if (!stayRooms || destination.trim().length < 2 || !checkIn || !checkOut) return null;
+    return {
+      destination: destination.trim(),
+      city,
+      checkIn,
+      checkOut,
+      rooms: stayRooms,
+      target: target ?? null,
+      sort,
+      filters: needs,
+      page,
+    };
+  }
+
+  function storeResults(criteria: HotelListCriteria, latest: ClientHotel[], catalogNow: Record<string, ClientHotel>, scrollY: number) {
+    rememberHotelSearch(
+      {
+        key: hotelListCacheKey(criteria),
+        hotels: latest,
+        catalog: catalogNow,
+        page: criteria.page,
+        sort: criteria.sort,
+        needs: criteria.filters,
+        scroll: scrollY,
+        rooms: criteria.rooms,
+      },
+      false
+    );
+  }
+
+  function withList(paramsNext: URLSearchParams, rates = false) {
+    const criteria = listCriteria();
+    if (criteria) {
+      const list = new URLSearchParams(writeHotelListSearch(criteria));
+      list.forEach((value, key) => paramsNext.set(key, value));
+    }
+    if (rates) paramsNext.set("vue", "tarifs");
+    return paramsNext;
+  }
+
+  function openHotel(hotel: ClientHotel, focus?: "tarifs") {
     const token = tokenOf(hotel);
     if (!hotel.hotelId) postHotelActivity({ kind: "view", hotel: hotel.name, city: hotel.city });
-    setCatalog((current) => (current[token] === hotel ? current : { ...current, [token]: hotel }));
+    const nextCatalog = catalog[token] === hotel ? catalog : { ...catalog, [token]: hotel };
+    setCatalog(nextCatalog);
     setPending(token);
-    router.push(`${hotelsPath}?${hotelJourneySearch(token, "hotel")}`);
+    const criteria = listCriteria();
+    if (criteria) storeResults(criteria, hotels, nextCatalog, window.scrollY);
+    const journey = hotelJourneySearch(token, "hotel");
+    const hotelHref = `${hotelsPath}?${withList(new URLSearchParams(journey), focus === "tarifs").toString()}`;
+    const listHref = criteria ? `${hotelsPath}?${writeHotelListSearch(criteria)}` : hotelsPath;
+    const here = `${window.location.pathname}${window.location.search}`;
+    if (here !== listHref && !new URLSearchParams(window.location.search).get("hotel")) {
+      window.history.replaceState(window.history.state, "", listHref);
+    }
+    router.push(hotelHref, { scroll: false });
   }
 
   function onJourneyStep(next: HotelJourneyStep | "back") {
@@ -387,9 +472,9 @@ export function HotelSearch({
       return;
     }
     if (!openedLive) return;
-    const href = `${hotelsPath}?${hotelJourneySearch(tokenOf(openedLive), next)}`;
+    const href = `${hotelsPath}?${withList(new URLSearchParams(hotelJourneySearch(tokenOf(openedLive), next))).toString()}`;
     if (`${hotelsPath}?${params.toString()}` === href) return;
-    router.push(href);
+    router.replace(href, { scroll: false });
   }
 
   const suggestAbort = useRef<AbortController | null>(null);
@@ -425,6 +510,31 @@ export function HotelSearch({
     root.setAttribute("data-hotel-home", "");
     return () => root.removeAttribute("data-hotel-home");
   }, [searched, openedLive]);
+
+  useLayoutEffect(() => {
+    const saved = readHotelSearchMemory();
+    const query = new URLSearchParams(window.location.search);
+    if (!saved || !hotelSearchMatches(saved, query) || !saved.scroll) return;
+    window.scrollTo(0, saved.scroll);
+  }, []);
+
+  useEffect(() => {
+    if (!searched || hotelToken) return;
+    let frame = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const current = readHotelSearchMemory();
+        if (!current || current.scroll === window.scrollY) return;
+        rememberHotelSearch({ ...current, scroll: window.scrollY }, false);
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, [searched, hotelToken]);
 
   useEffect(() => {
     if (focusReady.current) return;
@@ -622,10 +732,10 @@ export function HotelSearch({
     setNote("");
     setSheet(false);
     setSearched(true);
+    setTookOver(true);
     searchLock.current = true;
     setPage(1);
     setPending(null);
-    if (hotelToken) router.replace(hotelsPath);
     setCommitted({ rooms: stayRooms });
     try {
       const entry: RecentStay = {
@@ -673,6 +783,18 @@ export function HotelSearch({
       let buffer = "";
       let latest: ClientHotel[] = fresh || [];
       let sawHotel = Boolean(fresh?.length);
+      const criteriaNow: HotelListCriteria = {
+        destination: nextDestination,
+        city: nextCity,
+        checkIn: nextCheckIn,
+        checkOut: nextCheckOut,
+        rooms: stayRooms,
+        target: nextTarget,
+        sort,
+        filters: needs,
+        page: 1,
+      };
+      const listHref = `${hotelsPath}?${writeHotelListSearch(criteriaNow)}`;
       while (true) {
         const chunk = await reader.read();
         if (chunk.done) break;
@@ -695,11 +817,15 @@ export function HotelSearch({
           } else if (event.type === "done") {
             setServerFirst(event.tFirstMs);
             rememberHotels(key, latest);
+            if (!new URLSearchParams(window.location.search).get("hotel") && `${window.location.pathname}${window.location.search}` !== listHref) {
+              router.replace(listHref, { scroll: false });
+            }
           } else if (event.type === "error") {
             setNote(event.message);
           }
         }
         setHotels(latest);
+        storeResults(criteriaNow, latest, catalog, window.scrollY);
       }
     } catch (err) {
       if ((err as { name?: string }).name !== "AbortError") setNote("La recherche n’a pas abouti. Réessayez.");
@@ -764,14 +890,16 @@ export function HotelSearch({
           query={journeyQuery}
           step={journeyStep}
           onStep={onJourneyStep}
-          onBack={() => router.replace(hotelsPath)}
+          onBack={() => router.back()}
           others={shown.filter((item) => item.hotelKey !== openedLive.hotelKey).slice(0, 8)}
           onOpenOther={openHotel}
           trial={trial}
           leApi={leApi}
+          focusRates={params.get("vue") === "tarifs"}
         />
       ) : null}
-      {openedLive || clubOpen || pricesOpen ? null : <>
+      {clubOpen || pricesOpen ? null : (
+      <div inert={openedLive ? true : undefined} aria-hidden={openedLive ? true : undefined} className={openedLive ? "invisible" : undefined}>
       <div className={searched ? "h-searchbar -mx-4 -mt-4 px-3 pb-2 pt-2 sm:-mx-5" : ""} data-hotel-ask="1" data-hotel-fields="1" data-hotel-summary="1" data-hotel-search-dock="1">
         {searched ? (
           <div className="h-searchbar-row">
@@ -836,7 +964,7 @@ export function HotelSearch({
               <Icon name="bed" className="h-4 w-4 shrink-0 text-[#C5A880]" strokeWidth={1.5} />
               <span className="shrink-0">{barRooms}</span>
             </button>
-            <button type="button" data-hotel-search-cta="1" disabled={searching} onClick={() => void onSearch()} className="h-btn h-search-go h-search-launch h-press flex items-center justify-center font-semibold disabled:opacity-60">
+            <button type="button" data-hotel-search-cta="1" disabled={searching} onClick={() => void onSearch()} className="h-btn h-search-go h-search-launch h-press hidden items-center justify-center font-semibold disabled:opacity-60 md:flex">
               <span>Rechercher</span>
             </button>
           </div>
@@ -859,7 +987,7 @@ export function HotelSearch({
         ) : null}
       </div>
       {!searched ? (
-        <div className="h-ask">
+        <div className="h-ask pb-36 md:pb-0">
           {recent.length ? (
             <div data-hotel-recent="1">
               <p className="h-section px-1">Dernières recherches</p>
@@ -937,7 +1065,7 @@ export function HotelSearch({
         {searched && hotels.length > 0 && layout === "carte" && canMap ? <HotelMap hotels={shown} onOpen={openHotel} /> : null}
         {layout === "liste" || !canMap
           ? visible.map((hotel, index) => (
-              <HotelCard key={hotel.hotelKey} hotel={hotel} first={index === 0} onOpen={() => openHotel(hotel)} />
+              <HotelCard key={hotel.hotelKey} hotel={hotel} first={index === 0} onOpen={() => openHotel(hotel)} onRates={() => openHotel(hotel, "tarifs")} />
             ))
           : null}
         {(layout === "liste" || !canMap) && shown.length > visible.length ? (
@@ -972,7 +1100,14 @@ export function HotelSearch({
           </article>
         ) : null}
       </div>
-      </>}
+      {!searched && !sheet && !openedLive ? (
+        <div className="fixed inset-x-0 z-40 px-4 md:hidden" style={{ bottom: "calc(5.75rem + env(safe-area-inset-bottom, 0px))" }}>
+          <button type="button" disabled={searching} onClick={() => void onSearch()} className="h-btn h-search-go h-press flex h-12 w-full items-center justify-center text-base font-semibold shadow-[0_8px_24px_rgba(11,25,44,0.18)] disabled:opacity-60">
+            Rechercher
+          </button>
+        </div>
+      ) : null}
+      </div>)}
 
       {sheet && panel !== "when" && panel !== "who" ? (
         <div className="hotel-sheet h-search fixed inset-x-0 top-16 z-[60] flex flex-col bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] md:bottom-0" data-hotel-sheet="1" role="dialog" aria-modal="true" aria-label="Recherche de séjour">
@@ -1416,7 +1551,7 @@ function Stepper({
  * Juste en dessous : le tarif et « Voir l’hôtel ». Les avantages (`HotelBenefits`) ferment la carte.
  * Sans avantage lu, une seule ligne discrète (annulation gratuite) reste à cette place.
  */
-function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolean; onOpen: () => void }) {
+function HotelCard({ hotel, first, onOpen, onRates }: { hotel: ClientHotel; first: boolean; onOpen: () => void; onRates: () => void }) {
   const hasBenefits = hotel.benefits.length > 0;
   const perk = hasBenefits ? "" : discreetSearchPerk(hotel.perks);
   return (
@@ -1453,6 +1588,11 @@ function HotelCard({ hotel, first, onOpen }: { hotel: ClientHotel; first: boolea
           <p className="px-4 pb-4 text-[12px] text-[#9a7b4f]">{perk}</p>
         ) : null}
       </button>
+      <div className="px-4 pb-4">
+        <button type="button" onClick={onRates} className="h-btn h-search-go h-press flex h-12 w-full items-center justify-center text-sm font-semibold">
+          Voir les tarifs
+        </button>
+      </div>
     </article>
   );
 }

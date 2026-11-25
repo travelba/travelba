@@ -327,7 +327,8 @@
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
   overflow-anchor: none;
-  touch-action: pan-y;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
 .hotel-theme .h-strip::-webkit-scrollbar {
@@ -339,15 +340,15 @@
   width: 100%;
   flex: 0 0 100%;
   scroll-snap-align: start;
-  scroll-snap-stop: always;
+  scroll-snap-stop: normal;
 }
 .hotel-theme .h-strip-arrow {
   position: absolute;
   top: 50%;
   z-index: 4;
   display: grid;
-  height: 2.25rem;
-  width: 2.25rem;
+  height: 2.75rem;
+  width: 2.75rem;
   place-items: center;
   transform: translateY(-50%);
   border-radius: 999px;
@@ -356,10 +357,48 @@
   opacity: 0;
   pointer-events: none;
 }
+.hotel-theme .h-strip-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0.75rem;
+  z-index: 4;
+  display: flex;
+  justify-content: center;
+  gap: 0.35rem;
+  pointer-events: auto;
+}
+.hotel-theme .h-strip-hint {
+  position: absolute;
+  top: 50%;
+  right: 0.65rem;
+  z-index: 3;
+  display: none;
+  height: 2.25rem;
+  width: 2.25rem;
+  place-items: center;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: rgba(11, 25, 44, 0.45);
+  color: #f7f4ee;
+  pointer-events: none;
+}
+.hotel-theme .h-strip-arrow.h-strip-arrow-on {
+  opacity: 1;
+  pointer-events: auto;
+}
 @media (hover: hover) and (pointer: fine) {
-  .hotel-theme .h-photo-frame:hover .h-strip-arrow {
+  .hotel-theme .h-strip-arrow {
     opacity: 1;
     pointer-events: auto;
+  }
+  .hotel-theme .h-strip-hint {
+    display: none;
+  }
+}
+@media (pointer: coarse) {
+  .hotel-theme .h-strip-hint {
+    display: grid;
   }
 }
 .hotel-theme .h-cover-fade {

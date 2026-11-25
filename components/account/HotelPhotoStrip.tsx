@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
+import Image from "next/image";
 import { Icon } from "@/components/crm/icons";
-import { hotelPhotoList, photoGesture } from "@/lib/crm/hotel-photos";
+import { hotelImageLoader, hotelPhotoList } from "@/lib/crm/hotel-photos";
 
-type Drag = { id: number; x: number; y: number; left: number; mode: "pending" | "swipe" | "scroll" };
+const SIZES = "(max-width: 768px) 100vw, 480px";
 
 function smooth() {
   if (typeof window === "undefined") return false;
   return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-/** Bande de photos. Un balayage ou une flèche ne compte pas comme un appui. */
+/** Bande de photos. Le doigt fait défiler en natif. Un balayage n’ouvre pas la fiche. */
 export function HotelPhotoStrip({
   photo,
   images,
@@ -31,12 +32,37 @@ export function HotelPhotoStrip({
 }) {
   const photos = hotelPhotoList({ photo, images });
   const scroller = useRef<HTMLDivElement>(null);
-  const drag = useRef<Drag | null>(null);
+  const indexRef = useRef(0);
+  const origin = useRef(0);
   const suppress = useRef(false);
+  const preloaded = useRef(new Set<string>());
+  const dots = useRef<(HTMLButtonElement | null)[]>([]);
+  const counter = useRef<HTMLParagraphElement>(null);
   const [at, setAt] = useState(0);
   const [open, setOpen] = useState(false);
   const count = photos.length;
-  const index = count ? Math.min(at, count - 1) : 0;
+
+  function preload(from: number) {
+    for (const src of [photos[from], photos[from + 1], photos[from + 2]]) {
+      if (!src || preloaded.current.has(src)) continue;
+      preloaded.current.add(src);
+      const image = new window.Image();
+      image.decoding = "async";
+      image.src = hotelImageLoader({ src, width: 828 });
+    }
+  }
+
+  function paint(index: number) {
+    dots.current.forEach((dot, dotIndex) => {
+      if (!dot) return;
+      const on = dotIndex === index;
+      dot.classList.toggle("bg-[#C5A880]", on);
+      dot.classList.toggle("w-4", on);
+      dot.classList.toggle("bg-white/80", !on);
+      dot.setAttribute("aria-current", on ? "true" : "false");
+    });
+    if (counter.current) counter.current.textContent = `${index + 1}/${count}`;
+  }
 
   function readIndex() {
     const node = scroller.current;
@@ -44,68 +70,44 @@ export function HotelPhotoStrip({
     return Math.max(0, Math.min(count - 1, Math.round(node.scrollLeft / node.clientWidth)));
   }
 
+  function commit(index: number) {
+    if (index === indexRef.current && index === at) {
+      paint(index);
+      return;
+    }
+    indexRef.current = index;
+    paint(index);
+    preload(index);
+    setAt((current) => (current === index ? current : index));
+  }
+
+  function onScroll() {
+    const index = readIndex();
+    if (index === indexRef.current) return;
+    commit(index);
+  }
+
   function go(next: number) {
     const node = scroller.current;
     if (!node || !count) return;
     const indexNext = Math.max(0, Math.min(count - 1, next));
-    setAt(indexNext);
-    node.style.scrollSnapType = "";
     node.scrollTo({ left: indexNext * node.clientWidth, behavior: smooth() ? "smooth" : "auto" });
   }
 
-  function onScroll() {
-    if (drag.current?.mode === "swipe") return;
-    setAt(readIndex());
-  }
+  useEffect(() => {
+    preload(0);
+    // Le préchargement ne dépend que de la liste, lue au montage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photos.join("|")]);
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    const node = scroller.current;
-    drag.current = {
-      id: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
-      left: node?.scrollLeft ?? 0,
-      mode: "pending",
-    };
+    origin.current = scroller.current?.scrollLeft ?? 0;
   }
 
-  function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    const current = drag.current;
-    if (!current || current.id !== event.pointerId) return;
-    const dx = event.clientX - current.x;
-    const dy = event.clientY - current.y;
-    if (current.mode === "pending") {
-      const gesture = photoGesture(dx, dy);
-      if (gesture === "pending") return;
-      current.mode = gesture;
-      if (gesture === "scroll") {
-        drag.current = null;
-        return;
-      }
-      event.currentTarget.setPointerCapture(event.pointerId);
-      if (scroller.current) scroller.current.style.scrollSnapType = "none";
-    }
-    if (current.mode !== "swipe") return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (scroller.current) scroller.current.scrollLeft = current.left - dx;
-  }
-
-  function finish(event: ReactPointerEvent<HTMLDivElement>) {
-    const current = drag.current;
-    if (!current || current.id !== event.pointerId) return;
-    drag.current = null;
-    if (current.mode === "swipe") {
-      suppress.current = true;
-      event.preventDefault();
-      event.stopPropagation();
-      go(readIndex());
-    }
-  }
-
-  function onClick(event: ReactPointerEvent<HTMLDivElement> | ReactMouseEvent) {
-    if (suppress.current) {
+  function onClick(event: ReactMouseEvent) {
+    const moved = Math.abs((scroller.current?.scrollLeft ?? 0) - origin.current) > 4;
+    if (suppress.current || moved) {
       suppress.current = false;
       event.preventDefault();
       event.stopPropagation();
@@ -118,25 +120,38 @@ export function HotelPhotoStrip({
   function nudge(event: ReactMouseEvent, delta: number) {
     event.preventDefault();
     event.stopPropagation();
-    go(index + delta);
+    suppress.current = true;
+    go(indexRef.current + delta);
   }
+
+  function onKey(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    event.preventDefault();
+    go(indexRef.current + (event.key === "ArrowRight" ? 1 : -1));
+  }
+
+  const shownDots = count > 1 && count <= 12;
 
   return (
     <div className="h-photo-frame absolute inset-0" data-hotel-strip="1">
       <div
         ref={scroller}
         className="h-strip"
+        tabIndex={count > 1 ? 0 : undefined}
+        aria-label={count > 1 ? "Photos, glisser pour défiler" : undefined}
         onScroll={onScroll}
         onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={finish}
-        onPointerCancel={finish}
         onClick={onClick}
+        onKeyDown={onKey}
       >
         {count ? (
           photos.map((src, imageIndex) => (
             <div key={`${src}-${imageIndex}`} className="h-strip-slide">
-              <Photo src={src} alt={imageIndex === 0 ? alt : ""} eager={Boolean(eager) && imageIndex === 0} />
+              <Photo
+                src={src}
+                alt={imageIndex === 0 ? alt : ""}
+                eager={Boolean(eager && imageIndex === 0) || imageIndex === at || imageIndex === at + 1 || imageIndex === at + 2}
+              />
             </div>
           ))
         ) : (
@@ -148,31 +163,41 @@ export function HotelPhotoStrip({
       {count > 1 ? (
         <>
           <button type="button" className="h-strip-arrow left-2" aria-label="Photo précédente" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => nudge(event, -1)}>
-            <Icon name="chevron_left" className="h-4 w-4" />
+            <Icon name="chevron_left" className="h-5 w-5" />
           </button>
           <button type="button" className="h-strip-arrow right-2" aria-label="Photo suivante" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => nudge(event, 1)}>
-            <Icon name="chevron_right" className="h-4 w-4" />
+            <Icon name="chevron_right" className="h-5 w-5" />
           </button>
-          <div className="absolute left-0 right-0 top-3 z-[4] flex justify-center gap-1">
-            {photos.map((src, imageIndex) => (
-              <button
-                key={`${src}-dot-${imageIndex}`}
-                type="button"
-                aria-label={`Photo ${imageIndex + 1}`}
-                className={`h-2 w-2 rounded-full ${imageIndex === index ? "bg-[#C5A880]" : "bg-white/75"}`}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  go(imageIndex);
-                }}
-              />
-            ))}
-          </div>
-          <p className="h-pin pointer-events-none absolute right-3 top-3">{index + 1}/{count}</p>
+          <span className="h-strip-hint" aria-hidden>
+            <Icon name="chevron_right" className="h-5 w-5" />
+          </span>
+          {shownDots ? (
+            <div className="h-strip-dots">
+              {photos.map((src, imageIndex) => (
+                <button
+                  key={`${src}-dot-${imageIndex}`}
+                  ref={(node) => {
+                    dots.current[imageIndex] = node;
+                  }}
+                  type="button"
+                  aria-label={`Photo ${imageIndex + 1}`}
+                  aria-current={imageIndex === at ? "true" : "false"}
+                  className={`h-2 rounded-full ${imageIndex === at ? "w-4 bg-[#C5A880]" : "w-2 bg-white/80"}`}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    suppress.current = true;
+                    go(imageIndex);
+                  }}
+                />
+              ))}
+            </div>
+          ) : null}
+          <p ref={counter} className="h-pin pointer-events-none absolute bottom-3 right-3 z-[4]">{at + 1}/{count}</p>
         </>
       ) : null}
-      {open && photos[index] ? <Lightbox photos={photos} alt={alt} index={index} onShift={(delta) => go(index + delta)} onClose={() => setOpen(false)} /> : null}
+      {open && photos[at] ? <Lightbox photos={photos} alt={alt} index={at} onShift={(delta) => go(at + delta)} onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }
@@ -221,13 +246,23 @@ function Lightbox({
       </header>
       <div className="relative min-h-0 flex-1">
         <Photo src={photos[index]} alt={alt} eager />
+        {photos.length > 1 ? (
+          <>
+            <button type="button" className="h-strip-arrow h-strip-arrow-on left-3" aria-label="Photo précédente" onClick={() => onShift(-1)}>
+              <Icon name="chevron_left" className="h-5 w-5" />
+            </button>
+            <button type="button" className="h-strip-arrow h-strip-arrow-on right-3" aria-label="Photo suivante" onClick={() => onShift(1)}>
+              <Icon name="chevron_right" className="h-5 w-5" />
+            </button>
+          </>
+        ) : null}
       </div>
     </div>,
     document.body
   );
 }
 
-function Photo({ src, alt, eager }: { src: string; alt: string; eager?: boolean }) {
+const Photo = memo(function Photo({ src, alt, eager }: { src: string; alt: string; eager?: boolean }) {
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   if (failed) {
@@ -238,16 +273,16 @@ function Photo({ src, alt, eager }: { src: string; alt: string; eager?: boolean 
     );
   }
   return (
-    <div className={`h-skel h-full w-full ${ready ? "" : "animate-pulse"}`}>
-      {/* eslint-disable-next-line @next/next/no-img-element -- photo fournisseur https, hors next/image */}
-      <img
+    <div className="relative h-full w-full bg-[#0B192C]">
+      <Image
         src={src}
         alt={alt}
-        width={960}
-        height={600}
-        className={`h-full w-full object-cover ${ready ? "h-fade" : "opacity-0"}`}
+        fill
+        sizes={SIZES}
+        loader={hotelImageLoader}
+        className={`object-cover ${ready ? "h-fade" : "opacity-0"}`}
         loading={eager ? "eager" : "lazy"}
-        decoding="async"
+        priority={Boolean(eager)}
         fetchPriority={eager ? "high" : "auto"}
         referrerPolicy="no-referrer"
         onLoad={() => setReady(true)}
@@ -255,4 +290,4 @@ function Photo({ src, alt, eager }: { src: string; alt: string; eager?: boolean 
       />
     </div>
   );
-}
+});
