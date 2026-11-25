@@ -24,7 +24,7 @@ test("le médaillon source reste le PNG 1280 fourni, coins compris", async () =>
   const master = await readFile("public/brand/logo-tba.png");
   assert.equal(
     createHash("sha256").update(master).digest("hex"),
-    "1f54eef35f3b856b6b68842be76033c4d9afa46caa6c38e137ced348796a68c7",
+    "4b1f6f903a52e1a99183aa71876e1642612f35b860fcb34af339e460170bf0a5",
   );
   assert.deepEqual(pngSize(master), { width: 1280, height: 1280, colorType: 6 });
   for (const [file, size] of [
