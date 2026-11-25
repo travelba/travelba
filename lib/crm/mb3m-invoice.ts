@@ -537,7 +537,14 @@ export function buildMb3mInvoiceContext(input: {
   const conformed = conformMb3mAccountLines(
     posted.filter((line) => !covered.has(line.transactionId)),
     input.items,
-    input.booking.reference
+    input.booking.reference,
+    (input.costs || []).map((cost) => ({
+      source: cost.source,
+      sourceId: cost.sourceId,
+      bookingItemId: cost.bookingItemId,
+      amountEur: cost.amountEur,
+      originalCurrency: cost.originalCurrency,
+    }))
   );
   const lines = input.discountCuts
     ? withCommercialDiscountLines(conformed, input.discountCuts)
@@ -1456,7 +1463,13 @@ export async function reissueMb3mInvoice(supabase: SupabaseClient, bookingId: st
       ? piece.lines
       : ctx.lines
           .filter((line) => piece.transactionIds.includes(line.transactionId))
-          .map((line) => mb3mInvoiceLine({ ...line, margin: line.amount, note: null }));
+          .map((line) =>
+            mb3mInvoiceLine({
+              ...line,
+              margin: line.amount,
+              note: (line.note || "").trim().startsWith("Pliant : ") ? line.note : null,
+            })
+          );
     const state = await mb3mFindPiece(piece.pieceNumber);
     if (state !== "printed") {
       throw new Mb3mError(

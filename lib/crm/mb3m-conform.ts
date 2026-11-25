@@ -425,6 +425,75 @@ export function isMb3mClientExpense(kind: string, label: string) {
   return EXPENSE_PREFIX.test(label.trim());
 }
 
+/** Débit Pliant déjà rattaché : identifiant de transaction, ou coût `source=pliant` sur la dépense. */
+export type Mb3mPliantDebit = {
+  source: string;
+  sourceId?: string | null;
+  bookingItemId?: string | null;
+  /** Euros déjà convertis. Absent : le montant EUR de la dépense. */
+  amountEur?: number | null;
+  originalCurrency?: string | null;
+};
+
+const PLIANT_NOTE_PREFIX = "Pliant : ";
+
+/** « Pliant : 1 245,00 € ». Espace insécable fine entre les milliers, virgule, deux décimales. */
+export function mb3mPliantNote(euros: number) {
+  const cents = Math.round(Math.abs(euros) * 100) / 100;
+  const [whole, frac] = cents.toFixed(2).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f");
+  return `${PLIANT_NOTE_PREFIX}${grouped},${frac} €`;
+}
+
+export function isMb3mPliantNote(value: string | null | undefined) {
+  return (value || "").trim().startsWith(PLIANT_NOTE_PREFIX);
+}
+
+function detailEuros(details: Record<string, unknown> | null | undefined, key: string) {
+  const value = details?.[key];
+  if (typeof value === "number" && Number.isFinite(value)) return Math.abs(value);
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.replace(",", "."));
+    if (Number.isFinite(parsed)) return Math.abs(parsed);
+  }
+  return null;
+}
+
+/**
+ * Note d’une dépense payée par carte Pliant. Null sinon.
+ * Le débit en euros (coût converti, sinon `pliant_amount`) prime. Sans conversion, le montant EUR de la dépense.
+ */
+export function mb3mPliantExpenseNote(input: {
+  itemId?: string | null;
+  details?: Record<string, unknown> | null;
+  expenseEuros: number;
+  debits?: Mb3mPliantDebit[] | null;
+}) {
+  const rawId = input.details?.pliant_transaction_id;
+  const transactionId = typeof rawId === "string" ? rawId.trim() : "";
+  const linked = (input.debits || []).filter((row) => {
+    if (row.source !== "pliant") return false;
+    if (transactionId && row.sourceId && row.sourceId === transactionId) return true;
+    return Boolean(input.itemId && row.bookingItemId && row.bookingItemId === input.itemId);
+  });
+  if (!transactionId && !linked.length) return null;
+  const converted = linked
+    .map((row) => (row.amountEur == null ? null : Number(row.amountEur)))
+    .find((value) => value != null && Number.isFinite(value));
+  const remembered = detailEuros(input.details, "pliant_amount");
+  const expense = Number(input.expenseEuros);
+  const euros =
+    converted != null
+      ? Math.abs(converted)
+      : remembered != null
+        ? remembered
+        : Number.isFinite(expense)
+          ? Math.abs(expense)
+          : null;
+  if (euros == null) return null;
+  return mb3mPliantNote(euros);
+}
+
 /** « Frais agence · Frais hôtel — TB-2026-0211 ». Jamais le mot Dépense. */
 export function mb3mAgencyExpenseLabel(input: {
   title?: string | null;
@@ -476,7 +545,8 @@ function commissionScope(item: Mb3mConformItem | null): Mb3mCommissionScope {
 export function conformMb3mAccountLines(
   lines: Mb3mAccountLine[],
   items: Mb3mConformItem[],
-  reference?: string | null
+  reference?: string | null,
+  debits?: Mb3mPliantDebit[] | null
 ): Mb3mAccountLine[] {
   const byId = new Map(items.flatMap((item) => (item.id ? [[item.id, item] as const] : [])));
   return lines.map((line) => {
@@ -509,7 +579,12 @@ export function conformMb3mAccountLines(
         providerId: null,
         providerName: null,
         margin: null,
-        note: null,
+        note: mb3mPliantExpenseNote({
+          itemId: item?.id || line.itemId,
+          details: item?.details,
+          expenseEuros: line.amount,
+          debits,
+        }),
         held: false,
         supplierReason: null,
         supplierWarning: null,
@@ -648,7 +723,10 @@ export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): M
       customType: { complementary: line.customCode, lineType: 4 },
       providerRole: "agency",
       marginUnit: null,
-      note: null,
+      note:
+        line.customCode === MB3M_CLIENT_FEE_CODE && line.chargeKind === "expense" && isMb3mPliantNote(line.note)
+          ? (line.note || "").trim()
+          : null,
     };
   }
   const raw = line.margin == null || !Number.isFinite(line.margin) ? null : line.margin;

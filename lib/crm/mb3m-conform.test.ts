@@ -6,6 +6,8 @@ import {
   MB3M_ALLOWED_SUPPLIER_GAPS,
   MB3M_FLIGHT_HOLD_MESSAGE,
   conformMb3mAccountLines,
+  mb3mPliantExpenseNote,
+  mb3mPliantNote,
   mb3mAllowedSupplierGaps,
   mb3mChooseActivity,
   mb3mCommissionId,
@@ -196,6 +198,46 @@ describe("fournisseur MB3M", () => {
 
   it("liste les noms de la liste agence absents tels quels de l’export", () => {
     assert.deepEqual(mb3mAllowedSupplierGaps(), [...MB3M_ALLOWED_SUPPLIER_GAPS]);
+  });
+});
+
+describe("note Pliant", () => {
+  const thin = "\u202f";
+
+  it("écrit le montant en euros, virgule et espace insécable fine", () => {
+    assert.equal(mb3mPliantNote(245), "Pliant : 245,00 €");
+    assert.equal(mb3mPliantNote(1245), `Pliant : 1${thin}245,00 €`);
+    assert.equal(mb3mPliantNote(1245.5), `Pliant : 1${thin}245,50 €`);
+    assert.equal(mb3mPliantNote(-245), "Pliant : 245,00 €");
+  });
+
+  it("ne note qu’une dépense payée par Pliant, au montant converti sinon au montant de la dépense", () => {
+    assert.equal(
+      mb3mPliantExpenseNote({ itemId: "e1", details: { pliant_transaction_id: "tx" }, expenseEuros: 245, debits: [] }),
+      "Pliant : 245,00 €"
+    );
+    assert.equal(
+      mb3mPliantExpenseNote({
+        itemId: "e1",
+        details: { pliant_transaction_id: "tx", pliant_amount: 200 },
+        expenseEuros: 245,
+        debits: [{ source: "pliant", sourceId: "tx", bookingItemId: "e1", amountEur: 1245.5, originalCurrency: "USD" }],
+      }),
+      `Pliant : 1${thin}245,50 €`
+    );
+    assert.equal(
+      mb3mPliantExpenseNote({
+        itemId: "e1",
+        details: { pliant_transaction_id: "tx" },
+        expenseEuros: 80,
+        debits: [{ source: "pliant", sourceId: "tx", bookingItemId: "e1", amountEur: null, originalCurrency: "USD" }],
+      }),
+      "Pliant : 80,00 €"
+    );
+    assert.equal(
+      mb3mPliantExpenseNote({ itemId: "e1", details: {}, expenseEuros: 15, debits: [{ source: "revolut", sourceId: "r", bookingItemId: "e1", amountEur: 15 }] }),
+      null
+    );
   });
 });
 
