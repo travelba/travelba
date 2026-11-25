@@ -29,6 +29,7 @@ import {
   kindIcon,
 } from "@/lib/crm/carnet";
 import { flightCountsInStay } from "@/lib/crm/bookings";
+import { cardPriceError, readCardPriceMode, withCardPriceMode, type StayPriceMode } from "@/lib/crm/card-price";
 import { groupAttachedEmails } from "@/lib/crm/email-duplicates";
 import { bookingStepAnchor } from "@/lib/crm/booking-tabs";
 import { justificatifsRetiresAvec, mentionRetraitJustificatifs } from "@/lib/crm/stay-documents";
@@ -82,7 +83,7 @@ function emptyDraft(): ItemDraft {
     end_at: "",
     amount: null,
     include_in_ledger: false,
-    details: {},
+    details: { price_mode: "sans" },
   };
 }
 
@@ -94,11 +95,27 @@ function savedFlights(rows: CrmBookingItem[]): AccueilVipFlight[] {
 
 function prepareStepDraft(
   source: ItemDraft,
-  rows: CrmBookingItem[]
+  rows: CrmBookingItem[],
+  forfait = false
 ): { ok: true; draft: ItemDraft } | { ok: false; error: string } {
   if (source.kind !== "accueil_vip") {
     if (!source.title.trim()) return { ok: false, error: "Titre requis." };
-    return { ok: true, draft: source };
+    const mode = readCardPriceMode(source);
+    if (!forfait && !isExtraItemKind(source.kind)) {
+      const missing = cardPriceError(mode, source.amount);
+      if (missing) return { ok: false, error: missing };
+    }
+    const stayCard = !isExtraItemKind(source.kind);
+    return {
+      ok: true,
+      draft: {
+        ...source,
+        include_in_ledger: !stayCard ? Boolean(source.include_in_ledger) : forfait ? false : mode === "avec",
+        details: stayCard
+          ? withCardPriceMode((source.details || {}) as Record<string, unknown>, mode)
+          : source.details,
+      },
+    };
   }
   const fields = readAccueilVipFields({
     supplier: source.supplier,
@@ -268,6 +285,9 @@ export function BookingItemsPanel({
   household = [],
   currency = "EUR",
   clientSettlesStay = false,
+  stayPriceMode = "cartes",
+  forfaitAmount = null,
+  onStayPrice,
   onBindDraftSave,
   hotelRequests = [],
   hotelSignatory = "",
@@ -330,6 +350,9 @@ export function BookingItemsPanel({
   household?: HouseholdMember[];
   currency?: string;
   clientSettlesStay?: boolean;
+  stayPriceMode?: StayPriceMode;
+  forfaitAmount?: number | null;
+  onStayPrice?: (mode: StayPriceMode, amount: number | null) => void;
   onBindDraftSave?: (save: (() => Promise<boolean | "annule">) | null) => void;
   /** Référence du dossier, pour le même libellé que les pièces jointes. */
   reference?: string | null;
@@ -627,12 +650,12 @@ export function BookingItemsPanel({
       onLiveItemsRef.current?.(rows);
       return;
     }
-    const ready = prepareStepDraft(draft, rows);
+    const ready = prepareStepDraft(draft, rows, stayPriceMode === "forfait");
     const next = ready.ok
       ? applyDraftToRows(rows, editingId, ready.draft, `${DRAFT_STEP_PREFIX}live`) || rows
       : rows;
     onLiveItemsRef.current?.(next);
-  }, [rows, editingId, draft, applyDraftToRows]);
+  }, [rows, editingId, draft, applyDraftToRows, stayPriceMode]);
 
   function draftReady(source: ItemDraft, verify: boolean): ItemDraft {
     if (!verify) return source;
@@ -641,7 +664,7 @@ export function BookingItemsPanel({
 
   function keepDraft() {
     if (!editingId) return;
-    const ready = prepareStepDraft(draft, rowsRef.current);
+    const ready = prepareStepDraft(draft, rowsRef.current, stayPriceMode === "forfait");
     if (!ready.ok) {
       setError(ready.error);
       return;
@@ -668,7 +691,7 @@ export function BookingItemsPanel({
     const editing = editingRef.current;
     let verifyId: string | null = null;
     if (editing) {
-      const ready = prepareStepDraft(draftRef.current, current);
+      const ready = prepareStepDraft(draftRef.current, current, stayPriceMode === "forfait");
       if (!ready.ok) {
         setError(ready.error);
         return false;
@@ -889,6 +912,53 @@ export function BookingItemsPanel({
         </div>
       </div>
       <p className="mt-1 text-xs text-muted">Déplacez une étape par sa poignée. Monter et Descendre sont dans l’étape ouverte. Par défaut, l’ordre suit les dates.</p>
+      <div className="mt-4 rounded-2xl border border-[var(--border)] bg-white/70 p-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Prix du voyage</p>
+        <div role="radiogroup" aria-label="Prix du voyage" className="mt-1.5 inline-flex max-w-full flex-wrap gap-1 rounded-2xl bg-white p-1 shadow-[inset_0_0_0_1px_var(--border)]">
+          {([
+            ["cartes", "Par carte"],
+            ["forfait", "Prix forfait"],
+          ] as const).map(([mode, label]) => {
+            const selected = stayPriceMode === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => onStayPrice?.(mode, mode === "forfait" ? forfaitAmount : null)}
+                className={`admin-tap rounded-xl px-3.5 py-1.5 text-sm font-semibold ${
+                  selected ? "bg-[var(--admin-navy)] text-white" : "text-[var(--admin-navy)] hover:bg-[#F4F1EA]"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-1.5 text-xs text-muted">
+          {stayPriceMode === "forfait"
+            ? "Un seul prix pour le voyage. Aucune carte n’affiche de prix, et une seule ligne part dans les transactions."
+            : "Chaque carte est Avec prix ou Sans prix. Avec prix crée sa ligne, même si la carte est masquée."}
+        </p>
+        {stayPriceMode === "forfait" ? (
+          <label className="mt-3 flex max-w-xs flex-col gap-1 text-sm font-semibold text-[var(--admin-navy)]">
+            Prix forfait
+            <input
+              inputMode="decimal"
+              aria-label="Prix forfait"
+              value={forfaitAmount == null ? "" : String(forfaitAmount)}
+              onChange={(event) => {
+                const raw = event.target.value.replace(",", ".").trim();
+                const amount = raw === "" ? null : Number(raw);
+                onStayPrice?.("forfait", amount != null && Number.isFinite(amount) ? amount : null);
+              }}
+              className="rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm font-semibold"
+              placeholder="Montant"
+            />
+          </label>
+        ) : null}
+      </div>
       <div className="mt-3">
         <BusyBar active={busy} label={searchingHotel ? "Recherche de l’hôtel…" : "Enregistrement…"} />
       </div>
@@ -916,7 +986,12 @@ export function BookingItemsPanel({
           const retiredLabel = cancelled ? "" : retired ? "Remplacée" : "";
           const doubts = reviewDoubts(item);
           const concealed = cardHiddenFromClient(item, stayVisible);
-          const price = retired || !flightCountsInStay(item, rows) ? null : itemPriceLabel(item, currency);
+          const priceMode = readCardPriceMode(item);
+          const price =
+            stayPriceMode === "forfait" || retired || priceMode === "sans" || !flightCountsInStay(item, rows)
+              ? null
+              : itemPriceLabel(item, currency);
+          const sansPrix = !retired && stayPriceMode !== "forfait" && priceMode === "sans";
           const printed = readDocumentAmount(item.details);
           const stepAmount = item.amount == null ? null : Number(item.amount);
           const priceDiffers =
@@ -964,6 +1039,7 @@ export function BookingItemsPanel({
                   item={draft as BookingExtract["items"][number]}
                   household={household}
                   lockStayLedger={clientSettlesStay}
+                  forfait={stayPriceMode === "forfait"}
                   onChange={setDraft}
                   onRemove={() => setEditingId(null)}
                 />
@@ -1036,12 +1112,14 @@ export function BookingItemsPanel({
                       </span>
                       {price ? (
                         <span className="shrink-0 text-sm font-semibold tabular-nums text-[var(--admin-navy)] lg:hidden">{price}</span>
+                      ) : sansPrix ? (
+                        <span className="shrink-0 text-xs font-semibold text-muted lg:hidden">Sans prix</span>
                       ) : null}
                     </span>
                     <span className="mt-0.5 block text-xs font-semibold text-muted lg:hidden">{when || "Sans date"}</span>
                     {reading ? <span className="block break-words text-xs text-muted lg:truncate">{reading}</span> : null}
                   </span>
-                  {price ? <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-[var(--admin-navy)] lg:block">{price}</span> : null}
+                  {price ? <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-[var(--admin-navy)] lg:block">{price}</span> : sansPrix ? <span className="hidden shrink-0 text-xs font-semibold text-muted lg:block">Sans prix</span> : null}
                   {mark === "cancelled" ? <span className={stepPill}>Annulée</span> : null}
                   {mark === "review" ? <span className={stepPill}>À vérifier</span> : null}
                   <Icon
@@ -1236,6 +1314,7 @@ export function BookingItemsPanel({
             item={draft as BookingExtract["items"][number]}
             household={household}
             lockStayLedger={clientSettlesStay}
+            forfait={stayPriceMode === "forfait"}
             onChange={changeNewDraft}
             onRemove={() => setEditingId(null)}
           />

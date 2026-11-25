@@ -88,7 +88,7 @@ test("TB-2026-0100 : 611,20 et 611,19 sans frais font 1 222,39, pas 661,20", () 
   const stored = { ...stay(611.2), status: "draft" as const, fee_mode: "ticketing_off" };
   assert.equal(displayedStayAmount(stored, items, 2), 611.2);
   assert.equal(ledgerCountedStayAmount(stored, items, 2), 1222.39);
-  assert.equal(displayedStayAmount({ ...stay(611.2), status: "draft" }, items, 2), 661.2);
+  assert.equal(displayedStayAmount({ ...stay(611.2), status: "draft" }, items, 2), 611.2);
 });
 
 test("une remise en pourcentage suit le total déjà commissionné", () => {

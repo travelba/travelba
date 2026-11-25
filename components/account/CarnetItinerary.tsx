@@ -493,6 +493,7 @@ export function CarnetItinerary({
   refusals = [],
   partage = null,
   pricesVisible = true,
+  cardPrices = true,
   hotelCancels = [],
   checkinByItem = {},
   passes = [],
@@ -511,6 +512,8 @@ export function CarnetItinerary({
   partage?: string | null;
   /** Faux : chaque ligne qui aurait un montant affiche « Prix à la publication ». */
   pricesVisible?: boolean;
+  /** Faux en prix forfait : aucune carte n’affiche de prix. */
+  cardPrices?: boolean;
   /** Titulaire seulement. Absent de l’aperçu, du lien public et de l’exemple. */
   hotelCancels?: ClientHotelCancelOffer[];
   refusals?: ServiceRefusal[];
@@ -691,7 +694,7 @@ export function CarnetItinerary({
                     day={day}
                     partage={partage}
                     pricesVisible={pricesVisible}
-                    showPrice={flightCountsInStay(row.item, items)}
+                    showPrice={cardPrices && flightCountsInStay(row.item, items)}
                     reference={booking.reference}
                     cancelOffer={hotelCancels.find((offer) => offer.itemId === row.item.id) || null}
                     stayItems={liveItems}
@@ -718,7 +721,7 @@ export function CarnetItinerary({
                 calendarHref={itemHref(item.id)}
                 calendarPhone={phones?.items[item.id]}
                 pricesVisible={pricesVisible}
-                showPrice={flightCountsInStay(item, items)}
+                showPrice={cardPrices && flightCountsInStay(item, items)}
                 partage={partage}
                 reference={booking.reference}
                 cancelOffer={hotelCancels.find((offer) => offer.itemId === item.id) || null}

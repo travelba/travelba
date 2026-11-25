@@ -303,8 +303,12 @@ export type CrmBooking = {
   remise_value?: number | string | null;
   /** Dérogation du dossier. Null = taux du compte, sinon 10 %. */
   agency_fee_rate?: number | string | null;
-  /** `ticketing_off` : la billeterie automatique ne se recrée pas après un retrait. */
+  /** `ticketing_off` : ancien marqueur. Les frais automatiques ne sont plus créés ni retirés. */
   fee_mode?: string | null;
+  /** cartes : un prix par carte. forfait : un seul prix de voyage. Absent avant la migration. */
+  price_mode?: "cartes" | "forfait" | null;
+  /** Prix unique du voyage quand price_mode vaut forfait. */
+  forfait_amount?: number | string | null;
   /** Si true : le client règle le séjour sur sa carte. Le montant sort du grand livre. */
   client_settles_stay?: boolean;
   cover_image_path: string | null;
@@ -341,8 +345,10 @@ export type CrmBookingItem = {
   start_at: string | null;
   end_at: string | null;
   amount: number | null;
-  /** Si true : ce prix vendu apparaît dans Transactions et l’encours. */
+  /** Si true : ce prix vendu apparaît dans Transactions et l’encours. Une carte « Avec prix » l’est toujours. */
   include_in_ledger: boolean;
+  /** avec ou sans. Absent : déduit du prix de vente. La colonne arrive avec la migration. */
+  price_mode?: "avec" | "sans" | null;
   /** Société de facturation de la dépense, si elle diffère du séjour. */
   billing_company_id?: string | null;
   sort_order: number;

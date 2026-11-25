@@ -90,6 +90,7 @@ import type { ExpenseWrite } from "@/components/admin/BookingExpensesPanel";
 import { DEFAULT_EXPENSE_PRESETS, type ExpensePreset } from "@/lib/crm/expense-presets";
 import { ServiceOfferToggles } from "@/components/admin/ServiceOfferToggles";
 import { BookingItemsPanel } from "@/components/admin/BookingItemsPanel";
+import { forfaitPriceError, readForfaitAmount, readStayPriceMode, type StayPriceMode } from "@/lib/crm/card-price";
 import { HiddenCardsCounter } from "@/components/admin/HiddenCards";
 import { BoardingPassSend } from "@/components/admin/BoardingPassSend";
 import { applyExpenseLedgerChange, type ClientLedgerView } from "@/lib/crm/client-ledger";
@@ -809,6 +810,10 @@ export function BookingEditor({
   const [currencyDraft, setCurrencyDraft] = useMirror(serverCurrency);
   const serverIncludeInLedger = booking.include_in_ledger !== false;
   const [includeInLedger, setIncludeInLedger] = useMirror(serverIncludeInLedger);
+  const serverStayPrice = readStayPriceMode(booking);
+  const serverForfait = readForfaitAmount(booking);
+  const [stayPriceMode, setStayPriceMode] = useMirror<StayPriceMode>(serverStayPrice);
+  const [forfaitAmount, setForfaitAmount] = useMirror<number | null>(serverForfait);
   const inheritedFee = agencyFee || {
     rate: parseStoredAgencyFeeRate(booking.agency_fee_rate) ?? 0.1,
     source: (parseStoredAgencyFeeRate(booking.agency_fee_rate) != null ? "dossier" : "defaut") as AgencyFeeSource,
@@ -843,6 +848,8 @@ export function BookingEditor({
     notesInternal !== (booking.notes_internal || "") ||
     notesClient !== (booking.notes_client || "") ||
     feeChoice !== serverFeeChoice ||
+    stayPriceMode !== serverStayPrice ||
+    (stayPriceMode === "forfait" && forfaitAmount !== serverForfait) ||
     (payerPick?.id || null) !== serverPayerPickId;
   const unsaved = dirty || stepsPending;
   // `replaceState(null, …)` : Next recopie lui-même ses internes et prévient le routeur, donc
@@ -963,6 +970,10 @@ export function BookingEditor({
     if (settles) delete payload.include_in_ledger;
     else payload.include_in_ledger = fd.get("include_in_ledger") === "on";
     delete payload.agency_fee_rate;
+    if (stayPriceMode !== serverStayPrice || (stayPriceMode === "forfait" && forfaitAmount !== serverForfait)) {
+      payload.price_mode = stayPriceMode;
+      payload.forfait_amount = stayPriceMode === "forfait" ? forfaitAmount : null;
+    }
     if (feeChoice !== serverFeeChoice) {
       payload.agency_fee_rate = feeChoice === "compte" ? null : Number(feeChoice);
     }
@@ -1008,6 +1019,11 @@ export function BookingEditor({
     const payload = metaPayload();
     if (!payload) {
       setFlash("Enregistrement impossible. Réessayez.");
+      return;
+    }
+    const pricingError = forfaitPriceError(stayPriceMode, forfaitAmount);
+    if (pricingError) {
+      setFlash(pricingError);
       return;
     }
     setBusy("save");
@@ -2411,6 +2427,12 @@ export function BookingEditor({
         arrivals={arrivals}
         leStays={leStays}
         clientSettlesStay={clientSettles}
+        stayPriceMode={stayPriceMode}
+        forfaitAmount={forfaitAmount}
+        onStayPrice={(mode, amount) => {
+          setStayPriceMode(mode);
+          setForfaitAmount(mode === "forfait" ? amount : null);
+        }}
         stayVisible={booking.visible_to_client}
         attachedEmails={attachedEmails}
         hotelMessages={hotelMessages}

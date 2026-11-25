@@ -80,24 +80,39 @@ const exampleStayPasses: ClientBoardingCard[] = [
   },
 ];
 
-type Props = { params: Promise<{ reference: string }> };
+type Props = { params: Promise<{ reference: string }>; searchParams: Promise<{ prix?: string }> };
 
-export default async function ExampleReservationPage({ params }: Props) {
+export default async function ExampleReservationPage({ params, searchParams }: Props) {
   const { reference } = await params;
+  const forfait = (await searchParams).prix === "forfait";
   if (reference !== EXAMPLE_REFERENCE) notFound();
   const session = readExample();
-  const stored = session.booking;
+  const stored = forfait
+    ? {
+        ...session.booking,
+        prices_visible: true,
+        total_amount: 2480,
+        price_mode: "forfait" as const,
+        forfait_amount: 2480,
+        agency_commission: false,
+      }
+    : session.booking;
+  const sourceItems = forfait
+    ? session.items.map((item) =>
+        item.kind === "expense" ? item : { ...item, details: { ...item.details, price_mode: "sans" } }
+      )
+    : session.items;
   const face = clientStayFace({
     title: stored.title,
     destination: stored.destination,
     startDate: stored.start_date,
     endDate: stored.end_date,
-    items: session.items,
+    items: sourceItems,
     homeCity: session.customer.city,
   });
   const b = applyClientStayFace(stored, face);
   const pub = toPublicBooking(b);
-  const visibleItems = withoutHotelRosterItems(clientVisibleItems(session.items));
+  const visibleItems = withoutHotelRosterItems(clientVisibleItems(sourceItems));
   if (!carnetVisible(b, visibleItems)) notFound();
 
   const insurances = visibleItems.filter((item) => item.kind === "insurance");
@@ -124,11 +139,11 @@ export default async function ExampleReservationPage({ params }: Props) {
   const formalities = frenchPassportTrip(visibleItems, party.length);
   // Même formule que la page réelle : commission + billetterie + dépenses.
   const ticketCount = ticketingTicketCount({
-    hasFlight: session.items.some((item) => item.kind === "flight"),
+    hasFlight: sourceItems.some((item) => item.kind === "flight"),
     travelerCount: party.length,
   });
   const ticketingFee = chargeableTicketingFee({
-    items: session.items,
+    items: sourceItems,
     status: b.status,
     travelerCount: party.length,
     feeMode: b.fee_mode,
@@ -140,8 +155,8 @@ export default async function ExampleReservationPage({ params }: Props) {
       title: item.title,
       amount: item.amount == null ? null : Number(item.amount),
     }));
-  const feeExtras = agencyFeeExtraAmounts(session.items);
-  const stayTotal = bookingTotalFromItems(session.items);
+  const feeExtras = agencyFeeExtraAmounts(sourceItems);
+  const stayTotal = forfait ? 2480 : bookingTotalFromItems(sourceItems);
   const discount = readCommercialDiscount(b);
   const expenseLines = clientStayExpenseLines({
     expenses: expenseChoices,
@@ -205,6 +220,7 @@ export default async function ExampleReservationPage({ params }: Props) {
           items={visibleItems}
           docs={[]}
           pricesVisible={b.prices_visible !== false}
+          cardPrices={!forfait}
           calendarBase={`${EXAMPLE_BASE}/reservations/${b.reference}/agenda.ics`}
           phones={googlePhoneMap(b, visibleItems)}
           services={{
@@ -280,7 +296,7 @@ export default async function ExampleReservationPage({ params }: Props) {
       amount={
         <section className="aura-card space-y-2 rounded-[1.35rem] bg-white p-4">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-gold)]">
-            Montant du séjour
+            {forfait ? "Prix forfait" : "Montant du séjour"}
           </p>
           <p className="font-display text-2xl font-extrabold text-[var(--admin-navy)]">
             {clientStayPriceLabel({
@@ -288,7 +304,7 @@ export default async function ExampleReservationPage({ params }: Props) {
               currency: b.currency,
               pricesVisible: b.prices_visible !== false,
               agencyCommission: b.agency_commission === true,
-              expenses: expenseChoices,
+              expenses: forfait ? [] : expenseChoices,
               extras: feeExtras,
               ticketingFee,
               discount,

@@ -34,6 +34,7 @@ import { passportVaultRows } from "@/lib/crm/passport-vault";
 import { companionsForShare, tripShareUrl } from "@/lib/crm/trip-share";
 import { ensureTripShareCode } from "@/lib/crm/trip-share-load";
 import { agencyFeeExtraAmounts, bookingTotalFromItems } from "@/lib/crm/bookings";
+import { readForfaitAmount, readStayPriceMode } from "@/lib/crm/card-price";
 import { readCommercialDiscount } from "@/lib/crm/commercial-discount";
 import { loadDiscountLines } from "@/lib/crm/booking-discounts-db";
 import { clientStayExpenseLines, clientStayPriceLabel } from "@/lib/crm/ledger-display";
@@ -182,7 +183,8 @@ export async function ClientStayRest({
     feeMode: b.fee_mode,
   });
   const agencyFee = await agencyFeeForBooking(supabase, b);
-  const stayTotal = bookingTotalFromItems(allItems);
+  const stayMode = readStayPriceMode(b);
+  const stayTotal = bookingTotalFromItems(allItems, { stayMode, forfaitAmount: readForfaitAmount(b) });
   const storedDiscounts = await loadDiscountLines([b.id]).catch(() => null);
   const discountLines = storedDiscounts ? storedDiscounts.get(b.id) || [] : null;
   const discount = readCommercialDiscount(b);
@@ -238,6 +240,7 @@ export async function ClientStayRest({
           items={visibleItems}
           docs={visibleDocs}
           pricesVisible={!hidePrices && b.prices_visible !== false}
+          cardPrices={stayMode !== "forfait"}
           calendarBase={`/mon-compte/reservations/${b.reference}/agenda.ics`}
           phones={googlePhoneMap(b, visibleItems)}
           walletReady={walletSigningReady()}

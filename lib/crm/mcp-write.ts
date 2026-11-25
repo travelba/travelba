@@ -260,6 +260,16 @@ export function prepareBookingUpdate(input: Record<string, unknown>) {
   if (particulier && societeId) {
     throw new McpWriteError("Un séjour particulier ne se facture pas à une société.");
   }
+  if (input.prix_par_carte === true) {
+    patch.price_mode = "cartes";
+    patch.forfait_amount = null;
+  }
+  if ("prix_forfait" in input && input.prix_forfait != null && input.prix_forfait !== "") {
+    const amount = Number(String(input.prix_forfait).replace(",", "."));
+    if (!(amount > 0)) throw new McpWriteError("Indiquez le prix forfait du voyage.");
+    patch.price_mode = "forfait";
+    patch.forfait_amount = Math.round(amount * 100) / 100;
+  }
   const billing = particulier || societeId ? { particulier, societeId } : null;
   if (!Object.keys(patch).length && !billing && !cover) throw new McpWriteError("Rien à modifier.");
   return { ...target, patch, billing, cover };
@@ -952,6 +962,12 @@ export async function updateBooking(input: Record<string, unknown>, admin?: McpA
         (missingDbColumn(error, "remise_type") || missingDbColumn(error, "remise_value"))
       ) {
         throw new McpWriteError("La remise commerciale n’est pas encore en place. Appliquez la migration, puis réessayez.");
+      }
+      if (
+        ("price_mode" in nextPatch || "forfait_amount" in nextPatch) &&
+        (missingDbColumn(error, "price_mode") || missingDbColumn(error, "forfait_amount"))
+      ) {
+        throw new McpWriteError("Le prix forfait n’est pas encore en place. Appliquez la migration, puis réessayez.");
       }
       failDb(error, "Dossier non enregistré.");
     }

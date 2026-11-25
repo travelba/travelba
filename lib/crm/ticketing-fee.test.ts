@@ -56,7 +56,7 @@ test("la billeterie déjà en dépense ne se rajoute pas au prix", () => {
       status: "confirmed",
       travelerCount: 5,
     }),
-    125
+    0
   );
   assert.equal(
     chargeableTicketingFee({

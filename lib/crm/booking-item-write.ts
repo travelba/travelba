@@ -15,7 +15,8 @@ import { linkedPliantTransactionIds, pliantExpenseTransactionId } from "@/lib/cr
 import { parseMoney } from "@/lib/crm/money";
 import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { composeAccueilVip, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
-import { BOOKING_ITEM_KINDS, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
+import { BOOKING_ITEM_KINDS, isExtraItemKind, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
+import { readCardPriceMode, withCardPriceMode } from "@/lib/crm/card-price";
 import { dbErrorMessage, type DbErrorLike } from "@/lib/crm/db-error";
 import {
   DEFAULT_EXPENSE_PRESETS,
@@ -152,6 +153,13 @@ export async function addStaffBookingCard(
       return { error: TICKETING_PRESET_BLOCKED, status: 409 };
     }
   }
+  const stayCard = !isLedgerExpenseKind(kind) && !isExtraItemKind(kind);
+  if (stayCard) {
+    const mode = readCardPriceMode({ amount: nextAmount, details: nextDetails });
+    const priced = mode === "avec" && Number(nextAmount) > 0;
+    if (mode === "avec" && !priced) return { error: "Indiquez le prix de vente.", status: 400 };
+    nextDetails = withCardPriceMode(nextDetails, priced ? "avec" : "sans");
+  }
   const company = await billingCompanyPatch(supabase, bookingId, body.billing_company_id);
   if ("error" in company && company.error) return { error: company.error, status: 400 };
   const { data, error } = await supabase
@@ -165,8 +173,9 @@ export async function addStaffBookingCard(
       start_at: nextBody.start_at || null,
       end_at: nextBody.end_at || null,
       amount: nextAmount,
-      include_in_ledger:
-        isLedgerExpenseKind(kind) || (kind === "accueil_vip" && nextAmount == null)
+      include_in_ledger: stayCard
+        ? readCardPriceMode({ amount: nextAmount, details: nextDetails }) === "avec"
+        : isLedgerExpenseKind(kind) || (kind === "accueil_vip" && nextAmount == null)
           ? isLedgerExpenseKind(kind)
           : parseIncludeInLedger(body.include_in_ledger, false),
       sort_order: sortOrder,
@@ -252,6 +261,20 @@ export async function patchStaffBookingCard(
     patch.amount = priced.pricing.amount;
     patch.details = priced.details;
     patch.include_in_ledger = true;
+  }
+  if (!isLedgerExpenseKind(row.kind) && !isExtraItemKind(row.kind)) {
+    const details = (
+      patch.details && typeof patch.details === "object" ? patch.details : row.details
+    ) as Record<string, unknown> | null;
+    const amount = "amount" in patch ? (patch.amount as number | null) : parseMoney(row.amount);
+    const mode = readCardPriceMode({ amount, details });
+    if ((("amount" in patch) || (details && details.price_mode === "avec") || (details && details.price_mode === "sans")) && mode === "avec" && !(Number(amount) > 0)) {
+      return { error: "Indiquez le prix de vente.", status: 400 };
+    }
+    if ("amount" in patch || (details && (details.price_mode === "avec" || details.price_mode === "sans"))) {
+      patch.details = withCardPriceMode(details, mode === "avec" && Number(amount) > 0 ? "avec" : mode === "sans" ? "sans" : readCardPriceMode({ amount, details }));
+      patch.include_in_ledger = readCardPriceMode({ amount, details: patch.details as Record<string, unknown> }) === "avec";
+    }
   }
   if (!Object.keys(patch).length) return { error: "Rien à mettre à jour", status: 400 };
   const { data, error } = await supabase

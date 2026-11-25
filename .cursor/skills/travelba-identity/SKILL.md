@@ -71,7 +71,7 @@ L’onglet **Client** d’un dossier résume cette fiche. **Changer de client** 
 
 **Compte jumeau** (`crm_customer_twins`) : deux fiches, deux accès. L’espace de chacune lit les dossiers montrés de l’autre. Pièces de dossier communes, passeports du profil séparés. « Masquer prix et transactions » suit la fiche qui consulte. Aucun message au jumelage.
 
-**Zéro frais** (`zero_fees`, défaut faux, fiche agence seulement) : aucun frais de billeterie ni commission d’agence automatique sur les dossiers dont cette fiche est propriétaire (création, import, vol, duplication : comme `sans_frais`). Cocher retire ces frais des dossiers non facturés. Un jumeau ne change pas le réglage du dossier.
+**Zéro frais** (`zero_fees`, défaut faux, fiche agence seulement) : pas de commission d’agence automatique sur les dossiers dont cette fiche est propriétaire. Les frais de billeterie ne sont plus ajoutés ni retirés tout seuls ; une ligne déjà là reste. Un jumeau ne change pas le réglage du dossier.
 
 **Masquer prix et transactions** (`hide_client_prices`, défaut faux, fiche agence seulement) : l’espace client, le carnet, l’aperçu et les partages de ce client ne reçoivent plus aucun prix, montant, total, débit, virement, relevé, solde ni lien de paiement, sur tous ses dossiers. L’itinéraire, les cartes et les documents de voyage restent. Le relevé PDF et la facture ne partent pas depuis l’espace client. L’agence voit tout, avec le badge « Prix masqués au client ». MCP : `masquer_prix` sur `mettre_a_jour_client`, renvoyé par `fiche_client`.
 
