@@ -164,7 +164,7 @@ export default async function ReservationDetailPage({ params, searchParams }: Pr
         </BookingHero>
 
         {pub.notes_client ? (
-          <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
+          <p className="aura-card whitespace-pre-line rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
             {pub.notes_client}
           </p>
         ) : null}

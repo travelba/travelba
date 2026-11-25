@@ -33,7 +33,7 @@ import {
   type LedgerPartyTraveler,
 } from "@/lib/crm/ledger-travelers";
 import { fundingPockets, payingCompanyLabels, type FundingCompany, type FundingPocket } from "@/lib/crm/funding-wallet";
-import { fitPayerOwed, owedByPayer } from "@/lib/crm/payer";
+import { owedByPayer, payerSettlement } from "@/lib/crm/payer";
 import {
   coverOwed,
   displayedEncours,
@@ -106,8 +106,11 @@ export type ClientLedgerView = {
   creditCount: number;
   /** Un encours par devise de crm_customer_balances (un seul bloc dans le cas courant). */
   wallets: ClientLedgerWallet[];
-  /** Somme due, puis part société et part particulier. */
-  owed: { total: number; company: number; personal: number };
+  /**
+   * Somme due, puis part société et part particulier.
+   * `pooled` : un crédit libre existe, un seul montant, sans répartition.
+   */
+  owed: { total: number; company: number; personal: number; pooled: boolean };
   /** Crédit et Pro. Null : un seul encours. */
   pockets: FundingPocket[] | null;
   soleCompanyName: string | null;
@@ -285,8 +288,6 @@ export function shapeClientLedger(input: {
     input.bookings.map((booking) => [booking.id, booking.payer_kind ?? null] as const)
   );
   const split = owedByPayer(accounting, payerByBooking, currency);
-  const fitted = fitPayerOwed(split.company, split.personal, remaining);
-  const owed = member ? fitted : coverOwed(fitted, sepaHolds, currency);
   const rawPockets = member ? null : fundingPockets(input.fundingCompanies || [], accounting, currency);
   const pockets = rawPockets
     ? rawPockets.map((pocket) => {
@@ -327,6 +328,13 @@ export function shapeClientLedger(input: {
   });
   const primaryHeld = wallets.find((wallet) => wallet.currency.toUpperCase() === currency.toUpperCase())?.held || 0;
   const shownBalance = member ? balanceValue : displayedEncours(balanceValue, primaryHeld);
+  const shownRemaining = Math.max(0, roundSepaMoney(-shownBalance));
+  const settlement = payerSettlement(split, shownRemaining);
+  const owed = member
+    ? { pooled: false as const, total: Math.max(0, roundLedger(remaining)), company: split.company, personal: split.personal }
+    : settlement.pooled
+      ? { pooled: true as const, total: shownRemaining, company: 0, personal: 0 }
+      : { ...coverOwed(settlement, sepaHolds, currency), pooled: false as const };
 
   return {
     member,
@@ -730,11 +738,14 @@ export function applyExpenseLedgerChange(
     wallets: view.wallets.map((wallet) =>
       wallet.currency === currency ? { ...wallet, ...shiftBalance(wallet.balanceValue, wallet.debits, delta) } : wallet
     ),
-    owed: {
-      total: owedRemaining,
-      company: soleCompany ? roundLedger(Math.max(0, view.owed.company + delta)) : view.owed.company,
-      personal: solePersonal ? roundLedger(Math.max(0, view.owed.personal + delta)) : view.owed.personal,
-    },
+    owed: view.owed.pooled
+      ? { pooled: true, total: owedRemaining, company: 0, personal: 0 }
+      : {
+          pooled: false,
+          total: owedRemaining,
+          company: soleCompany ? roundLedger(Math.max(0, view.owed.company + delta)) : view.owed.company,
+          personal: solePersonal ? roundLedger(Math.max(0, view.owed.personal + delta)) : view.owed.personal,
+        },
     movements: patchExpenseMovements(view.movements, patch),
     spending: view.spending
       ? {

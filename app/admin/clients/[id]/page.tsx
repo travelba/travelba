@@ -6,6 +6,7 @@ import { redactVaultDocument } from "@/lib/crm/agency-access";
 import { staffAllows } from "@/lib/crm/agency-guard";
 import { requireStaffPage } from "@/lib/crm/auth";
 import { CustomerEditor } from "@/components/admin/CustomerEditor";
+import { openPersonalDossiers } from "@/lib/crm/company-dossiers";
 import { TwinAccountPanel } from "@/components/admin/TwinAccountPanel";
 import { HotelAccessCard } from "@/components/admin/HotelAccessCard";
 import { HotelDirectDesk, type DirectDeskStay } from "@/components/admin/HotelDirectDesk";
@@ -371,6 +372,12 @@ export default async function AdminClientDetailPage({ params }: Props) {
         documents={vaultDocuments}
         companyAdmins={(companyAdmins || []) as PickableCustomer[]}
         billingCompanies={(billingCompanies || []) as CrmBillingCompany[]}
+        personalDossiers={openPersonalDossiers(activeBookings).map((booking) => ({
+          id: booking.id,
+          reference: booking.reference,
+          title: booking.title,
+          destination: booking.destination,
+        }))}
       />
       <Mb3mFicheAction
         customerId={c.id}

@@ -211,6 +211,8 @@ export async function ClientStayRest({
         <EncoursPayment
           company={ledger.owed.company}
           personal={ledger.owed.personal}
+          pooled={ledger.owed.pooled}
+          total={ledger.owed.total}
           currency={ledger.currency}
           soleCompanyName={ledger.soleCompanyName}
           stripeKey={stripePublishableKey()}

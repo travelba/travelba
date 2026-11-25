@@ -364,6 +364,8 @@ function ClientScreen({
         compact={screen === "transactions"}
         company={ledger.owed.company}
         personal={ledger.owed.personal}
+        pooled={ledger.owed.pooled}
+        total={ledger.owed.total}
         currency={ledger.currency}
         soleCompanyName={ledger.soleCompanyName}
         stripeKey={stripePublishableKey()}
@@ -425,7 +427,7 @@ function ClientScreen({
                   </div>
                 </BookingHero>
                 {clientNote ? (
-                  <p className="aura-card rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
+                  <p className="aura-card whitespace-pre-line rounded-[1.25rem] bg-white p-4 text-sm leading-relaxed text-[var(--admin-navy)]">
                     {clientNote}
                   </p>
                 ) : null}

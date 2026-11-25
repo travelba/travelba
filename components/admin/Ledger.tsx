@@ -14,6 +14,14 @@ import { StatusChip } from "@/components/crm/ui";
 import { DateFrInput, MoneyInput } from "@/components/crm/fields";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { UnmatchCreditButton } from "@/components/admin/UnmatchCreditButton";
+import { AttachCreditButton, UnattachedPaymentAlert } from "@/components/admin/AttachCreditButton";
+import {
+  emptyPaymentTarget,
+  paymentTargetReady,
+  PaymentTargetFields,
+  type PaymentTargetValue,
+} from "@/components/admin/PaymentTargetFields";
+import { isLooseCredit } from "@/lib/crm/attach-credit";
 import { ledgerEmptyMessage } from "@/lib/crm/launch-status";
 import { isReleasableCredit } from "@/lib/crm/releasable-credit";
 import { isPendingSepaRow, sepaHoldBadge } from "@/lib/crm/sepa-hold";
@@ -61,6 +69,8 @@ export function Ledger({
   const [entryOpen, setEntryOpen] = useState(false);
   const [entryCustomer, setEntryCustomer] = useState<PickableCustomer | null>(null);
   const [entryAccount, setEntryAccount] = useState("");
+  const [entryLabel, setEntryLabel] = useState("");
+  const [entryTarget, setEntryTarget] = useState<PaymentTargetValue>(emptyPaymentTarget());
   const [entryKey, setEntryKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -85,6 +95,10 @@ export function Ledger({
     event.preventDefault();
     const form = event.currentTarget;
     const body = Object.fromEntries(new FormData(form).entries());
+    if (!paymentTargetReady(entryTarget)) {
+      setError("Choisissez le dossier et le payeur.");
+      return;
+    }
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -94,6 +108,10 @@ export function Ledger({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...body,
+          label: entryLabel,
+          booking_id: entryTarget.bookingId,
+          payer_kind: entryTarget.payerKind,
+          billing_company_id: entryTarget.payerKind === "company" ? entryTarget.companyId : entryAccount || null,
           direction: "credit",
           kind: "transfer",
         }),
@@ -106,6 +124,8 @@ export function Ledger({
       form.reset();
       setEntryCustomer(null);
       setEntryAccount("");
+      setEntryLabel("");
+      setEntryTarget(emptyPaymentTarget());
       setEntryKey((key) => key + 1);
       setNotice("Virement enregistré.");
       router.refresh();
@@ -121,8 +141,11 @@ export function Ledger({
 
   const spanClass = "min-w-0 sm:col-span-2 xl:col-span-3";
 
+  const loose = filtered.filter((row) => isLooseCredit(row));
+
   return (
     <div className="min-w-0 space-y-4 sm:space-y-6">
+      <UnattachedPaymentAlert count={loose.length} />
       <div>
         <button
           type="button"
@@ -145,6 +168,7 @@ export function Ledger({
             onPick={(customer) => {
               setEntryCustomer(customer);
               setEntryAccount("");
+              setEntryTarget(emptyPaymentTarget());
             }}
             controlClass={`${fieldClass} w-full min-w-0`}
           />
@@ -183,11 +207,24 @@ export function Ledger({
             Libellé
             <input
               name="label"
+              value={entryLabel}
+              onChange={(event) => setEntryLabel(event.target.value)}
               disabled={saving}
-              placeholder="Ex. Acompte virement reçu"
+              placeholder="Ex. Acompte TB-2026-0142 ou nom de société"
               className={`${fieldClass} w-full min-w-0`}
             />
           </label>
+          {entryCustomer ? (
+            <div className={spanClass}>
+              <PaymentTargetFields
+                customerId={entryCustomer.id}
+                label={entryLabel}
+                value={entryTarget}
+                onChange={setEntryTarget}
+                disabled={saving}
+              />
+            </div>
+          ) : null}
           <div className={spanClass}>
             <BusyBar active={saving} label="Enregistrement…" />
           </div>
@@ -285,6 +322,14 @@ export function Ledger({
                 {statusLabel(t)}
               </StatusChip>
               {sepaBadge(t) ? <p className="text-xs font-semibold text-[var(--admin-navy)]">{sepaBadge(t)}</p> : null}
+              {isLooseCredit(t) ? (
+                <AttachCreditButton
+                  transactionId={t.id}
+                  customerId={t.customer_id}
+                  label={t.label || ""}
+                  amountLabel={formatMoney(Number(t.amount), t.currency)}
+                />
+              ) : null}
               {isReleasableCredit(t) ? (
                 <UnmatchCreditButton
                   transactionId={t.id}
@@ -348,6 +393,14 @@ export function Ledger({
                     </StatusChip>
                   </td>
                   <td className="px-5 py-3">
+                    {isLooseCredit(t) ? (
+                      <AttachCreditButton
+                        transactionId={t.id}
+                        customerId={t.customer_id}
+                        label={t.label || ""}
+                        amountLabel={formatMoney(Number(t.amount), t.currency)}
+                      />
+                    ) : null}
                     {isReleasableCredit(t) ? (
                       <UnmatchCreditButton
                         transactionId={t.id}

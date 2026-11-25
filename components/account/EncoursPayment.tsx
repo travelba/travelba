@@ -14,6 +14,8 @@ export function EncoursPayment({
   stripeKey,
   compact = false,
   pockets = null,
+  pooled = false,
+  total = 0,
   ibanLast4,
   billingHref = "/mon-compte/profil/facturation",
   holds = [],
@@ -26,12 +28,45 @@ export function EncoursPayment({
   compact?: boolean;
   /** Crédit et Pro : chacun se règle à part. */
   pockets?: FundingPocket[] | null;
+  /** Crédit libre : un seul montant, sans répartition entre payeurs. */
+  pooled?: boolean;
+  total?: number;
   /** Null : pas d’IBAN. Omis : on n’en parle pas. */
   ibanLast4?: string | null;
   billingHref?: string;
   /** Prélèvements déjà à la banque. La même part ne peut pas en lancer un second. */
   holds?: SepaHoldView[];
 }) {
+  if (pooled) {
+    if (total < 0.5) return null;
+    return (
+      <div className="space-y-4" aria-label="Régler">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#9c7c4e]">Reste à régler</p>
+        <p className="text-sm text-[var(--admin-navy)]">
+          Un virement n’est pas encore rattaché à un dossier. Le montant n’est pas réparti entre particulier et société.
+        </p>
+        <StayPayment
+          compact={compact}
+          stripeKey={stripeKey}
+          ibanLast4={ibanLast4}
+          billingHref={billingHref}
+          parts={[
+            {
+              kind: "personal",
+              settlement: "total",
+              mention: "Reste à régler",
+              amountLabel: formatMoney(total, currency),
+              payable: true,
+              canPay: true,
+              methods: stayPayMethods("personal", currency),
+              companyName: null,
+            },
+          ]}
+        />
+      </div>
+    );
+  }
+
   if (pockets?.length) {
     const parts = pockets
       .filter((pocket) => pocket.due >= 0.5)

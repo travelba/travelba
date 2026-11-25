@@ -292,8 +292,9 @@ export function owedSide(
 }
 
 /**
- * Ce que le client doit encore, réparti.
- * Les crédits libres (virement non rattaché) réduisent les deux parts au prorata.
+ * Ce que chaque payeur doit encore sur ses propres dossiers.
+ * Un crédit libre (sans dossier ni payeur) n’est pas réparti : `open` le porte à part.
+ * Un surplus d’un payeur ne réduit pas l’autre.
  */
 export function owedByPayer(
   rows: OwedRow[],
@@ -318,33 +319,40 @@ export function owedByPayer(
     else if (side === "personal") personalCredit += amount;
     else openCredit += amount;
   }
-  let company = companyDebit - companyCredit;
-  let personal = personalDebit - personalCredit;
-  let pool = openCredit;
-  if (company < 0) {
-    pool += -company;
-    company = 0;
+  return {
+    company: roundMoney(Math.max(0, companyDebit - companyCredit)),
+    personal: roundMoney(Math.max(0, personalDebit - personalCredit)),
+    open: roundMoney(Math.max(0, openCredit)),
+  };
+}
+
+/**
+ * Avec un crédit libre, un seul montant (le reste du compte).
+ * Sans crédit libre, chaque part est le reste de ses dossiers.
+ */
+export function payerSettlement(
+  split: { company: number; personal: number; open: number },
+  remaining: number
+) {
+  const open = roundMoney(Math.max(0, split.open));
+  if (open >= 0.005) {
+    return {
+      pooled: true as const,
+      total: roundMoney(Math.max(0, remaining)),
+      company: 0,
+      personal: 0,
+      open,
+    };
   }
-  if (personal < 0) {
-    pool += -personal;
-    personal = 0;
-  }
-  const base = company + personal;
-  if (pool > 0 && base > 0) {
-    const take = Math.min(pool, base);
-    const companyTake = roundMoney((company / base) * take);
-    company = roundMoney(company - companyTake);
-    personal = roundMoney(personal - (take - companyTake));
-    if (personal < 0) {
-      company = roundMoney(company + personal);
-      personal = 0;
-    }
-    if (company < 0) company = 0;
-  } else {
-    company = roundMoney(Math.max(0, company));
-    personal = roundMoney(Math.max(0, personal));
-  }
-  return { company, personal };
+  const company = roundMoney(Math.max(0, split.company));
+  const personal = roundMoney(Math.max(0, split.personal));
+  return {
+    pooled: false as const,
+    total: roundMoney(company + personal),
+    company,
+    personal,
+    open: 0,
+  };
 }
 
 /** Aligne la répartition sur la somme due. Les deux parts additionnent ce total. */

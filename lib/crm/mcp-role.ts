@@ -43,6 +43,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   crediter_stripe: "edit_finances",
   completer_payeurs_stripe: "admin",
   remettre_non_rattache: "edit_finances",
+  rattacher_credit: "edit_finances",
   rapprocher_pliant: "edit_finances",
   creer_carte_pliant: "create_pliant_card",
   lire_carte_pliant: "create_pliant_card",

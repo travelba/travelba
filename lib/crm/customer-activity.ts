@@ -278,16 +278,16 @@ function serviceName(kind: string, leg?: string | null) {
   return "un service";
 }
 
-export function payActivitySummary(method: string, payer: "company" | "personal") {
-  const part = payer === "company" ? "société" : "particulier";
+export function payActivitySummary(method: string, payer: "company" | "personal" | "total") {
+  const part = payer === "company" ? "société" : payer === "total" ? "reste à régler" : "particulier";
   if (method === "revolut") return `A demandé un virement pour l’encours ${part}`;
   if (method === "sepa_debit") return `A lancé un prélèvement pour l’encours ${part}`;
   if (method === "apple_pay") return `A commencé un règlement par Apple Pay de l’encours ${part}`;
   return `A commencé un règlement par carte de l’encours ${part}`;
 }
 
-export function payFailureSummary(method: string, payer: "company" | "personal") {
-  const part = payer === "company" ? "société" : "particulier";
+export function payFailureSummary(method: string, payer: "company" | "personal" | "total") {
+  const part = payer === "company" ? "société" : payer === "total" ? "reste à régler" : "particulier";
   if (method === "sepa_debit") return `Le prélèvement de l’encours ${part} n’a pas démarré`;
   if (method === "revolut") return `La demande de virement de l’encours ${part} n’a pas abouti`;
   return `Le règlement de l’encours ${part} n’a pas démarré`;

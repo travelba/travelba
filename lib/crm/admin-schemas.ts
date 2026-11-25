@@ -102,6 +102,10 @@ export const createTransactionSchema = z.object({
   ),
   booking_id: z.preprocess(blankToUndefined, uuidSchema("Dossier").nullable().optional()),
   billing_company_id: z.preprocess(blankToUndefined, uuidSchema("Compte").nullable().optional()),
+  payer_kind: z.preprocess(
+    blankToUndefined,
+    z.enum(["company", "personal"], { error: "Payeur : société ou particulier." }).optional()
+  ),
   amount: positiveMoney,
   currency: z.preprocess(
     (value) => (typeof value === "string" ? value.trim().toUpperCase() : value) || undefined,

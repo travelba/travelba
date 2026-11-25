@@ -155,9 +155,54 @@ import { carteArrivee, ratehawk, reprendreFormalite, sejourHotel } from "@/lib/c
 import { runIfConfirmed } from "@/lib/crm/mcp-preview";
 import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant-ops";
 import { societeDepense } from "@/lib/crm/mcp-expense-company";
+import { attachPostedCredit, payerKindFromInput } from "@/lib/crm/attach-credit";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 156;
+export const MCP_TOOL_CAP = 157;
+
+async function attachCreditFromRegistry(args: Record<string, unknown>) {
+  const id = [args.id, args.mouvement_id].find((value) => typeof value === "string" && value.trim());
+  const bookingId = typeof args.dossier_id === "string" ? args.dossier_id.trim() : "";
+  const payer = payerKindFromInput(args.payeur);
+  const companyId = typeof args.societe_id === "string" ? args.societe_id.trim() : "";
+  if (typeof id !== "string" || !id.trim()) throw new McpWriteError("Indiquez le crédit.");
+  if (!bookingId) throw new McpWriteError("Indiquez le dossier.");
+  if (!payer) throw new McpWriteError("Indiquez le payeur : particulier ou société.");
+  if (payer === "company" && !companyId) throw new McpWriteError("Indiquez la société.");
+  const { createServiceClient } = await import("@/lib/supabase/admin");
+  const result = await attachPostedCredit(createServiceClient(), {
+    id: id.trim(),
+    bookingId,
+    payerKind: payer,
+    companyId: payer === "company" ? companyId : null,
+  });
+  if (!result.ok) throw new McpWriteError(result.error);
+  if (!result.deja) {
+    const staff = currentMcpAccess().staff;
+    const money = `${result.montant} ${result.devise}`;
+    const payeur = result.payeur === "company" ? "société" : "particulier";
+    await recordAgencyJournal({
+      staffId: staff?.id ?? null,
+      action: "update",
+      entityType: "finance",
+      entityId: result.mouvement_id,
+      summary: `Crédit rattaché · ${money} · ${result.reference} · ${payeur}`.slice(0, 500),
+      path: "/api/mcp",
+    });
+  }
+  return {
+    rattache: true,
+    deja: result.deja,
+    mouvement_id: result.mouvement_id,
+    client_id: result.client_id,
+    dossier_id: result.dossier_id,
+    reference: result.reference,
+    payeur: result.payeur === "company" ? "societe" : "particulier",
+    societe_id: result.societe_id,
+    montant: result.montant,
+    devise: result.devise,
+  };
+}
 
 const COMPANY_FIELDS = {
   raison_sociale: z.string().trim().max(300).optional().describe("Raison sociale"),
@@ -741,6 +786,33 @@ export const MCP_TOOLS: ToolDef[] = [
         deja: result.deja,
       };
     },
+  },
+  {
+    name: "rattacher_credit",
+    write: true,
+    selfJournal: true,
+    description:
+      "Rattache un crédit déjà encaissé à un dossier et à un payeur. id du grand livre. dossier_id du séjour. payeur : particulier ou societe. societe_id si le payeur est une société. Ne crée aucun paiement et ne change pas le montant. Sans confirmer, aperçu seulement : rien n’est écrit.",
+    input: {
+      id: z.string().trim().max(80).optional().describe("Crédit du grand livre"),
+      mouvement_id: z.string().trim().max(80).optional().describe("Même identifiant que id"),
+      dossier_id: z.string().trim().max(80).describe("Dossier qui reçoit le crédit"),
+      payeur: z.string().trim().max(40).describe("particulier ou societe"),
+      societe_id: z.string().trim().max(80).optional().describe("Société de facturation, si le payeur est une société"),
+      confirmer: confirmOpt,
+    },
+    run: (args) =>
+      runIfConfirmed(
+        args,
+        {
+          action: "rattacher_credit",
+          id: args.id || args.mouvement_id,
+          dossier_id: args.dossier_id,
+          payeur: args.payeur,
+          societe_id: args.societe_id,
+        },
+        () => attachCreditFromRegistry(args)
+      ),
   },
   {
     name: "rapprocher_pliant",
