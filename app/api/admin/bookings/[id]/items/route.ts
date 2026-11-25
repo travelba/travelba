@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dbError, jsonError, requireStaff } from "@/lib/crm/auth";
 import { dbErrorMessage } from "@/lib/crm/db-error";
+import { missingDbColumn } from "@/lib/crm/optional-column";
 import { refreshBookingDerived } from "@/lib/crm/dossier-refresh";
 import { schedulePendingFlightRematch } from "@/lib/crm/email-flight-rematch";
 import { hotelSignatoryName } from "@/lib/crm/hotel-desk";
@@ -30,7 +31,7 @@ import { persistBookingCardOrder } from "@/lib/crm/item-order";
 import { isAutoTicketingExpense, TICKETING_FEE_OFF } from "@/lib/crm/ticketing-fee";
 import { composeAccueilVip, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { resyncAccueilVip } from "@/lib/crm/accueil-vip-sync";
-import { BOOKING_ITEM_KINDS, countsAsCarnetCard, isActiveItem, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
+import { BOOKING_ITEM_KINDS, countsAsCarnetCard, isActiveItem, isExtraItemKind, isLedgerExpenseKind, type BookingItemKind } from "@/lib/crm/types";
 
 function knownKind(value: unknown) {
   const kind = String(value || "");
@@ -169,6 +170,10 @@ async function insertBookingItem(
   }
   const company = await billingCompanyPatch(supabase, bookingId, body.billing_company_id);
   if ("error" in company && company.error) return { error: jsonError(company.error) };
+  const stamped =
+    !isLedgerExpenseKind(kind) && !isExtraItemKind(kind) && detailsForInsert && typeof detailsForInsert === "object"
+      ? (detailsForInsert as Record<string, unknown>).price_mode
+      : null;
   const row = {
     kind,
     title: titleForInsert,
@@ -181,14 +186,17 @@ async function insertBookingItem(
     sort_order: sortOrder,
     details: detailsForInsert,
     visible_to_client: body.visible_to_client === true,
+    ...(stamped === "avec" || stamped === "sans" ? { price_mode: stamped } : {}),
     ...("billing_company_id" in company ? { billing_company_id: company.billing_company_id } : {}),
   };
   if (!persist) return { row, kind, visible: body.visible_to_client === true };
-  const { data, error } = await supabase
-    .from("crm_booking_items")
-    .insert({ booking_id: bookingId, ...row })
-    .select("id")
-    .single();
+  const inserted = { booking_id: bookingId, ...row };
+  let { data, error } = await supabase.from("crm_booking_items").insert(inserted).select("id").single();
+  if (error && "price_mode" in inserted && missingDbColumn(error, "price_mode")) {
+    const next = { ...inserted };
+    delete next.price_mode;
+    ({ data, error } = await supabase.from("crm_booking_items").insert(next).select("id").single());
+  }
   if (error || !data) return { error: dbError(error, 400) };
   const id = String(data.id);
   const shown = body.visible_to_client === true && countsAsCarnetCard(kind) ? { id, kind } : null;
@@ -328,6 +336,16 @@ async function updateBookingItem(
     patch.details = frozen.card.details;
     if (frozen.card.amount == null) patch.include_in_ledger = false;
   }
+  if (
+    !isLedgerExpenseKind(nextKind) &&
+    !isExtraItemKind(nextKind) &&
+    patch.details &&
+    typeof patch.details === "object" &&
+    !Array.isArray(patch.details)
+  ) {
+    const stamped = (patch.details as Record<string, unknown>).price_mode;
+    if (stamped === "avec" || stamped === "sans") patch.price_mode = stamped;
+  }
   if (!Object.keys(patch).length) return { error: jsonError("Rien à mettre à jour") };
   const wasHidden =
     current.visible_to_client !== true ||
@@ -357,13 +375,24 @@ async function updateBookingItem(
       prevDetails: current.details,
     };
   }
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("crm_booking_items")
     .update(patch)
     .eq("id", itemId)
     .eq("booking_id", bookingId)
     .select("*")
     .single();
+  if (error && "price_mode" in patch && missingDbColumn(error, "price_mode")) {
+    const nextPatch = { ...patch };
+    delete nextPatch.price_mode;
+    ({ data, error } = await supabase
+      .from("crm_booking_items")
+      .update(nextPatch)
+      .eq("id", itemId)
+      .eq("booking_id", bookingId)
+      .select("*")
+      .single());
+  }
   if (error) return { error: dbError(error, 400) };
   if (visibilityGesture) {
     const mirrored = await mirrorCardPieces(supabase, bookingId, itemId, Boolean(patch.visible_to_client));

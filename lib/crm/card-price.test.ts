@@ -39,6 +39,9 @@ test("une carte avec un prix non nul est « Avec prix », sinon « Sans prix »"
   assert.equal(readCardPriceMode({ amount: null }), "sans");
   assert.equal(readCardPriceMode({ amount: 800, details: { price_mode: "sans" } }), "sans");
   assert.equal(readCardPriceMode({ amount: null, price_mode: "avec" }), "avec");
+  assert.equal(readCardPriceMode({ amount: 900, price_mode: "sans", details: { price_mode: "avec" } }), "avec");
+  assert.equal(readCardPriceMode({ amount: 900, price_mode: "avec", details: { price_mode: "sans" } }), "sans");
+  assert.equal(readCardPriceMode({ amount: 640, price_mode: "avec", details: {} }), "avec");
 });
 
 test("« Avec prix » exige un montant, « Sans prix » n’affiche rien au client", () => {

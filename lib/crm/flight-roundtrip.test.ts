@@ -105,6 +105,33 @@ describe("un aller-retour, une carte", () => {
     assert.equal(hiddenItineraryIds([first, second]).size, 0);
   });
 
+  it("details.price_mode gagne sur la colonne, une carte ancienne reste « Avec prix »", () => {
+    const shown = {
+      ...outbound,
+      price_mode: "sans" as const,
+      details: { ...outbound.details, price_mode: "avec" },
+    };
+    const mate = {
+      ...inbound,
+      price_mode: "sans" as const,
+      details: { ...inbound.details, price_mode: "avec" },
+    };
+    assert.match(roundTripPriceLabel(shown, mate, [shown, mate], "EUR") || "", /5[\s\u202f]?357,57/);
+    const hidden = {
+      ...outbound,
+      price_mode: "avec" as const,
+      details: { ...outbound.details, price_mode: "sans" },
+    };
+    const hiddenBack = {
+      ...inbound,
+      price_mode: "avec" as const,
+      details: { ...inbound.details, price_mode: "sans" },
+    };
+    assert.equal(roundTripPriceLabel(hidden, hiddenBack, [hidden, hiddenBack], "EUR"), null);
+    const ancien = { ...outbound, price_mode: "avec" as const, details: {} };
+    assert.match(roundTripPriceLabel(ancien, null, [ancien], "EUR") || "", /5[\s\u202f]?357,57/);
+  });
+
   it("le prix identique s’affiche une fois", () => {
     const label = roundTripPriceLabel(outbound, inbound, [outbound, inbound], "EUR");
     assert.match(label || "", /5[\s\u202f]?357,57/);
