@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AGENCY_FEE_LABEL } from "@/lib/crm/agency-fee-rate";
 import type { DbErrorLike } from "@/lib/crm/db-error";
 import { formatDateFr } from "@/lib/crm/dates";
 import {
@@ -8,7 +7,12 @@ import {
   MB3M_MIN_NET,
   type Mb3mInvoiceContext,
 } from "@/lib/crm/mb3m-invoice";
-import { mb3mSendableLines, mb3mSoapLines } from "@/lib/crm/mb3m-conform";
+import {
+  isMb3mAgencyCommissionLabel,
+  mb3mAgencyFeeInvoiceLabel,
+  mb3mSendableLines,
+  mb3mSoapLines,
+} from "@/lib/crm/mb3m-conform";
 import { groupedMb3mPaymentWarning, recordMb3mInvoicePayments, type Mb3mReglement } from "@/lib/crm/mb3m-payments";
 import { formatMoney } from "@/lib/crm/money";
 import { MB3M_CANCEL_KEEPS_LETTERING } from "@/lib/crm/mb3m-unletter";
@@ -254,15 +258,6 @@ function clean(value: string | null | undefined) {
   return (value || "").replace(/\s+/g, " ").trim();
 }
 
-function isAgencyCommissionLabel(label: string) {
-  const fold = label
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/['’]/g, "'")
-    .toLowerCase();
-  return fold === "commission d'agence";
-}
-
 /** Repère d’un dossier : référence, destination, dates, voyageurs. */
 export function groupedSectionMarker(input: {
   reference: string;
@@ -296,8 +291,9 @@ function referenceOf(marker: string) {
 /**
  * Le premier frais Custom porte la référence, la destination, les dates et les voyageurs
  * quand le dossier n’a pas d’autre ligne. Les frais suivants gardent la référence dans le libellé.
- * La note ne part que si elle est déjà « Pliant : … ». Le libellé d’une prestation ne change pas.
- * La commission d’agence garde son libellé, sans pourcentage.
+ * La note ne part que si elle est déjà « Pliant : … », sur une ligne Dépense.
+ * Le libellé d’une prestation ne change pas.
+ * La commission d’agence part en « Frais agence 10 % » (ou 7,5 %, ou 5 %).
  */
 export function stampGroupedMb3mSection(marker: string, lines: Mb3mLine[]): Mb3mLine[] {
   const reference = referenceOf(marker);
@@ -318,7 +314,7 @@ export function stampGroupedMb3mSection(marker: string, lines: Mb3mLine[]): Mb3m
 }
 
 function restoreAgencyCommission(sendable: Mb3mAccountLine[], soap: Mb3mLine[]) {
-  const wanted = sendable.filter((line) => line.customCode && isAgencyCommissionLabel(line.label));
+  const wanted = sendable.filter((line) => line.customCode && isMb3mAgencyCommissionLabel(line.label));
   if (!wanted.length) return soap;
   let index = 0;
   return soap.map((line) => {
@@ -326,7 +322,11 @@ function restoreAgencyCommission(sendable: Mb3mAccountLine[], soap: Mb3mLine[]) 
     const source = wanted[index];
     if (line.type !== "Custom" || !code || !source || source.customCode !== code) return line;
     index += 1;
-    return { ...line, label: AGENCY_FEE_LABEL };
+    return {
+      ...line,
+      label: mb3mAgencyFeeInvoiceLabel({}),
+      customType: { complementary: "12" as const, lineType: 4 as const },
+    };
   });
 }
 

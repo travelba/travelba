@@ -158,8 +158,9 @@ export type Mb3mLine = {
   /** Vol : PNR, recopié sur la pièce s’il n’y en a qu’un. */
   refCommand?: string | null;
   /**
-   * Note du « + » MB3M. Seule une dépense Pliant en complémentaire 12 part :
-   * « Pliant : 1 245,00 € ». Les autres lignes et les avoirs hors Pliant restent vides.
+   * Note du « + » MB3M. Seule « Pliant : 1 245,00 € » part, sur la ligne Dépense
+   * (Standard, activité 22) ou sur un complémentaire 12 déjà enregistré avec cette note.
+   * Aucune autre note. Les avoirs suivent la même règle.
    */
   note?: string | null;
 };
@@ -797,13 +798,15 @@ export function linesXml(kind: "InvoiceLine" | "CreditNoteLine", lines: Mb3mLine
           : tag("MarginUnit", money(line.marginUnit));
       const refPiece = tag("RefPiece", (line.refPiece || "").trim().slice(0, 40));
       const pliantNote = (line.note || "").trim();
+      const custom = line.type === "Custom" || Boolean(line.customType);
       const note =
-        line.type === "Custom" && line.customType?.complementary === "12" && pliantNote.startsWith("Pliant : ")
+        pliantNote.startsWith("Pliant : ") && (!custom || line.customType?.complementary === "12")
           ? tag("Note", pliantNote.slice(0, 250))
           : "";
       // Ordre WCF : ActivityId, CommissionNetTotal, CommissionTotal, CustomType, Label,
       // MarginUnit, NetPriceTotal, NetPriceUnit, Note, ProviderId, Quantity, RefPiece, Type.
-      // Note seulement pour une dépense Pliant en complémentaire 12. CommissionId n’est pas dans le WSDL.
+      // Note seulement « Pliant : … », sur une ligne Dépense ou un complémentaire 12 déjà noté.
+      // CommissionId n’est pas dans le WSDL.
       return `<${kind}>${activity}${commissionIdXml(line)}${flightEuroCommissionXml(line)}${customTypeXml(line)}${tag("Label", line.label.trim())}${margin}${tag("NetPriceTotal", money(line.netPriceTotal))}${tag("NetPriceUnit", money(line.netPriceUnit))}${note}${providerXml(line, providerFallback)}${tag("Quantity", quantity(line.quantity))}${refPiece}${tag("Type", type)}</${kind}>`;
     })
     .join("");

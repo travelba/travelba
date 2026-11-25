@@ -207,7 +207,7 @@ function nilosContexts() {
 }
 
 describe("pièce MB3M de la facture groupée", () => {
-  it("regroupe les lignes par dossier, avec la commission du livre sans pourcentage", () => {
+  it("regroupe les lignes par dossier, avec les frais d’agence à 10 %", () => {
     const built = assembleGroupedMb3m(nilosContexts());
     assert.deepEqual(
       [...new Set(built.dossiers)],
@@ -218,11 +218,12 @@ describe("pièce MB3M de la facture groupée", () => {
     assert.equal(first?.note ?? null, null);
     assert.equal(first?.activityId, MB3M_ACTIVITY.hotel);
     const fee = built.lines.find((row) => row.type === "Custom");
-    assert.equal(fee?.label.startsWith(AGENCY_FEE_LABEL), true);
-    assert.match(fee?.label || "", /TB-2026-0212/);
+    assert.equal(fee?.label, "Frais agence 10 % · TB-2026-0212");
+    assert.match(fee?.label || "", /10 %/);
     assert.equal(fee?.note ?? null, null);
+    assert.equal(fee?.customType?.complementary, "12");
     assert.equal(fee?.customType?.lineType, 4);
-    assert.equal(/%|IATA|APST/.test(built.lines.map((row) => row.label).join(" ")), false);
+    assert.equal(/IATA|APST/.test(built.lines.map((row) => row.label).join(" ")), false);
     const frankfurt = built.lines.find((row) => row.label === "Train Francfort");
     assert.equal(frankfurt?.activityId, MB3M_ACTIVITY.land);
     assert.equal(frankfurt?.note ?? null, null);
@@ -244,18 +245,18 @@ describe("pièce MB3M de la facture groupée", () => {
     });
     const [stamped] = stampGroupedMb3mSection(marker, [
       line({
-        label: AGENCY_FEE_LABEL,
+        label: "Frais agence 10 %",
         netPriceUnit: 300,
         netPriceTotal: 300,
         type: "Custom",
-        customType: { complementary: "13", lineType: 4 },
+        customType: { complementary: "12", lineType: 4 },
         providerRole: "agency",
       }),
     ]);
-    assert.match(stamped?.label || "", new RegExp(`^${AGENCY_FEE_LABEL}`));
+    assert.match(stamped?.label || "", /^Frais agence 10 %/);
     assert.match(stamped?.label || "", /TB-2026-0212/);
     assert.match(stamped?.label || "", /Camille Martin/);
-    assert.equal(/%/.test(stamped?.label || ""), false);
+    assert.equal(/IATA|APST/.test(stamped?.label || ""), false);
   });
 
   it("crée une pro forma sans champ d’impression et reprend la société déjà liée", async () => {
@@ -309,7 +310,9 @@ describe("pièce MB3M de la facture groupée", () => {
     assert.match(body, /Train Francfort/);
     assert.match(body, /TB-2026-0212/);
     assert.equal(body.includes("<Note>"), false);
-    assert.equal(body.includes("%"), false);
+    assert.match(body, /Frais agence 10 %/);
+    assert.equal(body.includes("IATA"), false);
+    assert.equal(body.includes("APST"), false);
   });
 
   it("cherche puis crée la société quand aucun lien n’existe", async () => {

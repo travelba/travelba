@@ -7,6 +7,7 @@
  * `MB3M_FLIGHT_COMMISSION=1` reste le chemin CommissionId, non utilisé.
  */
 
+import { formatAgencyFeePercent } from "@/lib/crm/agency-fee-rate";
 import { agencyEmailHtml } from "@/lib/crm/email-html";
 import { MB3M_AIRLINE_PROVIDERS, MB3M_PROVIDERS, type Mb3mCatalogProvider } from "@/lib/crm/mb3m-providers";
 import { mb3mVerifiedProviderId } from "@/lib/crm/mb3m-verified-providers";
@@ -410,10 +411,9 @@ export function mb3mFeeLabel(code: Mb3mFeeCode, fallback?: string | null) {
 }
 
 /**
- * Frais saisis sur le dossier (frais hôtel, frais de billetterie, etc.).
- * Code 12 : la prestation complémentaire dont le libellé canonique est « Frais agence ».
- * Même famille que « Frais Agence Billetterie » (401) : Custom, LineType 4, fournisseur = l’agence.
- * Le frais automatique de billeterie reste en 401. Aucun fournisseur n’est créé.
+ * Frais d’agence de 10 % (facture société) : complémentaire 12, libellé « Frais agence ».
+ * Custom, LineType 4, fournisseur = l’agence. Le frais de billeterie reste en 401.
+ * Une dépense de dossier (kind=expense) n’utilise pas ce code : elle repart en activité 22.
  */
 export const MB3M_CLIENT_FEE_CODE: Mb3mFeeCode = "12";
 
@@ -494,21 +494,41 @@ export function mb3mPliantExpenseNote(input: {
   return mb3mPliantNote(euros);
 }
 
-/** « Frais agence · Frais hôtel — TB-2026-0211 ». Jamais le mot Dépense. */
-export function mb3mAgencyExpenseLabel(input: {
-  title?: string | null;
-  ledgerLabel?: string | null;
-  reference?: string | null;
-}) {
+function expenseType(input: { title?: string | null; ledgerLabel?: string | null }) {
   const ledger = (input.ledgerLabel || "").replace(/\s+/g, " ").trim();
   const titled = (input.title || "").replace(/\s+/g, " ").trim();
   const strip = (value: string) =>
     value.replace(EXPENSE_PREFIX, "").replace(/^dépense\b\s*/i, "").replace(LEDGER_DOSSIER_REF, "").trim();
   const fromTitle = strip(titled);
   const fromLedger = strip(ledger);
-  const type = (fromTitle && !/^dépense$/i.test(fromTitle) ? fromTitle : fromLedger) || "Frais";
-  const ref = ((input.reference || "").trim() || ledger.match(LEDGER_DOSSIER_REF)?.[1] || "").trim();
-  const label = ref ? `Frais agence · ${type} — ${ref}` : `Frais agence · ${type}`;
+  return {
+    type: (fromTitle && !/^dépense$/i.test(fromTitle) ? fromTitle : fromLedger) || "Dépense",
+    reference: ledger.match(LEDGER_DOSSIER_REF)?.[1] || "",
+  };
+}
+
+/** « Dépense · SEJOUR MONTAGNE — TB-2026-0028 ». Activité 22, pas le complémentaire 12. */
+export function mb3mDossierExpenseLabel(input: {
+  title?: string | null;
+  ledgerLabel?: string | null;
+  reference?: string | null;
+}) {
+  const picked = expenseType(input);
+  const ref = ((input.reference || "").trim() || picked.reference).trim();
+  const label = ref ? `Dépense · ${picked.type} — ${ref}` : `Dépense · ${picked.type}`;
+  return label.slice(0, 120);
+}
+
+export function isMb3mAgencyCommissionLabel(label: string) {
+  const fold = foldMb3mName(label);
+  return fold === "commission d agence" || fold === "frais d agence";
+}
+
+/** « Frais agence 10 % · TB-2026-0028 ». Le taux réel (10 %, 7,5 % ou 5 %) est dans le libellé. */
+export function mb3mAgencyFeeInvoiceLabel(input: { rate?: number | null; reference?: string | null } = {}) {
+  const percent = formatAgencyFeePercent(input.rate ?? Number.NaN);
+  const ref = (input.reference || "").trim();
+  const label = ref ? `Frais agence ${percent} · ${ref}` : `Frais agence ${percent}`;
   return label.slice(0, 120);
 }
 
@@ -546,7 +566,8 @@ export function conformMb3mAccountLines(
   lines: Mb3mAccountLine[],
   items: Mb3mConformItem[],
   reference?: string | null,
-  debits?: Mb3mPliantDebit[] | null
+  debits?: Mb3mPliantDebit[] | null,
+  agencyFeeRate?: number | null
 ): Mb3mAccountLine[] {
   const byId = new Map(items.flatMap((item) => (item.id ? [[item.id, item] as const] : [])));
   return lines.map((line) => {
@@ -556,6 +577,26 @@ export function conformMb3mAccountLines(
       return { ...line, rollup: true, activityId: MB3M_ACTIVITY.tourOperator, held: false, supplierReason: null };
     }
     if (kind === "fee" || line.chargeKind === "fee") {
+      if (isMb3mAgencyCommissionLabel(line.label)) {
+        return {
+          ...line,
+          activityId: null,
+          customCode: MB3M_CLIENT_FEE_CODE,
+          agencyProvider: true,
+          providerId: null,
+          providerName: null,
+          margin: null,
+          note: null,
+          held: false,
+          supplierReason: null,
+          supplierWarning: null,
+          chargeKind: "fee",
+          refPiece: null,
+          refCommand: null,
+          ticketRefs: [],
+          label: mb3mAgencyFeeInvoiceLabel({ rate: agencyFeeRate, reference }),
+        };
+      }
       const code = mb3mFeeCode({ label: line.label, amount: line.amount, items });
       return {
         ...line,
@@ -564,21 +605,49 @@ export function conformMb3mAccountLines(
         agencyProvider: true,
         providerId: null,
         margin: null,
+        note: null,
         held: false,
         supplierReason: null,
         label: mb3mFeeLabel(code, line.label),
       };
     }
-    // Dépense libre facturée au client : jamais une activité, jamais le mot Dépense.
+    // Dépense de dossier : le chemin d’avant la #823. Standard, activité 22, fournisseur résolu
+    // comme une ligne terrestre (DIVERS TERRESTRE si rien de plus précis). La note, s’il y en a une,
+    // est seulement « Pliant : X,XX € ».
     if (isMb3mClientExpense(kind, line.label)) {
+      const channel = item ? mb3mSaleChannel(item) : "direct";
+      const iata = item ? airlineIata(item) : "";
+      const carrier = item ? airlineName(item) : line.label;
+      const activityId = mb3mChooseActivity({
+        kind: "expense",
+        channel,
+        airlineIata: iata,
+        supplier: item?.supplier || carrier,
+        title: item?.title || line.label,
+      });
+      const supplierName = (item?.supplier || "").trim() || line.label;
+      const supplier =
+        activityId == null
+          ? null
+          : resolveMb3mSupplier({
+              kind: "expense",
+              activityId,
+              channel,
+              supplier: supplierName,
+              title: item?.title || line.label,
+              airlineIata: iata,
+              airlineName: carrier,
+            });
+      const unknownSupplier = supplier && !supplier.ok && supplier.unknown ? supplier.unknown : null;
+      const providerName = supplier?.ok ? supplier.provider.name : unknownSupplier;
+      const providerId = supplier?.ok && providerName ? mb3mVerifiedProviderId(providerName) : null;
       return {
         ...line,
-        activityId: null,
-        customCode: MB3M_CLIENT_FEE_CODE,
-        agencyProvider: true,
-        providerId: null,
-        providerName: null,
-        margin: null,
+        activityId,
+        customCode: null,
+        agencyProvider: false,
+        providerId,
+        providerName,
         note: mb3mPliantExpenseNote({
           itemId: item?.id || line.itemId,
           details: item?.details,
@@ -586,13 +655,14 @@ export function conformMb3mAccountLines(
           debits,
         }),
         held: false,
-        supplierReason: null,
-        supplierWarning: null,
+        supplierReason: supplier ? (supplier.ok || unknownSupplier ? null : supplier.reason) : "Activité MB3M inconnue.",
+        supplierWarning: unknownSupplier && supplier && !supplier.ok ? supplier.reason : null,
         chargeKind: "expense",
-        refPiece: null,
+        refPiece: activityId === MB3M_ACTIVITY.land ? bookingRef(item) || null : null,
         refCommand: null,
         ticketRefs: [],
-        label: mb3mAgencyExpenseLabel({
+        fareScope: commissionScope(item),
+        label: mb3mDossierExpenseLabel({
           title: item?.title,
           ledgerLabel: line.label,
           reference,
@@ -713,7 +783,7 @@ export function mb3mInvoiceRefCommand(dossierRef: string, lines: Mb3mLine[]) {
 export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): Mb3mLine {
   if (line.customCode) {
     const amount = Math.round(line.amount * 100) / 100;
-    const keepLabel = line.chargeKind === "expense" || line.label.startsWith("Frais agence · ");
+    const keepLabel = line.label.startsWith("Frais agence");
     return {
       label: keepLabel ? line.label : mb3mFeeLabel(line.customCode, line.label),
       quantity: 1,
@@ -724,9 +794,7 @@ export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): M
       providerRole: "agency",
       marginUnit: null,
       note:
-        line.customCode === MB3M_CLIENT_FEE_CODE && line.chargeKind === "expense" && isMb3mPliantNote(line.note)
-          ? (line.note || "").trim()
-          : null,
+        line.customCode === MB3M_CLIENT_FEE_CODE && isMb3mPliantNote(line.note) ? (line.note || "").trim() : null,
     };
   }
   const raw = line.margin == null || !Number.isFinite(line.margin) ? null : line.margin;
@@ -744,7 +812,7 @@ export function mb3mConformInvoiceLine(line: Mb3mAccountLine, minNet: number): M
     activityId: mb3mPrestationActivityId(line.activityId),
     type: "Standard",
     marginUnit: margin,
-    note: null,
+    note: isMb3mPliantNote(line.note) ? (line.note || "").trim() : null,
     providerId: line.providerId ?? null,
     providerRole: "supplier",
     refPiece: line.refPiece ?? null,
