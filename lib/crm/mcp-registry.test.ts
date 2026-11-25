@@ -377,6 +377,10 @@ test("mcp tools stay unique, named, and under the cap", () => {
   assert.match(titulaire?.description || "", /pays_passeport/);
   assert.match(titulaire?.description || "", /compagnon_id/);
   assert.match(titulaire?.description || "", /expiration/);
+  assert.match(titulaire?.description || "", /fidelite/);
+  assert.match(titulaire?.description || "", /sans effacer les autres/);
+  assert.match(titulaire?.description || "", /lien/);
+  assert.match(MCP_TOOLS.find((tool) => tool.name === "fiche_client")?.description || "", /fidelite/);
   const accompagnant = MCP_TOOLS.find((tool) => tool.name === "mettre_a_jour_accompagnant");
   assert.equal(accompagnant?.write, true);
   assert.equal(accompagnant?.openWorld, undefined);

@@ -62,6 +62,48 @@ export const RELATIONSHIP_OPTIONS = [
   { value: "autre", label: "Autre" },
 ] as const;
 
+const RELATIONSHIP_ALIASES: Record<string, (typeof RELATIONSHIP_OPTIONS)[number]["value"]> = {
+  conjointe: "conjoint",
+  epouse: "conjoint",
+  epoux: "conjoint",
+  mari: "conjoint",
+  femme: "conjoint",
+  fils: "enfant",
+  fille: "enfant",
+  pere: "parent",
+  mere: "parent",
+  frere: "famille",
+  soeur: "famille",
+  amie: "ami",
+};
+
+/**
+ * Valeur enregistrée par le sélecteur Lien.
+ * `null` efface. `undefined` : le libellé n’est pas dans la liste.
+ */
+export function canonicalRelationship(value: unknown): string | null | undefined {
+  if (value == null) return null;
+  if (typeof value !== "string") return undefined;
+  const folded = value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[().]/g, "")
+    .replace(/\s+/g, "");
+  if (!folded) return null;
+  for (const option of RELATIONSHIP_OPTIONS) {
+    const label = option.label
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .replace(/[().]/g, "")
+      .replace(/\s+/g, "");
+    if (folded === option.value || folded === label) return option.value;
+  }
+  return RELATIONSHIP_ALIASES[folded];
+}
+
 export type ExtractedIdentity = {
   doc_type: TravelDocType;
   number: string | null;

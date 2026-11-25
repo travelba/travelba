@@ -38,6 +38,50 @@ export function filledLoyaltyLabels(loyalty: LoyaltyMap | null | undefined) {
   );
 }
 
+export type LoyaltyLine = { programme: string; numero: string };
+
+/** Clé du sélecteur Fidélité. « Flying Blue », `flying_blue` ou le libellé exact. */
+export function loyaltyProgramKey(value: unknown): LoyaltyKey | null {
+  if (typeof value !== "string") return null;
+  const folded = value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  if (!folded) return null;
+  const found = LOYALTY_PROGRAMS.find(
+    (program) =>
+      program.key === folded.replace(/\s+/g, "_") ||
+      program.label
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/\p{M}/gu, "") === folded
+  );
+  return found?.key ?? null;
+}
+
+/**
+ * Ajoute ou remplace les programmes indiqués.
+ * Les autres numéros déjà sur la carte restent.
+ */
+export function mergeLoyaltyEntries(
+  current: { flying_blue?: string | null; loyalty?: LoyaltyMap | null },
+  entries: { key: LoyaltyKey; number: string }[]
+): LoyaltyMap {
+  const next = loyaltyFromCustomer(current);
+  for (const entry of entries) next[entry.key] = normalizeLoyaltyNumber(entry.number);
+  return next;
+}
+
+/** Programmes remplis, libellé et numéro normalisé, comme la fiche. */
+export function loyaltyLines(source: { flying_blue?: string | null; loyalty?: LoyaltyMap | null }): LoyaltyLine[] {
+  const map = loyaltyFromCustomer(source);
+  return LOYALTY_PROGRAMS.flatMap((program) => {
+    const numero = normalizeLoyaltyNumber(map[program.key]);
+    return numero ? [{ programme: program.label, numero }] : [];
+  });
+}
+
 /** Colonne `loyalty` seulement si le corps l’envoie. */
 export function loyaltyPatchFromBody(body: Record<string, unknown>) {
   if (!Object.prototype.hasOwnProperty.call(body, "loyalty")) return {};

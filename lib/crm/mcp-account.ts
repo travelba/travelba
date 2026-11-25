@@ -5,7 +5,15 @@ import { toAuditRow } from "@/lib/crm/audit-events";
 import { parseCompanyRole } from "@/lib/crm/company-role";
 import { resolveCountryCode, resolveNationality } from "@/lib/crm/countries";
 import { customerPatchFromBody } from "@/lib/crm/customer-patch";
-import { emptyToNull } from "@/lib/crm/identity";
+import { canonicalRelationship, emptyToNull } from "@/lib/crm/identity";
+import {
+  loyaltyLines,
+  loyaltyPatchFromBody,
+  loyaltyProgramKey,
+  mergeLoyaltyEntries,
+  normalizeLoyaltyNumber,
+  type LoyaltyKey,
+} from "@/lib/crm/loyalty";
 import { getPortalAccess, inviteCustomer, type InviteResult, type PortalAccess } from "@/lib/crm/invite";
 import { currentMcpAccess } from "@/lib/crm/mcp-auth";
 import { McpWriteError } from "@/lib/crm/mcp-write";
@@ -17,7 +25,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const HOLDER_COLUMNS =
-  "id, first_name, last_name, usage_name, birth_date, sex, nationality, address_line, postal_code, city, country, email, phone, auth_user_id, company_role, billing_parent_id, spending_allowance";
+  "id, first_name, last_name, usage_name, birth_date, sex, nationality, address_line, postal_code, city, country, email, phone, auth_user_id, company_role, billing_parent_id, spending_allowance, loyalty, flying_blue";
 
 type Admin = SupabaseClient;
 
@@ -58,6 +66,8 @@ export type HolderResult = {
   ville?: string | null;
   pays?: string | null;
   pays_passeport?: string | null;
+  fidelite?: { programme: string; numero: string }[];
+  lien?: string | null;
 };
 
 export type HolderDraft = {
@@ -71,6 +81,8 @@ export type HolderDraft = {
   paysPasseport: string | null;
   champs: string[];
   echo: Record<string, unknown>;
+  /** Programmes à ajouter ou remplacer. Les autres restent, fusion faite à l’écriture. */
+  fidelite: { key: LoyaltyKey; number: string }[];
 };
 
 export type CompanionDraft = {
@@ -169,6 +181,29 @@ function passportNumber(value: unknown) {
   const compact = value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   if (compact.length < 4 || compact.length > 20) throw new McpWriteError("Numéro invalide.");
   return compact;
+}
+
+const LIEN_INCONNU = "Lien inconnu (conjoint, enfant, parent, famille, ami, autre).";
+
+/** Un programme, ou une liste. Le numéro est normalisé. Les autres programmes ne sont pas ici. */
+function loyaltyWrites(value: unknown): { key: LoyaltyKey; number: string }[] {
+  const list = Array.isArray(value) ? value : [value];
+  if (!list.length) throw new McpWriteError("Indiquez le programme.");
+  const writes: { key: LoyaltyKey; number: string }[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new McpWriteError("Programme inconnu.");
+    const row = item as Record<string, unknown>;
+    const key = loyaltyProgramKey(row.programme);
+    if (!key) throw new McpWriteError("Programme inconnu.");
+    if (typeof row.numero !== "string") throw new McpWriteError("Indiquez le numéro du programme.");
+    const trimmed = row.numero.trim();
+    if (!trimmed) throw new McpWriteError("Indiquez le numéro du programme.");
+    if (trimmed.length > 40) throw new McpWriteError("Numéro de fidélité : 40 caractères maximum.");
+    const number = normalizeLoyaltyNumber(trimmed);
+    if (!number) throw new McpWriteError("Indiquez le numéro du programme.");
+    writes.push({ key, number });
+  }
+  return writes;
 }
 
 function requiredDay(value: unknown, label: string) {
@@ -307,11 +342,24 @@ export function prepareHolderProfile(input: Record<string, unknown>): HolderDraf
     echo.pays_passeport = paysPasseport;
     champs.push("pays_passeport");
   }
+  let fidelite: { key: LoyaltyKey; number: string }[] = [];
+  if ("fidelite" in input && input.fidelite != null) {
+    fidelite = loyaltyWrites(input.fidelite);
+    champs.push("fidelite");
+  }
+  if ("lien" in input) {
+    if (!compagnonId) throw new McpWriteError("Le lien concerne un accompagnateur (compagnon_id).");
+    const lien = canonicalRelationship(input.lien);
+    if (lien === undefined) throw new McpWriteError(LIEN_INCONNU);
+    customer.relationship = lien;
+    echo.lien = lien;
+    champs.push("lien");
+  }
   if (!champs.length) throw new McpWriteError("Indiquez ce qu’il faut modifier.");
   if (champs.length === 1 && champs[0] === "pays_passeport") {
     throw new McpWriteError("Indiquez ce qu’il faut modifier.");
   }
-  return { id, compagnonId, customer, passport, documentSpecific, paysPasseport, champs, echo };
+  return { id, compagnonId, customer, passport, documentSpecific, paysPasseport, champs, echo, fidelite };
 }
 
 /**
@@ -424,12 +472,13 @@ type CompanionIdentity = {
   birth_date: string | null;
   sex: string | null;
   nationality: string | null;
+  loyalty?: Record<string, string | null> | null;
 };
 
 async function loadCompanion(db: Admin, companionId: string, customerId: string) {
   const { data, error } = await db
     .from("crm_travel_companions")
-    .select("id, customer_id, first_name, last_name, usage_name, birth_date, sex, nationality")
+    .select("id, customer_id, first_name, last_name, usage_name, birth_date, sex, nationality, loyalty")
     .eq("id", companionId)
     .eq("customer_id", customerId)
     .maybeSingle();
@@ -527,6 +576,21 @@ export async function updateHolderProfile(input: Record<string, unknown>, admin?
     }
   }
 
+  if (draft.fidelite.length) {
+    const source = draft.compagnonId
+      ? { loyalty: companion?.loyalty, flying_blue: null }
+      : { loyalty: holder.loyalty, flying_blue: holder.flying_blue };
+    const merged = mergeLoyaltyEntries(source, draft.fidelite);
+    if (draft.compagnonId) {
+      Object.assign(draft.customer, loyaltyPatchFromBody({ loyalty: merged }));
+    } else {
+      const patched = customerPatchFromBody({ loyalty: merged });
+      if (patched.error) throw new McpWriteError(patched.error);
+      Object.assign(draft.customer, patched.patch);
+    }
+    draft.echo.fidelite = loyaltyLines({ loyalty: merged });
+  }
+
   const person = companion || holder;
   if (draft.compagnonId) {
     if (Object.keys(draft.customer).length) {
@@ -598,11 +662,16 @@ export async function updateHolderProfile(input: Record<string, unknown>, admin?
       throw new McpWriteError("Passeport non enregistré.");
     }
   }
+  const passportTouched = targets.length > 0 || create;
   await journal(
     db,
-    draft.compagnonId ? "passeport_accompagnant" : "fiche_titulaire",
+    draft.compagnonId ? (passportTouched ? "passeport_accompagnant" : "fiche_accompagnant") : "fiche_titulaire",
     draft.id,
-    draft.compagnonId ? "Passeport de l’accompagnateur mis à jour" : "Fiche du titulaire mise à jour",
+    draft.compagnonId
+      ? passportTouched
+        ? "Passeport de l’accompagnateur mis à jour"
+        : "Fiche de l’accompagnateur mise à jour"
+      : "Fiche du titulaire mise à jour",
     { champs: draft.champs, ...(draft.compagnonId ? { compagnon_id: draft.compagnonId } : {}) }
   );
   return {
