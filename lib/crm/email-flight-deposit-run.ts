@@ -14,6 +14,7 @@ import {
   sumFlightTicketCounts,
   type FlightAutoDecision,
 } from "@/lib/crm/email-flight-deposit";
+import { guardAutomaticExtract } from "@/lib/crm/auto-card-guard-run";
 import { applyBookingSteps } from "@/lib/crm/email-step-run";
 import { enterFlightRematch, leaveFlightRematch } from "@/lib/crm/email-flight-rematch";
 import { parseExtractPayloadSafe, type BookingExtract } from "@/lib/crm/ingest-types";
@@ -124,19 +125,32 @@ export async function depositFlightsOnBooking(
       .eq("id", row.id);
     return { wrote: false as const, message: "Plus aucun passager : le mail reste une annulation. La carte n’est pas retirée." };
   }
+  let toWrite = prepared;
+  if (opts?.automatic) {
+    const kept = await guardAutomaticExtract(admin, {
+      bookingId,
+      extract: prepared,
+      emailIngestId: row.id,
+      customerId,
+    });
+    if (!kept) return { wrote: false as const, message: "" };
+    toWrite = kept;
+  }
   await applyBookingSteps({
     admin,
     bookingId,
     customerId,
-    extract: prepared,
+    extract: toWrite,
     staffUserId: actorId,
     emailIngestId: row.id,
     visibleToClient: false,
     skipTicketingFee: opts?.automatic ? false : true,
     recordTravelers: guarded?.record,
+    freezeClientVisibility: opts?.automatic ? true : undefined,
+    reopenIfCancelled: opts?.automatic ? false : undefined,
   });
-  const cardIds = await flightCardIdsForExtract(admin, bookingId, prepared);
-  const cardId = cardIds[0] || (await resolveEmailCardId(admin, bookingId, prepared));
+  const cardIds = await flightCardIdsForExtract(admin, bookingId, toWrite);
+  const cardId = cardIds[0] || (await resolveEmailCardId(admin, bookingId, toWrite));
   const deposited = await depositEmailAttachments(
     admin,
     bookingId,
@@ -150,7 +164,7 @@ export async function depositFlightsOnBooking(
     },
     cardIds
   );
-  const message = flightDepositSummary(prepared);
+  const message = flightDepositSummary(toWrite);
   const reason = opts?.reason ? ` (${opts.reason})` : "";
   const lead = opts?.automatic ? `Billet rattaché automatiquement${reason}. ` : "";
   await markEmailAttached(admin, row, {
@@ -161,7 +175,7 @@ export async function depositFlightsOnBooking(
     cards: true,
     auditAction: opts?.automatic ? "auto_attach" : "attach_flights",
   });
-  return { wrote: true as const, message, pieces: deposited.added, cartes: planFlightDeposit(prepared).cartes.length };
+  return { wrote: true as const, message, pieces: deposited.added, cartes: planFlightDeposit(toWrite).cartes.length };
   } finally {
     leaveFlightRematch();
   }

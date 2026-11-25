@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, PointerEvent, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { FormEvent, PointerEvent, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Reorder, useDragControls } from "framer-motion";
 import {
@@ -36,7 +37,8 @@ import { formatMoney } from "@/lib/crm/money";
 import { shortStayDay, shortStayRange } from "@/lib/crm/staff-stay";
 import { localTodayIso } from "@/lib/crm/dates";
 import { hotelStayFromTrip } from "@/lib/crm/hotel-search";
-import { flightCheckinViews, type StoredFlightCheckin } from "@/lib/crm/online-checkin";
+import { flightCheckinViews, isBoardingPassDocument, type StoredFlightCheckin } from "@/lib/crm/online-checkin";
+import { cardHasOnlineCheckin, removalConfirm, type RemovalSignal } from "@/lib/crm/step-removal-confirm";
 import { OnlineCheckinBadge } from "@/components/admin/OnlineCheckinMark";
 import { hasReviewMark, withoutReviewMark, reviewDoubts } from "@/lib/crm/review-doubt";
 import { BrandMark } from "@/components/crm/BrandMark";
@@ -328,7 +330,7 @@ export function BookingItemsPanel({
   household?: HouseholdMember[];
   currency?: string;
   clientSettlesStay?: boolean;
-  onBindDraftSave?: (save: (() => Promise<boolean>) | null) => void;
+  onBindDraftSave?: (save: (() => Promise<boolean | "annule">) | null) => void;
   /** Référence du dossier, pour le même libellé que les pièces jointes. */
   reference?: string | null;
   /** Cartes en cours, prix compris, pour que le montant du séjour suive sans attendre l’enregistrement. */
@@ -349,6 +351,9 @@ export function BookingItemsPanel({
   checkins?: StoredFlightCheckin[];
 }) {
   const router = useRouter();
+  const removalTitleId = useId();
+  const removalAnswer = useRef<((ok: boolean) => void) | null>(null);
+  const [removalAsk, setRemovalAsk] = useState<ReturnType<typeof removalConfirm> | null>(null);
   const pendingRef = useRef(false);
   const baselineRef = useRef(stayCards(items));
   const [pending, setPending] = useState(false);
@@ -374,6 +379,26 @@ export function BookingItemsPanel({
   useEffect(() => {
     onStepsPendingRef.current?.(pending);
   }, [pending]);
+  const answerRemoval = useCallback((ok: boolean) => {
+    setRemovalAsk(null);
+    const resolve = removalAnswer.current;
+    removalAnswer.current = null;
+    resolve?.(ok);
+  }, []);
+  useEffect(() => {
+    if (!removalAsk) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") answerRemoval(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [removalAsk, answerRemoval]);
+  useEffect(() => {
+    return () => {
+      removalAnswer.current?.(false);
+      removalAnswer.current = null;
+    };
+  }, []);
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [draft, setDraft] = useState<ItemDraft>(emptyDraft());
   const [busy, setBusy] = useState(false);
@@ -667,11 +692,22 @@ export function BookingItemsPanel({
     }
     const plan = stepCommitPlan(baselineRef.current.map(toSnapshot), stayCards(current).map(toSnapshot));
     if (!plan.pending) return true;
+    if (plan.deleted.length) {
+      const leaving = baselineRef.current.filter((item) => plan.deleted.includes(item.id));
+      if (leaving.length) {
+        const accepted = await new Promise<boolean>((resolve) => {
+          removalAnswer.current = resolve;
+          setRemovalAsk(removalConfirm(removalSignals(leaving, documents, checkins, baselineRef.current)));
+        });
+        if (!accepted) return "annule";
+      }
+    }
     setBusy(true);
     setError(null);
     const res = await fetch(`/api/admin/bookings/${bookingId}/items`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(20000),
       body: JSON.stringify({
         commit: true,
         deleted: plan.deleted,
@@ -1218,8 +1254,76 @@ export function BookingItemsPanel({
       <p className="mt-2 text-xs text-muted">
         Retirer une étape la retire de la liste. Le voyage change à l’enregistrement. Ses justificatifs partent avec elle, sauf s’ils restent sur une autre carte. Le fichier reste stocké.
       </p>
+      {removalAsk && typeof document !== "undefined"
+        ? createPortal(
+            <div className="admin-portal fixed inset-0 z-50 flex items-end justify-center bg-[#0b192c]/55 p-3 sm:items-center">
+              <section
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={removalTitleId}
+                className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-[#e8e4dc] bg-white text-[#1a1c1a] shadow-2xl"
+              >
+                <div className="border-b border-[#e8e4dc] bg-[#faf9f6] px-5 py-4">
+                  <p id={removalTitleId} className="font-display text-lg font-bold text-[#0b192c]">
+                    {removalAsk.title}
+                  </p>
+                  <p className="mt-0.5 text-sm text-[#44474c]">{removalAsk.intro}</p>
+                </div>
+                <div className="space-y-3 overflow-y-auto px-5 py-4">
+                  <ul className="space-y-1.5 text-sm text-[#0b192c]">
+                    {removalAsk.lines.map((line, index) => (
+                      <li key={`${index}-${line}`}>{line}</li>
+                    ))}
+                  </ul>
+                  {removalAsk.warning ? (
+                    <p className="rounded-2xl bg-[#f8e8e4] px-4 py-3 text-sm font-semibold text-[var(--admin-red)]">
+                      {removalAsk.warning}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap justify-end gap-2 border-t border-[#e8e4dc] px-5 py-4">
+                  <button
+                    type="button"
+                    onClick={() => answerRemoval(false)}
+                    className="admin-tap inline-flex h-11 items-center justify-center rounded-full border border-[#e8e4dc] bg-white px-4 text-sm font-semibold text-[#0b192c]"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => answerRemoval(true)}
+                    className="admin-tap inline-flex h-11 items-center justify-center rounded-full bg-[var(--admin-red)] px-4 text-sm font-semibold text-white"
+                  >
+                    {removalAsk.confirmLabel}
+                  </button>
+                </div>
+              </section>
+            </div>,
+            document.body
+          )
+        : null}
     </section>
   );
+}
+
+function removalSignals(
+  leaving: CrmBookingItem[],
+  documents: CrmBookingDocument[],
+  checkins: StoredFlightCheckin[],
+  dossier: CrmBookingItem[]
+): RemovalSignal[] {
+  return leaving.map((item) => {
+    const docs = documentsForItems([item], documents, dossier);
+    const passes = docs.filter((doc) => isBoardingPassDocument(doc));
+    const stored = checkins.find((row) => row.booking_item_id === item.id);
+    return {
+      id: item.id,
+      title: stepTitle(item),
+      checkin: cardHasOnlineCheckin(stored),
+      boardingPass: passes.length > 0,
+      documents: Math.max(0, docs.length - passes.length),
+    };
+  });
 }
 
 function retraitQuestion(exclusifs: number, lies: number) {

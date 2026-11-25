@@ -352,6 +352,8 @@ async function upsertItemsAndTravelers(
     replacements?: { itemId: string; kind: string; amount: number | null; includeInLedger: boolean }[];
     /** Rattachement automatique : seuls ces voyageurs sont créés. Tableau vide : personne. */
     recordTravelers?: { first_name?: string | null; last_name?: string | null }[];
+    /** Ne pas écrire `visible_to_client`. Une carte nouvelle reste masquée. */
+    freezeClientVisibility?: boolean;
   }
 ) {
   const remaining = [...existingItems];
@@ -486,6 +488,8 @@ async function upsertItemsAndTravelers(
           client_hidden: true,
         }
       : serviceDetails;
+    const freeze = Boolean(opts?.freezeClientVisibility);
+    const visible = freeze ? (match ? null : false) : fromMail ? false : cardStaysShown(match, Boolean(opts?.keepSellingPrice));
     const payload = {
       kind,
       title: kept?.title || title,
@@ -501,7 +505,7 @@ async function upsertItemsAndTravelers(
         : emptyToNull(item.end_at) || (match && isServiceKind(kind) ? emptyToNull(match.end_at) : null),
       amount,
       details: kept?.details || flightDetails || mailDetails,
-      visible_to_client: fromMail ? false : cardStaysShown(match, Boolean(opts?.keepSellingPrice)),
+      ...(visible === null ? {} : { visible_to_client: visible }),
       source_document_id: sourceDocId(details, docs),
       ...(replacing
         ? { include_in_ledger: replacing.includeInLedger }
@@ -555,7 +559,7 @@ async function upsertItemsAndTravelers(
               .update({
                 lifecycle: "superseded",
                 superseded_by: inserted.id,
-                visible_to_client: false,
+                ...(freeze ? {} : { visible_to_client: false }),
                 include_in_ledger: false,
               })
               .eq("id", replacing.itemId)
@@ -565,7 +569,7 @@ async function upsertItemsAndTravelers(
             if (retired) {
               retired.lifecycle = "superseded";
               retired.include_in_ledger = false;
-              retired.visible_to_client = false;
+              if (!freeze) retired.visible_to_client = false;
             }
           }
           remaining.push({
@@ -818,6 +822,8 @@ export async function applyExtractToBooking(opts: {
   replacements?: { itemId: string; kind: string; amount: number | null; includeInLedger: boolean }[];
   /** Un dossier annulé revient Non visible : le client ne le voit pas tant qu’on ne le montre pas. */
   reopenIfCancelled?: boolean;
+  /** Rattachement automatique : ne pas modifier la visibilité des cartes déjà là. */
+  freezeClientVisibility?: boolean;
 }) {
   const admin = createServiceClient();
   const { data: booking } = await admin
@@ -886,6 +892,7 @@ export async function applyExtractToBooking(opts: {
       keepSellingPrice: opts.keepSellingPrice,
       replacements: opts.replacements,
       recordTravelers: opts.recordTravelers,
+      freezeClientVisibility: opts.freezeClientVisibility,
     }
   );
   const patch: Record<string, unknown> = {};
@@ -943,6 +950,8 @@ export async function applyReplacementToBooking(opts: {
   replaceItemId?: string | null;
   skipTicketingFee?: boolean;
   recordTravelers?: { first_name?: string | null; last_name?: string | null }[];
+  reopenIfCancelled?: boolean;
+  freezeClientVisibility?: boolean;
 }) {
   const admin = createServiceClient();
   const { data: items } = await admin
@@ -970,7 +979,8 @@ export async function applyReplacementToBooking(opts: {
     importTasks: routed.tasks,
     keepSellingPrice: true,
     replacements: plan.replacements,
-    reopenIfCancelled: true,
+    reopenIfCancelled: opts.reopenIfCancelled !== false,
+    freezeClientVisibility: opts.freezeClientVisibility,
   });
 }
 
