@@ -168,8 +168,9 @@ export type Mb3mSaleChannel =
 export const MB3M_HOTEL_DIVERS_PROVIDER_NAME = "Hôtel Divers";
 
 /**
- * Noms cherchés pour une réservation Ratehawk. L’export TBA (237 fournisseurs) n’en a aucun :
- * l’Uid reste null. On n’en invente pas, et la ligne ne part pas sur Hôtel Divers.
+ * Noms cherchés pour une réservation Ratehawk. RATEHAWK est dans le référentiel TBA,
+ * créé le 25/11/2026. L’Uid vient de mb3mVerifiedProviderId("Ratehawk").
+ * La ligne ne part pas sur Hôtel Divers.
  */
 export const MB3M_RATEHAWK_PROVIDER_NAMES = ["Ratehawk", "RATEHAWK", "Emerging Travel"] as const;
 
@@ -321,7 +322,7 @@ function hotelDiversSupplier(): Mb3mSupplierResolution {
   return found(provider);
 }
 
-/** Ratehawk garde son fournisseur. Sans ligne dans l’export, aucun Uid n’est inventé. */
+/** Ratehawk garde son fournisseur. L’Uid est celui de la fiche RATEHAWK, jamais inventé. */
 function ratehawkSupplier(): Mb3mSupplierResolution {
   const id = MB3M_RATEHAWK_PROVIDER_ID;
   const name = id ? MB3M_RATEHAWK_PROVIDER_NAMES.find((label) => mb3mVerifiedProviderId(label) === id) : "";
