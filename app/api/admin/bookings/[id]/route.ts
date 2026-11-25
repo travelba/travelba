@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertStaffPermission } from "@/lib/crm/agency-guard";
 import { dbError, jsonError, jsonIssues, requireStaff } from "@/lib/crm/auth";
 import { collectPublishIssues } from "@/lib/crm/booking-issues";
@@ -26,7 +27,7 @@ import {
   remindMissingPieces,
   safeConcierge,
 } from "@/lib/crm/concierge-send";
-import { stayJustShown } from "@/lib/crm/piece-publish";
+import { revealKeptHiddenOnShow, stayJustShown } from "@/lib/crm/piece-publish";
 import { clientDossierRevalidations } from "@/lib/crm/client-stay-paths";
 import { countsAsCarnetCard, type BookingStatus, type CrmBooking, type CrmCustomer } from "@/lib/crm/types";
 
@@ -218,8 +219,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
           .eq("booking_id", id);
         if (!before.error) beforeCards = (before.data || []) as typeof beforeCards;
       }
+      const announced = justShown ? await stayAlreadyAnnounced(auth.supabase, id) : false;
       await setCarnetPublished(auth.supabase, id, Boolean(body.visible_to_client), {
-        includeKeptHidden: justShown,
+        includeKeptHidden: revealKeptHiddenOnShow(justShown, announced),
         revealDocuments: justShown,
       });
       if (beforeCards.length) {
@@ -264,6 +266,16 @@ export async function PATCH(request: Request, ctx: Ctx) {
     for (const item of clientDossierRevalidations(booking.reference)) revalidatePath(item.path, item.type);
   }
   return NextResponse.json({ booking });
+}
+
+/** Le séjour a déjà été annoncé au client : un second « Montrer » ne rouvre pas les cartes cachées. */
+async function stayAlreadyAnnounced(supabase: SupabaseClient, bookingId: string) {
+  const { data } = await supabase
+    .from("crm_whatsapp_messages")
+    .select("id")
+    .eq("dedupe_key", `sejour:${bookingId}`)
+    .limit(1);
+  return Boolean(data?.length);
 }
 
 export async function DELETE(_req: Request, ctx: Ctx) {

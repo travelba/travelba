@@ -143,11 +143,95 @@ export function firstNameOnlyMatches(query: string | null | undefined, given: st
   return left.every((token, index) => token === right[index]);
 }
 
+/**
+ * Formes courtes et variantes. Un groupe = une personne.
+ * Patrick et Patricia restent séparés. Jean n’est pas John.
+ */
+const GIVEN_VARIANT_GROUPS = [
+  ["john", "jonathan", "jon", "johnny", "johnathan"],
+  ["yanik", "yannick", "yannik", "yanick", "yannic", "yann"],
+  ["mike", "michael", "mickael", "mikhael"],
+  ["bob", "robert"],
+  ["bill", "will", "william"],
+  ["jim", "james"],
+  ["joe", "joseph"],
+  ["tom", "thomas"],
+  ["dan", "danny", "daniel"],
+  ["ben", "benjamin"],
+  ["sam", "samuel"],
+  ["alex", "alexander", "alexandre"],
+  ["nick", "nicholas", "nicolas"],
+  ["chris", "christopher", "christophe"],
+  ["matt", "matthew", "mathieu"],
+  ["kate", "cathy", "katherine", "catherine"],
+  ["liz", "beth", "elizabeth", "elisabeth"],
+  ["steve", "steven", "stephen", "stephane"],
+  ["tony", "anthony"],
+  ["fred", "frederick", "frederic"],
+  ["ed", "edward", "edouard"],
+  ["theo", "theodore"],
+  ["max", "maxime", "maximilien"],
+  ["gab", "gabriel"],
+] as const;
+
+const givenVariantKey = new Map<string, number>();
+GIVEN_VARIANT_GROUPS.forEach((group, index) => {
+  for (const name of group) givenVariantKey.set(name, index);
+});
+
+function givenVariantsMatch(a: string, b: string) {
+  const left = givenVariantKey.get(a);
+  return left != null && left === givenVariantKey.get(b);
+}
+
+/** « John » est le début de « Jonathan ». Quatre lettres de plus, pour ne pas confondre Jean et Jeanne. */
+function givenPrefixMatch(a: string, b: string) {
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  return shorter.length >= 4 && longer.length - shorter.length >= 4 && longer.startsWith(shorter);
+}
+
+/** Préfixe un peu court (Nathan / Nathanaël) : doute, pas une identité certaine. */
+function givenShortPrefix(a: string, b: string) {
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  const extra = longer.length - shorter.length;
+  return shorter.length >= 4 && extra >= 2 && extra < 4 && longer.startsWith(shorter);
+}
+
 /** Une lettre d’écart, seulement à partir de 4 lettres (Leoh / Leo). Ali ≠ Alice. */
 function givenTokenClose(a: string, b: string) {
   if (a === b) return true;
+  if (givenVariantsMatch(a, b)) return true;
+  if (givenPrefixMatch(a, b)) return true;
   if (Math.max(a.length, b.length) < 4) return false;
   return editDistance(a, b) <= 1;
+}
+
+function givenTokensNear(a: string | null | undefined, b: string | null | undefined, maxDistance: number) {
+  const left = nameTokens(a);
+  const right = nameTokens(b);
+  if (!left.length || !right.length) return false;
+  return left.some((token) =>
+    right.some((other) => {
+      if (givenTokenClose(token, other)) return true;
+      if (Math.max(token.length, other.length) < 4) return false;
+      return editDistance(token, other) <= maxDistance;
+    })
+  );
+}
+
+/** Deux lettres d’écart, ou un préfixe court : possible, pas assez pour rattacher le livret. */
+function givenNamesUncertain(a: string | null | undefined, b: string | null | undefined) {
+  if (givenNamesClose(a, b)) return false;
+  const left = nameTokens(a);
+  const right = nameTokens(b);
+  if (!left.length || !right.length) return false;
+  return left.some((token) =>
+    right.some((other) => {
+      if (givenShortPrefix(token, other)) return true;
+      if (Math.max(token.length, other.length) < 4) return false;
+      return editDistance(token, other) <= 2;
+    })
+  );
 }
 
 function givenNamesClose(a: string | null | undefined, b: string | null | undefined) {
@@ -220,6 +304,46 @@ export type PersonIdentity = PersonName & { birth_date?: string | null };
 function birthDay(value: string | null | undefined) {
   const raw = (value || "").trim();
   return raw ? raw.slice(0, 10) : "";
+}
+
+/**
+ * Même personne, y compris quand les prénoms sont à deux lettres
+ * et que le nom et la date de naissance sont les mêmes.
+ * Sans cette date, deux lettres ne suffisent pas.
+ */
+export function sameRecordedIdentity(a: PersonIdentity, b: PersonIdentity) {
+  if (
+    isPlaceholderTraveler(a.first_name, a.last_name) ||
+    isPlaceholderTraveler(b.first_name, b.last_name)
+  ) {
+    return false;
+  }
+  if (namesReferToSamePerson(a, b)) return true;
+  const left = birthDay(a.birth_date);
+  const right = birthDay(b.birth_date);
+  if (!left || left !== right) return false;
+  if (!familiesMatch(a, b)) return false;
+  return givenTokensNear(a.first_name, b.first_name, 2);
+}
+
+/**
+ * Pas assez sûr pour rattacher le livret, trop proche pour dire qu’il manque.
+ * Une date de naissance différente écarte le doute.
+ */
+export function identitiesCouldBeSame(a: PersonIdentity, b: PersonIdentity) {
+  if (
+    isPlaceholderTraveler(a.first_name, a.last_name) ||
+    isPlaceholderTraveler(b.first_name, b.last_name)
+  ) {
+    return false;
+  }
+  if (sameRecordedIdentity(a, b)) return false;
+  const left = birthDay(a.birth_date);
+  const right = birthDay(b.birth_date);
+  if (left && right && left !== right) return false;
+  if (!familiesMatch(a, b)) return false;
+  if (left && left === right) return true;
+  return givenNamesUncertain(a.first_name, b.first_name);
 }
 
 /**

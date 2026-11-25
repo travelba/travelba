@@ -76,6 +76,20 @@ test("les manques comptent passeport, courriers hôtel et montant caché", () =>
     chips.map((chip) => chip.label),
     ["Passeport Judith", "2 courriers hôtel", "Montant non montré"]
   );
+  const doubt = staffBlockingChips({
+    travelers: [
+      { id: "a", first_name: "Yonatan", last_name: "Amar" },
+      { id: "b", first_name: "Saul", last_name: "Benamara" },
+    ],
+    missingPassportIds: ["b"],
+    doubtPassportIds: ["a"],
+    hotelLettersOpen: 0,
+    amountHidden: false,
+  });
+  assert.deepEqual(
+    doubt.map((chip) => chip.label),
+    ["Passeport à vérifier · Yonatan", "Passeport Saul"]
+  );
   assert.ok(chips.every((chip) => chip.tab == null));
 });
 

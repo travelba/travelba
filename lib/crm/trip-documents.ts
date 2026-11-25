@@ -2,8 +2,10 @@ import { greetingGivenName, shownPersonName } from "./identity";
 import {
   foldName,
   holderMatchesAddedTraveler,
+  identitiesCouldBeSame,
   isPlaceholderTraveler,
   namesReferToSamePerson,
+  sameRecordedIdentity,
   type PersonIdentity,
   type PersonName,
 } from "./person-match";
@@ -216,6 +218,30 @@ function actsAsHolder(
  * Le coffre d’un compagnon (companion_id, traveler_id vide) est le sien.
  * Un livret sans nom au coffre du titulaire est le sien.
  */
+function paperIdentity(doc: CrmTravelDocument): PersonIdentity {
+  return {
+    first_name: doc.first_name ?? null,
+    last_name: doc.last_name ?? null,
+    usage_name: doc.usage_name ?? null,
+    birth_date: doc.birth_date ?? null,
+  };
+}
+
+/** Le voyageur n’a pas de date : celle du titulaire ou du compagnon, quand c’est lui. */
+function travelerIdentity(
+  traveler: CrmBookingTraveler,
+  holder: PersonIdentity | null | undefined,
+  companions: PassportCompanion[]
+): PersonIdentity {
+  const base = personOf(traveler);
+  if (base.birth_date) return base;
+  if (traveler.is_account_holder && holder?.birth_date) return { ...base, birth_date: holder.birth_date };
+  const linked = traveler.companion_id ? companions.find((row) => row.id === traveler.companion_id) : undefined;
+  if (linked?.birth_date) return { ...base, birth_date: linked.birth_date };
+  if (holder?.birth_date && namesReferToSamePerson(base, holder)) return { ...base, birth_date: holder.birth_date };
+  return base;
+}
+
 export function passportMatchesTraveler(
   doc: CrmTravelDocument,
   traveler: CrmBookingTraveler,
@@ -230,6 +256,7 @@ export function passportMatchesTraveler(
     const companion = companions.find((row) => row.id === doc.companion_id);
     if (companion && holderMatchesAddedTraveler(personOf(companion), personOf(traveler))) return true;
   }
+  if (sameRecordedIdentity(travelerIdentity(traveler, holder, companions), paperIdentity(doc))) return true;
   if (!actsAsHolder(traveler, holder, companions)) return false;
   const probe: CrmBookingTraveler = { ...traveler, is_account_holder: true, companion_id: null };
   return documentMatchesTraveler(doc, probe, holder);
@@ -329,4 +356,46 @@ export function missingPassportCount(
   options?: PassportPartyOptions
 ) {
   return travelersMissingPassport(travelers, docs, options).length;
+}
+
+/**
+ * Livret du coffre encore valable au retour, qui pourrait être celui du voyageur.
+ * Pas un rattachement : les dates se contredisent, ou les prénoms restent trop loin.
+ */
+function vaultPassportCouldMatch(
+  doc: CrmTravelDocument,
+  traveler: CrmBookingTraveler,
+  holder: PersonIdentity | null,
+  companions: PassportCompanion[],
+  returnOn: string
+) {
+  if (doc.doc_type !== "passport" || !isVaultDocument(doc)) return false;
+  if (!passportValidAtReturn(doc, returnOn)) return false;
+  if (passportMatchesTraveler(doc, traveler, holder, companions)) return false;
+  return identitiesCouldBeSame(travelerIdentity(traveler, holder, companions), paperIdentity(doc));
+}
+
+/** Voyageurs sans passeport certain, mais avec un livret du coffre qui pourrait être le leur. */
+export function travelersPassportUncertain(
+  travelers: CrmBookingTraveler[],
+  docs: CrmTravelDocument[],
+  options?: PassportPartyOptions
+) {
+  const { holder, companions, returnOn } = partyOptions(options);
+  const missing = travelersMissingPassport(travelers, docs, options);
+  return missing.filter((traveler) =>
+    docs.some((doc) => vaultPassportCouldMatch(doc, traveler, holder, companions, returnOn))
+  );
+}
+
+/**
+ * Nombre annoncé au client. Dès qu’un livret du coffre pourrait correspondre, rien ne part.
+ */
+export function passportClientReminderCount(
+  travelers: CrmBookingTraveler[],
+  docs: CrmTravelDocument[],
+  options?: PassportPartyOptions
+) {
+  if (travelersPassportUncertain(travelers, docs, options).length) return 0;
+  return missingPassportCount(travelers, docs, options);
 }

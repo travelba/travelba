@@ -127,6 +127,16 @@ test("Valmorel stays in France and does not ask for a passport", () => {
     frenchPassportRequired([{ kind: "hotel", details: { city: "Zermatt", country: "Suisse" } }], { destination: "Zermatt" }),
     false
   );
+  assert.equal(
+    frenchPassportRequired(
+      [{ kind: "hotel", details: { city: "Crans Montana", hotel_name: "Hotel Royal" } }],
+      { destination: "Crans-Montana", title: "Crans-Montana" }
+    ),
+    false
+  );
+  for (const place of ["Gstaad", "Verbier", "Villars", "Saas-Fee", "Davos", "Wengen", "Zermatt", "St. Moritz"]) {
+    assert.equal(frenchPassportRequired([], { destination: place, title: place }), false, place);
+  }
 });
 
 test("Guadeloupe and an unknown airport do not open the paid service", () => {

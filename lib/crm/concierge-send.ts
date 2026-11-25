@@ -6,7 +6,7 @@ import { clientStayFace, shownStayDestination } from "@/lib/crm/client-stay-face
 import { cityCoverCached, ensureCityCover } from "@/lib/crm/cover-generate";
 import { cityCoverAuthFailed } from "@/lib/crm/cover-retouch";
 import { createEntryLink, entryButtonSuffix, entryCodeFromLink } from "./entry-link";
-import { missingPassportCount, travelersPassportExpiresBeforeReturn } from "./trip-documents";
+import { passportClientReminderCount, travelersPassportExpiresBeforeReturn, travelersPassportUncertain } from "./trip-documents";
 import { entryForFrenchPassport } from "./visa-fr";
 import { frenchPassportRequired, frenchPassportTrip } from "./visa-trip";
 import { toE164 } from "./phone";
@@ -714,8 +714,9 @@ async function deliverRow(admin: Admin, row: QueueRow, now: Date) {
   }
 
   if (key.startsWith("passeport:") || key.startsWith("passeport-expire:") || key.startsWith("formalite-manquante:")) {
-    const plans = await missingPlans(admin, booking, now);
-    const plan = plans.find((item) => item.dedupe === key);
+    const reviewed = await missingPlans(admin, booking, now);
+    if (reviewed.passportDoubt) await notePassportDoubt(admin, booking);
+    const plan = reviewed.plans.find((item) => item.dedupe === key);
     if (!plan) {
       await dropQueue(admin, row.id);
       return;
@@ -823,17 +824,18 @@ async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
   };
   const expiring = travelersPassportExpiresBeforeReturn(party, papers, passportOptions);
   const expiryPrefix = `passeport-expire:${booking.id}:`;
-  return planMissingPieceNotices({
+  const passportRequired = frenchPassportRequired(steps, {
+    destination: booking.destination,
+    title: booking.title,
+  });
+  const uncertain = travelersPassportUncertain(party, papers, passportOptions);
+  const noticeInput = {
     published: booking.visible_to_client,
     reference: booking.reference,
     bookingId: booking.id,
     startDate: booking.start_date,
     today: now.toISOString().slice(0, 10),
-    passportRequired: frenchPassportRequired(steps, {
-      destination: booking.destination,
-      title: booking.title,
-    }),
-    missingPassports: missingPassportCount(party, papers, passportOptions),
+    passportRequired,
     expiringPassports: expiring.map((row) => ({
       travelerId: row.traveler.id,
       givenName: row.givenName,
@@ -850,7 +852,43 @@ async function missingPlans(admin: Admin, booking: CrmBooking, now: Date) {
       expiringTravelerIds: [...sentKeys].filter((key) => key.startsWith(expiryPrefix)).map((key) => key.slice(expiryPrefix.length)),
       formalityNames,
     },
-  });
+  };
+  const clientMissing = passportClientReminderCount(party, papers, passportOptions);
+  const plans = planMissingPieceNotices({ ...noticeInput, missingPassports: clientMissing });
+  const wouldRemind = planMissingPieceNotices({
+    ...noticeInput,
+    missingPassports: uncertain.length ? uncertain.length : clientMissing,
+  }).some((plan) => plan.template === "passeport" || plan.template === "passeports");
+  return { plans, passportDoubt: uncertain.length > 0 && wouldRemind };
+}
+
+export const PASSPORT_DOUBT_NOTE =
+  "Passeport à vérifier : un livret du coffre pourrait correspondre à un voyageur. Aucun message au client.";
+
+/** Note d’agence, une seule fois. Le client passé en argument est celui du cron ou du service role. Aucun WhatsApp. */
+async function notePassportDoubt(admin: Admin, booking: CrmBooking) {
+  try {
+    const { data } = await admin
+      .from("crm_agency_journal")
+      .select("seq")
+      .eq("entity_type", "dossier")
+      .eq("entity_id", booking.id)
+      .eq("summary", PASSPORT_DOUBT_NOTE)
+      .limit(1);
+    if ((data || []).length) return;
+    await admin.from("crm_agency_journal").insert({
+      staff_id: null,
+      action: "update",
+      entity_type: "dossier",
+      entity_id: booking.id,
+      summary: PASSPORT_DOUBT_NOTE,
+      path: "/api/admin/bookings",
+      canonical: "",
+      row_hash: "pending",
+    });
+  } catch (err) {
+    quiet(err);
+  }
 }
 
 export async function notifyStayPublished(bookingId: string, admin: Admin = createServiceClient()) {
@@ -1348,8 +1386,9 @@ export async function notifyFormalitiesReady(
 export async function remindMissingPieces(bookingId: string, now = new Date(), admin: Admin = createServiceClient()) {
   const booking = await loadBooking(admin, bookingId);
   if (!booking?.visible_to_client) return;
-  const plans = await missingPlans(admin, booking, now);
-  for (const plan of plans) {
+  const reviewed = await missingPlans(admin, booking, now);
+  if (reviewed.passportDoubt) await notePassportDoubt(admin, booking);
+  for (const plan of reviewed.plans) {
     const row = await saveQueue(admin, {
       dedupeKey: plan.dedupe,
       customerId: booking.customer_id,

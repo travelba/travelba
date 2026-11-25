@@ -7,3 +7,11 @@ export function stayJustShown(prevVisible: boolean | null | undefined, body: Rec
     Object.prototype.hasOwnProperty.call(body, "visible_to_client") && Boolean(body.visible_to_client) && !prevVisible
   );
 }
+
+/**
+ * Premier passage en Visible : les cartes encore cachées partent avec le séjour.
+ * Un séjour déjà annoncé (message « sejour: ») ne rouvre pas celles cachées à la main.
+ */
+export function revealKeptHiddenOnShow(justShown: boolean, alreadyAnnounced: boolean) {
+  return justShown && !alreadyAnnounced;
+}
