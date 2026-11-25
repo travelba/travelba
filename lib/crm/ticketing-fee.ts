@@ -85,24 +85,16 @@ export function ticketingFeeDismissed(feeMode: string | null | undefined) {
 }
 
 /**
- * Montant à ajouter en plus des dépenses.
- * 0 quand la billeterie est déjà une ligne de dépense : elle est dans cette somme.
+ * Plus aucun frais n’est ajouté au prix affiché.
+ * Une ligne de billeterie déjà vendue reste dans les dépenses du dossier.
  */
-export function chargeableTicketingFee(input: {
-  items: { kind?: string | null; details?: Record<string, unknown> | null; lifecycle?: string | null }[];
-  status: string;
+export function chargeableTicketingFee(_input?: {
+  items?: { kind?: string | null; details?: Record<string, unknown> | null; lifecycle?: string | null }[];
+  status?: string;
   travelerCount?: number;
-  /** `ticketing_off` : l’agence a retiré les frais. On ne les rajoute pas. */
   feeMode?: string | null;
 }) {
-  if (ticketingFeeDismissed(input.feeMode)) return 0;
-  const active = input.items.filter((item) => isActiveItem(item));
-  if (active.some((item) => isAutoTicketingExpense(item))) return 0;
-  return collectableTicketingFee({
-    status: input.status,
-    hasFlight: active.some((item) => item.kind === "flight"),
-    travelerCount: input.travelerCount,
-  });
+  return 0;
 }
 
 /** Créer, mettre à jour, retirer ou laisser la dépense de billeterie. */

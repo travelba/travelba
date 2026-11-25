@@ -140,6 +140,11 @@ export async function PATCH(request: Request, ctx: Ctx) {
     patch.billing_company_id = parsed.id;
   }
 
+  if (patch.price_mode === "forfait" || ("forfait_amount" in patch && (patch.price_mode === "forfait" || prev.price_mode === "forfait"))) {
+    const amount = "forfait_amount" in patch ? patch.forfait_amount : prev.forfait_amount;
+    if (!(Number(amount) > 0)) return jsonError("Indiquez le prix forfait du voyage.");
+  }
+
   let booking = prev;
   if (Object.keys(patch).length) {
     const { data, error } = await auth.supabase
@@ -157,6 +162,12 @@ export async function PATCH(request: Request, ctx: Ctx) {
         (missingDbColumn(error, "remise_type") || missingDbColumn(error, "remise_value"))
       ) {
         return jsonError("La remise commerciale n’est pas encore en place. Appliquez la migration, puis enregistrez.");
+      }
+      if (
+        ("price_mode" in patch || "forfait_amount" in patch) &&
+        (missingDbColumn(error, "price_mode") || missingDbColumn(error, "forfait_amount"))
+      ) {
+        return jsonError("Le prix forfait n’est pas encore en place. Appliquez la migration, puis enregistrez.");
       }
       return dbError(error, 400);
     }

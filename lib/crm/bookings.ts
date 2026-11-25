@@ -18,19 +18,6 @@ import { expenseAwaitsValidation, expenseCountsForClient } from "@/lib/crm/expen
 import { flightAmountIsGroupTotal, hotelDisplayName, publishRevealIds } from "@/lib/crm/carnet";
 import { shownClientNote } from "@/lib/crm/public-booking";
 import { nextStayLabels } from "@/lib/crm/staff-stay";
-import {
-  AUTO_TICKETING_FEE,
-  isAutoTicketingExpense,
-  ticketingLinesToKeep,
-  ticketingExpenseAction,
-  ticketingExpenseTouched,
-  ticketingFeeAmount,
-  ticketingFeeDismissed,
-  TICKETING_FEE_OFF,
-  ticketingFeeExternalId,
-  ticketingFeeLabel,
-  ticketingTicketCount,
-} from "@/lib/crm/ticketing-fee";
 import { coversStayRollup, isStayRollupDebit } from "@/lib/crm/ledger-display";
 import { debitBillingCompanyId } from "@/lib/crm/billing-companies";
 import { ledgerDebitPayer } from "@/lib/crm/payer";
@@ -48,6 +35,14 @@ import {
 import { agencyFeeBaseAmount, agencyFeeFromGross } from "@/lib/crm/money";
 import { must } from "@/lib/crm/must";
 import { visibilityOnRequest } from "@/lib/crm/visa-flow";
+import { missingDbColumn } from "@/lib/crm/optional-column";
+import {
+  automaticTicketingWrites,
+  readCardPriceMode,
+  readForfaitAmount,
+  readStayPriceMode,
+  type StayPriceMode,
+} from "@/lib/crm/card-price";
 
 function debitParty(booking: { payer_kind?: string | null }, companyId: string | null) {
   return {
@@ -111,6 +106,8 @@ const BOOKING_META_KEYS = [
   "offer_visa",
   "remise_type",
   "remise_value",
+  "price_mode",
+  "forfait_amount",
 ] as const;
 
 /** Champs dossier envoyés par le formulaire admin. Dates vides = null, titre trimé. */
@@ -166,6 +163,16 @@ export function bookingMetaPatch(body: Record<string, unknown>) {
     }
     if (key === "currency") {
       patch[key] = stayCurrency(body[key]);
+      continue;
+    }
+    if (key === "price_mode") {
+      const mode = body[key];
+      if (mode === "cartes" || mode === "forfait") patch[key] = mode;
+      continue;
+    }
+    if (key === "forfait_amount") {
+      const amount = Number(body[key]);
+      patch[key] = Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) / 100 : null;
       continue;
     }
     if (key === "remise_type" || key === "remise_value") continue;
@@ -313,12 +320,29 @@ export function stayIncludedInLedger(booking: {
  * Extra (chauffeur, VIP, visa, enregistrement) : selon sa propre case.
  */
 export function itemIncludedInLedger(
-  item: { kind?: string | null; include_in_ledger?: boolean | null; details?: unknown },
-  clientSettlesStay: boolean
+  item: {
+    kind?: string | null;
+    amount?: number | string | null;
+    include_in_ledger?: boolean | null;
+    details?: unknown;
+    price_mode?: string | null;
+  },
+  clientSettlesStay: boolean,
+  stayMode: StayPriceMode = "cartes"
 ) {
   if (isLedgerExpenseKind(item.kind)) return !expenseAwaitsValidation(item);
-  if (clientSettlesStay && isStayAmountKind(item.kind)) return false;
-  return Boolean(item.include_in_ledger);
+  if (isExtraItemKind(item.kind)) return Boolean(item.include_in_ledger);
+  if (stayMode === "forfait" || clientSettlesStay) return false;
+  const details =
+    item.details && typeof item.details === "object" && !Array.isArray(item.details)
+      ? (item.details as Record<string, unknown>)
+      : null;
+  const raw = typeof item.amount === "string" ? Number(item.amount) : item.amount;
+  const amount = raw == null || !Number.isFinite(Number(raw)) ? null : Number(raw);
+  if (readCardPriceMode({ amount, price_mode: item.price_mode, details }) !== "avec") {
+    return false;
+  }
+  return (itemSellingAmount({ kind: item.kind, amount, details }) || 0) > 0;
 }
 
 /** Montant du séjour : toujours la somme des prix vendus. Transfert, greeter, enregistrement, visa, dépense libre et frais de billeterie restent hors total. */
@@ -329,10 +353,15 @@ export function bookingTotalFromItems(
     start_at?: string | null;
     details?: Record<string, unknown> | null;
     lifecycle?: string | null;
-  }[]
+    price_mode?: string | null;
+  }[],
+  options?: { stayMode?: StayPriceMode; forfaitAmount?: number | null }
 ): number {
+  if (options?.stayMode === "forfait") return readForfaitAmount({ forfait_amount: options.forfaitAmount }) ?? 0;
   let sum = 0;
-  const active = items.filter((item) => isActiveItem(item));
+  const active = items.filter(
+    (item) => isActiveItem(item) && (!isStayAmountKind(item.kind) || readCardPriceMode(item) === "avec")
+  );
   const fareFlights = new Set(flightsInStayTotal(active));
   for (const item of active) {
     if (!isStayAmountKind(item.kind)) continue;
@@ -349,7 +378,14 @@ export async function syncBookingTotalFromItems(supabase: SupabaseClient, bookin
     await supabase.from("crm_booking_items").select("amount, kind, details, start_at, lifecycle").eq("booking_id", bookingId),
     "Cartes du séjour"
   );
-  const total = bookingTotalFromItems(items || []);
+  const pricing = await supabase.from("crm_bookings").select("price_mode, forfait_amount").eq("id", bookingId).maybeSingle();
+  const columnMissing =
+    Boolean(pricing.error) &&
+    (missingDbColumn(pricing.error, "price_mode") || missingDbColumn(pricing.error, "forfait_amount"));
+  if (pricing.error && !columnMissing) throw new Error(pricing.error.message);
+  const stayMode = columnMissing ? "cartes" : readStayPriceMode(pricing.data);
+  const forfaitAmount = columnMissing ? null : readForfaitAmount(pricing.data);
+  const total = bookingTotalFromItems(items || [], { stayMode, forfaitAmount });
   must(await supabase.from("crm_bookings").update({ total_amount: total }).eq("id", bookingId), "Montant du séjour");
 }
 
@@ -577,116 +613,12 @@ export async function syncBookingDebit(
   }
 }
 
-type TicketingItemRow = {
-  id: string;
-  kind: string;
-  title: string | null;
-  amount: number | null;
-  sort_order: number | null;
-  details: Record<string, unknown> | null;
-  lifecycle?: string | null;
-};
-
 /**
- * La billeterie est une dépense du dossier.
- * Le calcul (25 € par voyageur) la crée et la tient à jour tant que l’agence ne l’a pas modifiée.
- * La transaction suit cette ligne. L’ancienne écriture `ticketing-fee` est annulée pour ne pas compter deux fois.
+ * Les frais de billeterie ne sont plus ajoutés ni retirés tout seuls.
+ * Une ligne déjà au dossier reste, avec sa transaction.
  */
-export async function syncTicketingFee(supabase: SupabaseClient, booking: CrmBooking) {
-  const [{ data: itemRows }, { data: travelers }, { data: legacy }] = await Promise.all([
-    supabase
-      .from("crm_booking_items")
-      .select("id, kind, title, amount, sort_order, details, lifecycle")
-      .eq("booking_id", booking.id),
-    supabase.from("crm_booking_travelers").select("id").eq("booking_id", booking.id),
-    supabase
-      .from("crm_transactions")
-      .select("id, status")
-      .eq("source", "manual")
-      .eq("external_id", ticketingFeeExternalId(booking.id))
-      .maybeSingle(),
-  ]);
-
-  const items = (itemRows || []) as TicketingItemRow[];
-  const active = items.filter((row) => isActiveItem(row));
-  const hasFlight = active.some((row) => row.kind === "flight");
-  const travelerCount = (travelers || []).length;
-  const lines = ticketingLinesToKeep(items);
-  const zeroFees = await ownerHasZeroFees(supabase, booking.customer_id);
-  const feesLocked = zeroFees ? await bookingFeesAreLocked(supabase, booking.id) : false;
-  let feeMode = booking.fee_mode;
-  if (zeroFees && !feesLocked && !ticketingFeeDismissed(feeMode)) {
-    feeMode = TICKETING_FEE_OFF;
-    await supabase.from("crm_bookings").update({ fee_mode: TICKETING_FEE_OFF }).eq("id", booking.id);
-  }
-  // La synchro des cartes, juste après, annule le débit de chaque copie retirée.
-  for (const id of lines.dropIds) {
-    must(await supabase.from("crm_booking_items").delete().eq("id", id), "Frais de billeterie");
-  }
-  const auto = items.find((row) => row.id === lines.keepId) || null;
-  const amount = ticketingFeeAmount({ hasFlight, travelerCount });
-  const title = ticketingFeeLabel(ticketingTicketCount({ hasFlight, travelerCount }));
-  const action = ticketingExpenseAction({
-    hasFlight,
-    dismissed: ticketingFeeDismissed(feeMode) || (zeroFees && !feesLocked),
-    exists: Boolean(auto),
-    touched: ticketingExpenseTouched(auto?.details),
-    amount,
-    currentAmount: auto?.amount == null ? null : Number(auto.amount),
-    title,
-    currentTitle: auto?.title || null,
-  });
-
-  if (action === "remove" && auto) {
-    must(await supabase.from("crm_booking_items").delete().eq("id", auto.id), "Frais de billeterie");
-  } else if (action === "create" && zeroFees) {
-    // Zéro frais : pas de nouvelle ligne, même si la facture déjà émise empêche le retrait.
-  } else if (action === "create") {
-    const sortOrder =
-      items.reduce((max, row) => Math.max(max, Number(row.sort_order || 0)), -1) + 1;
-    must(
-      await supabase.from("crm_booking_items").insert({
-        booking_id: booking.id,
-        kind: "expense",
-        title,
-        amount,
-        include_in_ledger: true,
-        sort_order: Math.min(sortOrder, MAX_SORT_ORDER),
-        details: { auto_fee: AUTO_TICKETING_FEE },
-        visible_to_client: false,
-      }),
-      "Frais de billeterie"
-    );
-  } else if (action === "update" && auto) {
-    must(
-      await supabase
-        .from("crm_booking_items")
-        .update({
-          title,
-          amount,
-          include_in_ledger: true,
-          details: { ...(auto.details || {}), auto_fee: AUTO_TICKETING_FEE },
-        })
-        .eq("id", auto.id),
-      "Frais de billeterie"
-    );
-  } else if (auto && !isAutoTicketingExpense(auto)) {
-    must(
-      await supabase
-        .from("crm_booking_items")
-        .update({ details: { ...(auto.details || {}), auto_fee: AUTO_TICKETING_FEE } })
-        .eq("id", auto.id),
-      "Frais de billeterie"
-    );
-  }
-
-  const previous = legacy as { id: string; status: string } | null;
-  if (previous && previous.status !== "void") {
-    must(
-      await supabase.from("crm_transactions").update({ status: "void" }).eq("id", previous.id),
-      "Frais de billeterie"
-    );
-  }
+export async function syncTicketingFee(_supabase: SupabaseClient, _booking: CrmBooking) {
+  if (automaticTicketingWrites()) return;
 }
 
 export async function syncAgencyCommission(supabase: SupabaseClient, booking: CrmBooking) {
@@ -837,7 +769,7 @@ export async function syncBookingItemDebits(supabase: SupabaseClient, booking: C
       status: booking.status,
       amount,
       hasOpenDebit: Boolean(debit),
-      includeInLedger: itemIncludedInLedger(item, booking.client_settles_stay === true),
+      includeInLedger: itemIncludedInLedger(item, booking.client_settles_stay === true, readStayPriceMode(booking)),
       visibleToClient: booking.visible_to_client,
     });
     const label = bookingItemDebitLabel(item, booking.reference);

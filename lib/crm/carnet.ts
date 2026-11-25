@@ -539,12 +539,16 @@ export function insuranceLineLabel(title: string | null | undefined) {
 export function itemPriceLabel(
   item: Pick<CrmBookingItem, "kind" | "start_at" | "end_at" | "amount"> & {
     details?: Record<string, unknown> | null;
+    price_mode?: string | null;
   },
   currency: string,
   onDay?: string | null,
-  pricesVisible = true
+  pricesVisible = true,
+  stayMode: "cartes" | "forfait" = "cartes"
 ) {
-  if (item.amount == null || Number.isNaN(Number(item.amount))) return null;
+  if (stayMode === "forfait") return null;
+  if (item.details?.price_mode === "sans" || item.price_mode === "sans") return null;
+  if (item.amount == null || Number.isNaN(Number(item.amount)) || Number(item.amount) === 0) return null;
   if (onDay) {
     const first = itemFirstDayKey(item);
     if (first && onDay !== first) return null;

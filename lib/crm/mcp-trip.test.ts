@@ -490,7 +490,8 @@ test("ajouter_vol et ajouter_hotel gardent le grand livre d’un séjour caché"
   const flightRow = db.tables.crm_booking_items.find((row) => row.kind === "flight");
   assert.ok(flightRow);
   assert.equal(flightRow.visible_to_client, false);
-  assert.equal(flightRow.include_in_ledger, false);
+  assert.equal(flightRow.include_in_ledger, true);
+  assert.equal((flightRow.details as Record<string, unknown>).price_mode, "avec");
   assert.equal(flightRow.confirmation_ref, "ABC123");
   assert.equal(flightRow.start_at, "2026-11-02T22:10:00");
   assert.equal(flightRow.end_at, "2026-11-03T06:40:00");
@@ -503,11 +504,7 @@ test("ajouter_vol et ajouter_hotel gardent le grand livre d’un séjour caché"
   assert.equal(details.arrival_timezone, "Asia/Bangkok");
   assert.equal(itemClock(String(flightRow.start_at)), "22h10");
   assert.equal(flightCardTitle(card(flightRow)), "Paris → Bangkok");
-  const fee = db.tables.crm_booking_items.find((row) => row.kind === "expense");
-  assert.ok(fee);
-  assert.equal(fee.amount, 25);
-  assert.equal(fee.visible_to_client, false);
-  assert.equal((fee.details as Record<string, unknown>).auto_fee, "ticketing");
+  assert.equal(db.tables.crm_booking_items.some((row) => row.kind === "expense"), false);
   assert.equal(db.tables.crm_transactions?.length || 0, 0);
 
   const hotel = await addHotel(
@@ -791,7 +788,7 @@ test("deux vols à 611,20 et 611,19 sans frais donnent 1 222,39", async () => {
     },
     client
   );
-  assert.equal(db.tables.crm_bookings[0].fee_mode, "ticketing_off");
+  assert.equal(db.tables.crm_bookings[0].fee_mode ?? null, null);
   assert.equal(db.tables.crm_bookings[0].total_amount, 1222.39);
   const moved = await updateVol(
     { dossier_id: dossier.id, carte_id: back.id, voyageur_ids: [lea.voyageur_id, camille.voyageur_id] },
@@ -1057,7 +1054,11 @@ test("un vol à 0 € est accepté, et les frais de billeterie ne s’ouvrent pa
     true
   );
   assert.equal(db.tables.crm_booking_items.some((row) => row.kind === "expense"), false);
-  assert.equal(db.tables.crm_bookings[0].fee_mode, "ticketing_off");
+  assert.equal(db.tables.crm_bookings[0].fee_mode ?? null, null);
+  assert.equal(
+    (db.tables.crm_booking_items.find((row) => row.id === flight.id)?.details as Record<string, unknown>).price_mode,
+    "sans"
+  );
   assert.equal(db.tables.crm_bookings[0].total_amount, 0);
   await assert.rejects(
     () =>
@@ -1091,16 +1092,22 @@ test("sans_frais retire les frais déjà créés, et retirer_carte annule le dé
     },
     client
   );
-  const fee = db.tables.crm_booking_items.find((row) => row.kind === "expense");
-  assert.equal(fee?.amount, 25);
-  const debit = db.tables.crm_transactions.find((row) => String(row.external_id).includes(":expense:"));
-  assert.equal(debit?.status, "posted");
-  assert.equal(debit?.amount, 25);
-  const cleared = await updateVol({ dossier_id: dossier.id, carte_id: flight.id, sans_frais: true }, client);
+  db.tables.crm_booking_items.push({
+    id: "frais-existant",
+    booking_id: dossier.id,
+    kind: "expense",
+    title: "Frais de billeterie (1 billet)",
+    amount: 25,
+    include_in_ledger: true,
+    details: { auto_fee: "ticketing" },
+    lifecycle: "active",
+    visible_to_client: false,
+  });
+  const cleared = await updateVol({ dossier_id: dossier.id, carte_id: flight.id, sans_prix: true }, client);
   assert.equal(cleared.notifie, false);
-  assert.equal(db.tables.crm_booking_items.some((row) => row.kind === "expense"), false);
-  assert.equal(db.tables.crm_bookings[0].fee_mode, "ticketing_off");
-  assert.equal(db.tables.crm_transactions.find((row) => row.id === debit?.id)?.status, "void");
+  const kept = db.tables.crm_booking_items.find((row) => row.id === "frais-existant");
+  assert.equal(kept?.amount, 25);
+  assert.equal(db.tables.crm_bookings[0].fee_mode ?? null, null);
   const again = await addVol(
     {
       dossier_id: dossier.id,
@@ -1114,7 +1121,7 @@ test("sans_frais retire les frais déjà créés, et retirer_carte annule le dé
     },
     client
   );
-  assert.equal(db.tables.crm_booking_items.some((row) => row.kind === "expense"), false);
+  assert.equal(db.tables.crm_booking_items.filter((row) => row.kind === "expense").length, 1);
   const removed = await removeCarte({ dossier_id: dossier.id, carte_id: again.id }, client);
   assert.equal(removed.retiree, true);
   assert.equal(removed.notifie, false);
@@ -2032,7 +2039,7 @@ test("definir_visibilite_carte suit l’agence, sans message et sans deuxième l
       lifecycle: "active",
       visible_to_client: false,
       include_in_ledger: false,
-      details: { client_hidden: true },
+      details: { client_hidden: true, price_mode: "sans" },
     }
   );
   const shown = await setCarteVisibilite({ dossier_id: dossier.id, carte_id: hotelId, visible: true }, client);

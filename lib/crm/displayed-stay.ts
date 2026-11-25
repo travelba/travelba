@@ -365,7 +365,7 @@ export async function loadStayPricedDiscounts(supabase: SupabaseClient, bookingI
   const { loadDiscountLines } = await import("@/lib/crm/booking-discounts-db");
   let table: Map<string, DiscountLine[]> | null = null;
   try {
-    table = await loadDiscountLines([bookingId]);
+    table = await loadDiscountLines([bookingId], supabase);
   } catch (err) {
     const code = (err as { code?: string }).code;
     if (code !== "42P01" && code !== "PGRST205") throw err;

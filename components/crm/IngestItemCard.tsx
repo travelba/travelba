@@ -19,6 +19,7 @@ import { applyRoomGuestLabels, guestsLabelFromKeys, type HouseholdMember } from 
 import { ticketPartyKeys } from "@/lib/crm/document-passengers";
 import { Trash2 } from "lucide-react";
 import { reviewDoubts } from "@/lib/crm/review-doubt";
+import { cardPriceError, readCardPriceMode, withCardPriceMode, type CardPriceMode } from "@/lib/crm/card-price";
 
 type ItemDraft = BookingExtract["items"][number];
 
@@ -89,6 +90,7 @@ export function IngestItemCard({
   onRemove,
   household = [],
   lockStayLedger = false,
+  forfait = false,
 }: {
   item: ItemDraft;
   onChange: (next: ItemDraft) => void;
@@ -96,9 +98,22 @@ export function IngestItemCard({
   household?: HouseholdMember[];
   /** Le client règle le séjour : les cartes du montant ne vont pas au livre. */
   lockStayLedger?: boolean;
+  /** Prix forfait du voyage : aucune carte n’a de prix pour le client. */
+  forfait?: boolean;
 }) {
   const stayLedgerLocked =
     lockStayLedger && !isExtraItemKind(item.kind) && !isLedgerExpenseKind(item.kind);
+  const pricedCard = !isExtraItemKind(item.kind) && !isLedgerExpenseKind(item.kind);
+  const priceMode = readCardPriceMode(item);
+  function choosePrice(mode: CardPriceMode) {
+    const amount = mode === "sans" ? item.amount : item.amount;
+    onChange({
+      ...item,
+      amount,
+      include_in_ledger: forfait || stayLedgerLocked ? false : mode === "avec",
+      details: withCardPriceMode((item.details || {}) as Record<string, unknown>, mode) as ItemDraft["details"],
+    });
+  }
   const stampHasClock = (value: string) => {
     const match = (value || "").match(/T(\d{2}):(\d{2})/);
     return Boolean(match && !(match[1] === "00" && match[2] === "00"));
@@ -256,6 +271,43 @@ export function IngestItemCard({
             />
           </Field>
         ) : null}
+        {pricedCard ? (
+          <div className="space-y-1.5 sm:col-span-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">Prix pour le client</p>
+            <div role="radiogroup" aria-label="Prix pour le client" className="inline-flex max-w-full gap-1 rounded-2xl bg-white/60 p-1 shadow-[inset_0_0_0_1px_var(--border)]">
+              {(["avec", "sans"] as const).map((mode) => {
+                const selected = priceMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    disabled={forfait}
+                    onClick={() => choosePrice(mode)}
+                    className={`admin-tap rounded-xl px-3.5 py-1.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
+                      selected ? "bg-[var(--admin-navy)] text-white" : "text-[var(--admin-navy)] hover:bg-white"
+                    }`}
+                  >
+                    {mode === "avec" ? "Avec prix" : "Sans prix"}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted">
+              {forfait
+                ? "Prix forfait : le client ne voit que le prix du voyage."
+                : priceMode === "avec"
+                  ? "Le prix de vente est obligatoire. La carte a sa ligne dans les transactions, même masquée."
+                  : "Aucun prix n’est affiché au client pour cette carte."}
+            </p>
+            {priceMode === "avec" && !forfait && cardPriceError("avec", item.amount) ? (
+              <p className="text-xs font-semibold text-[var(--admin-red,#9b3a3a)]">Indiquez le prix de vente.</p>
+            ) : null}
+          </div>
+        ) : null}
+        {pricedCard && (priceMode === "sans" || forfait) ? null : (
+        <>
         <Field
           label={
             item.kind === "flight" && statedTicketCount(item) != null && !flightAmountIsGroupTotal(item.details)
@@ -294,6 +346,13 @@ export function IngestItemCard({
             Aller-retour : ce prix couvre les deux vols, une fois par passager. Aller simple : le prix de ce vol.
           </p>
         ) : null}
+        </>
+        )}
+        {pricedCard ? (
+          stayLedgerLocked ? (
+            <p className="text-xs text-muted sm:col-span-2">Le client règle ce séjour : cette carte ne va pas aux transactions.</p>
+          ) : null
+        ) : (
         <label className="flex items-start gap-2 text-sm text-[var(--admin-navy)] sm:col-span-2">
           <input
             type="checkbox"
@@ -307,10 +366,11 @@ export function IngestItemCard({
             <span className="mt-0.5 block text-xs text-muted">
               {stayLedgerLocked
                 ? "Le client règle ce séjour : cette carte ne va pas aux transactions."
-                : "Cette dépense entre dans l’encours. Décochez le montant du séjour si vous ne voulez pas le compter deux fois."}
+                : "Cette dépense entre dans l’encours."}
             </span>
           </span>
         </label>
+        )}
         <Field label="Fournisseur">
           <Text
             value={item.supplier || ""}

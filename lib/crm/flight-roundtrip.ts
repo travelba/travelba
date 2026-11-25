@@ -147,6 +147,7 @@ export function roundTripPriceLabel(
   const inOn = inbound ? flightCountsInStay(inbound, items) : false;
   if (!outOn && !inOn) return null;
   if (!pricesVisible) return HIDDEN_PRICE_LABEL;
+  if (outbound.details?.price_mode === "sans" && (!inbound || inbound.details?.price_mode === "sans")) return null;
   if (outOn && inOn && inbound) {
     const sum = (itemSellingAmount(outbound) || 0) + (itemSellingAmount(inbound) || 0);
     return formatMoney(Math.round(sum * 100) / 100, currency);

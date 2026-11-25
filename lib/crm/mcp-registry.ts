@@ -888,6 +888,14 @@ export const MCP_TOOLS: ToolDef[] = [
         .optional()
         .describe("Séjour particulier. Retire la société du dossier"),
       titre: z.string().trim().max(200).optional().describe("Titre du séjour"),
+      prix_forfait: z
+        .union([z.number(), z.string()])
+        .optional()
+        .describe("Prix forfait du voyage. Une seule ligne de transaction, aucune carte n’a de prix"),
+      prix_par_carte: z
+        .boolean()
+        .optional()
+        .describe("Revient au prix par carte. Le forfait ne compte plus"),
       statut: z
         .string()
         .trim()
@@ -1315,6 +1323,10 @@ export const MCP_TOOLS: ToolDef[] = [
         .boolean()
         .optional()
         .describe("Demande explicite de facturer la société. Erreur s’il n’y en a aucune"),
+      prix_forfait: z
+        .union([z.number(), z.string()])
+        .optional()
+        .describe("Prix forfait du voyage, saisi une fois. Nécessite la colonne en base"),
     },
     run: (args) => createDossier(args),
   },
@@ -1419,7 +1431,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "ajouter_vol",
     write: true,
     description:
-      "Ajoute une carte vol au dossier, comme dans l’agence : compagnie, numéro, aéroports, horaires locaux, cabine, PNR, voyageurs, prix. Un prix à zéro est accepté. sans_frais retire les frais de billeterie (ils ne reviennent pas). Un vol à 0 €, sans autre vol payant sur le dossier, ne crée pas ces frais. Une correspondance (arrivée et départ en avion en moins de 24 h, sans hôtel ni autre service sur place) sort du titre et d’une destination qui n’est qu’une liste de villes. Le domicile (départ, retour, ville de la fiche) en sort aussi. Une nuit d’hôtel garde la ville, sauf si c’est seulement le domicile. Un aller simple vers une ville où l’on reste la garde. Une devise différente de celle du dossier reste le prix du document, sans conversion. Le séjour caché ne débite pas. Aucun message.",
+      "Ajoute une carte vol au dossier, comme dans l’agence : compagnie, numéro, aéroports, horaires locaux, cabine, PNR, voyageurs, prix. La carte arrive masquée. Avec un prix, elle est « Avec prix » et aura sa ligne quand le séjour sera montré. Sans prix, ou prix à zéro, elle est « Sans prix » : rien n’est affiché au client et aucune ligne n’est créée. avec_prix exige un montant. sans_prix n’en prend pas. Aucun frais de billeterie n’est ajouté. Une correspondance (arrivée et départ en avion en moins de 24 h, sans hôtel ni autre service sur place) sort du titre et d’une destination qui n’est qu’une liste de villes. Le domicile (départ, retour, ville de la fiche) en sort aussi. Une nuit d’hôtel garde la ville, sauf si c’est seulement le domicile. Un aller simple vers une ville où l’on reste la garde. Une devise différente de celle du dossier reste le prix du document, sans conversion. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -1437,10 +1449,8 @@ export const MCP_TOOLS: ToolDef[] = [
       voyageurs: z.array(z.string()).optional().describe("Identifiants des voyageurs du dossier"),
       prix: z.union([z.number(), z.string()]).optional().describe(PRIX_BILLET),
       prix_total: z.union([z.number(), z.string()]).optional().describe(PRIX_GROUPE),
-      sans_frais: z
-        .boolean()
-        .optional()
-        .describe("Pas de frais de billeterie sur ce dossier. La ligne ne revient pas"),
+      avec_prix: z.boolean().optional().describe("Avec prix : le prix de vente est obligatoire"),
+      sans_prix: z.boolean().optional().describe("Sans prix : aucun prix pour le client, aucune ligne"),
       devise: z.string().trim().max(12).optional().describe("Devise du prix. Celle du dossier si omise"),
       fournisseur: z.string().trim().max(120).optional().describe("Fournisseur"),
     },
@@ -1450,7 +1460,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "modifier_vol",
     write: true,
     description:
-      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. voyageur_ids remplace les passagers de la carte (les voyageur_id de fiche_dossier) et ne change pas le prix. Un prix à zéro est accepté. sans_frais retire les frais de billeterie. Quand depart_iata et arrivee_iata sont tous les deux connus, l’avertissement sur les codes IATA non imprimés est retiré. effacer_avertissement retire toute lecture douteuse. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet. prix_total est le total du groupe, gardé au centime, sans prix unitaire imposé. devise omise garde la devise déjà sur la carte (euro par défaut), pas la devise du document fournisseur. Le séjour caché ne débite pas. Aucun message.",
+      "Corrige une carte vol déjà au dossier : aéroports, horaires locaux, cabine, PNR, voyageurs, prix. voyageur_ids remplace les passagers de la carte (les voyageur_id de fiche_dossier) et ne change pas le prix. avec_prix exige un montant et crée la ligne. sans_prix retire le prix affiché et la ligne. Un prix à zéro est « Sans prix ». Aucun frais de billeterie n’est ajouté ni retiré. Quand depart_iata et arrivee_iata sont tous les deux connus, l’avertissement sur les codes IATA non imprimés est retiré. effacer_avertissement retire toute lecture douteuse. L’heure saisie reste l’heure de l’aéroport ; le fuseau (Europe/Paris, Asia/Bangkok) est enregistré sur la carte. prix est un billet. prix_total est le total du groupe, gardé au centime, sans prix unitaire imposé. devise omise garde la devise déjà sur la carte (euro par défaut), pas la devise du document fournisseur. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -1473,10 +1483,8 @@ export const MCP_TOOLS: ToolDef[] = [
       voyageurs: z.array(z.string()).optional().describe("Même liste que voyageur_ids. Omis : les billets déjà sur la carte restent"),
       prix: z.union([z.number(), z.string()]).optional().describe(PRIX_BILLET),
       prix_total: z.union([z.number(), z.string()]).optional().describe(PRIX_GROUPE),
-      sans_frais: z
-        .boolean()
-        .optional()
-        .describe("Pas de frais de billeterie sur ce dossier. La ligne ne revient pas"),
+      avec_prix: z.boolean().optional().describe("Avec prix : le prix de vente est obligatoire"),
+      sans_prix: z.boolean().optional().describe("Sans prix : aucun prix pour le client, la ligne de vente est retirée"),
       devise: z.string().trim().max(12).optional().describe("Devise du prix. Celle du dossier si omise"),
       fournisseur: z.string().trim().max(120).optional().describe("Fournisseur"),
       effacer_avertissement: z
@@ -1534,7 +1542,7 @@ export const MCP_TOOLS: ToolDef[] = [
     name: "ajouter_hotel",
     write: true,
     description:
-      "Ajoute une carte hôtel : nom, ville, pays, dates, chambre, pension, inclus, confirmation, fournisseur, prix (THB compris), adresse, heures d’arrivée et de départ, photos https et texte d’annulation s’ils sont indiqués. Le séjour caché ne débite pas. Aucun message.",
+      "Ajoute une carte hôtel, masquée. Sans prix, elle est « Sans prix ». Un prix la passe « Avec prix » et crée sa ligne quand le séjour est montré. avec_prix exige un montant. Nom, ville, pays, dates, chambre, pension, inclus, confirmation, fournisseur, prix (THB compris), adresse, heures d’arrivée et de départ, photos https et texte d’annulation s’ils sont indiqués. Le séjour caché ne débite pas. Aucun message.",
     input: {
       dossier_id: z.string().trim().max(80).optional().describe("Identifiant du dossier"),
       reference: z.string().trim().max(80).optional().describe("Référence du dossier"),
@@ -1548,7 +1556,9 @@ export const MCP_TOOLS: ToolDef[] = [
       inclus: z.union([z.string(), z.array(z.string())]).optional().describe("Inclus, une ligne ou une liste"),
       confirmation: z.string().trim().max(80).optional().describe("Référence de confirmation"),
       fournisseur: z.string().trim().max(120).optional().describe("Fournisseur, ex. Little Emperors"),
-      prix: z.union([z.number(), z.string()]).optional().describe("Prix du séjour hôtel"),
+      prix: z.union([z.number(), z.string()]).optional().describe("Prix de vente. Absent : Sans prix"),
+      avec_prix: z.boolean().optional().describe("Avec prix : le prix de vente est obligatoire"),
+      sans_prix: z.boolean().optional().describe("Sans prix : aucun prix pour le client"),
       devise: z.string().trim().max(12).optional().describe("Devise du prix. THB reste THB"),
       annulation: z.string().trim().max(2000).optional().describe("Conditions d’annulation, seulement si elles sont connues"),
       adresse: z.string().trim().max(240).optional().describe("Adresse de l’hôtel"),
