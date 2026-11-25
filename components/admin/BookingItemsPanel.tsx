@@ -1138,7 +1138,7 @@ export function BookingItemsPanel({
                   ) : null}
                   {subtitle ? <p className="text-xs text-muted">{subtitle}</p> : null}
                   {checkin ? <OnlineCheckinBadge line={checkin} /> : null}
-                  {documentPrice ? <p className="text-xs text-muted">Prix du document : {documentPrice}</p> : null}
+                  {documentPrice ? <p className="text-xs text-muted">Prix d’achat : {documentPrice}</p> : null}
                   {counted ? <p className="text-xs font-semibold text-muted">Compté</p> : null}
                   {docs.length ? (
                     <p className="text-xs text-muted">{docs.length} pièce{docs.length > 1 ? "s" : ""}</p>

@@ -97,5 +97,6 @@ test("le mail Emirates n’affiche ni le choix de carte, ni la date deux fois, n
   assert.equal(html.includes("Refuser"), false);
   assert.match(html, /Classer/);
   assert.match(html, /Déposer les pièces ajoute ces vols/);
-  assert.equal(html.split("Prix imprimé sur le document").length - 1, 1);
+  assert.equal((html.match(/>Prix d’achat</g) || []).length, 1);
+  assert.equal((html.match(/aria-label="Prix d’achat /g) || []).length, 1);
 });
