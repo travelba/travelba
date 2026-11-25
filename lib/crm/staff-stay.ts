@@ -72,6 +72,8 @@ export type StaffBlocker = { id: string; label: string; tab?: "todo" | "argent" 
 export function staffBlockingChips(input: {
   travelers: { id: string; first_name?: string | null; last_name?: string | null }[];
   missingPassportIds: string[];
+  /** Livret du coffre peut-être le bon : l’agence vérifie, le client n’est pas relancé. */
+  doubtPassportIds?: string[];
   /** Passeport déposé, mais il expire avant le retour. */
   expiringPassportIds?: string[];
   hotelLettersOpen: number;
@@ -86,10 +88,15 @@ export function staffBlockingChips(input: {
   checkinAlerts?: number;
 }): StaffBlocker[] {
   const missing = new Set(input.missingPassportIds);
+  const doubt = new Set(input.doubtPassportIds || []);
   const expiring = new Set(input.expiringPassportIds || []);
   const chips: StaffBlocker[] = [];
   for (const traveler of input.travelers) {
     const name = greetingGivenName(traveler.first_name) || (traveler.last_name || "").trim() || "voyageur";
+    if (doubt.has(traveler.id)) {
+      chips.push({ id: `passport-doubt-${traveler.id}`, label: `Passeport à vérifier · ${name}` });
+      continue;
+    }
     if (missing.has(traveler.id)) {
       chips.push({ id: `passport-${traveler.id}`, label: `Passeport ${name}` });
       continue;

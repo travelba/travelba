@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   missingPassportCount,
+  passportClientReminderCount,
   travelersMissingPassport,
   travelersPassportExpiresBeforeReturn,
+  travelersPassportUncertain,
   primaryIdentityDoc,
   reusableDocumentsForTraveler,
   tripDocCoverage,
@@ -486,4 +488,73 @@ test("la validation ne répète pas le passeport copié sur chaque séjour", () 
     }),
   ]);
   assert.deepEqual(pieces.map((item) => item.id), ["vault", "companion"]);
+});
+
+test("John Amar et Yannick Benamara ne déclenchent pas le rappel passeport", () => {
+  const john = traveler({
+    id: "john",
+    first_name: "John",
+    last_name: "Amar",
+    is_account_holder: false,
+    companion_id: null,
+  });
+  const yannick = traveler({
+    id: "yannick",
+    first_name: "Yannick",
+    last_name: "Benamara",
+    is_account_holder: true,
+  });
+  const saul = traveler({
+    id: "saul",
+    first_name: "Saul",
+    last_name: "Benamara",
+    is_account_holder: false,
+    companion_id: null,
+  });
+  const yonatan = traveler({
+    id: "yonatan",
+    first_name: "Yonatan",
+    last_name: "Amar",
+    is_account_holder: false,
+  });
+  const amarVault = doc({
+    id: "amar",
+    first_name: "Jonathan David",
+    last_name: "Amar",
+    birth_date: "1986-10-21",
+    expires_on: "2028-02-12",
+    booking_id: null,
+  });
+  const yanikVault = doc({
+    id: "yanik",
+    first_name: "Yanik Rahamim",
+    last_name: "Benamara",
+    birth_date: "1975-08-05",
+    expires_on: "2031-06-17",
+    booking_id: null,
+  });
+  const johnOptions = {
+    holder: { first_name: "Jonathan David", last_name: "Amar", birth_date: "1986-10-21" },
+    companions: [],
+    returnOn: "2026-12-27",
+  };
+  const benamaraOptions = {
+    holder: { first_name: "Yannick", last_name: "Benamara", birth_date: "1975-08-05" },
+    companions: [],
+    returnOn: "2026-11-30",
+  };
+  assert.equal(missingPassportCount([john], [amarVault], johnOptions), 0);
+  assert.equal(passportClientReminderCount([john], [amarVault], johnOptions), 0);
+  assert.equal(travelersPassportUncertain([john], [amarVault], johnOptions).length, 0);
+  assert.equal(missingPassportCount([yannick], [yanikVault], benamaraOptions), 0);
+  assert.equal(passportClientReminderCount([yannick], [yanikVault], benamaraOptions), 0);
+  assert.equal(missingPassportCount([saul], [yanikVault], benamaraOptions), 1);
+  assert.equal(passportClientReminderCount([saul], [yanikVault], benamaraOptions), 1);
+  assert.equal(missingPassportCount([yonatan], [amarVault], johnOptions), 1);
+  assert.deepEqual(
+    travelersPassportUncertain([yonatan], [amarVault], johnOptions).map((row) => row.id),
+    ["yonatan"]
+  );
+  assert.equal(passportClientReminderCount([yonatan], [amarVault], johnOptions), 0);
+  assert.equal(passportClientReminderCount([saul, yonatan], [yanikVault, amarVault], benamaraOptions), 0);
 });

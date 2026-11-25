@@ -11,7 +11,9 @@ import {
   namesReferToSamePerson,
   parseGuestLabel,
   holderMatchesAddedTraveler,
+  identitiesCouldBeSame,
   sameAddedTraveler,
+  sameRecordedIdentity,
   sameRecordedTraveler,
 } from "./person-match";
 
@@ -388,6 +390,62 @@ test("un second import ne dédouble pas la même personne", () => {
     sameRecordedTraveler(
       { first_name: "Adulte", last_name: "1" },
       { first_name: "Adulte", last_name: "2" }
+    ),
+    false
+  );
+});
+
+test("John et Jonathan, Yanik et Yannick, sont la même personne", () => {
+  assert.equal(
+    namesReferToSamePerson(
+      { first_name: "John", last_name: "Amar" },
+      { first_name: "Jonathan David", last_name: "Amar" }
+    ),
+    true
+  );
+  assert.equal(
+    namesReferToSamePerson(
+      { first_name: "Yannick", last_name: "Benamara" },
+      { first_name: "Yanik Rahamim", last_name: "Benamara" }
+    ),
+    true
+  );
+  assert.equal(
+    namesReferToSamePerson(
+      { first_name: "Nathan", last_name: "Martin" },
+      { first_name: "Nathanael", last_name: "Martin" }
+    ),
+    false
+  );
+  assert.equal(
+    sameRecordedIdentity(
+      { first_name: "Clara", last_name: "Martin", birth_date: "1990-01-01" },
+      { first_name: "Claire", last_name: "Martin", birth_date: "1990-01-01" }
+    ),
+    true
+  );
+  assert.equal(
+    sameRecordedIdentity(
+      { first_name: "Clara", last_name: "Martin", birth_date: "1990-01-01" },
+      { first_name: "Claire", last_name: "Martin", birth_date: "1991-02-02" }
+    ),
+    false
+  );
+  assert.equal(
+    sameRecordedIdentity({ first_name: "Clara", last_name: "Martin" }, { first_name: "Claire", last_name: "Martin" }),
+    false
+  );
+  assert.equal(
+    identitiesCouldBeSame(
+      { first_name: "Yonatan", last_name: "Amar" },
+      { first_name: "Jonathan David", last_name: "Amar" }
+    ),
+    true
+  );
+  assert.equal(
+    identitiesCouldBeSame(
+      { first_name: "John", last_name: "Amar" },
+      { first_name: "Jonathan David", last_name: "Amar" }
     ),
     false
   );
