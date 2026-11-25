@@ -47,6 +47,12 @@ import { authorizationDisplayName } from "./visa-fr";
 import { stayCoverUrl, whatsappTypeImageUrl, type WhatsappImageKind } from "./concierge-notices";
 import { packBubbles, conciergeOpening, type BubbleHistory } from "../concierge/bubbles";
 import { CONCIERGE_SIGNATURE, withConciergeSignature } from "./whatsapp";
+import {
+  authorizationBriefLine,
+  planAuthorizationReply,
+  type AuthorizationCheckIntent,
+  type ConciergeAuthorization,
+} from "./concierge-authorization";
 
 export const HANDOFF_SENTENCE = "Je transmets à l’agence.";
 /** Ton du retour, dans la même réponse, seulement si l’agence doit revenir. */
@@ -171,6 +177,8 @@ export type ConciergeStay = {
   formalities: ConciergeFormality[];
 };
 
+export type { ConciergeAuthorization, AuthorizationCheckIntent };
+
 export type ConciergeDocument = {
   label: string;
   holder: string;
@@ -202,6 +210,8 @@ export type ConciergeDossier = {
   documents: ConciergeDocument[];
   movements: ConciergeMovement[];
   balances: ConciergeBalance[];
+  /** Dernier contrôle ESTA ou ETA Royaume-Uni. Sans numéro de passeport ni de dossier. */
+  authorizations?: ConciergeAuthorization[];
 };
 
 export type ConciergeTurn = {
@@ -215,6 +225,8 @@ export type ConciergeTurn = {
   optOut: boolean;
   access: boolean;
   tools?: string[];
+  /** Contrôle à lancer, le même geste que le bouton Vérifier. */
+  authorizationCheck?: AuthorizationCheckIntent | null;
 };
 
 type RawBooking = Pick<
@@ -541,6 +553,8 @@ export function buildConciergeDossier(input: {
     "booking_id" | "direction" | "kind" | "amount" | "currency" | "occurred_on" | "label" | "status"
   >[] | null;
   balances?: RawBalance[] | null;
+  authorizations?: ConciergeAuthorization[] | null;
+  travelers?: { id: string; bookingId: string; firstName: string | null; lastName: string | null }[] | null;
 }): ConciergeDossier {
   const visible = (input.bookings || []).filter((booking) => booking.visible_to_client);
   const visibleIds = new Set(visible.map((booking) => booking.id));
@@ -640,6 +654,9 @@ export function buildConciergeDossier(input: {
     documents,
     movements,
     balances,
+    authorizations: (input.authorizations || []).filter(
+      (row) => visibleIds.has(row.bookingId) && !row.traveler.match(/\d{6,}/)
+    ),
   };
 }
 
@@ -1126,6 +1143,9 @@ export function conciergeBrief(dossier: ConciergeDossier, now: Date = new Date()
       );
     }
     for (const formality of stay.formalities) lines.push(`- Formalité ${formality.name} : ${formality.copy}`);
+    for (const row of (dossier.authorizations || []).filter((item) => item.bookingId === stay.id)) {
+      lines.push(`- ${authorizationBriefLine(row)}`);
+    }
     for (const doc of stay.documents) lines.push(`- Pièce : ${doc}`);
   }
   if (dossier.documents.length) {
@@ -2080,6 +2100,25 @@ export function planConciergeTurn(
       bookingId: stay?.id || null,
       text: agency.text,
       messages: agency.messages,
+    };
+  }
+
+  const authStay = focusStay(message, dossier.stays);
+  const auth = planAuthorizationReply(
+    message,
+    dossier.authorizations || [],
+    authStay?.id || (dossier.stays.length === 1 ? dossier.stays[0].id : null)
+  );
+  if (auth) {
+    const packed = sayTurn(auth.text);
+    return {
+      ...empty,
+      handoff: null,
+      bookingId: auth.bookingId,
+      text: packed.text,
+      messages: packed.messages,
+      tools: auth.tools,
+      authorizationCheck: auth.check,
     };
   }
 

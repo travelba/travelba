@@ -10,6 +10,7 @@ import { CONCIERGE_BUBBLE_DELAY_MS } from "../concierge/bubbles";
 import { whatsappCallbackFailure, withConciergeSignature } from "./whatsapp";
 import {
   accessLinkReply,
+  agencyHandoffSentence,
   buildConciergeDossier,
   dropUnrecordedHandoff,
   isConciergeStop,
@@ -55,6 +56,8 @@ import {
 } from "./concierge-client-write";
 import { classifyClientSpace } from "./client-space-catalog";
 import { customersMatchingShareHint, performClientSpace, shareNameList, sharePersonLabel } from "./concierge-space";
+import { replyClaimsEmptyPromise, type AuthorizationCheckIntent } from "./concierge-authorization";
+import { pieceStayTarget } from "./whatsapp-piece-link";
 
 export type WhatsappMessageInsert = {
   customer_id: string | null;
@@ -114,6 +117,16 @@ export type WhatsappStore = {
     bytes: Uint8Array;
     contentType: string;
   }): Promise<WhatsappPieceResult>;
+  /** Même fichier, sur le dossier nommé. Invisible tant qu’un humain ne l’a pas montré. */
+  attachHiddenPiece?(input: {
+    customerId: string;
+    path: string;
+    bookingId: string;
+    travelerId: string | null;
+    contentType: string;
+  }): Promise<void>;
+  /** Même envoi que le bouton Vérifier l’ESTA ou l’ETA. */
+  requestAuthorizationCheck?(input: AuthorizationCheckIntent): Promise<{ ok: boolean }>;
   recentThread?(customerId: string): Promise<WhatsappThreadRow[]>;
   /** Derniers messages des 24 h, pour la mémoire du Concierge. Distinct de la rafale. */
   conversationHistory?(customerId: string): Promise<WhatsappThreadRow[]>;
@@ -302,6 +315,8 @@ export function scopeCompanionDossier(raw: DossierRaw, bookingIds: string[]): Do
     items: (raw.items || []).filter((item) => ids.has(item.booking_id)),
     bookingDocuments: (raw.bookingDocuments || []).filter((doc) => ids.has(doc.booking_id)),
     visaRequests: (raw.visaRequests || []).filter((row) => ids.has(row.booking_id)),
+    authorizations: (raw.authorizations || []).filter((row) => ids.has(row.bookingId)),
+    travelers: (raw.travelers || []).filter((row) => ids.has(row.bookingId)),
     transactions: [],
     balances: [],
     travelDocuments: [],
@@ -474,10 +489,42 @@ export async function receiveWhatsappWebhook(input: {
   const piecePath =
     piece === "saved" ? input.store.peekPiecePath?.() ?? input.store.takePiecePath?.() ?? null : null;
   if (piece === "saved" && input.store.peekPiecePath) input.store.takePiecePath?.();
+  let linkedBooking: string | null = null;
+  if (piece === "saved" && piecePath && customer && input.store.attachHiddenPiece) {
+    try {
+      const history = (await input.store.conversationHistory?.(customer.id)) || [];
+      const loaded = await input.store.loadDossier(customer.id);
+      const raw = companion ? scopeCompanionDossier(loaded, companion.bookingIds) : loaded;
+      const target = pieceStayTarget({
+        message: caption,
+        history: history.map((row) => ({ direction: row.direction, body: row.body })),
+        stays: (raw.bookings || []).map((stay) => ({
+          id: stay.id,
+          reference: stay.reference,
+          destination: stay.destination,
+          title: stay.title,
+        })),
+        travelers: raw.travelers || [],
+      });
+      if (target) {
+        const declared = (params.MediaContentType0 || "application/octet-stream").split(";")[0].trim();
+        await input.store.attachHiddenPiece({
+          customerId: customer.id,
+          path: piecePath,
+          bookingId: target.bookingId,
+          travelerId: target.travelerId,
+          contentType: declared,
+        });
+        linkedBooking = target.bookingId;
+      }
+    } catch (err) {
+      console.error("[whatsapp-concierge] piece", err instanceof Error ? err.name : "error");
+    }
+  }
 
   const inbound = await input.store.insertMessage({
     customer_id: customer?.id || null,
-    booking_id: null,
+    booking_id: linkedBooking,
     direction: "inbound",
     template_key: null,
     body: journal,
@@ -521,9 +568,10 @@ export async function receiveWhatsappWebhook(input: {
   if (voice?.failed) said = withoutUnheardVoice(said);
   const voiceUnheard = Boolean(voice?.failed) && !said.trim();
 
-  let bookingId: string | null = null;
+  let bookingId: string | null = linkedBooking;
   let handoff: HandoffKind | null = null;
-  let tools: string[] | null = null;
+  let tools: string[] | null = linkedBooking ? ["ajouter_piece"] : null;
+  let authorizationCheck: AuthorizationCheckIntent | null = null;
   let reply = leadReply(messageLanguage(clientText));
   let turnMessages: string[] | null = null;
   let mediaUrl: string | null = null;
@@ -604,8 +652,9 @@ export async function receiveWhatsappWebhook(input: {
         pending,
       });
       const turn = phase.turn;
-      tools = turn.tools?.length ? turn.tools : null;
-      bookingId = turn.bookingId;
+      tools = turn.tools?.length ? [...new Set([...(linkedBooking ? ["ajouter_piece"] : []), ...turn.tools])] : tools;
+      bookingId = turn.bookingId || linkedBooking;
+      authorizationCheck = turn.authorizationCheck || null;
       handoff = turn.handoff;
       const replyLang = messageLanguage(content || said);
       const limited = !allowed && !turn.handoff && !turn.access && !turn.optOut;
@@ -661,10 +710,32 @@ export async function receiveWhatsappWebhook(input: {
 
   if (customer && bookingId) await input.store.tagMessage?.(inbound.id, bookingId);
 
+  if (authorizationCheck && customer) {
+    let launched = false;
+    const launch = input.store.requestAuthorizationCheck;
+    try {
+      if (launch) launched = (await launch(authorizationCheck)).ok;
+    } catch (err) {
+      console.error("[whatsapp-concierge] esta", err instanceof Error ? err.name : "error");
+    }
+    if (launched) {
+      tools = [...new Set([...(tools || []), "verifier_esta"])];
+    } else {
+      handoff = handoff || "question";
+      tools = [...new Set([...(tools || []), "ouvrir_demande"])];
+      reply = withConciergeSignature(agencyHandoffSentence(messageLanguage(clientText)));
+      turnMessages = null;
+    }
+  }
+
   if (mediaUrl) mediaUrl = await liveConciergeImage(mediaUrl, input.fetchImpl);
   const planned = turnMessages;
   let bubbles = (planned && reply === planned.join("\n\n") ? planned : [reply]).filter((line) => line.trim()).slice(0, 3);
   if (bubbles.some((line) => replyClaimsAgencyHandoff(line)) && !handoff) handoff = "question";
+  if (bubbles.some((line) => replyClaimsEmptyPromise(line)) && !(tools && tools.length) && !handoff) {
+    handoff = "question";
+    tools = ["ouvrir_demande"];
+  }
   if (handoff) {
     const request: WhatsappRequestInsert = {
       customer_id: customers.length === 1 || companion ? customer?.id || null : null,
@@ -685,7 +756,11 @@ export async function receiveWhatsappWebhook(input: {
     } catch (err) {
       console.error("[whatsapp-concierge] demande", err instanceof Error ? err.name : "error");
       handoff = null;
-      bubbles = bubbles.map((line) => (replyClaimsAgencyHandoff(line) ? dropUnrecordedHandoff(line) : line));
+      bubbles = bubbles.map((line) =>
+        replyClaimsEmptyPromise(line) || replyClaimsAgencyHandoff(line)
+          ? dropUnrecordedHandoff(replyClaimsAgencyHandoff(line) ? line : "Je transmets à l’agence.")
+          : line
+      );
     }
   }
   const delayMs = input.bubbleDelayMs ?? CONCIERGE_BUBBLE_DELAY_MS;
@@ -997,6 +1072,29 @@ type PartyCompanion = {
   birth_date?: string | null;
 };
 
+function optionalCheckRows(
+  result: { data: unknown; error: { code?: string; message?: string } | null },
+  kind: "esta" | "uk_eta"
+) {
+  if (result.error) {
+    const missing =
+      result.error.code === "42P01" ||
+      result.error.code === "PGRST205" ||
+      /relation|schema cache/i.test(result.error.message || "");
+    if (missing) return [];
+    throw result.error;
+  }
+  return (
+    (result.data || []) as {
+      booking_id: string;
+      traveler_id: string;
+      status: string;
+      valid_until: string | null;
+      checked_at: string | null;
+    }[]
+  ).map((row) => ({ ...row, kind }));
+}
+
 function missingColumn(error: { code?: string; message?: string } | null) {
   if (!error) return false;
   return error.code === "42703" || error.code === "PGRST204" || /schema cache|column/i.test(error.message || "");
@@ -1149,7 +1247,7 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         }
       }
       const ids = (bookings || []).map((booking) => booking.id);
-      const [items, docs, visas, txs, balances, papers] = await Promise.all([
+      const [items, docs, visas, txs, balances, papers, travelers, estaChecks, ukChecks] = await Promise.all([
         ids.length
           ? admin
               .from("crm_booking_items")
@@ -1181,10 +1279,55 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
           .select("doc_type, first_name, last_name, expires_on")
           // Le numéro et la MRZ ne sont pas lus.
           .eq("customer_id", customerId),
+        ids.length
+          ? admin.from("crm_booking_travelers").select("id, booking_id, first_name, last_name").in("booking_id", ids)
+          : Promise.resolve({ data: [], error: null }),
+        ids.length
+          ? admin
+              .from("crm_esta_checks")
+              .select("booking_id, traveler_id, status, valid_until, checked_at")
+              .in("booking_id", ids)
+          : Promise.resolve({ data: [], error: null }),
+        ids.length
+          ? admin
+              .from("crm_uk_eta_checks")
+              .select("booking_id, traveler_id, status, valid_until, checked_at")
+              .in("booking_id", ids)
+          : Promise.resolve({ data: [], error: null }),
       ]);
-      for (const result of [items, docs, visas, txs, balances, papers]) {
+      for (const result of [items, docs, visas, txs, balances, papers, travelers]) {
         if (result.error) throw result.error;
       }
+      const party = ((travelers.data || []) as {
+        id: string;
+        booking_id: string;
+        first_name: string | null;
+        last_name: string | null;
+      }[]).map((row) => ({
+        id: row.id,
+        bookingId: row.booking_id,
+        firstName: row.first_name,
+        lastName: row.last_name,
+      }));
+      const names = new Map(party.map((row) => [row.id, [row.firstName, row.lastName].filter(Boolean).join(" ").trim()]));
+      const authorizations = [
+        ...optionalCheckRows(estaChecks, "esta"),
+        ...optionalCheckRows(ukChecks, "uk_eta"),
+      ].flatMap((row) => {
+        const travelerName = names.get(row.traveler_id) || "";
+        if (!travelerName || /\d{6,}/.test(travelerName)) return [];
+        return [
+          {
+            bookingId: row.booking_id,
+            travelerId: row.traveler_id,
+            traveler: travelerName,
+            kind: row.kind,
+            status: row.status,
+            validUntil: row.valid_until,
+            checkedAt: row.checked_at,
+          },
+        ];
+      });
       return {
         bookings: bookings || [],
         items: items.data || [],
@@ -1193,6 +1336,8 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         transactions: txs.data || [],
         balances: balances.data || [],
         travelDocuments: papers.data || [],
+        travelers: party,
+        authorizations,
         preferences: filledLoyaltyLabels(loyaltyFromCustomer(holder || {})),
         language: holder && "language" in holder ? String(holder.language || "") : null,
       };
@@ -1534,6 +1679,40 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
       );
       if (error) throw error;
       return "saved";
+    },
+    async attachHiddenPiece({ customerId, path, bookingId, travelerId, contentType }) {
+      const name = path.split("/").pop() || "piece-whatsapp";
+      const { error } = await admin.from("crm_booking_documents").insert({
+        booking_id: bookingId,
+        kind: "other",
+        file_name: name,
+        mime_type: contentType,
+        storage_path: path,
+        visible_to_client: false,
+      });
+      if (error) throw error;
+      let person = travelerId;
+      if (!person) {
+        const { data } = await admin.from("crm_booking_travelers").select("id").eq("booking_id", bookingId);
+        if (data?.length === 1) person = (data[0] as { id: string }).id;
+      }
+      if (!person) return;
+      await admin
+        .from("crm_travel_documents")
+        .update({ traveler_id: person, booking_id: bookingId })
+        .eq("customer_id", customerId)
+        .eq("storage_path", path);
+    },
+    async requestAuthorizationCheck(input) {
+      const stamp = new Date().toISOString();
+      if (input.kind === "uk_eta") {
+        const { syncUkEtaForBookingId } = await import("./uk-eta-run");
+        const lines = await syncUkEtaForBookingId(admin, input.bookingId, { travelerId: input.travelerId, stamp });
+        return { ok: lines.some((row) => row.travelerId === input.travelerId && row.canVerify) };
+      }
+      const { syncEstaForBookingId } = await import("./esta-run");
+      const lines = await syncEstaForBookingId(admin, input.bookingId, { travelerId: input.travelerId, stamp });
+      return { ok: lines.some((row) => row.travelerId === input.travelerId && row.canVerify) };
     },
     async saveVoiceNote({ customerId, bytes, contentType }) {
       const audio = normalizeAudioType(contentType);

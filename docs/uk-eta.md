@@ -171,6 +171,7 @@ En-tête : `UK_ETA_WEBHOOK_KEY_HEADER` (défaut `Authorization`). Si le nom est 
 | `UK_ETA_WEBHOOK_KEY` | Secret. Vide sur une preview Vercel (`productionOnlySecret`). Absente : aucun appel. |
 | `UK_ETA_WEBHOOK_KEY_HEADER` | Nom de l’en-tête. Défaut `Authorization`. |
 | `UK_ETA_CLIENT_AUTO_SEND` | `1`, `true` ou `oui` : le message client part seul. Sinon l’agence clique « Envoyer au client ». Éteint par défaut. |
+| `ESTA_AUTO_WHATSAPP` | Même interrupteur que l’ESTA. Éteint par défaut. Le court message ETA (approuvée, introuvable, refusée) et les alertes « ETA introuvable » / « ETA refusée » suivent la même règle. Hors 24 h : `message_libre_texte`. |
 | `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Déjà utilisés pour les e-mails. |
 | `CRON_SECRET` | Déjà utilisé. Le passage est `GET /api/cron/uk-eta` toutes les 15 minutes. |
 
