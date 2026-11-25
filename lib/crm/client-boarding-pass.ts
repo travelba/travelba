@@ -1,6 +1,5 @@
 import { flightCities, flightNumber, itemClock } from "./carnet";
-import { passengersFromDetails } from "./document-passengers";
-import { greetingGivenName } from "./identity";
+import { suggestBoardingPass } from "./boarding-pass-whatsapp";
 import { isBoardingPassDocument, passMatchesFlight } from "./online-checkin";
 import { flightGate, flightTerminal } from "./flight-watch";
 import type { BoardingPassPassenger } from "./boarding-pass-pdf";
@@ -126,10 +125,6 @@ function cardFrom(
 ): ClientBoardingCard {
   const item = flight ? asItem(flight) : null;
   const firstName = passenger?.firstName || "";
-  const seatFromFlight =
-    item && typeof item.details?.seat === "string" && passengersFromDetails(item.details).length <= 1
-      ? item.details.seat.trim()
-      : "";
   return {
     key: `${doc.id}:${page ?? 0}:${firstName || "carte"}`,
     documentId: doc.id,
@@ -139,7 +134,7 @@ function cardFrom(
     flight: passenger?.flight || (item ? flightNumber(item) : "") || "",
     route: passenger?.route || (item ? flightCities(item) : "") || "",
     when: passenger?.when || clockLabel(flight),
-    seat: passenger?.seat || seatFromFlight,
+    seat: (passenger?.seat || "").trim(),
     terminal: item ? flightTerminal(item) : "",
     gate: item ? flightGate(item) : "",
     itemId: flight?.id || null,
@@ -165,19 +160,28 @@ export function clientBoardingCards(input: {
   }
   if (input.pageCount !== 1) return [];
   const flight = matchFlight(input.doc, "", flights);
-  const people = flight ? passengersFromDetails(asItem(flight).details) : [];
-  const only = people.length === 1 ? people[0] : null;
+  const suggested = suggestBoardingPass({
+    doc: {
+      id: input.doc.id,
+      kind: input.doc.kind || "",
+      file_name: input.doc.file_name ?? null,
+      booking_item_id: input.doc.booking_item_id ?? flight?.id ?? null,
+      mime_type: "application/pdf",
+    },
+    items: flights.map(asItem),
+    travelers: [],
+  });
   return [
     cardFrom(
       input.doc,
       flight,
       {
-        firstName: greetingGivenName(only?.first_name) || "",
-        lastName: "",
+        firstName: suggested.firstName,
+        lastName: suggested.lastName,
         flight: "",
         route: "",
         when: "",
-        seat: "",
+        seat: suggested.seat,
         page: 1,
       },
       1

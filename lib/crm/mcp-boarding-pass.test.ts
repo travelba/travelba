@@ -32,7 +32,17 @@ function rejection(run: () => Promise<unknown>) {
   return assert.rejects(run, McpWriteError);
 }
 
-function fakeCrm(extra: { messages?: Record<string, unknown>[]; duplicateInsert?: boolean; seat?: string | null; kind?: string } = {}) {
+function fakeCrm(
+  extra: {
+    messages?: Record<string, unknown>[];
+    duplicateInsert?: boolean;
+    seat?: string | null;
+    kind?: string;
+    fileName?: string;
+    passengers?: Record<string, unknown>[];
+    notes?: string;
+  } = {}
+) {
   const tables: Record<string, Record<string, unknown>[]> = {
     crm_booking_documents: [
       {
@@ -41,7 +51,7 @@ function fakeCrm(extra: { messages?: Record<string, unknown>[]; duplicateInsert?
         booking_item_id: "flight-1",
         kind: extra.kind ?? "carte d'embarquement",
         mime_type: "application/pdf",
-        file_name: "levy.pdf",
+        file_name: extra.fileName ?? "levy.pdf",
         storage_path: "bookings/levy.pdf",
       },
     ],
@@ -55,7 +65,17 @@ function fakeCrm(extra: { messages?: Record<string, unknown>[]; duplicateInsert?
         whatsapp_opt_out_at: null,
       },
     ],
-    crm_booking_items: [{ ...flight, details: { ...flight.details, seat: extra.seat === undefined ? "12A" : extra.seat } }],
+    crm_booking_items: [
+      {
+        ...flight,
+        details: {
+          ...flight.details,
+          seat: extra.seat === undefined ? "12A" : extra.seat,
+          ...(extra.passengers ? { passengers: extra.passengers } : {}),
+          ...(extra.notes ? { notes: extra.notes } : {}),
+        },
+      },
+    ],
     crm_booking_travelers: [],
     crm_whatsapp_messages: extra.messages ? extra.messages.map((row) => ({ ...row })) : [],
     crm_customer_activity: [],
@@ -416,6 +436,78 @@ test("sans lecture, les champs saisis partent une fois et un champ manquant n’
     if (previous === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     else process.env.SUPABASE_SERVICE_ROLE_KEY = previous;
   }
+});
+
+function elAlPage(name: string, seat: string) {
+  return [
+    "Boarding Pass",
+    name,
+    "From",
+    "CDG",
+    "To",
+    "TLV",
+    "Flight",
+    "LY326",
+    "Departure",
+    "22:30",
+    "26 Nov 26",
+    "Seat",
+    seat,
+    "SEQ: 0086",
+  ].join("\n");
+}
+
+test("un PDF El Al part avec le passager de chaque page, pas le siège combiné de la carte", async () => {
+  const previous = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-test";
+  try {
+    const crm = fakeCrm({
+      seat: "06G / 06D",
+      passengers: [{ first_name: "Meryl", last_name: "Levy", pnr: "AB12CD", seat: "6G" }],
+    });
+    const result = await notifyBoardingPass({ document_id: DOC }, crm.admin, {
+      ...crm.deps(),
+      readPages: async () => [elAlPage("Durand Camille", "6G"), elAlPage("DURAND/LÉA", "6D")],
+    });
+    assert.equal(result.statut, "envoye");
+    assert.equal(crm.sends.length, 2);
+    assert.deepEqual(
+      crm.sends.map((row) => row.variables?.["2"]),
+      ["Camille", "Léa"]
+    );
+    assert.deepEqual(
+      crm.sends.map((row) => row.variables?.["6"]),
+      ["6G", "6D"]
+    );
+    assert.equal(crm.sends[0].variables?.["3"], "LY 326");
+    const spoken = JSON.stringify(crm.sends.map((row) => ({ ...row.variables, "1": "" })));
+    assert.equal(spoken.includes("Meryl"), false);
+    assert.equal(spoken.includes("06G / 06D"), false);
+    assert.equal(spoken.includes("06D"), false);
+  } finally {
+    if (previous === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previous;
+  }
+});
+
+test("sans lecture sûre, le seul passager et le siège combiné ne partent pas", async () => {
+  const crm = fakeCrm({
+    fileName: "carte-embarquement-CD34EF.pdf",
+    seat: "06G / 06D",
+    passengers: [{ first_name: "Meryl", last_name: "Levy", pnr: "AB12CD", seat: "6G" }],
+    notes: "PNR Meryl AB12CD.",
+  });
+  await assert.rejects(
+    () => notifyBoardingPass({ document_id: DOC }, crm.admin, crm.deps()),
+    (err: unknown) => {
+      assert.ok(err instanceof McpWriteError);
+      assert.match(err.message, /À vérifier/);
+      assert.equal(err.message.includes("Meryl"), false);
+      return true;
+    }
+  );
+  assert.equal(crm.sends.length, 0);
+  assert.equal(crm.tables.crm_whatsapp_messages.length, 0);
 });
 
 test("deux demandes simultanées ne partent qu’une fois", async () => {

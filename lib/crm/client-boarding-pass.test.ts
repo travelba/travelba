@@ -148,6 +148,56 @@ test("le passe Apple Wallet se pose sur la page du même passager", () => {
   assert.equal(view.cards[0]?.walletHref, `/api/mon-compte/cartes/${walletId}/passe.pkpass`);
 });
 
+test("une page illisible suit le PNR du fichier et ignore le siège combiné", () => {
+  const cards = clientBoardingCards({
+    doc: {
+      id: DOC,
+      kind: "carte d'embarquement",
+      file_name: "carte-embarquement-AB12CD.pdf",
+      booking_item_id: "flight-1",
+    },
+    passengers: [],
+    flights: [
+      {
+        ...flight,
+        details: {
+          ...flight.details,
+          seat: "6G / 6D",
+          passengers: [
+            { first_name: "Camille", last_name: "Durand", pnr: "AB12CD", seat: "6G" },
+            { first_name: "Léa", last_name: "Durand", pnr: "CD34EF", seat: "6D" },
+          ],
+        },
+      },
+    ],
+    pageCount: 1,
+  });
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0]?.firstName, "Camille");
+  assert.equal(cards[0]?.seat, "6G");
+});
+
+test("une page illisible sans PNR ne choisit pas le seul passager", () => {
+  const cards = clientBoardingCards({
+    doc: { id: DOC, kind: "carte d'embarquement", file_name: "carte.pdf", booking_item_id: "flight-1" },
+    passengers: [],
+    flights: [
+      {
+        ...flight,
+        details: {
+          ...flight.details,
+          seat: "06G / 06D",
+          passengers: [{ first_name: "Camille", last_name: "Durand", seat: "6G" }],
+        },
+      },
+    ],
+    pageCount: 1,
+  });
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0]?.firstName, "");
+  assert.equal(cards[0]?.seat, "");
+});
+
 test("une autre pièce cachée ne devient pas une carte d’embarquement", () => {
   const cards = clientBoardingCards({
     doc: { id: DOC, kind: "confirmation", file_name: "hotel.pdf" },
