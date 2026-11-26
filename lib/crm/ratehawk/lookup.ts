@@ -17,6 +17,7 @@ import {
 } from "./search";
 import { ratehawkDb } from "./store";
 import type { EtgCall } from "./client";
+import { fillThinHotelFacts } from "./content";
 
 export class RatehawkLookupError extends Error {
   constructor(message: string) {
@@ -137,6 +138,8 @@ type LookupDeps = {
   searchHids?: typeof searchHids;
   hotelPage?: typeof hotelPage;
   loadStatic?: (hids: number[]) => Promise<StoredHotelFacts[]>;
+  /** Complète nom, adresse et photos des hôtels affichés, comme l’écran Hôtels de l’agence. */
+  fillStatic?: ((hids: number[], config: RatehawkConfig) => Promise<void>) | null;
 };
 
 function destinationOf(choice: CompletionChoice | null, regionId: number | null, hids: number[]) {
@@ -203,6 +206,12 @@ function ensureCall(call: EtgCall, empty: boolean, message: string) {
 export async function runRatehawkLookup(query: RatehawkLookup, deps: LookupDeps = {}): Promise<RatehawkSearchResult> {
   const config = deps.config ?? requireConfig();
   const loadStatic = deps.loadStatic ?? loadStoredHotels;
+  // Un double de test sans fillStatic n’appelle pas le Content API.
+  const fillStatic = deps.fillStatic !== undefined ? deps.fillStatic : deps.loadStatic ? null : fillThinHotelFacts;
+  const facts = async (hids: number[]) => {
+    if (fillStatic && hids.length) await fillStatic(hids.slice(0, RATEHAWK_LIST_CAP), config).catch(() => undefined);
+    return loadStatic(hids);
+  };
   const input: SearchInput = {
     checkin: query.checkin,
     checkout: query.checkout,
@@ -224,7 +233,7 @@ export async function runRatehawkLookup(query: RatehawkLookup, deps: LookupDeps 
   }
   if (query.fiche) {
     if (hids.length !== 1) throw new RatehawkLookupError("La fiche hôtel demande un seul hid.");
-    const stored = await loadStatic(hids);
+    const stored = await facts(hids);
     const groups = (stored.find((row) => row.hid === hids[0])?.room_groups || []) as RoomGroupStatic[];
     const page = await (deps.hotelPage ?? hotelPage)(input, hids[0], config, groups);
     ensureCall(page.call, !page.hotel, "La fiche hôtel Ratehawk a échoué.");
@@ -236,7 +245,7 @@ export async function runRatehawkLookup(query: RatehawkLookup, deps: LookupDeps 
     const slice = hids.slice(0, RATEHAWK_LIST_CAP);
     const found = await (deps.searchHids ?? searchHids)(input, slice, config);
     ensureCall(found.call, found.hotels.length === 0, "La recherche Ratehawk a échoué.");
-    const stored = await loadStatic(found.hotels.map((hotel) => hotel.hid));
+    const stored = await facts(found.hotels.map((hotel) => hotel.hid));
     const view = presentHotels(found.hotels, stored, RATEHAWK_LIST_CAP);
     return resultOf(query, config, destinationOf(choice, null, hids), view.hotels, hids.length > RATEHAWK_LIST_CAP || view.tronque, false);
   }
@@ -244,7 +253,7 @@ export async function runRatehawkLookup(query: RatehawkLookup, deps: LookupDeps 
     const found = await (deps.searchRegion ?? searchRegion)(input, regionId, config);
     ensureCall(found.call, found.hotels.length === 0, "La recherche Ratehawk a échoué.");
     const capped = found.hotels.slice(0, RATEHAWK_LIST_CAP);
-    const stored = await loadStatic(capped.map((hotel) => hotel.hid));
+    const stored = await facts(capped.map((hotel) => hotel.hid));
     const view = presentHotels(capped, stored, RATEHAWK_LIST_CAP);
     return resultOf(query, config, destinationOf(choice, regionId, []), view.hotels, found.hotels.length > RATEHAWK_LIST_CAP || view.tronque, false);
   }

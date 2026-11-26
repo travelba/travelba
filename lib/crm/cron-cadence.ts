@@ -111,8 +111,9 @@ export const CRON_CADENCE: CronCadence[] = [
   },
   {
     path: "/api/cron/ratehawk-content",
-    schedule: "10 3 * * *",
-    reason: "Le catalogue Ratehawk reste nocturne, une fois par jour, à 3 h 10 UTC, avant la matinée de l’agence.",
+    schedule: "10 * * * *",
+    reason:
+      "Le catalogue Ratehawk de production compte des dizaines de milliers d’hôtels : un passage par heure, à la minute 10, reprend le curseur (pays, position) et écrit jusqu’à 3 000 fiches, sous les limites ETG.",
   },
   {
     path: "/api/cron/club-new-year",
