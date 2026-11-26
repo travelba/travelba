@@ -29,7 +29,7 @@ export type RevolutClassifyInput = {
 };
 
 const INTERNAL_LABEL =
-  /\bEUR\s+MAIN\b|(?:^|\s)(?:FROM|TO)\s+EUR\b|\bVIREMENT\s+INTERNE\b|\bENTRE\s+COMPTES\b|\bOWN\s+ACCOUNT\b|(?:^|\s)(?:FROM|TO)\s+TR[ÉE]SO/i;
+  /\bEUR\s+MAIN\b|(?:^|\s)(?:FROM|TO)\s+EUR\b|\bVIREMENT\s+INTERNE\b|\bENTRE\s+COMPTES\b|\bOWN\s+ACCOUNT\b|(?:^|\s)(?:FROM|TO)\s+TR[ÉE]SO(?:RERIE)?\b/i;
 
 export function isRevolutCreditCategory(value: string | null | undefined): value is RevolutCreditCategory {
   return (REVOLUT_CREDIT_CATEGORIES as readonly string[]).includes(value || "");
@@ -180,6 +180,8 @@ export function classifyStoredRevolut(row: {
 /**
  * File encore ouverte : intérêts, internes et remboursements sortent.
  * Un versement Stripe reste ouvert jusqu’au découpage. Un crédit déjà posé ne bouge pas.
+ * Un interne que la règle ne reconnaît plus revient à encaisser, seulement si l’ignored
+ * venait du classement automatique (catégorie interne, sans clic).
  */
 export function revolutPendingReclass(row: {
   status?: string | null;
@@ -187,16 +189,24 @@ export function revolutPendingReclass(row: {
   category?: string | null;
   matched_transaction_id?: string | null;
   parent_id?: string | null;
+  settled_at?: string | null;
   raw?: unknown;
   counterparty_name?: string | null;
   reference?: string | null;
-}): { category: RevolutCreditCategory; status?: "ignored" } | null {
+}): { category: RevolutCreditCategory; status?: "ignored" | "unmatched" } | null {
   if (row.parent_id) return null;
   if (row.direction === "debit") return null;
   if (row.status === "matched" || row.matched_transaction_id) return null;
-  const klass = classifyStoredRevolut(row);
+  // La catégorie stockée « interne » est relue : la règle a pu être trop large.
+  const klass = classifyStoredRevolut(row.category === "interne" ? { ...row, category: null } : row);
   if (klass.category === "client") {
-    return row.category === "client" ? null : { category: "client" };
+    if (row.category !== "interne") {
+      return row.category === "client" ? null : { category: "client" };
+    }
+    // settled_at marque un clic. La ligne ignorée à la main ne revient pas.
+    if (row.settled_at) return null;
+    if (row.status === "ignored") return { category: "client", status: "unmatched" };
+    return { category: "client" };
   }
   if (klass.category === "stripe") {
     return row.category === "stripe" ? null : { category: "stripe" };
