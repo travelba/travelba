@@ -10,24 +10,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const zstdDecompress = promisify(zlib.zstdDecompress);
 
 const SANDBOX_COUNTRIES = [59, 189, 201];
-/** France (59) d’abord, puis ces pays, par leur nom ETG (filter_values, desc). Les autres hôtels se complètent à l’affichage. */
-export const PRODUCTION_COUNTRY_NAMES = [
-  "France",
-  "Italy",
-  "Spain",
-  "United Kingdom",
-  "Switzerland",
-  "Portugal",
-  "Greece",
-  "Israel",
-  "United Arab Emirates",
-  "Morocco",
-  "United States",
-  "Maldives",
-  "Mauritius",
-  "Thailand",
-];
 const FRANCE = 59;
+/**
+ * Marque le curseur hôtel. Un curseur sans cette marque reprend les régions
+ * et recommence la liste d’hôtels : l’ancien offset visait une autre sélection.
+ */
+export const CONTENT_SELECTION = "stars-4-5-ski3";
+/** L’écran montre au plus 12 photos. Les groupes de chambres en montrent 4. */
+const STORED_IMAGES = 12;
+const STORED_ROOM_IMAGES = 4;
+/** ETG : « Ski slope nearby ». hotel_ids_by_filter n’a pas de filtre par région. */
+export const SKI_SLOPE_FILTER = "has_ski";
 const SANDBOX_HOTELS_PER_RUN = 40;
 /** Production : jusqu’à 3 000 fiches par passage, en lots de 100 (maximum ETG). */
 const PRODUCTION_HOTELS_PER_RUN = 3_000;
@@ -51,11 +44,40 @@ function localized(value: unknown, language: "en" | "fr") {
   return typeof first === "string" ? first : "";
 }
 
+function capArray(value: unknown, limit: number) {
+  return Array.isArray(value) ? value.slice(0, limit) : [];
+}
+
+/** Photos, textes et politiques lus par l’écran. Le reste du JSON ETG n’est pas stocké. */
+function storedRaw(raw: Record<string, unknown>) {
+  return {
+    images_ext: capArray(raw.images_ext, STORED_IMAGES),
+    description_struct: raw.description_struct ?? null,
+    amenity_groups: raw.amenity_groups ?? null,
+    policy_struct: raw.policy_struct ?? null,
+  };
+}
+
+function storedRoomGroups(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map((group) => {
+    if (!group || typeof group !== "object") return group;
+    const row = group as Record<string, unknown>;
+    return {
+      name: row.name ?? null,
+      rg_ext: row.rg_ext ?? null,
+      room_amenities: row.room_amenities ?? [],
+      images: capArray(row.images, STORED_ROOM_IMAGES),
+      images_ext: capArray(row.images_ext, STORED_ROOM_IMAGES),
+    };
+  });
+}
+
 export function hotelRecord(raw: Record<string, unknown>, language: "en" | "fr") {
   const hid = Number(raw.hid);
   if (!Number.isInteger(hid)) return null;
   const region = raw.region && typeof raw.region === "object" ? (raw.region as Record<string, unknown>) : null;
-  const images = collectImageUrls(Array.isArray(raw.images) && raw.images.length ? raw.images : raw.images_ext, 40);
+  const images = collectImageUrls(Array.isArray(raw.images) && raw.images.length ? raw.images : raw.images_ext, STORED_IMAGES);
   return {
     hid,
     slug: typeof raw.id === "string" ? raw.id : null,
@@ -71,8 +93,8 @@ export function hotelRecord(raw: Record<string, unknown>, language: "en" | "fr")
     images,
     metapolicy_struct: raw.metapolicy_struct ?? null,
     metapolicy_extra_info: typeof raw.metapolicy_extra_info === "string" ? raw.metapolicy_extra_info : null,
-    room_groups: Array.isArray(raw.room_groups) ? raw.room_groups : [],
-    raw,
+    room_groups: storedRoomGroups(raw.room_groups),
+    raw: storedRaw(raw),
     source: "content",
     updated_at: new Date().toISOString(),
   };
@@ -119,20 +141,32 @@ function callFailedOf(call: EtgCall) {
   return call.httpStatus !== 200 || (call.status != null && call.status !== "ok");
 }
 
-/** Pays de production à synchroniser, dans l’ordre de PRODUCTION_COUNTRY_NAMES. France au minimum. */
+/** Tous les pays ETG. La France d’abord, puis les autres identifiants dans l’ordre croissant. */
 export function productionCountries(data: unknown) {
   const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
   const list = Array.isArray(root.country) ? root.country : [];
-  const byName = new Map<string, number>();
+  const ids = new Set<number>();
   for (const item of list) {
-    const row = item && typeof item === "object" ? (item as { value?: unknown; desc?: unknown }) : null;
-    const id = Number(row?.value);
-    const name = typeof row?.desc === "string" ? row.desc.trim().toLowerCase() : "";
-    if (Number.isInteger(id) && id > 0 && name) byName.set(name, id);
+    const id = typeof item === "number" ? item : Number((item as { value?: unknown })?.value);
+    if (Number.isInteger(id) && id > 0) ids.add(id);
   }
-  const ids = PRODUCTION_COUNTRY_NAMES.map((name) => byName.get(name.toLowerCase())).filter((id): id is number => id != null);
-  const ordered = [FRANCE, ...ids.filter((id) => id !== FRANCE)];
-  return [...new Set(ordered)];
+  const rest = [...ids].filter((id) => id !== FRANCE).sort((a, b) => a - b);
+  return [FRANCE, ...rest];
+}
+
+export type CatalogLane = "stars" | "ski";
+
+/** Filtre ETG appliqué avant tout téléchargement de fiche. */
+export function hotelIdFilter(lane: CatalogLane): Record<string, unknown> {
+  if (lane === "ski") return { star_rating: [3], serp_filter: [SKI_SLOPE_FILTER] };
+  return { star_rating: [4, 5] };
+}
+
+function keptStar(star: unknown, lane: CatalogLane) {
+  const value = Number(star);
+  if (!Number.isInteger(value)) return false;
+  if (value === 4 || value === 5) return true;
+  return lane === "ski" && value === 3;
 }
 
 function hidsOf(data: unknown) {
@@ -187,9 +221,13 @@ export async function decompressDump(bytes: Uint8Array) {
 export type ContentCursor = {
   /** Environnement qui a écrit le curseur. Un autre environnement repart de zéro. */
   environment?: RatehawkConfig["environment"];
+  /** Sélection d’hôtels. Une autre marque recommence la liste, sans toucher aux régions. */
+  selection?: string;
   countries?: number[];
   country_index?: number;
-  /** Position dans la liste triée des hid du pays courant. */
+  /** `stars` : 4 et 5 étoiles. `ski` : 3 étoiles avec une piste à proximité, même pays. */
+  lane?: CatalogLane;
+  /** Position dans la liste triée des hid du pays et de la voie courants. */
   hid_offset?: number;
   /** Format ETG `YYYY-MM-DD HH:MM:SS`, posé à la fin d’un cycle complet. */
   updated_since?: string | null;
@@ -214,6 +252,17 @@ export function cursorFor(raw: unknown, environment: RatehawkConfig["environment
   const cursor = (raw && typeof raw === "object" ? raw : {}) as ContentCursor;
   const sameEnv = cursor.environment ? cursor.environment === environment : environment === "sandbox";
   if (!sameEnv) return { environment };
+  if (environment === "production" && cursor.selection !== CONTENT_SELECTION) {
+    return {
+      environment,
+      selection: CONTENT_SELECTION,
+      lane: "stars",
+      country_index: 0,
+      hid_offset: 0,
+      regions_done_at: cursor.regions_done_at ?? null,
+      regions_offset: cursor.regions_offset ?? 0,
+    };
+  }
   return { ...cursor, environment };
 }
 
@@ -252,6 +301,7 @@ export async function syncRatehawkContent(supabase = ratehawkDb(), config = requ
   try {
     const { data: state } = await supabase.from("crm_ratehawk_sync").select("cursor").eq("id", "content").maybeSingle();
     cursor = cursorFor(state?.cursor, config.environment);
+    if (!sandbox) cursor.selection = CONTENT_SELECTION;
 
     // Hôtels de test ETG : bac à sable seulement, jamais mêlés au contenu de production.
     if (sandbox) {
@@ -283,14 +333,16 @@ export async function syncRatehawkContent(supabase = ratehawkDb(), config = requ
           countries: undefined,
           country_index: 0,
           hid_offset: 0,
+          lane: "stars",
           updated_since: cursor.cycle_started_at || etgTime(started),
           cycle_started_at: null,
         };
         break;
       }
       report.country = country;
+      const lane: CatalogLane = !sandbox && cursor.lane === "ski" ? "ski" : "stars";
       const body: Record<string, unknown> = { country: [country] };
-      if (!sandbox) body.preferable = true;
+      if (!sandbox) Object.assign(body, hotelIdFilter(lane));
       if (cursor.updated_since) body.updated_since = cursor.updated_since;
       const ids = await post("/api/content/v1/hotel_ids_by_filter/", body, 60_000, null, config);
       idCalls += 1;
@@ -301,14 +353,24 @@ export async function syncRatehawkContent(supabase = ratehawkDb(), config = requ
         const slice = hids.slice(offset, offset + Math.min(batch, perRun - report.hotels));
         const call = await post("/api/content/v1/hotel_content_by_ids/", { hids: slice, language: config.language }, 60_000, null, config);
         if (callFailedOf(call)) throw new Error(`hotel_content_by_ids: ${call.error || call.httpStatus}`);
-        const rows = hotelsOf(call.data).map((hotel) => hotelRecord(hotel as Record<string, unknown>, config.language)).filter((row): row is NonNullable<typeof row> => Boolean(row));
+        const rows = hotelsOf(call.data)
+          .map((hotel) => hotelRecord(hotel as Record<string, unknown>, config.language))
+          .filter((row): row is NonNullable<typeof row> => Boolean(row))
+          .filter((row) => sandbox || keptStar(row.star_rating, lane));
         report.hotels += await upsertContent(supabase, rows);
         offset += slice.length;
         cursor.hid_offset = offset;
+        cursor.lane = lane;
       }
       if (offset >= hids.length) {
-        cursor.country_index = index + 1;
-        cursor.hid_offset = 0;
+        if (!sandbox && lane === "stars") {
+          cursor.lane = "ski";
+          cursor.hid_offset = 0;
+        } else {
+          cursor.country_index = index + 1;
+          cursor.lane = "stars";
+          cursor.hid_offset = 0;
+        }
       }
       await save();
     }
