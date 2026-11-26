@@ -13,6 +13,7 @@ import {
   agencyHandoffSentence,
   buildConciergeDossier,
   dropUnrecordedHandoff,
+  HANDOFF_LABELS,
   isConciergeStop,
   leadReply,
   messageLanguage,
@@ -25,14 +26,14 @@ import {
   type ConciergePending,
   type HandoffKind,
 } from "./whatsapp-concierge";
-import { agencyRequestBody, type ConciergeGenerator, type ConciergeHistoryTurn } from "./whatsapp-conversation";
+import { agencyRequestBody, declinesAgencyOffer, type ConciergeGenerator, type ConciergeHistoryTurn } from "./whatsapp-conversation";
 import { signalWhatsappTyping } from "./whatsapp-typing";
 import { planPhase2 } from "./concierge-phase2";
 import { knowledgeSeed, type KnowledgeChunk } from "./concierge-knowledge";
 import type { PlannedFollowup, ProposalDraft, TripBrief } from "./concierge-journey";
 import type { QualityMark } from "./concierge-quality";
 import { sessionAddress } from "./whatsapp-session";
-import { nextParisMorning, threadIsPaused } from "./whatsapp-takeover";
+import { humanPauseUntil, threadIsPaused } from "./whatsapp-takeover";
 import {
   inboundAudio,
   normalizeAudioType,
@@ -623,6 +624,7 @@ export async function receiveWhatsappWebhook(input: {
   let bookingId: string | null = linkedBooking;
   let handoff: HandoffKind | null = null;
   let prior: ConciergeHistoryTurn[] = [];
+  let briefDossier: ReturnType<typeof buildConciergeDossier> | null = null;
   let answered = clientText;
   let tools: string[] | null = linkedBooking ? ["ajouter_piece"] : null;
   let authorizationCheck: AuthorizationCheckIntent | null = null;
@@ -682,6 +684,7 @@ export async function receiveWhatsappWebhook(input: {
     const loaded = await input.store.loadDossier(customer.id);
     const raw = companion ? scopeCompanionDossier(loaded, companion.bookingIds) : loaded;
     const dossier = buildConciergeDossier({ ...raw, firstName: customer.first_name });
+    briefDossier = dossier;
     if (!content && hadPiece && !stopping) {
       reply = withConciergeSignature(pieceSavedLine(lang));
     } else {
@@ -798,19 +801,38 @@ export async function receiveWhatsappWebhook(input: {
   if (mediaUrl) mediaUrl = await liveConciergeImage(mediaUrl, input.fetchImpl);
   const planned = turnMessages;
   let bubbles = (planned && reply === planned.join("\n\n") ? planned : [reply]).filter((line) => line.trim()).slice(0, 3);
-  if (bubbles.some((line) => replyClaimsAgencyHandoff(line)) && !handoff) handoff = "question";
-  if (bubbles.some((line) => replyClaimsEmptyPromise(line)) && !(tools && tools.length) && !handoff) {
+  const declined = declinesAgencyOffer(answered, prior);
+  if (declined) {
+    handoff = null;
+    if (bubbles.some((line) => replyClaimsAgencyHandoff(line))) {
+      bubbles = [
+        withConciergeSignature(
+          messageLanguage(answered) === "en"
+            ? "Understood. I won’t pass this to the agency."
+            : "D’accord, je ne transmets rien à l’agence."
+        ),
+      ];
+    }
+  }
+  if (!declined && bubbles.some((line) => replyClaimsAgencyHandoff(line)) && !handoff) handoff = "question";
+  if (!declined && bubbles.some((line) => replyClaimsEmptyPromise(line)) && !(tools && tools.length) && !handoff) {
     handoff = "question";
     tools = ["ouvrir_demande"];
   }
   if (handoff) {
+    const stay =
+      (bookingId ? briefDossier?.stays.find((row) => row.id === bookingId) : null) ||
+      (briefDossier?.stays.length === 1 ? briefDossier.stays[0] : null);
+    const stayLine = stay ? [stay.reference, stay.destination || stay.title].filter(Boolean).join(" · ") : null;
     const request: WhatsappRequestInsert = {
       customer_id: customers.length === 1 || companion ? customer?.id || null : null,
       phone: e164,
       booking_id: bookingId,
       message_id: inbound.id,
       kind: handoff,
-      body: redactIngestText(agencyRequestBody(answered, prior)),
+      body: redactIngestText(
+        agencyRequestBody(answered, prior, { stay: stayLine, expected: HANDOFF_LABELS[handoff] })
+      ),
       status: "open",
     };
     try {
@@ -1537,7 +1559,7 @@ export function createWhatsappSupabaseStore(admin: SupabaseClient): WhatsappStor
         phone,
         customer_id: customerId,
         paused_at: now.toISOString(),
-        paused_until: nextParisMorning(now).toISOString(),
+        paused_until: humanPauseUntil(now).toISOString(),
         updated_at: now.toISOString(),
       });
       if (error) console.error("[whatsapp-concierge] pause", error.code || "error");

@@ -251,7 +251,9 @@ test("l’agence reçoit la question exacte, le client et le dossier", async () 
   assert.match(sent.join("\n"), /je regarde et je vous fais un retour/i);
   assert.equal(/décolle|proposition|devis/i.test(sent.join("\n")), false);
   const request = alerts.find((row) => row.kind === "question");
-  assert.equal(request?.body, ASK);
+  assert.match(String(request?.body || ""), new RegExp(ASK.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(String(request?.body || ""), /Attendu : Question à l’agence/);
+  assert.match(String(request?.body || ""), /TB-2026-0148/);
   assert.equal(request?.customer_id, "cust-david");
   assert.equal(request?.booking_id, "stay-vn");
 });

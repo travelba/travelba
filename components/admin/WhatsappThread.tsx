@@ -39,6 +39,7 @@ export function WhatsappThread({
   customerFirstName = null,
   bookingId = null,
   paused = false,
+  pausedUntil = null,
   templates = [],
   proposals = [],
   previewBlocked = false,
@@ -54,6 +55,8 @@ export function WhatsappThread({
   customerFirstName?: string | null;
   bookingId?: string | null;
   paused?: boolean;
+  /** Fin du verrou, heure ISO. Le bouton « Rendre au Concierge » lève la pause. */
+  pausedUntil?: string | null;
   templates?: InboxTemplate[];
   proposals?: InboxProposal[];
   previewBlocked?: boolean;
@@ -85,6 +88,7 @@ export function WhatsappThread({
   const key = phone || customerId || "fil";
   const threads = foldThreads(inboxMessages, {
     paused: paused && phone ? [phone] : [],
+    pausedUntil: paused && phone && pausedUntil ? { [phone]: pausedUntil } : {},
     escalated: requests.length ? [key] : [],
   });
   const lastInbound = [...inboxMessages].filter((row) => row.direction === "inbound").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
@@ -119,6 +123,8 @@ export function WhatsappThread({
           lastAt: "",
           unread: 0,
           status: paused ? "agency" : "robot",
+          held: paused,
+          pausedUntil: paused ? pausedUntil : null,
         }]}
         messages={inboxMessages}
         activeKey={threads[0]?.key || key}

@@ -35,7 +35,7 @@ export function WhatsappDesk({
         return;
       }
       setText("");
-      setNote("Message envoyé. Le Concierge se tait jusqu’à demain matin.");
+      setNote("Message envoyé. Le Concierge reste en pause 12 heures. « Rendre au Concierge » le réactive.");
       router.refresh();
     } finally {
       setBusy(false);

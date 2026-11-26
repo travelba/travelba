@@ -128,16 +128,18 @@ export async function WhatsappPanel({ params }: { params: Record<string, SearchP
     ? []
     : ((threads.data || []) as { phone: string; paused_until: string | null; staff_read_at?: string | null; customer_id: string | null }[]);
   const paused = threadRows.filter((row) => pauseStillActive(row.paused_until)).map((row) => row.phone);
+  const pausedUntil: Record<string, string> = {};
   const readAt: Record<string, string | null> = {};
   for (const row of threadRows) {
     if (row.staff_read_at) readAt[row.phone] = row.staff_read_at;
+    if (row.phone && row.paused_until && pauseStillActive(row.paused_until)) pausedUntil[row.phone] = row.paused_until;
   }
   const escalated = openRequests.map((row) => row.phone).filter(Boolean) as string[];
   const allProposals = (proposals.data || []) as { id: string; phone: string; draft_body: string }[];
   const drafts = (followups.error ? [] : followups.data || []) as { id: string; phone: string; kind: string; channel: string; draft_body: string }[];
   const pendingByPhone = new Map<string, number>();
   for (const row of [...allProposals, ...drafts]) pendingByPhone.set(row.phone, (pendingByPhone.get(row.phone) || 0) + 1);
-  const folded = foldThreads(messages, { paused, escalated, readAt }).map((thread) => ({
+  const folded = foldThreads(messages, { paused, pausedUntil, escalated, readAt }).map((thread) => ({
     ...thread,
     pending: thread.phone ? pendingByPhone.get(thread.phone) || 0 : 0,
   }));

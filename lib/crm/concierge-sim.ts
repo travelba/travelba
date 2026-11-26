@@ -26,6 +26,7 @@ import {
   type ConciergeGenerator,
   type ConciergeHistoryTurn,
 } from "@/lib/crm/whatsapp-conversation";
+import { CONCIERGE_FIXTURE_PHONE, CONCIERGE_TEST_REFUSAL, conciergeTestTargetAllowed } from "@/lib/crm/whatsapp-test-guard";
 
 export type ScenarioTurn = {
   position: number;
@@ -75,8 +76,10 @@ export type SimRun = {
 export type SimOptions = {
   mode?: SimMode;
   now?: Date;
-  /** Numéro fictif, seulement pour l’appel. Il n’est pas stocké. */
+  /** Numéro fictif, seulement pour l’appel. Il n’est pas stocké. Un vrai numéro est refusé. */
   phone?: string;
+  /** Dossier ou fiche `is_test`. Seul cas où un autre numéro est accepté. */
+  isTest?: boolean;
   generate?: ConciergeGenerator;
   nextClientTurn?: NextClientTurn;
   /** Modèle du nouveau moteur. Défaut : simulateur, sans appel réseau. */
@@ -86,7 +89,7 @@ export type SimOptions = {
   web?: WebProvider;
 };
 
-const FICTIONAL_PHONE = "+33601020304";
+const FICTIONAL_PHONE = CONCIERGE_FIXTURE_PHONE;
 
 /**
  * Le routeur ne tranche pas, et la phase 2 non plus : le modèle devrait parler.
@@ -127,6 +130,16 @@ export async function runScenario(scenario: ConciergeScenario, options: SimOptio
   const mode = options.mode || "router";
   const now = options.now ?? new Date();
   const phone = options.phone || FICTIONAL_PHONE;
+  if (!conciergeTestTargetAllowed({ phone, isTest: options.isTest })) {
+    return {
+      slug: scenario.slug,
+      phase: scenario.phase,
+      mode,
+      ok: false,
+      summary: CONCIERGE_TEST_REFUSAL,
+      turns: [],
+    };
+  }
   const generate = options.generate ?? (mode === "model" ? generateConciergeReply : undefined);
   const history: ConciergeHistoryTurn[] = [];
   const pending: ConciergePending[] = [];

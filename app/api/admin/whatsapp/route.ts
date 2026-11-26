@@ -9,7 +9,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { adminReplyKind, draftTemplateRefused, readStamp } from "@/lib/crm/whatsapp-inbox";
 import { loadDockSnapshot, loadDockThread } from "@/lib/crm/whatsapp-dock-load";
 import { releaseThreadToConcierge } from "@/lib/crm/whatsapp-handoff";
-import { agencySignoff, nextParisMorning } from "@/lib/crm/whatsapp-takeover";
+import { agencySignoff, humanPauseUntil } from "@/lib/crm/whatsapp-takeover";
 import { sendContentTemplate } from "@/lib/crm/whatsapp";
 import { sendWhatsappSession, sessionAddress } from "@/lib/crm/whatsapp-session";
 import { sendClosedWindowReply } from "@/lib/crm/whatsapp-admin-reply";
@@ -161,12 +161,12 @@ export async function POST(request: Request) {
       phone,
       customer_id: customerId,
       paused_at: now.toISOString(),
-      paused_until: nextParisMorning(now).toISOString(),
+      paused_until: humanPauseUntil(now).toISOString(),
       paused_by: auth.staff.id,
       updated_at: now.toISOString(),
     });
     if (error) return jsonError("La reprise en main n’a pas abouti. Réessayez.", 503);
-    return NextResponse.json({ ok: true, status: "agency", at: now.toISOString() });
+    return NextResponse.json({ ok: true, status: "agency", at: now.toISOString(), pausedUntil: humanPauseUntil(now).toISOString() });
   }
 
   const template = (body?.template || "").trim();
@@ -284,10 +284,10 @@ export async function POST(request: Request) {
     phone,
     customer_id: customerId,
     paused_at: now.toISOString(),
-    paused_until: nextParisMorning(now).toISOString(),
+    paused_until: humanPauseUntil(now).toISOString(),
     paused_by: auth.staff.id,
     updated_at: now.toISOString(),
   });
   if (pauseError) console.error("[whatsapp-concierge] pause", pauseError.code || "error");
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, pausedUntil: humanPauseUntil(now).toISOString() });
 }
