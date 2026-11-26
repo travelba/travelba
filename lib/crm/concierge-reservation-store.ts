@@ -32,6 +32,12 @@ export async function storeReservationSimulation(
         reply: side.reply.slice(0, 800),
         ok: side.ok,
         summary: side.summary.slice(0, 240),
+        engine_kind: side.engineKind,
+        model: side.model,
+        input_tokens: side.inputTokens,
+        output_tokens: side.outputTokens,
+        latency_ms: side.latencyMs,
+        calls: side.calls,
       };
     })
   );

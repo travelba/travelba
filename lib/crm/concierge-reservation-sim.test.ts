@@ -6,10 +6,12 @@ import { fileURLToPath } from "node:url";
 import { buildConciergeDossier } from "@/lib/crm/whatsapp-concierge";
 import { readReservationCases } from "@/lib/crm/concierge-reservation-load";
 import { storeReservationSimulation } from "@/lib/crm/concierge-reservation-store";
+import { fixtureWebProvider } from "@/lib/crm/concierge-engine-web";
 import {
   ASKS_PER_BOOKING,
   diversifyClientText,
   generateReservationAsks,
+  liveSimulationPlan,
   runReservationSimulation,
   simulationBatchKey,
   simulationCallEstimate,
@@ -225,6 +227,37 @@ test("la lecture ne demande pas de pièce d’identité", async () => {
   assert.equal(loaded.cases.length, 1);
   assert.equal(selects.join(" ").includes("passport"), false);
   assert.equal(JSON.stringify(loaded.cases).includes("12AB34567"), false);
+});
+
+test("le vrai Concierge mocké reste sous le plafond et sans pièce d’identité", async () => {
+  assert.deepEqual(liveSimulationPlan({ CONCIERGE_SIM_LIVE: "1", CONCIERGE_SIM_SAMPLE: "40", CONCIERGE_SIM_BUDGET: "900" }), {
+    live: true,
+    sample: 20,
+    budget: 200,
+  });
+  assert.equal(liveSimulationPlan({ CONCIERGE_SIM_LIVE: "1", CONCIERGE_SIM_SAMPLE: "5", CONCIERGE_SIM_BUDGET: "30" }).budget, 30);
+  assert.equal(liveSimulationPlan({}).live, false);
+  const prompts: string[] = [];
+  const results = await runReservationSimulation({
+    cases: [{ reference: "TB-2026-8801", dossier: dossier() }],
+    now: NOW,
+    style: "net",
+    live: true,
+    budget: 2,
+    web: fixtureWebProvider(),
+    engineGenerate: async ({ prompt, tools }) => {
+      prompts.push(prompt);
+      tools.ouvrir_demande("Demande simulée, sans écriture.", "question");
+      return { text: "Votre vol AF1204 part à 10h30. Je transmets à l’agence.", usage: { inputTokens: 11, outputTokens: 7 } };
+    },
+  });
+  assert.equal(results.length, 2);
+  assert.equal(results.reduce((sum, row) => sum + row.engine.calls, 0), 2);
+  assert.equal(results[0]?.engine.engineKind, "reel");
+  assert.equal(results[0]?.engine.inputTokens, 11);
+  assert.equal(results[0]?.engine.outputTokens, 7);
+  assert.equal(results[0]?.router.calls, 0);
+  assert.equal(prompts.some((prompt) => prompt.includes("12AB34567") || /\b\d{6,}\b/.test(prompt)), false);
 });
 
 test("le script est coupé et n’envoie rien", () => {

@@ -1,11 +1,19 @@
 import { gradeTurn, type GradeScore, type ScenarioExpect, type ScenarioPhase } from "@/lib/crm/concierge-grader";
 import { runScenario, type ConciergeScenario, type SimMode } from "@/lib/crm/concierge-sim";
+import { runConciergeEngine, type EngineGenerate } from "@/lib/crm/concierge-engine";
+import { fixtureWebProvider, resolveWebProvider, type WebProvider } from "@/lib/crm/concierge-engine-web";
+import type { ConciergeHistoryTurn } from "@/lib/crm/whatsapp-conversation";
 import { scrubQualityText } from "@/lib/crm/concierge-quality-desk";
-import type { ConciergeDossier, ConciergeItem } from "@/lib/crm/whatsapp-concierge";
+import type { ConciergeDossier, ConciergeItem, HandoffKind } from "@/lib/crm/whatsapp-concierge";
 import { confirmsRefusedAct } from "@/lib/crm/concierge-grader";
 
 /** Demandes par dossier quand on ne précise pas de plafond. */
 export const ASKS_PER_BOOKING = 8;
+
+/** Plafond dur du vrai Concierge : dossiers et appels modèle. */
+export const LIVE_DOSSIER_CAP = 20;
+export const DEFAULT_MODEL_BUDGET = 200;
+export const MAX_MODEL_BUDGET = 200;
 
 export const SIMULATION_SOURCE = "simulation_reservations" as const;
 
@@ -27,12 +35,20 @@ export type ReservationCase = {
   asks: ReservationAsk[];
 };
 
+export type EngineRunKind = "simule" | "reel";
+
 export type ModeResult = {
   mode: "router" | "engine";
   ok: boolean;
   summary: string;
   reply: string;
   scores: GradeScore[];
+  engineKind: EngineRunKind | null;
+  model: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+  calls: number;
 };
 
 export type AskResult = {
@@ -95,6 +111,23 @@ export function simulationBatchKey(input: { day: string; references: string[]; s
 export function sampleRows<T>(rows: T[], count: number, seed: string) {
   const ranked = [...rows].sort((a, b) => hash(`${seed}:${JSON.stringify(a)}`) - hash(`${seed}:${JSON.stringify(b)}`));
   return ranked.slice(0, Math.max(0, count));
+}
+
+/** Vrai Concierge seulement avec le drapeau, au plus 20 dossiers et 200 appels. */
+export function liveSimulationPlan(env: Record<string, string | undefined>) {
+  const live = env.CONCIERGE_SIM_LIVE === "1";
+  const asked = Number(env.CONCIERGE_SIM_SAMPLE || (live ? "20" : "8"));
+  const sample = live
+    ? Math.min(Math.max(Number.isFinite(asked) ? Math.round(asked) : LIVE_DOSSIER_CAP, 1), LIVE_DOSSIER_CAP)
+    : Math.min(Math.max(Number.isFinite(asked) ? Math.round(asked) : 8, 1), 40);
+  const askedBudget = Number(env.CONCIERGE_SIM_BUDGET || String(DEFAULT_MODEL_BUDGET));
+  const budget = live
+    ? Math.min(
+        Math.max(Number.isFinite(askedBudget) ? Math.round(askedBudget) : DEFAULT_MODEL_BUDGET, 1),
+        MAX_MODEL_BUDGET
+      )
+    : 0;
+  return { live, sample, budget };
 }
 
 /** Appels modèle pour un parc entier. Le routeur n’en fait pas. Le moteur simulé non plus. */
@@ -445,6 +478,83 @@ async function runMode(dossier: ConciergeDossier, ask: ReservationAsk, mode: Sim
     summary: failed.slice(0, 6).join(", ") || "ok",
     reply: scrubQualityText(reply),
     scores,
+    engineKind: mode === "engine" ? "simule" : null,
+    model: null,
+    inputTokens: 0,
+    outputTokens: 0,
+    latencyMs: 0,
+    calls: 0,
+  };
+}
+
+async function runLiveEngine(
+  dossier: ConciergeDossier,
+  ask: ReservationAsk,
+  now: Date,
+  callBudget: { left: number },
+  generate: EngineGenerate | undefined,
+  web: WebProvider
+): Promise<ModeResult> {
+  const history: ConciergeHistoryTurn[] = [];
+  let reply = "";
+  let handoff: HandoffKind | null = null;
+  let tools: string[] = [];
+  let model: string | null = null;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let latencyMs = 0;
+  let calls = 0;
+  for (const turn of ask.turns) {
+    if (callBudget.left <= 0) break;
+    const result = await runConciergeEngine({
+      message: turn.clientText,
+      dossier,
+      history,
+      now,
+      generate,
+      web,
+    });
+    const called = !result.skipped || result.skipped === "vide";
+    if (called) {
+      calls += 1;
+      callBudget.left -= 1;
+    }
+    inputTokens += result.tokens?.input || 0;
+    outputTokens += result.tokens?.output || 0;
+    latencyMs += result.latencyMs;
+    model = result.model || model;
+    reply = result.reply;
+    handoff = result.handoff;
+    tools = result.tools;
+    history.push({ direction: "inbound", body: turn.clientText, at: now.toISOString() });
+    history.push({ direction: "outbound", body: result.reply, at: now.toISOString() });
+  }
+  const graded = gradeTurn({
+    phase: ask.phase,
+    message: ask.turns.at(-1)?.clientText || "",
+    reply,
+    handoff,
+    tools,
+    access: false,
+    dossier,
+    history: [],
+    now,
+    expect: { ...expectOf(ask, ask.style === "anglais" ? "en" : "fr"), handoff },
+  });
+  const scores = [...graded, ...extraScores(ask, reply, handoff)];
+  const failed = scores.filter((score) => !score.ok).map((score) => score.criterion);
+  return {
+    mode: "engine",
+    ok: failed.length === 0,
+    summary: failed.slice(0, 6).join(", ") || "ok",
+    reply: scrubQualityText(reply),
+    scores,
+    engineKind: "reel",
+    model,
+    inputTokens,
+    outputTokens,
+    latencyMs,
+    calls,
   };
 }
 
@@ -473,10 +583,16 @@ export async function runReservationSimulation(input: {
   style?: AskStyle;
   diversify?: (text: string) => Promise<string>;
   diversifyBudget?: number;
+  /** Vrai moteur. Sans generate, l’appel passe par AI Gateway. Les tests passent un mock. */
+  live?: boolean;
+  engineGenerate?: EngineGenerate;
+  web?: WebProvider;
 }): Promise<AskResult[]> {
   const now = input.now ?? new Date();
   const budget = input.budget ?? Number.POSITIVE_INFINITY;
   const diversifyBudget = { left: input.diversifyBudget ?? 0 };
+  const callBudget = { left: input.live ? (input.budget ?? DEFAULT_MODEL_BUDGET) : Number.POSITIVE_INFINITY };
+  const web = input.web || (input.live ? resolveWebProvider() : fixtureWebProvider());
   const results: AskResult[] = [];
   for (const row of input.cases) {
     const asks = generateReservationAsks(row.dossier, {
@@ -486,14 +602,15 @@ export async function runReservationSimulation(input: {
       style: input.style,
     });
     for (const ask of asks) {
-      if (results.length >= budget) return results;
+      if (!input.live && results.length >= budget) return results;
+      if (input.live && callBudget.left <= 0) return results;
       if (input.diversify) {
         ask.turns[0].clientText = await diversifyClientText(ask.turns[0].clientText, input.diversify, diversifyBudget);
       }
-      const [router, engine] = await Promise.all([
-        runMode(row.dossier, ask, "router", now),
-        runMode(row.dossier, ask, "engine", now),
-      ]);
+      const router = await runMode(row.dossier, ask, "router", now);
+      const engine = input.live
+        ? await runLiveEngine(row.dossier, ask, now, callBudget, input.engineGenerate, web)
+        : await runMode(row.dossier, ask, "engine", now);
       results.push({
         reference: row.reference,
         kind: ask.kind,
@@ -534,6 +651,12 @@ export function pairStoredSimulations(
     reply: string;
     ok: boolean;
     summary: string;
+    engineKind?: EngineRunKind | null;
+    model?: string | null;
+    inputTokens?: number;
+    outputTokens?: number;
+    latencyMs?: number;
+    calls?: number;
   }[]
 ): AskResult[] {
   const grouped = new Map<string, AskResult>();
@@ -547,10 +670,22 @@ export function pairStoredSimulations(
       title: row.kind,
       action: "repondre" as AskAction,
       clientText: row.clientText,
-      router: { mode: "router" as const, ok: false, summary: "", reply: "", scores: [] },
-      engine: { mode: "engine" as const, ok: false, summary: "", reply: "", scores: [] },
+      router: { mode: "router" as const, ok: false, summary: "", reply: "", scores: [], engineKind: null, model: null, inputTokens: 0, outputTokens: 0, latencyMs: 0, calls: 0 },
+      engine: { mode: "engine" as const, ok: false, summary: "", reply: "", scores: [], engineKind: null, model: null, inputTokens: 0, outputTokens: 0, latencyMs: 0, calls: 0 },
     };
-    current[row.mode] = { mode: row.mode, ok: row.ok, summary: row.summary, reply: row.reply, scores: [] };
+    current[row.mode] = {
+      mode: row.mode,
+      ok: row.ok,
+      summary: row.summary,
+      reply: row.reply,
+      scores: [],
+      engineKind: row.engineKind || null,
+      model: row.model || null,
+      inputTokens: row.inputTokens || 0,
+      outputTokens: row.outputTokens || 0,
+      latencyMs: row.latencyMs || 0,
+      calls: row.calls || 0,
+    };
     grouped.set(key, current);
   }
   return [...grouped.values()];

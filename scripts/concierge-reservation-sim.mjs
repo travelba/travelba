@@ -4,13 +4,12 @@
  * Aucun WhatsApp, aucune demande client, aucune écriture de dossier.
  *
  *   CONCIERGE_SIM_RESERVATIONS=1 CONCIERGE_SIM_SAMPLE=8 node scripts/concierge-reservation-sim.mjs
+ *   CONCIERGE_SIM_RESERVATIONS=1 CONCIERGE_SIM_LIVE=1 CONCIERGE_SIM_SAMPLE=20 node scripts/concierge-reservation-sim.mjs
  *
- * CONCIERGE_SIM_LIVE=1 appelle le vrai moteur (un appel par demande).
- * CONCIERGE_SIM_LLM=1 n’est pas branché ici : la diversification reste aux gabarits.
- * Défaut : moteur simulé, zéro appel payant.
+ * CONCIERGE_SIM_LIVE=1 joue le vrai moteur (AI Gateway), au plus 20 dossiers.
+ * CONCIERGE_SIM_BUDGET plafonne les appels (défaut 200, maximum 200).
+ * CONCIERGE_SIM_LLM=1 n’est pas branché : la diversification reste aux gabarits.
  */
-const sample = Math.min(Math.max(Number(process.env.CONCIERGE_SIM_SAMPLE || "8"), 1), 40);
-const live = process.env.CONCIERGE_SIM_LIVE === "1";
 const llm = process.env.CONCIERGE_SIM_LLM === "1";
 
 if (process.env.CONCIERGE_SIM_RESERVATIONS !== "1") {
@@ -19,10 +18,10 @@ if (process.env.CONCIERGE_SIM_RESERVATIONS !== "1") {
       {
         lance: false,
         message: "Simulation coupée. Poser CONCIERGE_SIM_RESERVATIONS=1. Rien n’est lu ni envoyé.",
-        echantillon: sample,
-        appelsSiLive: sample * 8,
+        echantillonMaxReel: 20,
+        budgetDefaut: 200,
         appelsParDefaut: 0,
-        formule: "appels = dossiers × 8 si CONCIERGE_SIM_LIVE=1, plus dossiers × 8 si une diversification LLM est ouverte. Sinon 0.",
+        formule: "Vrai Concierge : au plus 20 dossiers et 200 appels (CONCIERGE_SIM_BUDGET). Sinon 0.",
       },
       null,
       2
@@ -31,11 +30,15 @@ if (process.env.CONCIERGE_SIM_RESERVATIONS !== "1") {
   process.exit(0);
 }
 
-const { createServiceClient } = await import("../lib/supabase/admin.ts");
-const { readReservationCases } = await import("../lib/crm/concierge-reservation-load.ts");
-const { runReservationSimulation, simulationBatchKey, simulationCallEstimate } = await import(
+const { liveSimulationPlan, runReservationSimulation, simulationBatchKey, simulationCallEstimate } = await import(
   "../lib/crm/concierge-reservation-sim.ts"
 );
+const plan = liveSimulationPlan(process.env);
+const sample = plan.sample;
+const live = plan.live;
+const { createServiceClient } = await import("../lib/supabase/admin.ts");
+const { readReservationCases } = await import("../lib/crm/concierge-reservation-load.ts");
+const { resolveWebProvider } = await import("../lib/crm/concierge-engine-web.ts");
 const { storeReservationSimulation } = await import("../lib/crm/concierge-reservation-store.ts");
 
 const admin = createServiceClient();
@@ -46,24 +49,32 @@ if (loaded.error) {
   process.exit(0);
 }
 const estimate = simulationCallEstimate(loaded.cases.length, { liveEngine: live, llm });
-if (live || llm) {
+if (llm) {
   console.log(
     JSON.stringify({
       lance: false,
-      message: "Le script de cette version joue le moteur simulé. Retirer CONCIERGE_SIM_LIVE et CONCIERGE_SIM_LLM.",
+      message: "La diversification LLM n’est pas branchée sur ce script. Retirer CONCIERGE_SIM_LLM.",
       estimation: estimate,
       envoye: false,
     })
   );
   process.exit(0);
 }
-const results = await runReservationSimulation({ cases: loaded.cases, maxAsks: 8, budget: sample * 8 });
+const capped = loaded.cases.slice(0, sample);
+const results = await runReservationSimulation({
+  cases: capped,
+  maxAsks: 8,
+  budget: live ? plan.budget : sample * 8,
+  live,
+  web: live ? resolveWebProvider() : undefined,
+});
+const appels = results.reduce((sum, row) => sum + row.engine.calls, 0);
 const batchId = crypto.randomUUID();
 const stored = await storeReservationSimulation(admin, {
   batchId,
   batchKey: simulationBatchKey({
     day,
-    references: loaded.cases.map((row) => row.reference),
+    references: capped.map((row) => row.reference),
     sample,
   }),
   rows: results,
@@ -73,12 +84,13 @@ console.log(
     {
       lance: true,
       source: "simulation_reservations",
-      dossiers: loaded.cases.length,
+      dossiers: capped.length,
       demandes: results.length,
       enregistres: stored.stored,
       enAttenteDeMigration: stored.pending,
-      appels: 0,
-      estimationSiToutLeParc: "dossiers × 8 appels moteur si CONCIERGE_SIM_LIVE=1, sinon 0",
+      moteur: live ? "reel" : "simule",
+      budget: plan.budget,
+      appels,
       envoye: false,
     },
     null,
