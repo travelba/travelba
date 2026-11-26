@@ -1720,6 +1720,39 @@ test("un fil en pause enregistre le client et ne répond pas", async () => {
   assert.equal(writes.some((row) => row.table === "crm_whatsapp_requests"), false);
 });
 
+test("un fil en pause calcule l’ombre et n’envoie rien", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  const seen: string[] = [];
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "Vous êtes là ?",
+    MessageSid: "SMpausedshadow",
+  };
+  const store = storeFrom({
+    writes,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: { bookings: [published] },
+  });
+  store.threadOpen = async () => false;
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store,
+    observe: async (event) => {
+      seen.push(event.message);
+    },
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMpausedshadowout" };
+    },
+  });
+  assert.equal(sent.length, 0);
+  assert.deepEqual(seen, ["Vous êtes là ?"]);
+});
+
 test("« c’est une question » après une offre ne crée pas de demande", async () => {
   const writes: { table: string; row?: Record<string, unknown> }[] = [];
   const sent: { body: string }[] = [];

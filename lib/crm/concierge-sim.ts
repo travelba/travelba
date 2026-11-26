@@ -13,6 +13,14 @@ import {
   type ConciergePending,
   type HandoffKind,
 } from "@/lib/crm/whatsapp-concierge";
+import { fixtureWebProvider, type WebProvider } from "@/lib/crm/concierge-engine-web";
+import {
+  runConciergeEngine,
+  simulateEngineReply,
+  type EngineCheckin,
+  type EngineGenerate,
+  type EngineTraveler,
+} from "@/lib/crm/concierge-engine";
 import {
   generateConciergeReply,
   type ConciergeGenerator,
@@ -34,9 +42,11 @@ export type ConciergeScenario = {
   fixture: ConciergeDossier;
   published: boolean;
   turns: ScenarioTurn[];
+  travelers?: EngineTraveler[];
+  checkins?: EngineCheckin[];
 };
 
-export type SimMode = "router" | "model";
+export type SimMode = "router" | "model" | "engine";
 
 /** Le client simulé de cette version est le texte du tour. Le crochet est là pour la suite. */
 export type NextClientTurn = (input: {
@@ -72,6 +82,11 @@ export type SimOptions = {
   isTest?: boolean;
   generate?: ConciergeGenerator;
   nextClientTurn?: NextClientTurn;
+  /** Modèle du nouveau moteur. Défaut : simulateur, sans appel réseau. */
+  engineGenerate?: EngineGenerate;
+  /** Vrai modèle. Le script manuel seulement. La CI laisse ce drapeau vide. */
+  liveEngine?: boolean;
+  web?: WebProvider;
 };
 
 const FICTIONAL_PHONE = CONCIERGE_FIXTURE_PHONE;
@@ -132,6 +147,43 @@ export async function runScenario(scenario: ConciergeScenario, options: SimOptio
 
   for (const turn of scenario.turns) {
     const message = options.nextClientTurn?.({ scenario, position: turn.position, history }) || turn.clientText;
+    if (mode === "engine") {
+      const result = await runConciergeEngine({
+        message,
+        dossier: scenario.fixture,
+        history,
+        now,
+        travelers: scenario.travelers,
+        checkins: scenario.checkins,
+        generate: options.liveEngine ? undefined : options.engineGenerate || simulateEngineReply,
+        web: options.web || fixtureWebProvider(),
+      });
+      const scores = gradeTurn({
+        phase: scenario.phase,
+        message,
+        reply: result.reply,
+        handoff: result.handoff,
+        tools: result.tools,
+        access: result.access,
+        dossier: scenario.fixture,
+        history,
+        now,
+        expect: turn.expect,
+        corpus: result.corpus,
+      });
+      turns.push({
+        position: turn.position,
+        status: "graded",
+        reply: result.reply,
+        handoff: result.handoff,
+        tools: result.tools,
+        scores,
+      });
+      history.push({ direction: "inbound", body: message, at: now.toISOString() });
+      history.push({ direction: "outbound", body: result.reply, at: now.toISOString() });
+      if (result.handoff) pending.push({ kind: result.handoff, bookingId: null, body: message });
+      continue;
+    }
     const phase = await planPhase2({
       phone,
       message,
