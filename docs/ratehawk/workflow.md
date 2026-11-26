@@ -2,7 +2,7 @@
 
 Travel BA calls ETG only from the server (`lib/crm/ratehawk`). The agency works in `/admin/ratehawk`. Sandbox hosts are `https://api-sandbox.ratehawk.com` and `https://api-sandbox.worldota.net`. Production host is `https://api.ratehawk.com`. Keys, host, and stored rows never cross environments.
 
-Hotelpage and prebook are not cached. Each open and each prebook is a live call. Search reads hotel names and room static data from Supabase, filled by the daily content job, and never calls the Content API.
+Hotelpage and prebook are not cached. Each open and each prebook is a live call. Search reads hotel names and room static data from Supabase, filled by the hourly content job. When a displayed hotel (at most 8) has no public name or address in Supabase, the agency screen route and the agency connector search (`ratehawk` / `rechercher`) complete it with `POST /api/content/v1/hotel_content_by_ids/` before answering. ETG documents that endpoint for offline sync, so this fallback should stay rare once the job has covered the destination.
 
 | Step | What the agency does | ETG endpoint |
 | --- | --- | --- |
@@ -21,7 +21,7 @@ Hotelpage and prebook are not cached. Each open and each prebook is a live call.
 | 13. Order info | After success, and only after the delay (default 60 seconds, minimum 30), a later status refresh loads the order. It is not used to decide success. | `POST /api/b2b/v3/hotel/order/info/` |
 | 14. Dossier | On success, if a dossier reference matches a CRM booking, a hidden hotel line is added (`visible_to_client` false, `include_in_ledger` false). A link failure does not cancel the ETG booking. | None |
 | 15. Cancel | On a confirmed booking, the agency clicks **Annuler**. One retry, and only on timeout. | `POST /api/b2b/v3/hotel/order/cancel/` |
-| Static, daily | Cron `10 4 * * *` UTC. Not part of a guest search. | `POST /api/content/v1/filter_values`, `/api/content/v1/hotel_ids_by_filter/`, `/api/content/v1/hotel_content_by_ids/`, `POST /api/b2b/v3/hotel/region/dump/` |
+| Static, hourly | Cron `10 * * * *` UTC. Not part of a guest search. Sandbox: countries 59, 189, 201, 40 hotels per run, plus the certification hotels. Production: France first, then the countries in `PRODUCTION_COUNTRY_NAMES`, `preferable: true`, up to 3 000 hotels per run in chunks of 100, resumed from a cursor (country, offset in the sorted hid list). After a full cycle only hotels updated since the cycle start are read. A cursor written by the other environment is discarded. Regions: up to 20 000 per run, resumed by offset. | `GET /api/content/v1/filter_values`, `POST /api/content/v1/hotel_ids_by_filter/`, `POST /api/content/v1/hotel_content_by_ids/`, `POST /api/b2b/v3/hotel/region/dump/` |
 
 ## Client timeouts
 

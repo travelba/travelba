@@ -96,23 +96,39 @@ export async function etgPost(
   partnerOrderId?: string | null,
   config = requireConfig()
 ): Promise<EtgCall> {
+  return etgRequest("POST", path, body, timeoutMs, partnerOrderId, config);
+}
+
+/** GET sans corps, pour les appels documentés en GET (filter_values, hotel/static). */
+export async function etgGet(path: string, timeoutMs: number, config = requireConfig()): Promise<EtgCall> {
+  return etgRequest("GET", path, null, timeoutMs, null, config);
+}
+
+async function etgRequest(
+  method: "GET" | "POST",
+  path: string,
+  body: unknown,
+  timeoutMs: number,
+  partnerOrderId: string | null | undefined,
+  config: RatehawkConfig
+): Promise<EtgCall> {
   const endpoint = path.startsWith("/") ? path : `/${path}`;
   const url = `${config.baseUrl}${endpoint}`;
   const started = Date.now();
-  const headers = {
+  const headers: Record<string, string> = {
     authorization: `Basic ${Buffer.from(`${config.keyId}:${config.apiKey}`).toString("base64")}`,
-    "content-type": "application/json",
     accept: "application/json",
     "cache-control": "no-store",
   };
+  if (method === "POST") headers["content-type"] = "application/json";
   let httpStatus = 0;
   let parsed: unknown = null;
   let error: string | null = null;
   try {
     const response = await undiciFetch(url, {
-      method: "POST",
+      method,
       headers,
-      body: JSON.stringify(body ?? {}),
+      body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
       dispatcher: dispatcher(config.proxy),
       redirect: "manual",
       signal: AbortSignal.timeout(timeoutMs),
@@ -150,7 +166,7 @@ export async function etgPost(
     endpoint,
     httpStatus,
     durationMs: call.durationMs,
-    request: body,
+    request: method === "POST" ? body : { method },
     response: parsed ?? { error: apiError },
     error: apiError,
     partnerOrderId,

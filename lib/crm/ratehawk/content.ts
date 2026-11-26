@@ -2,7 +2,7 @@ import { promisify } from "node:util";
 import zlib from "node:zlib";
 import { CERTIFICATION_HOTELS, CERTIFICATION_REGION } from "./catalog";
 import { requireConfig, type RatehawkConfig } from "./config";
-import { etgDownload, etgPost } from "./client";
+import { etgDownload, etgGet, etgPost, type EtgCall } from "./client";
 import { collectImageUrls, publicHotelName } from "./display";
 import { ratehawkDb } from "./store";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -10,9 +10,36 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const zstdDecompress = promisify(zlib.zstdDecompress);
 
 const SANDBOX_COUNTRIES = [59, 189, 201];
-const HOTELS_PER_RUN = 40;
+/** France (59) d’abord, puis ces pays, par leur nom ETG (filter_values, desc). Les autres hôtels se complètent à l’affichage. */
+export const PRODUCTION_COUNTRY_NAMES = [
+  "France",
+  "Italy",
+  "Spain",
+  "United Kingdom",
+  "Switzerland",
+  "Portugal",
+  "Greece",
+  "Israel",
+  "United Arab Emirates",
+  "Morocco",
+  "United States",
+  "Maldives",
+  "Mauritius",
+  "Thailand",
+];
+const FRANCE = 59;
+const SANDBOX_HOTELS_PER_RUN = 40;
+/** Production : jusqu’à 3 000 fiches par passage, en lots de 100 (maximum ETG). */
+const PRODUCTION_HOTELS_PER_RUN = 3_000;
 const CONTENT_CHUNK = 10;
-const REGIONS_PER_RUN = 2_000;
+const SYNC_CHUNK = 100;
+/** hotel_ids_by_filter est limité à 60 par minute. */
+const ID_CALLS_PER_RUN = 10;
+/** maxDuration de la route : 300 s. Les fiches s’arrêtent à 200 s, les régions ne démarrent plus après 230 s. */
+const HOTEL_BUDGET_MS = 200_000;
+const REGIONS_START_BEFORE_MS = 230_000;
+const REGIONS_PER_RUN = 20_000;
+const REGION_BATCH = 1_000;
 
 function localized(value: unknown, language: "en" | "fr") {
   if (typeof value === "string") return value;
@@ -88,17 +115,24 @@ async function seedCertification(supabase: SupabaseClient) {
   );
 }
 
-function countryIds(data: unknown, environment: RatehawkConfig["environment"]) {
+function callFailedOf(call: EtgCall) {
+  return call.httpStatus !== 200 || (call.status != null && call.status !== "ok");
+}
+
+/** Pays de production à synchroniser, dans l’ordre de PRODUCTION_COUNTRY_NAMES. France au minimum. */
+export function productionCountries(data: unknown) {
   const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
   const list = Array.isArray(root.country) ? root.country : [];
-  const ids = list
-    .map((item) => (typeof item === "number" ? item : Number((item as { value?: unknown })?.value)))
-    .filter((id) => Number.isInteger(id));
-  if (environment === "sandbox") {
-    const allowed = ids.filter((id) => SANDBOX_COUNTRIES.includes(id));
-    return allowed.length ? allowed : SANDBOX_COUNTRIES;
+  const byName = new Map<string, number>();
+  for (const item of list) {
+    const row = item && typeof item === "object" ? (item as { value?: unknown; desc?: unknown }) : null;
+    const id = Number(row?.value);
+    const name = typeof row?.desc === "string" ? row.desc.trim().toLowerCase() : "";
+    if (Number.isInteger(id) && id > 0 && name) byName.set(name, id);
   }
-  return ids;
+  const ids = PRODUCTION_COUNTRY_NAMES.map((name) => byName.get(name.toLowerCase())).filter((id): id is number => id != null);
+  const ordered = [FRANCE, ...ids.filter((id) => id !== FRANCE)];
+  return [...new Set(ordered)];
 }
 
 function hidsOf(data: unknown) {
@@ -150,94 +184,192 @@ export async function decompressDump(bytes: Uint8Array) {
   return zstdDecompress(bytes);
 }
 
-export async function syncRatehawkContent(supabase = ratehawkDb(), config = requireConfig()) {
-  await seedCertification(supabase);
-  const report = { hotels: 0, regions: 0, certification: CERTIFICATION_HOTELS.map((hotel) => hotel.hid), error: null as string | null };
+export type ContentCursor = {
+  /** Environnement qui a écrit le curseur. Un autre environnement repart de zéro. */
+  environment?: RatehawkConfig["environment"];
+  countries?: number[];
+  country_index?: number;
+  /** Position dans la liste triée des hid du pays courant. */
+  hid_offset?: number;
+  /** Format ETG `YYYY-MM-DD HH:MM:SS`, posé à la fin d’un cycle complet. */
+  updated_since?: string | null;
+  cycle_started_at?: string | null;
+  regions_done_at?: string | null;
+  regions_offset?: number;
+};
+
+type SyncDeps = {
+  post?: typeof etgPost;
+  get?: typeof etgGet;
+  download?: typeof etgDownload;
+  now?: () => number;
+};
+
+function etgTime(ms: number) {
+  return new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+}
+
+/** Curseur lisible pour cet environnement. Le curseur du bac à sable ne sert jamais en production. */
+export function cursorFor(raw: unknown, environment: RatehawkConfig["environment"]): ContentCursor {
+  const cursor = (raw && typeof raw === "object" ? raw : {}) as ContentCursor;
+  const sameEnv = cursor.environment ? cursor.environment === environment : environment === "sandbox";
+  if (!sameEnv) return { environment };
+  return { ...cursor, environment };
+}
+
+async function loadCountries(get: typeof etgGet, config: RatehawkConfig) {
+  if (config.environment === "sandbox") return SANDBOX_COUNTRIES;
+  const filters = await get("/api/content/v1/filter_values", 60_000, config);
+  return productionCountries(filters.data);
+}
+
+export async function syncRatehawkContent(supabase = ratehawkDb(), config = requireConfig(), deps: SyncDeps = {}) {
+  const post = deps.post ?? etgPost;
+  const get = deps.get ?? etgGet;
+  const download = deps.download ?? etgDownload;
+  const now = deps.now ?? Date.now;
+  const started = now();
+  const sandbox = config.environment === "sandbox";
+  const perRun = sandbox ? SANDBOX_HOTELS_PER_RUN : PRODUCTION_HOTELS_PER_RUN;
+  const batch = sandbox ? CONTENT_CHUNK : SYNC_CHUNK;
+  const report = {
+    hotels: 0,
+    regions: 0,
+    certification: sandbox ? CERTIFICATION_HOTELS.map((hotel) => hotel.hid) : ([] as number[]),
+    country: null as number | null,
+    error: null as string | null,
+  };
+  let cursor: ContentCursor = { environment: config.environment };
+  const save = async (extra: Record<string, unknown> = {}) => {
+    await supabase.from("crm_ratehawk_sync").upsert({
+      id: "content",
+      cursor,
+      hotels_upserted: report.hotels,
+      regions_upserted: report.regions,
+      ...extra,
+    });
+  };
   try {
     const { data: state } = await supabase.from("crm_ratehawk_sync").select("cursor").eq("id", "content").maybeSingle();
-    const cursor = (state?.cursor && typeof state.cursor === "object" ? state.cursor : {}) as {
-      updated_since?: string | null;
-      country_index?: number;
-      countries?: number[];
-      regions_done_at?: string | null;
-    };
+    cursor = cursorFor(state?.cursor, config.environment);
 
-    for (let offset = 0; offset < CERTIFICATION_HOTELS.length; offset += CONTENT_CHUNK) {
-      const hids = CERTIFICATION_HOTELS.slice(offset, offset + CONTENT_CHUNK).map((hotel) => hotel.hid);
-      const call = await etgPost("/api/content/v1/hotel_content_by_ids/", { hids, language: config.language }, 60_000, null, config);
-      const rows = hotelsOf(call.data).map((hotel) => hotelRecord(hotel as Record<string, unknown>, config.language)).filter((row): row is NonNullable<typeof row> => Boolean(row));
-      report.hotels += await upsertContent(supabase, rows);
-    }
-
-    const filters = await etgPost("/api/content/v1/filter_values", {}, 60_000, null, config);
-    const countries = cursor.countries?.length ? cursor.countries : countryIds(filters.data, config.environment);
-    const index = cursor.country_index ?? 0;
-    const country = countries[index];
-    let nextCursor = { ...cursor, countries };
-    if (country != null && report.hotels < HOTELS_PER_RUN) {
-      const body: Record<string, unknown> = { country: [country] };
-      if (cursor.updated_since) body.updated_since = cursor.updated_since;
-      const ids = await etgPost("/api/content/v1/hotel_ids_by_filter/", body, 60_000, null, config);
-      const hids = hidsOf(ids.data).slice(0, HOTELS_PER_RUN);
-      for (let offset = 0; offset < hids.length; offset += CONTENT_CHUNK) {
-        const slice = hids.slice(offset, offset + CONTENT_CHUNK);
-        const call = await etgPost("/api/content/v1/hotel_content_by_ids/", { hids: slice, language: config.language }, 60_000, null, config);
+    // Hôtels de test ETG : bac à sable seulement, jamais mêlés au contenu de production.
+    if (sandbox) {
+      await seedCertification(supabase);
+      for (let offset = 0; offset < CERTIFICATION_HOTELS.length; offset += CONTENT_CHUNK) {
+        const hids = CERTIFICATION_HOTELS.slice(offset, offset + CONTENT_CHUNK).map((hotel) => hotel.hid);
+        const call = await post("/api/content/v1/hotel_content_by_ids/", { hids, language: config.language }, 60_000, null, config);
         const rows = hotelsOf(call.data).map((hotel) => hotelRecord(hotel as Record<string, unknown>, config.language)).filter((row): row is NonNullable<typeof row> => Boolean(row));
         report.hotels += await upsertContent(supabase, rows);
       }
-      const wrapped = index + 1 >= countries.length;
-      nextCursor = {
-        ...nextCursor,
-        country_index: wrapped ? 0 : index + 1,
-        updated_since: wrapped ? new Date().toISOString().slice(0, 19).replace("T", " ") : cursor.updated_since || null,
-      };
     }
 
-    const regionsFresh = cursor.regions_done_at && Date.now() - new Date(cursor.regions_done_at).getTime() < 20 * 60 * 60 * 1000;
-    if (!regionsFresh) {
-      const dump = await etgPost("/api/b2b/v3/hotel/region/dump/", { language: "en" }, 60_000, null, config);
+    if (!cursor.countries?.length) {
+      cursor.countries = await loadCountries(get, config);
+      cursor.country_index = 0;
+      cursor.hid_offset = 0;
+    }
+    if (!cursor.cycle_started_at) cursor.cycle_started_at = etgTime(started);
+
+    let idCalls = 0;
+    while (report.hotels < perRun && idCalls < ID_CALLS_PER_RUN && now() - started < HOTEL_BUDGET_MS) {
+      const countries: number[] = cursor.countries ?? [];
+      const index = cursor.country_index ?? 0;
+      const country = countries[index];
+      if (country == null) {
+        // Cycle complet : la suite ne lit que les hôtels modifiés depuis le début de ce cycle.
+        cursor = {
+          ...cursor,
+          countries: undefined,
+          country_index: 0,
+          hid_offset: 0,
+          updated_since: cursor.cycle_started_at || etgTime(started),
+          cycle_started_at: null,
+        };
+        break;
+      }
+      report.country = country;
+      const body: Record<string, unknown> = { country: [country] };
+      if (!sandbox) body.preferable = true;
+      if (cursor.updated_since) body.updated_since = cursor.updated_since;
+      const ids = await post("/api/content/v1/hotel_ids_by_filter/", body, 60_000, null, config);
+      idCalls += 1;
+      if (callFailedOf(ids)) throw new Error(`hotel_ids_by_filter: ${ids.error || ids.httpStatus}`);
+      const hids = [...new Set(hidsOf(ids.data))].sort((a, b) => a - b);
+      let offset = Math.min(cursor.hid_offset ?? 0, hids.length);
+      while (offset < hids.length && report.hotels < perRun && now() - started < HOTEL_BUDGET_MS) {
+        const slice = hids.slice(offset, offset + Math.min(batch, perRun - report.hotels));
+        const call = await post("/api/content/v1/hotel_content_by_ids/", { hids: slice, language: config.language }, 60_000, null, config);
+        if (callFailedOf(call)) throw new Error(`hotel_content_by_ids: ${call.error || call.httpStatus}`);
+        const rows = hotelsOf(call.data).map((hotel) => hotelRecord(hotel as Record<string, unknown>, config.language)).filter((row): row is NonNullable<typeof row> => Boolean(row));
+        report.hotels += await upsertContent(supabase, rows);
+        offset += slice.length;
+        cursor.hid_offset = offset;
+      }
+      if (offset >= hids.length) {
+        cursor.country_index = index + 1;
+        cursor.hid_offset = 0;
+      }
+      await save();
+    }
+    await save({ last_ok_at: new Date(now()).toISOString(), last_error: null });
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : "sync";
+    // Le curseur garde l’avancée déjà faite.
+    await save({ last_error: message }).catch(() => undefined);
+    return { ok: false as const, ...report, error: message };
+  }
+
+  try {
+    const regionsFresh = cursor.regions_done_at && now() - new Date(cursor.regions_done_at).getTime() < 20 * 60 * 60 * 1000;
+    if (!regionsFresh && now() - started < REGIONS_START_BEFORE_MS) {
+      const dump = await post("/api/b2b/v3/hotel/region/dump/", { language: "en" }, 60_000, null, config);
       const url = dump.data && typeof dump.data === "object" ? (dump.data as { url?: string }).url : null;
       if (url) {
-        const packed = await etgDownload(url, config);
+        const packed = await download(url, config);
         if (packed.length > 80_000_000) throw new Error("dump_too_large");
         const plain = await decompressDump(packed);
         const text = new TextDecoder().decode(plain);
-        const rows = [];
+        const skip = cursor.regions_offset ?? 0;
+        let line = 0;
+        let read = 0;
+        let rows: ReturnType<typeof regionRecord>[] = [];
         let truncated = false;
-        for (const line of text.split("\n")) {
-          if (!line.trim()) continue;
-          if (rows.length >= REGIONS_PER_RUN) {
+        const flush = async () => {
+          const valid = rows.filter((row): row is NonNullable<typeof row> => Boolean(row));
+          rows = [];
+          if (!valid.length) return;
+          const { error } = await supabase.from("crm_ratehawk_regions").upsert(valid, { onConflict: "id" });
+          if (error) throw new Error(error.message);
+          report.regions += valid.length;
+        };
+        for (const raw of text.split("\n")) {
+          if (!raw.trim()) continue;
+          line += 1;
+          if (line <= skip) continue;
+          if (read >= REGIONS_PER_RUN) {
             truncated = true;
             break;
           }
+          read += 1;
           try {
-            const record = regionRecord(JSON.parse(line) as Record<string, unknown>);
-            if (record) rows.push(record);
+            rows.push(regionRecord(JSON.parse(raw) as Record<string, unknown>));
           } catch {
             continue;
           }
+          if (rows.length >= REGION_BATCH) await flush();
         }
-        if (rows.length) {
-          const { error } = await supabase.from("crm_ratehawk_regions").upsert(rows, { onConflict: "id" });
-          if (error) throw new Error(error.message);
-          report.regions = rows.length;
-        }
-        if (!truncated) nextCursor = { ...nextCursor, regions_done_at: new Date().toISOString() };
+        await flush();
+        cursor = truncated
+          ? { ...cursor, regions_offset: skip + read }
+          : { ...cursor, regions_offset: 0, regions_done_at: new Date(now()).toISOString() };
+        await save({ last_ok_at: new Date(now()).toISOString(), last_error: null });
       }
     }
-
-    await supabase.from("crm_ratehawk_sync").upsert({
-      id: "content",
-      cursor: nextCursor,
-      last_ok_at: new Date().toISOString(),
-      last_error: null,
-      hotels_upserted: report.hotels,
-      regions_upserted: report.regions,
-    });
     return { ok: true as const, ...report };
   } catch (caught) {
-    const message = caught instanceof Error ? caught.message : "sync";
-    await supabase.from("crm_ratehawk_sync").upsert({ id: "content", last_error: message });
-    return { ok: false as const, ...report, error: message };
+    const message = caught instanceof Error ? caught.message : "regions";
+    await save({ last_error: `regions: ${message}` }).catch(() => undefined);
+    return { ok: false as const, ...report, error: `regions: ${message}` };
   }
 }

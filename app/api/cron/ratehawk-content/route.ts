@@ -3,7 +3,7 @@ import { cronAuthorized, cronSecret } from "@/lib/crm/cron-auth";
 import { ratehawkConfigured } from "@/lib/crm/ratehawk/config";
 import { syncRatehawkContent } from "@/lib/crm/ratehawk/content";
 
-/** Une fois par nuit, 3 h 10 UTC. */
+/** Toutes les heures, à la minute 10 (UTC). Le curseur reprend où le passage précédent s’est arrêté. */
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
