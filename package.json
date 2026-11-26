@@ -17,7 +17,8 @@
     "check": "npm run typecheck && npm run lint && npm run test && node scripts/check-migrations.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
     "covers:generate": "tsx scripts/generate-city-covers.ts",
-    "covers:fallback": "tsx scripts/regenerate-fallback-covers.ts"
+    "covers:fallback": "tsx scripts/regenerate-fallback-covers.ts",
+    "sim:reservations": "node scripts/concierge-reservation-sim.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.112",
