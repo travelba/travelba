@@ -14,6 +14,7 @@ import { inferAirlineIata } from "./brand-marks";
 import {
   airportSpokenName,
   asksSchedule,
+  asksTerminal,
   civilDate,
   englishLongDate,
   englishWeekday,
@@ -1313,6 +1314,25 @@ function flightSentence(item: ConciergeItem, stay: ConciergeStay, lang: ReplyLan
   return `Votre ${kind}${number}${toward} ${verb} ${when}${clock ? ` à ${clock}` : ""}${land}.`;
 }
 
+/** Ajoute le terminal seulement si la question le demande, et seulement s’il est écrit. */
+function spokenFlight(item: ConciergeItem, stay: ConciergeStay, lang: ReplyLang, now: Date, message: string) {
+  const base = flightSentence(item, stay, lang, now);
+  if (!asksTerminal(message)) return base;
+  if (!item.terminal) {
+    return say(lang, {
+      fr: "Je n’ai pas le terminal dans votre dossier.",
+      en: "I don’t have the terminal in your file.",
+      he: "אין לי את הטרמינל בתיק.",
+    });
+  }
+  const gate = say(lang, {
+    fr: `Le terminal est ${item.terminal}.`,
+    en: `The terminal is ${item.terminal}.`,
+    he: `הטרמינל ${item.terminal}.`,
+  });
+  return `${base} ${gate}`;
+}
+
 function hotelName(item: ConciergeItem) {
   const line = item.lines[0] || "";
   const name = line.split(",")[0]?.trim() || "";
@@ -1589,8 +1609,8 @@ function answerRelative(message: string, dossier: ConciergeDossier, lang: ReplyL
   const explicit = explicitCalendarDate(message, now);
   const topic = topicOf(message);
   if (when?.kind === "last-trip") return lastTripAnswer(dossier, lang, now);
-  if (when?.kind === "return" && !explicit && asksSchedule(message) && !asksAddonService(message)) {
-    return returnAnswer(dossier, lang, now);
+  if (when?.kind === "return" && !explicit && (asksSchedule(message) || asksTerminal(message)) && !asksAddonService(message)) {
+    return returnAnswer(dossier, lang, now, message);
   }
   const date = explicit || (when?.kind === "date" ? when.date : null);
   if (!date) return null;
@@ -1623,7 +1643,7 @@ function lastTripAnswer(dossier: ConciergeDossier, lang: ReplyLang, now: Date): 
   return { body: intro, handoff: null, stay };
 }
 
-function returnAnswer(dossier: ConciergeDossier, lang: ReplyLang, now: Date): RelativeAnswer {
+function returnAnswer(dossier: ConciergeDossier, lang: ReplyLang, now: Date, message: string): RelativeAnswer {
   const flights = allFlights(dossier);
   const inbound = flights.filter((row) => row.item.toPlace && !cityIsStay(row.item.toPlace, dossier.stays));
   const row = (inbound.length ? inbound : flights).at(-1);
@@ -1635,7 +1655,7 @@ function returnAnswer(dossier: ConciergeDossier, lang: ReplyLang, now: Date): Re
     });
     return { body: confirmGap(lang, detail), handoff: "question", stay: null };
   }
-  return { body: flightSentence(row.item, row.stay, lang, now), handoff: null, stay: row.stay };
+  return { body: spokenFlight(row.item, row.stay, lang, now, message), handoff: null, stay: row.stay };
 }
 
 function dayAnswer(message: string, dossier: ConciergeDossier, lang: ReplyLang, date: string, now: Date): RelativeAnswer {
@@ -1664,7 +1684,7 @@ function dayAnswer(message: string, dossier: ConciergeDossier, lang: ReplyLang, 
   if (wantsVip) return { body: welcomeSentence(primary.item, lang, now, dossier), handoff: null, stay: primary.stay };
   const flight = rows.find((row) => row.item.kind === "flight" || row.item.flightNumber);
   if (flight && (wantsFlight || rows.length === 1)) {
-    const line = flightSentence(flight.item, flight.stay, lang, now);
+    const line = spokenFlight(flight.item, flight.stay, lang, now, message);
     if (clash && !past) return { body: `${line}\n${confirmTransfer(lang)}`, handoff: "question", stay: flight.stay };
     return { body: line, handoff: null, stay: flight.stay };
   }
@@ -1676,7 +1696,7 @@ function dayAnswer(message: string, dossier: ConciergeDossier, lang: ReplyLang, 
         return clash ? confirmTransfer(lang) : transferSentence(row.item, lang, now, dossier);
       }
       if (row.item.kind === "accueil_vip" || row.item.kind === "greeter") return welcomeSentence(row.item, lang, now, dossier);
-      return flightSentence(row.item, row.stay, lang, now);
+      return spokenFlight(row.item, row.stay, lang, now, message);
     })
     .filter(Boolean)
     .join("\n");
@@ -1868,21 +1888,78 @@ function scheduleText(message: string, dossier: ConciergeDossier, lang: ReplyLan
   if (row.item.kind === "hotel") return hotelSentence(row.item, lang, now);
   if (row.item.kind === "transfer" || row.item.kind === "chauffeur") return transferSentence(row.item, lang, now, dossier);
   if (row.item.kind === "accueil_vip" || row.item.kind === "greeter") return welcomeSentence(row.item, lang, now, dossier);
-  return flightSentence(row.item, row.stay, lang, now);
+  return spokenFlight(row.item, row.stay, lang, now, message);
+}
+
+function withoutIncludedTail(label: string) {
+  return label.replace(/\s+(?:inclus(?:e|es)?|included)$/i, "").trim();
+}
+
+/** Article et accord. « Petit-déjeuner » → « Le petit-déjeuner », « Demi-pension » → « La demi-pension ». */
+function frenchIncluded(label: string) {
+  const cleaned = withoutIncludedTail(label);
+  if (/^(le|la|les)\s/i.test(cleaned)) {
+    const text = cleaned.charAt(0).toLocaleUpperCase("fr") + cleaned.slice(1);
+    return { text, feminine: /^la\s/i.test(cleaned) };
+  }
+  if (/^l['’]/i.test(cleaned)) {
+    return { text: `L'${cleaned.slice(2)}`, feminine: false };
+  }
+  const folded = fold(cleaned);
+  const feminine = /^(demi-?pension|pension|chambre|vue|suite|navette|collation|formule|boisson)/.test(folded);
+  if (/^[aeiouéèêëàâîïôûùœh]/i.test(cleaned)) {
+    return { text: `L'${cleaned.charAt(0).toLocaleLowerCase("fr")}${cleaned.slice(1)}`, feminine };
+  }
+  const rest = cleaned.charAt(0).toLocaleLowerCase("fr") + cleaned.slice(1);
+  return { text: `${feminine ? "La" : "Le"} ${rest}`, feminine };
+}
+
+function englishIncluded(label: string) {
+  const cleaned = withoutIncludedTail(label);
+  const folded = fold(cleaned);
+  if ((/petit/.test(folded) && /dejeuner/.test(folded)) || folded === "breakfast") return "Breakfast";
+  if (/demi/.test(folded) && /pension/.test(folded)) return "Half board";
+  if (/pension complete|full board/.test(folded)) return "Full board";
+  if (/tout compris|all inclusive/.test(folded)) return "All inclusive";
+  if (/surclassement|upgrade/.test(folded)) return "An upgrade";
+  if (/acces/.test(folded)) return "Access";
+  if (/^(a|an|the)\s/i.test(cleaned)) return cleaned.charAt(0).toLocaleUpperCase("en") + cleaned.slice(1);
+  return cleaned.charAt(0).toLocaleUpperCase("en") + cleaned.slice(1);
+}
+
+function atTheHotel(name: string, lang: ReplyLang) {
+  const trimmed = name.trim();
+  if (!trimmed) return "";
+  const namedHotel = /^h[oô]tel\b/i.test(trimmed) || /^hotel\b/i.test(trimmed);
+  if (lang === "en") return namedHotel ? `at the ${trimmed}` : `at the hotel ${trimmed}`;
+  if (namedHotel) return `à l'${trimmed.charAt(0).toLocaleLowerCase("fr")}${trimmed.slice(1)}`;
+  return `à l'hôtel ${trimmed}`;
+}
+
+function includedSentence(item: ConciergeItem, lang: ReplyLang) {
+  const bits = item.included.map((row) => row.trim()).filter(Boolean);
+  if (!bits.length) return "";
+  const place = item.kind === "hotel" ? atTheHotel(hotelName(item), lang) : "";
+  if (lang === "en") {
+    const list = bits.map(englishIncluded);
+    const head = list.join(" and ");
+    const verb = list.length > 1 ? "are included" : "is included";
+    return place ? `${head} ${verb} ${place}.` : `${head} ${verb}.`;
+  }
+  const rows = bits.map(frenchIncluded);
+  const list = rows.map((row) => row.text).join(" et ");
+  const feminine = rows.every((row) => row.feminine);
+  const verb = rows.length > 1 ? (feminine ? "sont incluses" : "sont inclus") : feminine ? "est incluse" : "est inclus";
+  return place ? `${list} ${verb} ${place}.` : `${list} ${verb}.`;
 }
 
 function includedText(message: string, dossier: ConciergeDossier, lang: ReplyLang) {
   const stay = focusStay(message, dossier.stays);
   if (!stay && dossier.stays.length > 1) return whichStayText(dossier.stays, lang);
   const pool = stay ? [stay] : dossier.stays;
-  const known = pool.flatMap((row) =>
-    row.items
-      .filter((item) => item.included.length)
-      .map((item) => `${row.reference} — ${item.label} — ${item.included.join(", ")}`)
-  );
+  const known = pool.flatMap((row) => row.items.map((item) => includedSentence(item, lang)).filter(Boolean));
   if (!known.length) return lang === "en" ? "I don’t have the inclusions in your file." : MISSING_INCLUDED;
-  const link = stay ? `\n${stayClientUrl(stay.reference)}` : "";
-  return `${known.join("\n")}${link}`;
+  return known.join(" ");
 }
 
 function priceText(message: string, dossier: ConciergeDossier, lang: ReplyLang) {
@@ -2130,8 +2207,8 @@ function nextFlightAnswer(message: string, dossier: ConciergeDossier, lang: Repl
     });
     return { body: confirmGap(lang, detail), handoff: "question", stay: null };
   }
-  if (wantsClock(message) && !row.item.clock) return { body: missingClock(lang), handoff: null, stay: row.stay };
-  return { body: flightSentence(row.item, row.stay, lang, now), handoff: null, stay: row.stay };
+  if (wantsClock(message) && !row.item.clock && !asksTerminal(message)) return { body: missingClock(lang), handoff: null, stay: row.stay };
+  return { body: spokenFlight(row.item, row.stay, lang, now, message), handoff: null, stay: row.stay };
 }
 
 function nextHotelAnswer(message: string, dossier: ConciergeDossier, lang: ReplyLang, now: Date): RelativeAnswer | null {
@@ -2139,6 +2216,37 @@ function nextHotelAnswer(message: string, dossier: ConciergeDossier, lang: Reply
   const row = nextUpcomingHotel(dossier, now);
   if (!row) return null;
   return { body: hotelSentence(row.item, lang, now), handoff: null, stay: row.stay };
+}
+
+/** Paiement ou message à un tiers : refus court, sans réciter le séjour. */
+function threadRefusal(message: string, lang: ReplyLang): { handoff: HandoffKind; text: string } | null {
+  const text = fold(message);
+  if (asksPublishedResend(message)) return null;
+  const pay =
+    /\b(payez|payer|paye|pay|reglez|regler)\b/.test(text) && /\b(hotel|sejour|facture|chambre)\b/.test(text);
+  const send =
+    /\b(envoy\w*|ecri\w*|write|send|email)\b/.test(text) && /\b(hotel|chauffeur|fournisseur|supplier|driver)\b/.test(text);
+  if (pay) {
+    return {
+      handoff: "payment",
+      text: say(lang, {
+        fr: "Je ne règle rien depuis ici.\nJe transmets à l’agence.",
+        en: "I can’t take a payment from here.\nI’m passing this to the agency.",
+        he: "אני לא גובה מכאן.\nאני מעביר לסוכנות.",
+      }),
+    };
+  }
+  if (send) {
+    return {
+      handoff: "question",
+      text: say(lang, {
+        fr: "Je n’écris pas à l’hôtel à votre place.\nJe transmets à l’agence.",
+        en: "I don’t write to the hotel for you.\nI’m passing this to the agency.",
+        he: "אני לא כותב למלון במקומכם.\nאני מעביר לסוכנות.",
+      }),
+    };
+  }
+  return null;
 }
 
 /** Heure, vol, hôtel, coffre : le routeur répond, le modèle ne parle pas. */
@@ -2155,7 +2263,7 @@ export function routerCanAnswerAlone(
   }
   if (openAddonQuestion(message, dossier, now)) return true;
   const when = relativeWhen(message, now, tripZone(dossier, now));
-  if (when?.kind === "return" && !asksSchedule(message)) return false;
+  if (when?.kind === "return" && !asksSchedule(message) && !asksTerminal(message)) return false;
   const topic = topicOf(message);
   if (["schedule", "documents", "balance", "transactions", "price", "formality", "included", "chauffeur"].includes(topic)) {
     return true;
@@ -2271,6 +2379,19 @@ export function planConciergeTurn(
     };
   }
 
+  const refused = threadRefusal(message, lang);
+  if (refused) {
+    const stay = focusStay(message, dossier.stays) || (dossier.stays.length === 1 ? dossier.stays[0] : null);
+    const packed = sayTurn(refused.text, true);
+    return {
+      ...empty,
+      handoff: refused.handoff,
+      bookingId: stay?.id || null,
+      text: packed.text,
+      messages: packed.messages,
+    };
+  }
+
   const handoff = classifyHandoff(message);
   if (handoff && AGENCY_HANDOFF.has(handoff)) {
     const serviceQuote = handoff === "quote" && isServiceQuote(message);
@@ -2286,10 +2407,10 @@ export function planConciergeTurn(
     const which = !serviceQuote && !stay && dossier.stays.length > 1 ? `\n${whichStayText(dossier.stays, lang)}` : "";
     const focused = !serviceQuote && stay
       ? `\n${say(lang, {
-          fr: `Cela concerne le séjour ${stay.reference}.`,
-          en: `This is about stay ${stay.reference}.`,
-          he: `זה נוגע לשהות ${stay.reference}.`,
-        })}\n${stayClientUrl(stay.reference)}`
+          fr: `Cela concerne le séjour ${stay.reference}. ${stayClientUrl(stay.reference)}`,
+          en: `This is about stay ${stay.reference}. ${stayClientUrl(stay.reference)}`,
+          he: `זה נוגע לשהות ${stay.reference}. ${stayClientUrl(stay.reference)}`,
+        })}`
       : "";
     const clash = serviceQuote ? clashLine(message, lang, now) : "";
     const agency = sayTurn(conciergeFollowUp(`${sentence}${clash}${focused}${which}`, lang), true);

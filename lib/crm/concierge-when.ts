@@ -114,7 +114,13 @@ export function englishLongDate(isoDate: string) {
 export function relativeWhen(message: string, now: Date, timeZone = "Europe/Paris"): RelativeWhen | null {
   const text = fold(message);
   if (/dernier (voyage|sejour|vol)|last (trip|stay)|הטיול האחרון/.test(text)) return { kind: "last-trip" };
-  if (/\b(le retour|vol de retour|au retour|date de retour|return flight|the return)\b/.test(text)) return { kind: "return" };
+  if (
+    /\b((?:le|mon|notre|votre|vos|du|au) retour|vols? de retour|date de retour|return flight|the return|my return|our return)\b/.test(
+      text
+    )
+  ) {
+    return { kind: "return" };
+  }
   const today = civilDate(now, timeZone);
   if (/\b(apres-demain|apres demain|day after tomorrow)\b/.test(text)) return { kind: "date", date: addIsoDays(today, 2) };
   if (/\b(demain|tomorrow)\b/.test(text)) return { kind: "date", date: addIsoDays(today, 1) };
@@ -133,6 +139,11 @@ export function relativeWhen(message: string, now: Date, timeZone = "Europe/Pari
  * Vrai seulement si le message demande un horaire.
  * « le retour » tout seul ne suffit pas : un fast track ou un salon au retour n’est pas une heure.
  */
+/** Le client demande le terminal, pas seulement l’heure. */
+export function asksTerminal(message: string) {
+  return /\b(terminal|gate|porte d'embarquement|porte d embarquement)\b/.test(fold(message));
+}
+
 export function asksSchedule(message: string) {
   const text = fold(message);
   if (/\bdate (de |du )?retour\b/.test(text)) return true;
