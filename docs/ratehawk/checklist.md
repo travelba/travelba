@@ -67,24 +67,24 @@ These two figures are the capacity we ask ETG to allow (`RATEHAWK_REQUESTED_RPM`
 A few people work the desk at once. 60 and 30 are headroom for that, not measured traffic and not a metasearch. Booking form, finish, and status stay one flow at a time (status about every 5 seconds, client poll 15 seconds, hard stop 180 seconds).
 | `/api/b2b/v3/search/serp/prebook/` or `/hotel` SERP prebook | **0 — not called** |
 
-Booking form, finish, finish/status, cancel, and order/info are low volume (one booking flow at a time per agent, status every 5 seconds for at most 180 seconds). Content calls are one cron a day, not search traffic.
+Booking form, finish, finish/status, cancel, and order/info are low volume (one booking flow at a time per agent, status every 5 seconds for at most 180 seconds). Content calls are one cron an hour, not search traffic.
 
 ## Static data
 
 **How hotel static data is received.**  
-We use the Content API. We download static data and store it in our database (`crm_ratehawk_hotels`). Search and the hotel page read that database. Content API is not called during a client search.
+We use the Content API. We download static data and store it in our database (`crm_ratehawk_hotels`). Search and the hotel page read that database. A displayed hotel with no public name or address is completed from the Content API before the answer. The hourly job is the catalogue.
 
 We do not use `/hotel/info/dump/`, `/hotel/info/incremental_dump/`, live `/hotel/info`, or a third-party mapper (GIATA, Vervotech).
 
-Daily job (`10 4 * * *` UTC, `/api/cron/ratehawk-content`):
+Hourly job (`10 * * * *` UTC, `/api/cron/ratehawk-content`):
 
-- Always refresh certification hids `10004834` and `8819557` via `POST /api/content/v1/hotel_content_by_ids/`.
-- `POST /api/content/v1/filter_values`, then `POST /api/content/v1/hotel_ids_by_filter/` with `country` and, after a full country cycle, `updated_since` (`YYYY-MM-DD HH:MM:SS`).
-- Sandbox country filter is limited to ids 59, 189, and 201.
-- One country per run, up to 40 hotels, chunks of 10.
-- Regions: `POST /api/b2b/v3/hotel/region/dump/` (`language: en`), download the `.jsonl.zst` through the same egress, store regions. The dump is skipped when a full file was stored in the last 20 hours. A file over 80 MB or a run that stops at 2 000 regions is retried the next day and does not mark the region list complete.
+- Sandbox refreshes certification hids `10004834` and `8819557` via `POST /api/content/v1/hotel_content_by_ids/`. Production does not mix those test hotels into the catalogue.
+- `GET /api/content/v1/filter_values`, then `POST /api/content/v1/hotel_ids_by_filter/` with `country` and, after a full country cycle, `updated_since` (`YYYY-MM-DD HH:MM:SS`).
+- Sandbox country filter is limited to ids 59, 189, and 201, up to 40 hotels, chunks of 10.
+- Production walks every country (France first). Each country asks for `star_rating` 4 and 5, then for 3-star hotels with `serp_filter` `has_ski` (ski slope nearby). Up to 3 000 stored hotels per run, chunks of 100.
+- Regions: `POST /api/b2b/v3/hotel/region/dump/` (`language: en`), download the `.jsonl.zst` through the same egress, store regions. The dump is skipped when a full file was stored in the last 20 hours. A file over 80 MB or a run that stops at 20 000 regions is retried on a later run and does not mark the region list complete.
 
-**Update frequency.** Daily. Region dump is also daily once the previous full file is older than 20 hours (ETG allows weekly; we refresh more often when the file fits the job).
+**Update frequency.** Hotels: hourly. Region dump: at most once the previous full file is older than 20 hours (ETG allows weekly).
 
 **Destinations for `/serp/region`.**  
 `POST /api/b2b/v3/hotel/region/dump/`. Region ids come from that file. Frequency: daily, with the cap above.
@@ -93,8 +93,8 @@ Daily job (`10 4 * * *` UTC, `/api/cron/ratehawk-content`):
 Not the full catalogue yet.
 
 - Mapped now, in the migration seed: **2 hotels** (hid 10004834 Conrad Los Angeles, hid 8819557 Rosa Bell Motel) and **1 region** (id 2011 Los Angeles).
-- After the first successful cron with sandbox keys: those 2 hotels refreshed, plus up to 40 hotels per day per sandbox country, and up to 2 000 regions per dump download.
-- Production catalogue count is **OPEN** until a production key and a full region dump have run. Planned: the ETG catalogue for the countries the agency sells, grown by `updated_since`, not a real-time content call.
+- After the first successful cron with sandbox keys: those 2 hotels refreshed, plus up to 40 hotels per run for the sandbox countries, and up to 20 000 regions per dump download.
+- Production stores 4-star and 5-star hotels in every country, plus 3-star hotels with a ski slope nearby (`has_ski`), grown by `updated_since` after the first full pass. It is not a real-time content call. Search still fills a displayed hotel that has no name or address, whatever its star rating.
 
 **Room static data.**  
 Yes. Images and amenities are shown when the rate `rg_ext` equals the static room group on every field: `class`, `quality`, `sex`, `bathroom`, `bedding`, `family`, `capacity`, `club`, `bedrooms`, `balcony`, `view`, `floor` (missing counts as 0). Image templates replace `{size}` with `640x400`.
