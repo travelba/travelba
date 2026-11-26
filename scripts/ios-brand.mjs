@@ -1,7 +1,7 @@
 /**
  * Icône App Store (1024, sans transparence) et splash.
- * Le mot TBA vient du logo du dépôt, sans le filet ni la mention
- * « Travel Business Agency », agrandi et centré dans le cercle.
+ * Le mot TBA vient du logo du dépôt, avec le filet doré et le petit aigle,
+ * sans la mention « Travel Business Agency », agrandi et centré dans le cercle.
  */
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -14,8 +14,8 @@ const NAVY = { r: 11, g: 25, b: 44 };
 
 const ICON_PIXELS = [20, 29, 40, 58, 60, 76, 80, 87, 120, 152, 167, 180, 1024];
 
-/** Bande des lettres TBA dans logo-tba.png (1280). Le filet est vers y 744, la mention vers y 804. */
-const LETTERS = { left: 290, top: 436, width: 710, height: 270 };
+/** Bande TBA dans logo-tba.png (1280) : lettres, filet et aigle. La mention est vers y 834. */
+const LETTERS = { left: 290, top: 436, width: 710, height: 364 };
 
 function isGold(r, g, b, a) {
   return a > 40 && r > 150 && g > 120 && b < 190 && r > b + 20;
