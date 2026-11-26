@@ -12,7 +12,7 @@ import {
 } from "@/lib/crm/concierge-grader";
 import { runScenario } from "@/lib/crm/concierge-sim";
 import { CONCIERGE_EDGES, CONCIERGE_NEARBY, CONCIERGE_SCENARIOS, SCENARIO_NOW, scenarioRecords } from "@/lib/crm/concierge-scenarios.fixture";
-import { buildConciergeDossier, replyOverCap, type ConciergeDossier } from "@/lib/crm/whatsapp-concierge";
+import { buildConciergeDossier, planConciergeTurn, replyOverCap, type ConciergeDossier } from "@/lib/crm/whatsapp-concierge";
 
 const NOW = new Date("2026-06-01T08:00:00.000Z");
 
@@ -283,9 +283,55 @@ test("les écarts et les formulations proches passent", async () => {
   assert.match(await replyOf("terminal-vol"), /terminal est 2E/i);
   assert.match(await replyOf("terminal-en"), /terminal is 2E/i);
   assert.match(await replyOf("terminal-voisin"), /terminal est 1/i);
+  assert.match(await replyOf("petit-dejeuner"), /le petit-déjeuner est inclus à l'/i);
+  assert.match(await replyOf("petit-dejeuner-en"), /breakfast is included at the /i);
   assert.equal((await replyOf("petit-dejeuner")).includes("—"), false);
   assert.equal((await replyOf("petit-dejeuner")).includes("TB-"), false);
   assert.equal(replyOverCap(await replyOf("annulation-courte")), false);
+});
+
+test("les autres inclus prennent l’article et l’accord", () => {
+  const stay = {
+    id: "stay-nice",
+    reference: "TB-2026-8803",
+    title: "Nice",
+    destination: "Nice",
+    start_date: "2026-12-04",
+    end_date: "2026-12-08",
+    currency: "EUR",
+    total_amount: 0,
+    visible_to_client: true,
+    prices_visible: false,
+    cover_image_path: null,
+    notes_client: null,
+    share_code: null,
+  };
+  const hotel = (included: string[]) => ({
+    id: "htl",
+    booking_id: "stay-nice",
+    kind: "hotel" as const,
+    title: "Nantipa",
+    start_at: "2026-12-04T15:00:00",
+    end_at: "2026-12-08T11:00:00",
+    amount: null,
+    visible_to_client: true,
+    details: { hotel_name: "Nantipa", city: "Nice", included },
+  });
+  const ask = (included: string[], message: string) => {
+    const dossier = buildConciergeDossier({
+      firstName: "Camille",
+      bookings: [stay],
+      items: [hotel(included)],
+    });
+    return planConciergeTurn(message, dossier, SCENARIO_NOW).text;
+  };
+  assert.match(ask(["Demi-pension"], "La demi-pension est-elle incluse ?"), /La demi-pension est incluse à l'hôtel Nantipa/i);
+  assert.match(
+    ask(["Petit-déjeuner", "Demi-pension"], "Qu’est-ce qui est inclus ?"),
+    /Le petit-déjeuner et la demi-pension sont inclus à l'hôtel Nantipa/i
+  );
+  assert.match(ask(["Accès au spa"], "Qu’est-ce qui est inclus ?"), /L'accès au spa est inclus à l'hôtel Nantipa/i);
+  assert.match(ask(["Half board"], "Is half board included at the hotel?"), /Half board is included at the hotel Nantipa/i);
 });
 
 test("le fixture se relit sans envoi", () => {

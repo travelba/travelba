@@ -1891,21 +1891,66 @@ function scheduleText(message: string, dossier: ConciergeDossier, lang: ReplyLan
   return spokenFlight(row.item, row.stay, lang, now, message);
 }
 
-function includedSentence(item: ConciergeItem, lang: ReplyLang) {
-  const bits = item.included
-    .map((row) => row.trim())
-    .filter(Boolean)
-    .map((row) => (lang === "en" && /petit/.test(fold(row)) && /dejeuner/.test(fold(row)) ? "breakfast" : row));
-  if (!bits.length) return "";
-  const name = item.kind === "hotel" ? hotelName(item) : "";
-  const list = bits.join(lang === "en" ? " and " : " et ");
-  if (lang === "en") {
-    const head = list.charAt(0).toLocaleUpperCase("en") + list.slice(1);
-    return name ? `${head} is included at ${name}.` : `${head} is included.`;
+function withoutIncludedTail(label: string) {
+  return label.replace(/\s+(?:inclus(?:e|es)?|included)$/i, "").trim();
+}
+
+/** Article et accord. « Petit-déjeuner » → « Le petit-déjeuner », « Demi-pension » → « La demi-pension ». */
+function frenchIncluded(label: string) {
+  const cleaned = withoutIncludedTail(label);
+  if (/^(le|la|les)\s/i.test(cleaned)) {
+    const text = cleaned.charAt(0).toLocaleUpperCase("fr") + cleaned.slice(1);
+    return { text, feminine: /^la\s/i.test(cleaned) };
   }
-  const verb = bits.length > 1 ? "sont inclus" : "est inclus";
-  const head = list.charAt(0).toLocaleUpperCase("fr") + list.slice(1);
-  return name ? `${head} ${verb} à ${name}.` : `${head} ${verb}.`;
+  if (/^l['’]/i.test(cleaned)) {
+    return { text: `L'${cleaned.slice(2)}`, feminine: false };
+  }
+  const folded = fold(cleaned);
+  const feminine = /^(demi-?pension|pension|chambre|vue|suite|navette|collation|formule|boisson)/.test(folded);
+  if (/^[aeiouéèêëàâîïôûùœh]/i.test(cleaned)) {
+    return { text: `L'${cleaned.charAt(0).toLocaleLowerCase("fr")}${cleaned.slice(1)}`, feminine };
+  }
+  const rest = cleaned.charAt(0).toLocaleLowerCase("fr") + cleaned.slice(1);
+  return { text: `${feminine ? "La" : "Le"} ${rest}`, feminine };
+}
+
+function englishIncluded(label: string) {
+  const cleaned = withoutIncludedTail(label);
+  const folded = fold(cleaned);
+  if ((/petit/.test(folded) && /dejeuner/.test(folded)) || folded === "breakfast") return "Breakfast";
+  if (/demi/.test(folded) && /pension/.test(folded)) return "Half board";
+  if (/pension complete|full board/.test(folded)) return "Full board";
+  if (/tout compris|all inclusive/.test(folded)) return "All inclusive";
+  if (/surclassement|upgrade/.test(folded)) return "An upgrade";
+  if (/acces/.test(folded)) return "Access";
+  if (/^(a|an|the)\s/i.test(cleaned)) return cleaned.charAt(0).toLocaleUpperCase("en") + cleaned.slice(1);
+  return cleaned.charAt(0).toLocaleUpperCase("en") + cleaned.slice(1);
+}
+
+function atTheHotel(name: string, lang: ReplyLang) {
+  const trimmed = name.trim();
+  if (!trimmed) return "";
+  const namedHotel = /^h[oô]tel\b/i.test(trimmed) || /^hotel\b/i.test(trimmed);
+  if (lang === "en") return namedHotel ? `at the ${trimmed}` : `at the hotel ${trimmed}`;
+  if (namedHotel) return `à l'${trimmed.charAt(0).toLocaleLowerCase("fr")}${trimmed.slice(1)}`;
+  return `à l'hôtel ${trimmed}`;
+}
+
+function includedSentence(item: ConciergeItem, lang: ReplyLang) {
+  const bits = item.included.map((row) => row.trim()).filter(Boolean);
+  if (!bits.length) return "";
+  const place = item.kind === "hotel" ? atTheHotel(hotelName(item), lang) : "";
+  if (lang === "en") {
+    const list = bits.map(englishIncluded);
+    const head = list.join(" and ");
+    const verb = list.length > 1 ? "are included" : "is included";
+    return place ? `${head} ${verb} ${place}.` : `${head} ${verb}.`;
+  }
+  const rows = bits.map(frenchIncluded);
+  const list = rows.map((row) => row.text).join(" et ");
+  const feminine = rows.every((row) => row.feminine);
+  const verb = rows.length > 1 ? (feminine ? "sont incluses" : "sont inclus") : feminine ? "est incluse" : "est inclus";
+  return place ? `${list} ${verb} ${place}.` : `${list} ${verb}.`;
 }
 
 function includedText(message: string, dossier: ConciergeDossier, lang: ReplyLang) {
