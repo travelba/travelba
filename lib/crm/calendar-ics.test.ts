@@ -93,7 +93,8 @@ test("hôtel : journée entière check-in → checkout exclusif, sans heure", ()
   assert.match(event || "", /DTEND;VALUE=DATE:20260815/);
   assert.match(event || "", /SUMMARY:Hôtel · Nantipa/);
   assert.match(event || "", /LOCATION:Nantipa\\, Santa Teresa/);
-  assert.equal((event || "").includes("T00"), false);
+  const timed = (event || "").replace(/DTSTAMP:[^\r\n]+/g, "");
+  assert.equal(timed.includes("T00"), false);
 });
 
 test("minuit n’invente pas d’horaire", () => {
