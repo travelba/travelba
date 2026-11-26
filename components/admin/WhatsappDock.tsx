@@ -33,6 +33,7 @@ import { composerFreePreview } from "@/lib/crm/free-message-copy";
 import {
   adminReplyKind,
   closedWindowComposerLine,
+  conciergePauseCaption,
   conversationBadge,
   deliveryCaption,
   filterThreads,
@@ -692,6 +693,9 @@ function ChatPane({
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{label}</p>
               <p className="truncate text-[10px] uppercase tracking-wide text-[#C5A880]">{conversationBadge(thread.status, held)}</p>
+              {held && thread.pausedUntil ? (
+                <p className="truncate text-[10px] text-[#C5A880]">{conciergePauseCaption(thread.pausedUntil)}</p>
+              ) : null}
             </div>
             <button type="button" aria-label={`Réduire ${label}`} className={sheetIconButton} onClick={onMinimise}>
               <Icon name="minus" className="h-6 w-6" />
@@ -717,6 +721,9 @@ function ChatPane({
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{label}</p>
             <p className="text-[10px] uppercase tracking-wide text-[#C5A880]">{conversationBadge(thread.status, held)}</p>
+            {held && thread.pausedUntil ? (
+              <p className="text-[10px] text-[#C5A880]">{conciergePauseCaption(thread.pausedUntil)}</p>
+            ) : null}
           </div>
           {thread.phone ? (
             <WhatsappHoldButton

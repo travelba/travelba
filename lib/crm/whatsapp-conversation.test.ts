@@ -11,11 +11,13 @@ import {
   planConciergeTurn,
 } from "./whatsapp-concierge";
 import {
+  declinesAgencyOffer,
   planConciergeConversation,
   replyUsesUnknownFact,
   type ConciergeGenerator,
   type ConciergeModelReply,
 } from "./whatsapp-conversation";
+import { replyClaimsAgencyHandoff } from "./whatsapp-concierge";
 
 const URL_HOOK = "https://travelba.fr/api/webhooks/twilio/whatsapp";
 const TOKEN = "twilio-test-token";
@@ -274,4 +276,26 @@ test("une réponse ancrée sur le dossier remplace le routeur", async () => {
   assert.equal(turn.handoff, null);
   assert.equal(turn.bookingId, "stay-pub");
   assert.match(turn.text, /Le Concierge/);
+});
+
+test("non ou « c’est une question » après une offre ne transmet pas", async () => {
+  const history = [{ direction: "outbound" as const, body: OFFER }];
+  for (const message of ["Non", "Non c est une question.", "C’est une question"]) {
+    let called = false;
+    const turn = await planConciergeConversation({
+      message,
+      dossier: dossierOf(),
+      history,
+      generate: async () => {
+        called = true;
+        return reply("Je transmets à l’agence.");
+      },
+    });
+    assert.equal(called, false, message);
+    assert.equal(declinesAgencyOffer(message, history), true, message);
+    assert.equal(turn.handoff, null, message);
+    assert.equal(replyClaimsAgencyHandoff(turn.text), false, message);
+    assert.match(turn.text, /ne transmets rien|won’t pass/i, message);
+  }
+  assert.equal(declinesAgencyOffer("Non, annulez le vol", history), false);
 });

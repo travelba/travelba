@@ -253,7 +253,7 @@ async function liveInboxPreview(request: InboxRequest) {
     action: request.action,
     destinataire: maskPhone(request.phone),
     envoie: false,
-    corps: request.action === "reprendre" ? "Le Concierge se tait jusqu’au lendemain matin." : "Le fil revient au Concierge.",
+    corps: request.action === "reprendre" ? "Le Concierge se tait 12 heures, ou jusqu’à ce qu’on lui rende le fil." : "Le fil revient au Concierge.",
   };
 }
 
@@ -300,13 +300,13 @@ async function liveInboxApply(request: InboxRequest) {
     return { envoye: false };
   }
   if (request.action === "reprendre") {
-    const { nextParisMorning } = await import("@/lib/crm/whatsapp-takeover");
+    const { humanPauseUntil } = await import("@/lib/crm/whatsapp-takeover");
     const now = new Date();
     const { error } = await admin.from("crm_whatsapp_threads").upsert({
       phone: request.phone,
       customer_id: request.clientId || null,
       paused_at: now.toISOString(),
-      paused_until: nextParisMorning(now).toISOString(),
+      paused_until: humanPauseUntil(now).toISOString(),
       paused_by: staffId,
       updated_at: now.toISOString(),
     });
@@ -370,12 +370,12 @@ async function liveInboxReply(request: InboxRequest, admin: SupabaseClient, staf
     phone: request.phone,
     author_staff_id: staffId,
   });
-  const { nextParisMorning } = await import("@/lib/crm/whatsapp-takeover");
+  const { humanPauseUntil } = await import("@/lib/crm/whatsapp-takeover");
   await admin.from("crm_whatsapp_threads").upsert({
     phone: request.phone,
     customer_id: request.clientId || null,
     paused_at: now.toISOString(),
-    paused_until: nextParisMorning(now).toISOString(),
+    paused_until: humanPauseUntil(now).toISOString(),
     paused_by: staffId,
     updated_at: now.toISOString(),
   });

@@ -4,6 +4,7 @@ import {
   adminReplyKind,
   approvedManualTemplates,
   closedWindowComposerLine,
+  conciergePauseCaption,
   conversationBadge,
   deliveryCaption,
   deliveryLabel,
@@ -67,8 +68,17 @@ test("le fil regroupe, marque le non-lu et distingue robot, agence et escalade",
   assert.equal(threads[1].status, "agency");
   assert.equal(threads[1].held, true);
   assert.equal(threads[1].unread, 0);
+  assert.equal(threads[1].pausedUntil, null);
   assert.equal(conversationBadge("agency", true), "Repris par l’agence");
   assert.equal(conversationBadge("escalated", false), "Escaladé · Le Concierge");
+  const until = "2026-11-26T18:00:00.000Z";
+  const paused = foldThreads(
+    [message({ id: "pause", createdAt: "2026-11-26T08:00:00Z", direction: "inbound", body: "Bonjour", phone: "+33601020304" })],
+    { paused: ["+33601020304"], pausedUntil: { "+33601020304": until } }
+  );
+  assert.equal(paused[0]?.pausedUntil, until);
+  assert.match(conciergePauseCaption(until, new Date("2026-11-26T08:00:00.000Z")), /Concierge en pause jusqu’au/);
+  assert.equal(conciergePauseCaption(until, new Date("2026-11-26T19:00:00.000Z")), "");
   assert.deepEqual(
     messagesNewestFirst([
       message({ id: "a", createdAt: "2026-10-20T08:00:00Z", direction: "inbound", body: "Ancien" }),

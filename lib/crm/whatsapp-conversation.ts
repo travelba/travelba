@@ -10,7 +10,6 @@ import {
   conciergeContextText,
   conciergeFollowUp,
   contestsMessage,
-  contestsOffTopic,
   contradictsPassport,
   isComplaint,
   messageLanguage,
@@ -37,6 +36,7 @@ import {
 } from "./whatsapp-concierge";
 import { conciergeOpening, packBubbles } from "../concierge/bubbles";
 import { conciergeSkillPrompt } from "../concierge/skill-prompt";
+import { buildAgencyRequestBrief } from "./whatsapp-request-brief";
 
 const MODEL_TIMEOUT_MS = 8_000;
 const HISTORY_LIMIT = 16;
@@ -144,17 +144,60 @@ export function confirmsAgencyOffer(message: string, history: ConciergeHistoryTu
   return false;
 }
 
-/** « Oui » après une offre, ou une contestation : la demande reprend le besoin, pas le mot de confirmation. */
-export function agencyRequestBody(message: string, history: ConciergeHistoryTurn[]) {
-  if (!confirmsAgencyOffer(message, history) && !contestsOffTopic(message)) return message;
-  const origin = [...history].reverse().find((row) => {
-    if (row.direction !== "inbound") return false;
-    const text = fold(row.body).replace(/[’']/g, "'").trim();
-    if (!text || contestsOffTopic(row.body)) return false;
-    if (/^(oui|yes|ok|okay|ouais|d'accord|volontiers|bien sur)\b/.test(text)) return false;
-    return true;
+/** « Non » ou « c’est une question » après « souhaitez-vous que j’en parle à l’agence ». */
+export function declinesAgencyOffer(message: string, history: ConciergeHistoryTurn[]) {
+  const last = [...history].reverse().find((row) => row.direction === "outbound" && row.body.trim());
+  if (!last) return false;
+  const offered = fold(last.body);
+  const asked =
+    (offered.includes("souhaitez-vous que j") && (offered.includes("agence") || offered.includes("benjamin"))) ||
+    offered.includes("would you like me to ask the agency") ||
+    offered.includes("would you like me to ask benjamin");
+  if (!asked) return false;
+  const text = fold(message).replace(/[.!?,]+$/g, "").trim();
+  if (/(c'est une question|c est une question|juste une question|seulement une question|it's a question|just a question)/.test(text)) {
+    return !/annul|chang|modif|reserv|virement/.test(text);
+  }
+  if (/^(non|no|nan|nope)\b/.test(text)) {
+    const rest = text.replace(/^(non|no|nan|nope)\b[, ]*/, "");
+    if (!rest || /^(merci|thanks|thank you|svp|please)$/.test(rest)) return true;
+    if (/question/.test(rest) && !/annul|chang|modif|reserv|virement/.test(rest)) return true;
+  }
+  return false;
+}
+
+function declineOfferTurn(
+  keyword: ConciergeTurn,
+  lang: ReplyLang,
+  dossier: ConciergeDossier,
+  now: Date,
+  history: ConciergeHistoryTurn[]
+): ConciergeTurn {
+  const messages = packBubbles({
+    text: lang === "en" ? "Understood. I won’t pass this to the agency." : "D’accord, je ne transmets rien à l’agence.",
+    opening: conciergeOpening(history, now),
+    firstName: dossier.firstName,
+    lang,
+    block: true,
   });
-  return origin?.body.trim() || message;
+  return {
+    handoff: null,
+    bookingId: keyword.bookingId,
+    text: messages.join("\n\n"),
+    messages,
+    cover: null,
+    optOut: false,
+    access: false,
+  };
+}
+
+/** Résumé des derniers tours, séjour et attente. « Oui » seul ne devient pas le corps. */
+export function agencyRequestBody(
+  message: string,
+  history: ConciergeHistoryTurn[],
+  context?: { stay?: string | null; expected?: string | null }
+) {
+  return buildAgencyRequestBrief({ message, history, stay: context?.stay, expected: context?.expected });
 }
 
 function clientWantsAgency(message: string) {
@@ -588,7 +631,11 @@ export async function planConciergeConversation(input: {
   const now = input.now ?? new Date();
   const pending = pendingFromHistory(history, input.pending);
   const keyword = planConciergeTurn(input.message, input.dossier, now, history, pending);
-  if (keyword.optOut || keyword.access || keyword.handoff) return keyword;
+  if (keyword.optOut || keyword.access) return keyword;
+  if (declinesAgencyOffer(input.message, history)) {
+    return declineOfferTurn(keyword, replyLanguage(input.message, history), input.dossier, now, history);
+  }
+  if (keyword.handoff) return keyword;
   if (
     keyword.authorizationCheck ||
     keyword.tools?.includes("verifier_esta") ||

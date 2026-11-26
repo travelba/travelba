@@ -54,6 +54,8 @@ export type InboxThread = {
   status: InboxThreadStatus;
   /** Vrai tant qu’un humain tient le fil (pause encore active). */
   held?: boolean;
+  /** Fin du verrou humain, si la pause est encore active. */
+  pausedUntil?: string | null;
   /** Brouillons du Concierge en attente du clic de l’agence sur ce fil. */
   pending?: number;
 };
@@ -214,6 +216,7 @@ export function foldThreads(
   input: {
     readAt?: Record<string, string | null>;
     paused?: string[];
+    pausedUntil?: Record<string, string | null>;
     escalated?: string[];
   }
 ): InboxThread[] {
@@ -240,6 +243,7 @@ export function foldThreads(
     const seen = readAt[key] || null;
     const unread = ordered.filter((row) => row.direction === "inbound" && (!seen || row.createdAt > seen)).length;
     const held = Boolean((phone && paused.has(phone)) || paused.has(key));
+    const until = (phone && input.pausedUntil?.[phone]) || input.pausedUntil?.[key] || null;
     const status: InboxThreadStatus = escalated.has(key) ? "escalated" : held ? "agency" : "robot";
     threads.push({
       key,
@@ -255,6 +259,7 @@ export function foldThreads(
       unread: seen ? unread : last?.direction === "inbound" ? Math.min(unread, 1) : 0,
       status,
       held,
+      pausedUntil: held ? until : null,
     });
   }
   return threads.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
@@ -284,6 +289,13 @@ export function statusLabel(status: InboxThreadStatus) {
   if (status === "escalated") return "Escaladé";
   if (status === "agency") return "Repris par l’agence";
   return "Le Concierge";
+}
+
+/** Heure de fin du verrou, à Paris. Vide si la pause est passée. */
+export function conciergePauseCaption(until: string | null | undefined, now = new Date()) {
+  if (!until || !pauseStillActive(until, now)) return "";
+  const stamp = parisDayHour(new Date(until));
+  return stamp ? `Concierge en pause jusqu’au ${stamp}` : "Concierge en pause";
 }
 
 /** Pastille du fil : qui répond, tout de suite après une remise ou une reprise. */

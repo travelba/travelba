@@ -2080,6 +2080,8 @@ export const HANDOFF_NOT_RECORDED = "Je n’ai pas transmis cela à l’agence."
 export function replyClaimsAgencyHandoff(text: string) {
   const folded = fold(text).replace(/[’']/g, "'");
   if (!/\b(agence|agency|benjamin)\b/.test(folded)) return false;
+  if (/\bje ne transmets\b/.test(folded)) return false;
+  if (/\bi won'?t pass\b/.test(folded)) return false;
   if (/\bje transmets\b/.test(folded)) return true;
   if (/\bj'ai transmis\b/.test(folded)) return true;
   if (/\bj'ai passe\b/.test(folded)) return true;

@@ -1426,7 +1426,10 @@ test("une promesse vide ouvre une demande, un outil déjà appelé non", async (
     },
   });
   assert.equal(writes.find((row) => row.table === "crm_whatsapp_requests")?.row?.kind, "question");
-  assert.equal(writes.find((row) => row.table === "crm_whatsapp_requests")?.row?.body, "Comment vont les baleines cette année ?");
+  const brief = String(writes.find((row) => row.table === "crm_whatsapp_requests")?.row?.body || "");
+  assert.match(brief, /Comment vont les baleines cette année/);
+  assert.match(brief, /Attendu : Question à l’agence/);
+  assert.match(brief, /Séjour : PUB-1/);
   const outbound = writes.find((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "outbound");
   assert.deepEqual(outbound?.row?.tools, ["ouvrir_demande"]);
 
@@ -1651,4 +1654,115 @@ test("une pièce reçue d’un conjoint est signalée, pas déposée sur la fich
   const request = writes.find((row) => row.table === "crm_whatsapp_requests");
   assert.match(String(request?.row?.body || ""), /accompagnant/);
   assert.equal(String(request?.row?.body || "").includes("SECRET"), false);
+});
+
+test("sans demande enregistrée, le bot ne dit pas qu’il transmet", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "Annulez mon vol",
+    MessageSid: "SMfailtransfer",
+  };
+  const store = storeFrom({
+    writes,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: { bookings: [published] },
+  });
+  store.insertRequest = async () => {
+    throw new Error("db");
+  };
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store,
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMfailout" };
+    },
+  });
+  const body = sent.map((row) => row.body).join("\n");
+  assert.match(body, /Je n’ai pas transmis cela à l’agence/);
+  assert.equal(/Je transmets à l’agence/.test(body), false);
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_requests"), false);
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "inbound"), true);
+});
+
+test("un fil en pause enregistre le client et ne répond pas", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "Vous êtes là ?",
+    MessageSid: "SMpaused",
+  };
+  const store = storeFrom({
+    writes,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: { bookings: [published] },
+  });
+  store.threadOpen = async () => false;
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store,
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMpausedout" };
+    },
+  });
+  assert.equal(sent.length, 0);
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_messages" && row.row?.direction === "inbound"), true);
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_requests"), false);
+});
+
+test("« c’est une question » après une offre ne crée pas de demande", async () => {
+  const writes: { table: string; row?: Record<string, unknown> }[] = [];
+  const sent: { body: string }[] = [];
+  const params = {
+    From: "whatsapp:+33601020304",
+    Body: "Non c est une question.",
+    MessageSid: "SMquestion",
+  };
+  const store = storeFrom({
+    writes,
+    customers: [{ id: "cust-1", first_name: "Simon" }],
+    dossier: { bookings: [published] },
+  });
+  store.conversationHistory = async () => [
+    {
+      direction: "inbound",
+      body: "Je voudrais un hôtel au Mexique en mars",
+      twilio_sid: "SMold",
+      created_at: "2026-11-01T10:00:00.000Z",
+    },
+    {
+      direction: "outbound",
+      body: "Je n’ai pas cette information. Souhaitez-vous que j’en parle à l’agence ?\n\nLe Concierge",
+      twilio_sid: "SMoffer",
+      created_at: "2026-11-01T10:01:00.000Z",
+    },
+  ];
+  await receiveWhatsappWebhook({
+    url: URL_HOOK,
+    signature: signed(params),
+    params,
+    authToken: TOKEN,
+    store,
+    converse: async () => {
+      throw new Error("le modèle ne doit pas parler");
+    },
+    send: async (message) => {
+      sent.push(message);
+      return { ok: true, sid: "SMquestionout" };
+    },
+  });
+  const body = sent.map((row) => row.body).join("\n");
+  assert.match(body, /ne transmets rien/);
+  assert.equal(replyClaimsAgencyHandoff(body), false);
+  assert.equal(writes.some((row) => row.table === "crm_whatsapp_requests"), false);
 });
