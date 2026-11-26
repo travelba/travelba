@@ -192,5 +192,31 @@ describe("revolut-inbox", () => {
     assert.equal(stripe?.category, "stripe");
     assert.equal(stripe?.status, "unmatched");
     assert.equal(stripe?.counterparty_name, "Stripe");
+    const treso = revolutInboxDraft({
+      id: "tx-treso",
+      type: "transfer",
+      state: "completed",
+      legs: [{ amount: 1000, currency: "EUR", description: "To trésorerie" }],
+    });
+    assert.equal(treso?.category, "interne");
+    assert.equal(treso?.status, "ignored");
+    const lend = revolutInboxDraft({
+      id: "tx-tresolend",
+      type: "topup",
+      state: "completed",
+      reference: "REL-20261120",
+      legs: [
+        {
+          amount: 10719.34,
+          currency: "EUR",
+          description: "Payment from Tresolend Sas",
+          counterparty: { name: "Tresolend Sas" },
+        },
+      ],
+    });
+    assert.equal(lend?.category, "client");
+    assert.equal(lend?.status, "unmatched");
+    assert.equal(lend?.counterparty_name, "Tresolend Sas");
+    assert.equal(lend?.reference, "REL-20261120");
   });
 });

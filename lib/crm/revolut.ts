@@ -234,18 +234,43 @@ export async function fetchRevolutTransactions(fromIso: string) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function reclassifyPendingRevolutCredits(admin: { from: (table: string) => any }) {
-  const { data, error } = await admin
+  const columns =
+    "id, status, direction, category, matched_transaction_id, parent_id, settled_at, raw, counterparty_name, reference";
+  const open = admin
     .from("crm_revolut_transactions")
-    .select("id, status, direction, category, matched_transaction_id, parent_id, raw, counterparty_name, reference")
+    .select(columns)
     .eq("direction", "credit")
     .is("parent_id", null)
     .in("status", ["unmatched", "ignored"])
     .limit(400);
-  if (error) throw new Error(error.message);
-  for (const row of data || []) {
+  const misplaced = admin
+    .from("crm_revolut_transactions")
+    .select(columns)
+    .eq("direction", "credit")
+    .is("parent_id", null)
+    .eq("status", "ignored")
+    .eq("category", "interne")
+    .limit(200);
+  const [openResult, misplacedResult] = await Promise.all([open, misplaced]);
+  if (openResult.error) throw new Error(openResult.error.message);
+  if (misplacedResult.error) throw new Error(misplacedResult.error.message);
+  const seen = new Set<string>();
+  const rows: Array<{ id: string; status?: string | null }> = [];
+  for (const row of [...(misplacedResult.data || []), ...(openResult.data || [])]) {
+    if (!row?.id || seen.has(row.id)) continue;
+    seen.add(row.id);
+    rows.push(row);
+  }
+  for (const row of rows) {
     const patch = revolutPendingReclass(row);
     if (!patch) continue;
-    await admin.from("crm_revolut_transactions").update(patch).eq("id", row.id).eq("status", row.status);
+    const update = admin
+      .from("crm_revolut_transactions")
+      .update(patch)
+      .eq("id", row.id)
+      .eq("status", row.status)
+      .is("matched_transaction_id", null);
+    await (patch.status === "unmatched" ? update.is("settled_at", null) : update);
   }
 }
 
