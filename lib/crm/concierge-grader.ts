@@ -93,6 +93,8 @@ export type GradeInput = {
   history: ConciergeHistoryTurn[];
   now: Date;
   expect: ScenarioExpect;
+  /** Texte des outils et du savoir, pour autoriser un lien ou une heure qui en vient. */
+  corpus?: string;
 };
 
 const ALWAYS_FORBIDDEN = ["commission", "prix net", "coût net", "cout net", "fournisseur", "net price"];
@@ -183,8 +185,10 @@ export function gradeTurn(input: GradeInput): GradeScore[] {
     score("robot", !soundsRobotic(input.reply), soundsRobotic(input.reply) ? "formule robot" : "voix tenue"),
     score(
       "fait_hors_dossier",
-      !replyUsesUnknownFact(input.reply, input.dossier, input.history, input.message),
-      replyUsesUnknownFact(input.reply, input.dossier, input.history, input.message) ? "fait absent du dossier" : "faits du dossier"
+      !replyUsesUnknownFact(input.reply, input.dossier, input.history, [input.message, input.corpus || ""].filter(Boolean).join("\n")),
+      replyUsesUnknownFact(input.reply, input.dossier, input.history, [input.message, input.corpus || ""].filter(Boolean).join("\n"))
+        ? "fait absent du dossier"
+        : "faits du dossier"
     ),
     score(
       "ville",

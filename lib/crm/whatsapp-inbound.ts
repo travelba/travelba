@@ -378,6 +378,19 @@ export async function receiveWhatsappWebhook(input: {
    * (ou une réponse est déjà partie). `continue` : la pause habituelle s’applique.
    */
   beforeReply?(phone: string): Promise<"stop" | "continue">;
+  /**
+   * Après le traitement. Le moteur ombre calcule ici, sans envoi.
+   * Absent : le parcours actuel ne change pas.
+   */
+  observe?(event: {
+    customerId: string | null;
+    firstName: string;
+    phone: string;
+    messageId: string;
+    message: string;
+    now: Date;
+    bookingIds: string[] | null;
+  }): Promise<void>;
   send(message: { to: string; body: string; mediaUrl?: string | null }): Promise<{
     ok: boolean;
     sid?: string;
@@ -543,6 +556,23 @@ export async function receiveWhatsappWebhook(input: {
   });
   if ("duplicate" in inbound) return done(200);
 
+  const emitShadow = async (message: string) => {
+    if (!input.observe || !customer) return;
+    try {
+      await input.observe({
+        customerId: customer.id,
+        firstName: customer.first_name || "",
+        phone: e164,
+        messageId: inbound.id,
+        message: message.slice(0, 1500),
+        now: input.now ?? new Date(),
+        bookingIds: companion?.bookingIds ?? null,
+      });
+    } catch (err) {
+      console.error("[concierge-engine] ombre", err instanceof Error ? err.name : "error");
+    }
+  };
+
   if (companionPiece && companion) {
     await input.store.insertRequest({
       customer_id: customer?.id || null,
@@ -560,7 +590,10 @@ export async function receiveWhatsappWebhook(input: {
     if (gate === "stop") return done(200);
   }
 
-  if (customer && (await input.store.threadOpen?.(e164)) === false) return done(200);
+  if (customer && (await input.store.threadOpen?.(e164)) === false) {
+    await emitShadow(journal);
+    return done(200);
+  }
 
   if (!autoreply) {
     await holdInboundForAgency({
@@ -572,6 +605,7 @@ export async function receiveWhatsappWebhook(input: {
       messageId: inbound.id,
       body: journal,
     });
+    await emitShadow(journal);
     return done(200);
   }
 
@@ -813,6 +847,7 @@ export async function receiveWhatsappWebhook(input: {
       tools: index === 0 ? tools : null,
     });
   }
+  await emitShadow(answered || journal);
   return done(200);
 }
 

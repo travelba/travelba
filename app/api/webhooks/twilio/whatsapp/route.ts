@@ -2,6 +2,7 @@ import { after, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { notifyConciergeRequest } from "@/lib/crm/whatsapp-alert";
 import { issueConciergeMagicLink } from "@/lib/crm/whatsapp-access";
+import { conciergeEngineMode, recordConciergeShadow, type ShadowAdmin } from "@/lib/crm/concierge-engine";
 import { generateConciergeReply } from "@/lib/crm/whatsapp-conversation";
 import { settleTakeoverIdle } from "@/lib/crm/whatsapp-handoff";
 import { captureRestaurantChoice } from "@/lib/crm/restaurants-run";
@@ -74,6 +75,12 @@ export async function POST(request: Request) {
         },
         openAccess: (customer) => issueConciergeMagicLink(admin, customer.email),
         converse: generateConciergeReply,
+        observe:
+          conciergeEngineMode() === "off"
+            ? undefined
+            : async (event) => {
+                await recordConciergeShadow(admin as unknown as ShadowAdmin, (id) => store.loadDossier(id), event);
+              },
         send: (message) =>
           sendWhatsappSession({ to: message.to, body: message.body, mediaUrl: message.mediaUrl }),
         autoreply: conciergeAutoreplyEnabled(),
