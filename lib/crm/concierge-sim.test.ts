@@ -11,6 +11,7 @@ import {
   type GradeCriterion,
 } from "@/lib/crm/concierge-grader";
 import { runScenario } from "@/lib/crm/concierge-sim";
+import { conciergeTestTargetAllowed } from "@/lib/crm/whatsapp-test-guard";
 import { CONCIERGE_EDGES, CONCIERGE_NEARBY, CONCIERGE_SCENARIOS, SCENARIO_NOW, scenarioRecords } from "@/lib/crm/concierge-scenarios.fixture";
 import { buildConciergeDossier, planConciergeTurn, replyOverCap, type ConciergeDossier } from "@/lib/crm/whatsapp-concierge";
 
@@ -349,4 +350,14 @@ test("le fixture se relit sans envoi", () => {
     assert.equal(source.includes("createServiceClient"), false, file);
     assert.equal(/from ["'][^"']*twilio/i.test(source), false, file);
   }
+});
+
+test("un vrai numéro client n’est pas un fil de test", async () => {
+  assert.equal(conciergeTestTargetAllowed({ phone: "+33612345678" }), false);
+  assert.equal(conciergeTestTargetAllowed({ phone: "+33601020304" }), true);
+  assert.equal(conciergeTestTargetAllowed({ phone: "+33612345678", isTest: true }), true);
+  const blocked = await runScenario(CONCIERGE_SCENARIOS[0], { phone: "+33699887766" });
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.turns.length, 0);
+  assert.match(blocked.summary, /vrai fil client/);
 });

@@ -1,9 +1,25 @@
 import { agencyWroteTemplate } from "./whatsapp-inbox";
 
-/** Pause du Concierge jusqu’au lendemain matin, heure de Paris. */
+/** Pause du Concierge jusqu’au lendemain matin, heure de Paris. Conservée pour les tests d’heure. */
 
-/** L’humain a le fil : sans geste de sa part pendant ce délai, le Concierge reprend. */
+/** L’humain a le fil : sans geste de sa part pendant ce délai, le Concierge reprend. Le cron ne s’en sert plus : un message d’équipe pose un verrou de 12 h. */
 export const TAKEOVER_IDLE_MS = 5 * 60 * 1000;
+
+/** Durée du verrou après un message écrit par l’équipe. `WHATSAPP_HUMAN_PAUSE_HOURS` la remplace (1 à 72). */
+export const DEFAULT_HUMAN_PAUSE_HOURS = 12;
+
+export function humanPauseHours(env: Record<string, string | undefined> = process.env) {
+  const raw = Number(env.WHATSAPP_HUMAN_PAUSE_HOURS);
+  if (!Number.isFinite(raw)) return DEFAULT_HUMAN_PAUSE_HOURS;
+  const hours = Math.round(raw);
+  if (hours < 1 || hours > 72) return DEFAULT_HUMAN_PAUSE_HOURS;
+  return hours;
+}
+
+/** Fin du verrou humain. Le bouton « Rendre au Concierge » lève la pause avant. */
+export function humanPauseUntil(now: Date, env: Record<string, string | undefined> = process.env) {
+  return new Date(now.getTime() + humanPauseHours(env) * 60 * 60 * 1000);
+}
 
 /** Ligne système du fil admin. Rien n’est envoyé au client. */
 export const HANDOFF_TEMPLATE_KEY = "systeme";

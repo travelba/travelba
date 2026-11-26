@@ -500,6 +500,7 @@ export default async function AdminClientDetailPage({ params }: Props) {
         customerName={[c.first_name, c.last_name].filter(Boolean).join(" ")}
         customerFirstName={c.first_name}
         paused={conciergePaused}
+        pausedUntil={conciergePaused ? pauseRow.data?.paused_until || null : null}
         templates={approvedManualTemplates()}
         previewBlocked={isVercelPreview()}
       />

@@ -167,12 +167,14 @@ async function foldRows(admin: ReturnType<typeof createServiceClient>, fil: stri
     ? []
     : ((threads.data || []) as { phone: string; paused_until: string | null; staff_read_at?: string | null }[]);
   const paused = threadRows.filter((row) => pauseStillActive(row.paused_until)).map((row) => row.phone);
+  const pausedUntil: Record<string, string> = {};
   const readAt: Record<string, string | null> = {};
   for (const row of threadRows) {
     if (row.staff_read_at) readAt[row.phone] = row.staff_read_at;
+    if (row.phone && row.paused_until && pauseStillActive(row.paused_until)) pausedUntil[row.phone] = row.paused_until;
   }
   const escalated = openRequests.map((row) => row.phone).filter(Boolean) as string[];
-  const folded = foldThreads(messages, { paused, escalated, readAt });
+  const folded = foldThreads(messages, { paused, pausedUntil, escalated, readAt });
   if (!fil) return { threads: folded, messages: [] as InboxMessage[] };
   const mine = messagesNewestFirst(messages.filter((row) => threadKey(row) === fil));
   return { threads: folded.filter((row) => row.key === fil), messages: mine };

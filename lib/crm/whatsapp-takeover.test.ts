@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { settleTakeoverIdle } from "./whatsapp-handoff";
 import {
+  DEFAULT_HUMAN_PAUSE_HOURS,
   TAKEOVER_IDLE_MS,
   handoffSystemBody,
+  humanPauseHours,
+  humanPauseUntil,
   inboundAlreadyHandled,
   takeoverIdleDue,
+  threadIsPaused,
   type TakeoverBeat,
 } from "./whatsapp-takeover";
 
@@ -106,4 +111,58 @@ test("une réponse déjà partie empêche un second envoi", () => {
     ]),
     false
   );
+});
+
+test("un message d’équipe pose un verrou de 12 h, configurable", () => {
+  const start = new Date("2026-11-26T06:00:00.000Z");
+  assert.equal(DEFAULT_HUMAN_PAUSE_HOURS, 12);
+  assert.equal(humanPauseUntil(start, {}).toISOString(), "2026-11-26T18:00:00.000Z");
+  assert.equal(humanPauseHours({ WHATSAPP_HUMAN_PAUSE_HOURS: "4" }), 4);
+  assert.equal(humanPauseHours({ WHATSAPP_HUMAN_PAUSE_HOURS: "0" }), 12);
+  assert.equal(humanPauseHours({ WHATSAPP_HUMAN_PAUSE_HOURS: "99" }), 12);
+  const until = humanPauseUntil(start, { WHATSAPP_HUMAN_PAUSE_HOURS: "4" });
+  assert.equal(threadIsPaused(until.toISOString(), new Date("2026-11-26T09:00:00.000Z")), true);
+  assert.equal(threadIsPaused(until.toISOString(), new Date("2026-11-26T10:00:00.000Z")), false);
+});
+
+test("le cron ne lève pas un verrou humain encore ouvert", async () => {
+  const updates: unknown[] = [];
+  const admin = {
+    from() {
+      const api = {
+        select() {
+          return api;
+        },
+        eq() {
+          return api;
+        },
+        gte() {
+          return api;
+        },
+        order() {
+          return api;
+        },
+        limit() {
+          return api;
+        },
+        update(row: unknown) {
+          updates.push(row);
+          return api;
+        },
+        maybeSingle: async () => ({
+          data: {
+            phone: "+33601020304",
+            customer_id: null,
+            paused_at: "2026-11-26T06:00:00.000Z",
+            paused_until: "2026-11-26T18:00:00.000Z",
+          },
+          error: null,
+        }),
+      };
+      return api;
+    },
+  };
+  const settled = await settleTakeoverIdle(admin as never, "+33601020304", new Date("2026-11-26T08:00:00.000Z"));
+  assert.equal(settled.handled, false);
+  assert.equal(updates.length, 0);
 });

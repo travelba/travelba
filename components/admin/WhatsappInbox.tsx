@@ -12,6 +12,7 @@ import { composerFreePreview } from "@/lib/crm/free-message-copy";
 import {
   adminReplyKind,
   closedWindowComposerLine,
+  conciergePauseCaption,
   conversationBadge,
   deliveryCaption,
   filterThreads,
@@ -213,6 +214,7 @@ export function WhatsappInbox({
               <p className="text-sm font-medium">{active.customerName || active.phone}</p>
               <p className="text-xs text-[#C5A880]">
                 {conversationBadge(active.status, held)}
+                {held && active.pausedUntil ? ` · ${conciergePauseCaption(active.pausedUntil)}` : ""}
                 {active.bookingReference ? ` · ${active.bookingReference}` : ""}
                 {active.customerId ? "" : " · Prospect"}
               </p>

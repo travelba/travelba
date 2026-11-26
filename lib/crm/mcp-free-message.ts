@@ -4,7 +4,7 @@ import { createServiceClient } from "@/lib/supabase/admin";
 import { currentMcpAccess } from "./mcp-auth";
 import { McpWriteError } from "./mcp-write";
 import { toE164 } from "./phone";
-import { nextParisMorning } from "./whatsapp-takeover";
+import { humanPauseUntil } from "./whatsapp-takeover";
 import { whatsappContentApproved } from "./twilio-content-sid";
 import { resolveAgencyContentSid } from "./agency-templates-arm";
 import { isContentSid, type ContentSidStore } from "./whatsapp-content-sid-store";
@@ -260,7 +260,7 @@ export async function envoyerMessageLibre(
       phone,
       customer_id: customer.id,
       paused_at: now.toISOString(),
-      paused_until: nextParisMorning(now).toISOString(),
+      paused_until: humanPauseUntil(now).toISOString(),
       paused_by: staffId,
       updated_at: now.toISOString(),
     });
