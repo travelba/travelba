@@ -4,6 +4,7 @@ import { PageEyebrow, PageTitle } from "@/components/crm/ui";
 import { ConciergeFollowupSend } from "@/components/admin/ConciergeFollowupSend";
 import { CARNET_ADDITION_KIND, CARNET_ADDITION_LABEL } from "@/lib/crm/carnet-addition";
 import { isVercelPreview } from "@/lib/crm/preview-secrets";
+import { ConciergeQualityTabs } from "@/components/admin/ConciergeQualityTabs";
 import { weeklyReview, type QualityFlag, type QualityMark } from "@/lib/crm/concierge-quality";
 
 export const metadata = { title: "Revue WhatsApp" };
@@ -64,6 +65,7 @@ export default async function ConciergeReviewPage() {
         <PageEyebrow>Espace agence</PageEyebrow>
         <PageTitle title="Revue de la semaine" subtitle={`Du ${report.from} au ${report.to}. Les fils escaladés et les tentatives hors dossier.`} />
       </div>
+      <ConciergeQualityTabs current="revue" />
       <Link href="/admin/boite?onglet=whatsapp" className="text-sm font-semibold underline-offset-2 hover:underline">
         Retour à la file
       </Link>
