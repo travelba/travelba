@@ -78,6 +78,8 @@ test("le partage reconnaît le verbe, l’objet et le prénom", () => {
 
 test("annuler le séjour reste à l’agence, annuler l’hôtel est le geste du client", () => {
   assert.equal(classifyClientSpace("Annulez mon séjour s’il vous plaît"), null);
+  assert.equal(classifyClientSpace("Retirez la carte bancaire 4242")?.id, "retirer_carte");
+  assert.equal(classifyClientSpace("Enregistrer une carte")?.id, "enregistrer_carte");
   assert.equal(classifyClientSpace("Annule l’hôtel Mondrian")?.id, "annuler_hotel");
   assert.equal(classifyClientSpace("Je veux payer mon encours")?.id, "regler_encours");
   assert.equal(classifyClientSpace("Change mon mot de passe")?.id, "mot_de_passe");

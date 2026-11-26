@@ -851,7 +851,7 @@ function catalogGroups(): WhatsappCatalogGroup[] {
           "Demande transmise à l’agence",
           "Changement, annulation, rapprochement d’un paiement, dépôt d’une formalité ou demande de chauffeur. Le séjour reconnu est nommé.",
           conciergeFollowUp(
-            `${HANDOFF_SENTENCE}\nCela concerne le séjour ${REFERENCE}.\n${siteConfig.url}/mon-compte/reservations/${REFERENCE}`
+            `${HANDOFF_SENTENCE}\nCela concerne le séjour ${REFERENCE}. ${siteConfig.url}/mon-compte/reservations/${REFERENCE}`
           )
         ),
         reply(

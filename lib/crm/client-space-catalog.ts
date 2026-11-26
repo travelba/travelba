@@ -744,7 +744,10 @@ export function classifyClientSpace(message: string, opts?: { hasFile?: boolean 
   if (/\b(payer|paiement|r[eè]gler|reglement|encours)\b/.test(text)) {
     return { ...base, id: "regler_encours", tool: toolOf("regler_encours"), access: true };
   }
-  if (/\b(carte bancaire|enregistrer une carte|ajouter une carte)\b/.test(text)) {
+  if (/\b(carte bancaire|ma carte|my card|the card)\b/.test(text) && /\b(supprim|retir|enlev|remove|delete)\w*/.test(text)) {
+    return { ...base, id: "retirer_carte", tool: toolOf("retirer_carte") };
+  }
+  if (/\b(carte bancaire|enregistrer une carte|ajouter une carte|add a card)\b/.test(text)) {
     return { ...base, id: "enregistrer_carte", tool: toolOf("enregistrer_carte"), access: true };
   }
   if (/\b(acc[eè]s|cherch\w*|r[eé]serv\w*)\b/.test(text) && /\bh[oô]tel/.test(text) && !/\bannul/.test(text)) {
@@ -757,9 +760,6 @@ export function classifyClientSpace(message: string, opts?: { hasFile?: boolean 
 
   if (/\b(relev[eé]|statement)\b/.test(text)) {
     return { ...base, id: "envoyer_releve", tool: toolOf("envoyer_releve") };
-  }
-  if (/\b(carte bancaire|ma carte)\b/.test(text) && /\b(supprim|retir|enlev)/.test(text)) {
-    return { ...base, id: "retirer_carte", tool: toolOf("retirer_carte") };
   }
   if (/\b(agenda|calendrier|ical)\b/.test(text)) {
     return { ...base, id: "agenda_sejour", tool: toolOf("agenda_sejour"), access: true };

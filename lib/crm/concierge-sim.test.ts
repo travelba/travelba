@@ -11,8 +11,8 @@ import {
   type GradeCriterion,
 } from "@/lib/crm/concierge-grader";
 import { runScenario } from "@/lib/crm/concierge-sim";
-import { CONCIERGE_GAPS, CONCIERGE_SCENARIOS, SCENARIO_NOW, scenarioRecords } from "@/lib/crm/concierge-scenarios.fixture";
-import { buildConciergeDossier, type ConciergeDossier } from "@/lib/crm/whatsapp-concierge";
+import { CONCIERGE_EDGES, CONCIERGE_NEARBY, CONCIERGE_SCENARIOS, SCENARIO_NOW, scenarioRecords } from "@/lib/crm/concierge-scenarios.fixture";
+import { buildConciergeDossier, replyOverCap, type ConciergeDossier } from "@/lib/crm/whatsapp-concierge";
 
 const NOW = new Date("2026-06-01T08:00:00.000Z");
 
@@ -266,13 +266,26 @@ test("le routeur joue les scénarios, et saute le tour qui attend le modèle", a
   assert.equal(run.turns.filter((turn) => turn.status === "graded").length, 2);
 });
 
-test("les écarts connus échouent sur le critère prévu", async () => {
-  for (const gap of CONCIERGE_GAPS) {
-    const run = await runScenario(gap.scenario, { mode: "router", now: SCENARIO_NOW });
-    assert.equal(run.ok, false, gap.scenario.slug);
-    const hit = run.turns.some((turn) => turn.scores.some((score) => score.criterion === gap.criterion && !score.ok));
-    assert.equal(hit, true, `${gap.scenario.slug} ${gap.criterion} ${run.summary}`);
+test("les écarts et les formulations proches passent", async () => {
+  const rows = [...CONCIERGE_EDGES, ...CONCIERGE_NEARBY];
+  for (const scenario of rows) {
+    const run = await runScenario(scenario, { mode: "router", now: SCENARIO_NOW });
+    assert.equal(run.ok, true, `${scenario.slug} ${run.summary} ${run.turns[0]?.reply}`);
   }
+  const replyOf = async (slug: string) => {
+    const scenario = rows.find((row) => row.slug === slug);
+    assert.ok(scenario);
+    const run = await runScenario(scenario, { mode: "router", now: SCENARIO_NOW });
+    return run.turns[0]?.reply || "";
+  };
+  assert.match(await replyOf("retour-mal-formule"), /AF1205/);
+  assert.match(await replyOf("retour-en"), /AF1205/);
+  assert.match(await replyOf("terminal-vol"), /terminal est 2E/i);
+  assert.match(await replyOf("terminal-en"), /terminal is 2E/i);
+  assert.match(await replyOf("terminal-voisin"), /terminal est 1/i);
+  assert.equal((await replyOf("petit-dejeuner")).includes("—"), false);
+  assert.equal((await replyOf("petit-dejeuner")).includes("TB-"), false);
+  assert.equal(replyOverCap(await replyOf("annulation-courte")), false);
 });
 
 test("le fixture se relit sans envoi", () => {

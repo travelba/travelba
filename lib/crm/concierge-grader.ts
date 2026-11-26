@@ -164,6 +164,8 @@ function writeScore(expected: PlannedWrite | null, planned: PlannedWrite | null)
 export function gradeTurn(input: GradeInput): GradeScore[] {
   const expect = input.expect;
   const lang = expect.lang || "fr";
+  const spoken = input.reply.replace(/https?:\/\/\S+/g, " ");
+  const heard = messageLanguage(spoken);
   const tools = input.tools || [];
   const planned = plannedWrite(input.message);
   const expectedWrite = expect.write ?? null;
@@ -175,11 +177,7 @@ export function gradeTurn(input: GradeInput): GradeScore[] {
   const missingTools = (expect.tools || []).filter((tool) => !tools.includes(tool));
 
   return [
-    score(
-      "langue",
-      messageLanguage(input.reply) === lang,
-      messageLanguage(input.reply) === lang ? "langue attendue" : "langue inattendue"
-    ),
+    score("langue", heard === lang, heard === lang ? "langue attendue" : "langue inattendue"),
     score("vouvoiement", !usesTutoiement(input.reply), usesTutoiement(input.reply) ? "tutoiement" : "vouvoiement"),
     score("longueur", !replyOverCap(input.reply), replyOverCap(input.reply) ? "trop long" : "longueur tenue"),
     score("robot", !soundsRobotic(input.reply), soundsRobotic(input.reply) ? "formule robot" : "voix tenue"),
