@@ -447,6 +447,50 @@ export async function simulateEngineReply(input: {
     const link = web.urls[0] ? ` ${web.urls[0]}` : "";
     return { text: `Le site de l’hôtel indique un petit-déjeuner de 7h00 à 10h30. L’agence vous confirme.${link}` };
   }
+  if (/\bannul/.test(text)) {
+    input.tools.ouvrir_demande("Le client demande une annulation. Rien n’est annulé.", "question");
+    return { text: "Je transmets à l’agence. Le séjour reste en place." };
+  }
+  if (/\bsolde\b|encours|reste a payer/.test(text)) {
+    const balance = input.tools.lire_solde();
+    return { text: balance.dit };
+  }
+  if (/terminal/.test(text)) {
+    const vols = input.tools.lire_vols();
+    const terminal = vols.dit.match(/terminal ([A-Za-z0-9]{1,4})/)?.[1];
+    return { text: terminal ? `Le terminal est ${terminal}.` : "Le terminal n’est pas dans votre dossier." };
+  }
+  if (/heure|horaire/.test(text) && /vol|depart|decoll/.test(text)) {
+    const vols = input.tools.lire_vols();
+    const number = vols.dit.match(/\b[A-Z0-9]{2}\d{2,4}\b/);
+    const clock = vols.dit.match(/\d{2}h\d{2}/);
+    if (vols.absent) return { text: "Ce vol n’est pas encore dans votre dossier." };
+    if (number && clock) return { text: `Votre vol ${number[0]} part à ${clock[0]}.` };
+    return { text: "Je n’ai pas l’heure de ce vol dans votre dossier." };
+  }
+  if (/bagage/.test(text)) {
+    input.tools.ouvrir_demande("Question sur les bagages.", "question");
+    return { text: "Je n’ai pas le détail des bagages dans votre dossier. Je transmets à l’agence." };
+  }
+  if (/restaurant|spa\b/.test(text)) {
+    input.tools.ouvrir_demande("Demande de restaurant ou de spa.", "question");
+    return { text: "Je transmets à l’agence. Rien n’est réservé." };
+  }
+  if (/transfert|chauffeur/.test(text)) {
+    input.tools.lire_sejour();
+    input.tools.ouvrir_demande("Demande de transfert.", "question");
+    return { text: "Je transmets à l’agence pour le transfert. Rien n’est commandé." };
+  }
+  if (/accompagn/.test(text)) {
+    input.tools.ouvrir_demande("Ajout d’un accompagnant.", "question");
+    return { text: "Je transmets à l’agence. Personne n’est ajouté au dossier." };
+  }
+  if (/\b(s[uû]r|sure)\b/.test(text)) {
+    const clock = past.match(/\d{2}h\d{2}/);
+    const number = past.match(/\b[a-z0-9]{2}\d{2,4}\b/);
+    if (clock && number) return { text: `Oui. Votre vol ${number[0].toUpperCase()} part à ${clock[0]}.` };
+    return { text: "Je m’en tiens à ce qui est écrit dans votre dossier." };
+  }
   if (/gr[eè]ve|mouvement social/.test(text)) {
     const web = await input.tools.recherche_web("grève aéroport jour du départ");
     input.tools.ouvrir_demande("Grève signalée, à confirmer pour le vol du client.", "question");

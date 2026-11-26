@@ -3,6 +3,7 @@ import Link from "next/link";
 const LINKS = [
   { href: "/admin/whatsapp/revue", id: "revue", label: "Revue de la semaine" },
   { href: "/admin/whatsapp/qualite", id: "qualite", label: "Qualité du concierge" },
+  { href: "/admin/whatsapp/qualite/simulation", id: "simulation", label: "Simulation sur les réservations" },
 ] as const;
 
 export function ConciergeQualityTabs({ current }: { current: (typeof LINKS)[number]["id"] }) {
