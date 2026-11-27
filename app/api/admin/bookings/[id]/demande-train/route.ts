@@ -21,7 +21,7 @@ export async function GET(request: Request, ctx: Ctx) {
   const admin = createServiceClient();
   const { data, error } = await admin
     .from("crm_train_requests")
-    .select("status, step, created_at, updated_at, aller, retour, choix_aller, choix_retour, classe, tarif, reference_sncf, prix_paye, billets_envoyes, retour_date")
+    .select("status, step, created_at, updated_at, aller, retour, choix_aller, choix_retour, classe, tarif, reference_sncf, prix_paye, billets_envoyes, retour_date, depart_ville, arrivee_ville, customer_id")
     .eq("id", demande)
     .eq("booking_id", id)
     .maybeSingle();
@@ -42,7 +42,14 @@ export async function GET(request: Request, ctx: Ctx) {
     prix_paye: number | null;
     billets_envoyes: string[] | null;
     retour_date: string | null;
+    depart_ville: string | null;
+    arrivee_ville: string | null;
+    customer_id: string | null;
   };
+  const person = row.customer_id
+    ? await admin.from("crm_customers").select("first_name").eq("id", row.customer_id).maybeSingle()
+    : { data: null };
+  const prenom = (person.data as { first_name?: string | null } | null)?.first_name || null;
   const input: TrainProgressInput = {
     status: row.status,
     step: row.step,
@@ -58,6 +65,9 @@ export async function GET(request: Request, ctx: Ctx) {
     prix: row.prix_paye == null ? null : Number(row.prix_paye),
     billets: row.billets_envoyes || [],
     retourDate: row.retour_date,
+    depart: row.depart_ville,
+    arrivee: row.arrivee_ville,
+    prenom,
   };
   return NextResponse.json({ suivi: trainProgress(input) });
 }

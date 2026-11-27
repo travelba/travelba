@@ -16,6 +16,10 @@ export type TrainProgressInput = {
   prix: number | null;
   billets: string[];
   retourDate: string | null;
+  depart?: string | null;
+  arrivee?: string | null;
+  prenom?: string | null;
+  envoiAt?: string | null;
 };
 
 export type TrainProgressState = "fait" | "cours" | "apres";
@@ -23,21 +27,41 @@ export type TrainProgressState = "fait" | "cours" | "apres";
 export type TrainProgressStep = {
   id: string;
   label: string;
+  court: string;
   state: TrainProgressState;
   quand: string | null;
   detail: string | null;
 };
 
-export type TrainProgressOffer = {
+export type TrainPriceChip = { label: string; montant: string };
+
+export type TrainProgressCard = {
   sens: "Aller" | "Retour";
-  lignes: { titre: string; choisi: boolean }[];
+  departHeure: string;
+  arriveeHeure: string;
+  departGare: string;
+  arriveeGare: string;
+  numero: string;
+  date: string | null;
+  duree: string | null;
+  liaison: string | null;
+  prix: TrainPriceChip[];
+  choisi: boolean;
+};
+
+export type TrainProgressMessage = {
+  titre: string;
+  detail: string;
+  texte: string;
+  quand: string | null;
 };
 
 export type TrainProgress = {
   etapes: TrainProgressStep[];
   branche: { id: string; label: string; quand: string | null } | null;
   maintenant: string;
-  trains: TrainProgressOffer[];
+  cartes: TrainProgressCard[];
+  message: TrainProgressMessage | null;
 };
 
 const SENT = new Set(["propositions", "en_attente", "prix_a_reconfirmer", "choix", "commande"]);
@@ -57,6 +81,79 @@ function offerLine(offer: TrainOffer) {
   const hours = depart && arrivee ? `${depart} → ${arrivee}` : depart || arrivee;
   const number = offer.numero ? `train ${offer.numero}` : "";
   return [hours, number].filter(Boolean).join(" · ") || "Horaire";
+}
+
+function prettyDuration(offer: TrainOffer) {
+  const raw = (offer.duree || "").trim();
+  const compact = raw.match(/^(\d+)\s*h\s*(\d{1,2})$/i);
+  if (compact) return `${Number(compact[1])} h ${String(Number(compact[2])).padStart(2, "0")}`;
+  if (raw) return raw;
+  const start = clock(offer.heure_depart);
+  const end = clock(offer.heure_arrivee);
+  if (!start || !end) return null;
+  const a = Number(start.slice(0, 2)) * 60 + Number(start.slice(3));
+  let b = Number(end.slice(0, 2)) * 60 + Number(end.slice(3));
+  if (b <= a) b += 24 * 60;
+  const hours = Math.floor((b - a) / 60);
+  const minutes = (b - a) % 60;
+  return minutes ? `${hours} h ${String(minutes).padStart(2, "0")}` : `${hours} h`;
+}
+
+function liaison(offer: TrainOffer) {
+  const value = (offer as TrainOffer & { correspondances?: number | null }).correspondances;
+  if (value == null || Number.isNaN(Number(value))) return null;
+  const count = Number(value);
+  if (count <= 0) return "Direct";
+  if (count === 1) return "1 correspondance";
+  return `${count} correspondances`;
+}
+
+function chipMoney(value: number) {
+  const rounded = Math.round(value * 100) / 100;
+  const text = rounded.toLocaleString("fr-FR", {
+    minimumFractionDigits: Number.isInteger(rounded) ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+  return `${text} €`;
+}
+
+function chips(offer: TrainOffer): TrainPriceChip[] {
+  const rows: [string, number | null | undefined][] = [
+    ["2de", offer.prix?.["2de"]?.non_remboursable],
+    ["2de Flex", offer.prix?.["2de"]?.flex],
+    ["1re", offer.prix?.["1re"]?.non_remboursable],
+    ["1re Flex", offer.prix?.["1re"]?.flex],
+  ];
+  return rows.flatMap(([label, amount]) => (typeof amount === "number" ? [{ label, montant: chipMoney(amount) }] : []));
+}
+
+function dayLabel(iso: string | null | undefined) {
+  const day = String(iso || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const date = new Date(`${day}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "numeric", month: "short" }).format(date);
+}
+
+function cardOf(sens: "Aller" | "Retour", offer: TrainOffer, choisi: boolean): TrainProgressCard {
+  return {
+    sens,
+    departHeure: clock(offer.heure_depart) || offer.heure_depart || "—",
+    arriveeHeure: clock(offer.heure_arrivee) || offer.heure_arrivee || "—",
+    departGare: offer.depart_gare || "",
+    arriveeGare: offer.arrivee_gare || "",
+    numero: offer.numero ? `train ${offer.numero}` : "",
+    date: dayLabel(offer.date),
+    duree: prettyDuration(offer),
+    liaison: liaison(offer),
+    prix: chips(offer),
+    choisi,
+  };
+}
+
+function hookText(route: string, prenom: string) {
+  const hello = prenom ? `Bonjour ${prenom},` : "Bonjour,";
+  return [hello, "", `J’ai des horaires de train pour ${route}.`, "Réponds ici, je te les montre."].join("\n");
 }
 
 export function trainProgressStamp(iso: string | null | undefined) {
@@ -113,25 +210,26 @@ export function trainProgress(input: TrainProgressInput): TrainProgress {
   const ticketDay = trainProgressStamp(input.billets[0] || null);
 
   const flags = [
-    { id: "creee", label: "Demande créée", done: true, quand: created, detail: null as string | null },
-    { id: "recherche", label: "Recherche en cours (bot SNCF)", done: status !== "nouvelle" || offers, quand: null, detail: null },
-    { id: "pretes", label: "Propositions prêtes (à valider par l’agent)", done: offers && sent, quand: null, detail: offers ? `${input.aller.length} aller${input.retour.length ? `, ${input.retour.length} retour` : ""}` : null },
-    { id: "envoyees", label: "Envoyées au client sur WhatsApp", done: sent, quand: null, detail: null },
-    { id: "aller", label: "Aller choisi", done: aller, quand: null, detail: chosen(input.aller, input.choixAller) },
-    { id: "tarif", label: "Tarif choisi", done: tarif, quand: null, detail: input.tarif === "flex" ? "Flex" : input.tarif === "non_remboursable" ? "Non remboursable" : null },
-    { id: "retour", label: "Retour choisi", done: hasReturn ? input.choixRetour != null : sent && aller, quand: null, detail: hasReturn ? chosen(input.retour, input.choixRetour) : "Aller simple" },
-    { id: "classe", label: "Classe choisie", done: classe, quand: null, detail: input.classe === "1re" ? "1re classe" : input.classe === "2de" ? "2de classe" : null },
-    { id: "recap", label: "Récap envoyé / prix reconfirmé", done: recap && status !== "prix_a_reconfirmer", quand: null, detail: null },
-    { id: "accord", label: "Accord du client", done: accord, quand: null, detail: null },
-    { id: "achat", label: "Achat en cours", done: commande, quand: null, detail: status === "choix" ? "Le bot achète sur SNCF Connect." : null },
+    { id: "creee", court: "Créée", label: "Demande créée", done: true, quand: created, detail: null as string | null },
+    { id: "recherche", court: "Recherche", label: "Recherche en cours (bot SNCF)", done: status !== "nouvelle" || offers, quand: null, detail: null },
+    { id: "pretes", court: "Prêtes", label: "Propositions prêtes (à valider par l’agent)", done: offers && sent, quand: null, detail: offers ? `${input.aller.length} aller${input.retour.length ? `, ${input.retour.length} retour` : ""}` : null },
+    { id: "envoyees", court: "WhatsApp", label: "Envoyées au client sur WhatsApp", done: sent, quand: null, detail: null },
+    { id: "aller", court: "Aller", label: "Aller choisi", done: aller, quand: null, detail: chosen(input.aller, input.choixAller) },
+    { id: "tarif", court: "Tarif", label: "Tarif choisi", done: tarif, quand: null, detail: input.tarif === "flex" ? "Flex" : input.tarif === "non_remboursable" ? "Non remboursable" : null },
+    { id: "retour", court: "Retour", label: "Retour choisi", done: hasReturn ? input.choixRetour != null : sent && aller, quand: null, detail: hasReturn ? chosen(input.retour, input.choixRetour) : "Aller simple" },
+    { id: "classe", court: "Classe", label: "Classe choisie", done: classe, quand: null, detail: input.classe === "1re" ? "1re classe" : input.classe === "2de" ? "2de classe" : null },
+    { id: "recap", court: "Récap", label: "Récap envoyé / prix reconfirmé", done: recap && status !== "prix_a_reconfirmer", quand: null, detail: null },
+    { id: "accord", court: "Accord", label: "Accord du client", done: accord, quand: null, detail: null },
+    { id: "achat", court: "Achat", label: "Achat en cours", done: commande, quand: null, detail: status === "choix" ? "Le bot achète sur SNCF Connect." : null },
     {
       id: "commande",
+      court: "Commandé",
       label: "Commandé",
       done: commande,
       quand: commande ? moved : null,
       detail: commande ? [input.reference ? `Réf. ${input.reference}` : "", input.prix != null ? money(input.prix) : ""].filter(Boolean).join(" · ") || null : null,
     },
-    { id: "billet", label: "Billet envoyé le jour J", done: billet, quand: ticketDay, detail: billet ? "Le PDF est parti le matin du départ." : null },
+    { id: "billet", court: "Billet", label: "Billet envoyé le jour J", done: billet, quand: ticketDay, detail: billet ? "Le PDF est parti le matin du départ." : null },
   ];
 
   let branche: TrainProgress["branche"] = null;
@@ -167,6 +265,7 @@ export function trainProgress(input: TrainProgressInput): TrainProgress {
   const etapes = flags.map((step) => ({
     id: step.id,
     label: step.label,
+    court: step.court,
     state: (branche ? (step.done ? "fait" : "apres") : step.id === cursor ? "cours" : step.done ? "fait" : "apres") as TrainProgressState,
     quand: step.quand || (!branche && step.id === cursor ? moved : null),
     detail: step.detail,
@@ -194,9 +293,20 @@ export function trainProgress(input: TrainProgressInput): TrainProgress {
                 ? "Rien à faire, le billet est parti."
                 : "Rien à faire, le client choisit sur WhatsApp.";
 
-  const trains: TrainProgressOffer[] = [];
-  if (input.aller.length) trains.push({ sens: "Aller", lignes: input.aller.map((offer, index) => ({ titre: offerLine(offer), choisi: index === input.choixAller })) });
-  if (input.retour.length) trains.push({ sens: "Retour", lignes: input.retour.map((offer, index) => ({ titre: offerLine(offer), choisi: index === input.choixRetour })) });
+  const cartes = [
+    ...input.aller.map((offer, index) => cardOf("Aller", offer, index === input.choixAller)),
+    ...input.retour.map((offer, index) => cardOf("Retour", offer, index === input.choixRetour)),
+  ];
+  const route = [input.depart, input.arrivee].filter(Boolean).join(" → ") || [input.aller[0]?.depart_gare, input.aller[0]?.arrivee_gare].filter(Boolean).join(" → ");
+  const prenom = (input.prenom || "").trim().split(/\s+/)[0] || "";
+  const message = sent
+    ? {
+        titre: "Accroche WhatsApp",
+        detail: "Ce texte part quand la session de 24 h est fermée. Les horaires sont la liste ci-dessous.",
+        texte: hookText(route || "ton trajet", prenom),
+        quand: trainProgressStamp(input.envoiAt),
+      }
+    : null;
 
-  return { etapes, branche, maintenant, trains };
+  return { etapes, branche, maintenant, cartes, message };
 }

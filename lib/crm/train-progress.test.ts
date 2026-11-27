@@ -54,8 +54,41 @@ test("la recherche et les propositions nomment l’étape et les trains", () => 
   const offres = trainProgress(row({ status: "propositions", aller: ALLER, retour: [{ ...ALLER[0], numero: "6630", heure_depart: "16:12", heure_arrivee: "18:05" }] }));
   assert.equal(current(row({ status: "propositions", aller: ALLER })), "Envoyées au client sur WhatsApp");
   assert.match(offres.maintenant, /client choisit/);
-  assert.equal(offres.trains[0]?.lignes[0]?.titre, "08h12 → 10h05 · train 6601");
-  assert.equal(offres.trains.length, 2);
+  assert.equal(offres.cartes[0]?.departHeure, "08h12");
+  assert.equal(offres.cartes[0]?.arriveeHeure, "10h05");
+  assert.equal(offres.cartes[0]?.numero, "train 6601");
+  assert.equal(offres.cartes.length, 3);
+  assert.match(offres.message?.texte || "", /horaires de train/);
+  assert.equal(offres.message?.quand, null);
+});
+
+test("les cartes portent durée, prix et le train choisi, sans inventer la liaison", () => {
+  const suivi = trainProgress(
+    row({
+      status: "propositions",
+      depart: "Paris",
+      arrivee: "Montpellier",
+      choixAller: 0,
+      aller: [
+        {
+          ...ALLER[0],
+          duree: "3h18",
+          prix: { "2de": { non_remboursable: 74 }, "1re": { flex: 184, non_remboursable: 91 } },
+        },
+        Object.assign({ ...ALLER[1] }, { correspondances: 1 }),
+      ],
+    }),
+  );
+  assert.equal(suivi.cartes[0]?.duree, "3 h 18");
+  assert.equal(suivi.cartes[0]?.choisi, true);
+  assert.equal(suivi.cartes[0]?.liaison, null);
+  assert.deepEqual(
+    suivi.cartes[0]?.prix.map((chip) => chip.label),
+    ["2de", "1re", "1re Flex"],
+  );
+  assert.equal(suivi.cartes[1]?.liaison, "1 correspondance");
+  assert.match(suivi.message?.texte || "", /Paris → Montpellier/);
+  assert.equal(trainProgress(row({ status: "recherche" })).message, null);
 });
 
 test("les choix avancent la surbrillance, puis l’achat et le billet", () => {
