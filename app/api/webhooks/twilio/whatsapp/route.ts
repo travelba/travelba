@@ -6,6 +6,7 @@ import { conciergeEngineMode, recordConciergeShadow, type ShadowAdmin } from "@/
 import { generateConciergeReply } from "@/lib/crm/whatsapp-conversation";
 import { settleTakeoverIdle } from "@/lib/crm/whatsapp-handoff";
 import { captureRestaurantChoice } from "@/lib/crm/restaurants-run";
+import { captureTrainReply } from "@/lib/crm/trains-inbound";
 import { conciergeAutoreplyEnabled, createWhatsappSupabaseStore, receiveWhatsappWebhook } from "@/lib/crm/whatsapp-inbound";
 import { sendWhatsappSession } from "@/lib/crm/whatsapp-session";
 import { rateLimit, rateLimitKey } from "@/lib/crm/rate-limit";
@@ -50,6 +51,12 @@ export async function POST(request: Request) {
         if (captured.handled) return;
       } catch (err) {
         console.error("[restaurants] choix", err instanceof Error ? err.name : "error");
+      }
+      try {
+        const train = await captureTrainReply(admin, params);
+        if (train.handled) return;
+      } catch (err) {
+        console.error("[trains] choix", err instanceof Error ? err.name : "error");
       }
       await receiveWhatsappWebhook({
         url,

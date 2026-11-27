@@ -78,6 +78,8 @@ import { CoverPickDialog } from "@/components/admin/CoverPickDialog";
 import { useOpenClientSpace } from "@/components/admin/OpenClientSpace";
 import { AgencyHistoryPanel } from "@/components/admin/AgencyHistoryPanel";
 import { ChargeControl } from "@/components/admin/ChargeControl";
+import { TrainRequestButton } from "@/components/admin/TrainRequestButton";
+import { trainFormDefaults } from "@/lib/crm/train-request";
 import { ResponsableForm } from "@/components/admin/ResponsableForm";
 import { ReglementSummary } from "@/components/admin/ReglementSummary";
 import { SepaInFlight } from "@/components/account/SepaInFlight";
@@ -1456,6 +1458,26 @@ export function BookingEditor({
   // Enregistrer n’apparaît que s’il y a quelque chose à écrire. Montrer seulement si le séjour est caché.
   const stayAction = clientStayAction(booking);
   const showButtonClass = "admin-af-btn admin-tap whitespace-nowrap rounded-full px-4 py-2 text-sm disabled:opacity-50";
+  const trainDefaults = trainFormDefaults({
+    homeCity: customer?.city,
+    hotels: sourceItems
+      .filter((item) => item.kind === "hotel" && isActiveItem(item))
+      .map((item) => ({
+        city: typeof item.details?.city === "string" ? item.details.city : "",
+        start: item.start_at,
+        end: item.end_at,
+      })),
+  });
+  const trainButton = (
+    <TrainRequestButton
+      bookingId={booking.id}
+      defaults={trainDefaults}
+      travelers={travelers.map((traveler) => ({
+        id: traveler.id,
+        name: [traveler.first_name, traveler.last_name].filter(Boolean).join(" ") || "Voyageur",
+      }))}
+    />
+  );
   const saveButton =
     unsaved && stayAction !== "cacher" ? (
       <button
@@ -1697,6 +1719,7 @@ export function BookingEditor({
                   Ajouter le titulaire
                 </button>
               ) : null}
+              {trainButton}
               {primaryAction}
               {dossierMenu(more)}
             </div>
@@ -1750,6 +1773,7 @@ export function BookingEditor({
                 Ajouter le titulaire
               </button>
             ) : null}
+            {trainButton}
             {primaryAction}
             {dossierMenu(more && !compact)}
           </div>

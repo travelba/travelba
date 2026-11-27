@@ -82,6 +82,12 @@ export const CRON_CADENCE: CronCadence[] = [
       "Le cron passe toutes les 10 minutes pour les départs proches. pollDue laisse les vols lointains à 12 h puis 4 h, et coupe la relecture rapprochée après le décollage. Décalé à la minute 5 pour ne pas tomber avec les autres.",
   },
   {
+    path: "/api/cron/train-billets",
+    schedule: "13,28,43,58 * * * *",
+    reason:
+      "Le PDF acheté part le matin du départ, à 8h locale, ou deux heures avant si le train est plus tôt. Toutes les 15 minutes, une fenêtre de 50 minutes ne rate pas le créneau.",
+  },
+  {
     path: "/api/cron/rail-tickets",
     schedule: "9,19,29,39,49,59 * * * *",
     reason:

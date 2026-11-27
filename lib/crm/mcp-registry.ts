@@ -152,6 +152,16 @@ import { moveHotelCourrier } from "@/lib/crm/hotel-courrier-move";
 import { runHotelMail } from "@/lib/crm/mcp-hotel-mail";
 import { deposerBillet, detacherEmail, importerPieces } from "@/lib/crm/mcp-pieces-mail";
 import { envoyerRestaurants, fileWhatsapp, partagerSejour, propositionConcierge } from "@/lib/crm/mcp-messages";
+import { deposerModelesTrainWhatsapp, statutModelesTrainWhatsapp } from "@/lib/crm/mcp-train-templates";
+import {
+  annulerDemandeTrain,
+  demandesTrain,
+  deposerPropositionsTrain,
+  enregistrerCommandeTrain,
+  lireDemandeTrain,
+  prendreDemandeTrain,
+  signalerTrainIndisponible,
+} from "@/lib/crm/mcp-trains";
 import { carteArrivee, ratehawk, reprendreFormalite, sejourHotel } from "@/lib/crm/mcp-stays";
 import { runIfConfirmed } from "@/lib/crm/mcp-preview";
 import { cloturerCartePliant, modifierPlafondPliant } from "@/lib/crm/mcp-pliant-ops";
@@ -159,7 +169,7 @@ import { societeDepense } from "@/lib/crm/mcp-expense-company";
 import { attachPostedCredit, payerKindFromInput } from "@/lib/crm/attach-credit";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 158;
+export const MCP_TOOL_CAP = 167;
 
 async function attachCreditFromRegistry(args: Record<string, unknown>) {
   const id = [args.id, args.mouvement_id].find((value) => typeof value === "string" && value.trim());
@@ -3025,6 +3035,87 @@ export const MCP_TOOLS: ToolDef[] = [
       confirmer: confirmOpt,
     },
     run: (args: ToolArgs) => envoyerRestaurants(args),
+  },
+  {
+    name: "deposer_modeles_train_whatsapp",
+    write: true,
+    openWorld: true,
+    description:
+      "Dépose chez Twilio les modèles Utility du parcours train : train_proposition, train_liste, train_classe, train_tarif, train_accord, train_modifier, train_billet. Idempotent par nom. N’envoie aucun WhatsApp. Ne renvoie aucun secret.",
+    run: (args) => deposerModelesTrainWhatsapp(args),
+  },
+  {
+    name: "statut_modeles_train_whatsapp",
+    openWorld: true,
+    description:
+      "Statut d’approbation Meta des modèles WhatsApp train. pret vrai quand tous sont approuvés. Lecture seule. N’envoie aucun message.",
+    run: (args) => statutModelesTrainWhatsapp(args),
+  },
+  {
+    name: "demandes_train",
+    description:
+      "Demandes de train en attente pour le bot SNCF : nouvelle, recherche en cours, prix à reconfirmer, choix reçu. statut facultatif pour filtrer.",
+    input: { statut: z.string().trim().max(40).optional() },
+    run: (args) => demandesTrain(args),
+  },
+  {
+    name: "lire_demande_train",
+    description:
+      "Tout le nécessaire pour acheter : itinéraire, dates, créneaux, placement, voyageurs (nom de la pièce, naissance, âge, carte SNCF), e-mail et téléphone du client. Pas de numéro de carte bancaire. Paiement : creer_carte_pliant avec trois_ds faux. carte_arrivee n’est pas ce paiement.",
+    input: { demande_id: z.string().trim().max(80) },
+    run: (args) => lireDemandeTrain(args),
+  },
+  {
+    name: "prendre_demande_train",
+    write: true,
+    description: "Passe une demande nouvelle en recherche en cours. Sans confirmer, aperçu.",
+    input: { demande_id: z.string().trim().max(80), confirmer: confirmOpt },
+    run: (args) => prendreDemandeTrain(args),
+  },
+  {
+    name: "deposer_propositions_train",
+    write: true,
+    openWorld: true,
+    description:
+      "Dépose les trains aller et retour sur une demande. Sans confirmer, aperçu du premier message. confirmer true enregistre. Le client choisit ensuite classe, tarif, puis confirme le prix. Rien n’est acheté ici.",
+    input: {
+      demande_id: z.string().trim().max(80),
+      aller: z.array(z.record(z.string(), z.unknown())).max(9),
+      retour: z.array(z.record(z.string(), z.unknown())).max(9).optional(),
+      confirmer: confirmOpt,
+    },
+    run: (args) => deposerPropositionsTrain(args),
+  },
+  {
+    name: "signaler_train_indisponible",
+    write: true,
+    openWorld: true,
+    description:
+      "Le train n’est plus disponible au moment d’acheter. Sans confirmer, aperçu du message. confirmer true remet la demande en recherche. Rien n’est débité.",
+    input: { demande_id: z.string().trim().max(80), train: z.string().trim().max(20), confirmer: confirmOpt },
+    run: (args) => signalerTrainIndisponible(args),
+  },
+  {
+    name: "enregistrer_commande_train",
+    write: true,
+    description:
+      "Après achat sur SNCF Connect : référence, prix payé, PDF du billet. Crée la carte train cachée et passe la demande à commandé. Le PDF part le matin du départ. Sans confirmer, aperçu.",
+    input: {
+      demande_id: z.string().trim().max(80),
+      reference_sncf: z.string().trim().max(40),
+      prix: z.union([z.number(), z.string()]),
+      nom_fichier: z.string().trim().max(180).optional(),
+      contenu: z.string().optional().describe("PDF en base64"),
+      confirmer: confirmOpt,
+    },
+    run: (args) => enregistrerCommandeTrain(args),
+  },
+  {
+    name: "annuler_demande_train",
+    write: true,
+    description: "Annule une demande qui n’est pas encore commandée. Sans confirmer, aperçu. confirmer true écrit.",
+    input: { demande_id: z.string().trim().max(80), confirmer: confirmOpt },
+    run: (args) => annulerDemandeTrain(args),
   },
   {
     name: "sejour_hotel",
