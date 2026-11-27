@@ -1,5 +1,4 @@
 import { fold } from "./text";
-import { restaurantGreeting } from "./restaurant-whatsapp";
 
 /**
  * Parcours WhatsApp des billets de train.
@@ -30,12 +29,12 @@ export const TRAIN_QUICK_REPLY_MAX = 10;
 export const TRAIN_LIST_MIN = 3;
 export const TRAIN_LIST_TRAINS_MAX = TRAIN_QUICK_REPLY_MAX - 1;
 
-export function trainHorairesTemplateName(count: number) {
-  return `${TRAIN_HORAIRES_NAME}_${count}`;
+export function trainHorairesTemplateName(count: number, leg: TrainLeg = "aller") {
+  return `${TRAIN_HORAIRES_NAME}_${leg}_${count}`;
 }
 
-export function trainHorairesTemplateEnv(count: number) {
-  return `${TRAIN_HORAIRES_ENV}_${count}`;
+export function trainHorairesTemplateEnv(count: number, leg: TrainLeg = "aller") {
+  return `${TRAIN_HORAIRES_ENV}_${leg.toUpperCase()}_${count}`;
 }
 
 export const TRAIN_CLASSE_BUTTONS = [
@@ -85,8 +84,10 @@ export type TrainOffer = {
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Prénom seul. Jamais Monsieur, Madame, ni le nom. */
 export function trainGreeting(input: { sex?: string | null; lastName?: string | null; firstName?: string | null }) {
-  return restaurantGreeting(input);
+  const first = (input.firstName || "").trim().split(/\s+/)[0] || "";
+  return first || "toi";
 }
 
 export function trainClock(value: string | null | undefined) {
@@ -201,52 +202,28 @@ function plain(value: string, max: number) {
   return clip(value, max);
 }
 
-export function trainHorairesBody() {
-  return [
-    "Bonjour {{1}},",
-    "",
-    "Pour {{2}}, le {{3}} :",
-    "",
-    "{{4}}",
-    "",
-    "Choisissez un horaire, ou Autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.",
-    "",
-    TRAIN_SIGNATURE,
-  ].join("\n");
+export function trainHorairesAllerBody() {
+  return ["Bonjour {{1}},", "", "Voici les propositions de train pour l’aller {{2}}.", "Dis-moi lequel tu préfères ?"].join("\n");
+}
+
+export function trainHorairesRetourBody() {
+  return ["Et voici les propositions de train pour le retour {{1}}.", "Dis-moi lequel tu préfères ?"].join("\n");
+}
+
+export function trainHorairesBody(leg: TrainLeg = "aller") {
+  return leg === "retour" ? trainHorairesRetourBody() : trainHorairesAllerBody();
 }
 
 export function trainClasseBody() {
-  return [
-    "{{1}}, vous avez choisi le {{2}}.",
-    "",
-    "Souhaitez-vous voyager en 2de classe ou en 1re classe ?",
-    "",
-    TRAIN_SIGNATURE,
-  ].join("\n");
+  return "Ok très bien, on part sur quelle classe ?";
 }
 
 export function trainTarifBody() {
-  return [
-    "{{1}}, en {{2}}.",
-    "",
-    "Quel tarif préférez-vous ? Le non remboursable ne s’échange pas. Flex est échangeable et remboursable.",
-    "",
-    TRAIN_SIGNATURE,
-  ].join("\n");
+  return "Au niveau des conditions tarifaires, on part sur un billet non remboursable ou Flex ?";
 }
 
 export function trainAccordBody() {
-  return [
-    "{{1}}, voici votre choix :",
-    "",
-    "{{2}}",
-    "",
-    "Total : {{3}}.",
-    "",
-    "L’agence n’achète les billets qu’après votre accord.",
-    "",
-    TRAIN_SIGNATURE,
-  ].join("\n");
+  return ["{{1}}, on part là-dessus.", "", "{{2}}", "", "Total : {{3}}.", "On n’achète qu’après ton ok."].join("\n");
 }
 
 export type TrainQuickButton = { type: "QUICK_REPLY"; title: string; id: string };
@@ -255,17 +232,6 @@ export function trainTimeButton(offer: TrainOffer) {
   const depart = trainClock(offer.heure_depart) || offer.heure_depart;
   const arrivee = trainClock(offer.heure_arrivee) || offer.heure_arrivee;
   return clip(`${depart} → ${arrivee}`, TRAIN_BUTTON_TITLE_MAX) || "Horaire";
-}
-
-export function trainDetailLine(offer: TrainOffer) {
-  const duree = (offer.duree || "").trim() || trainDuration(offer.heure_depart, offer.heure_arrivee) || "";
-  return [trainTimeButton(offer), trainRouteLabel(offer.depart_gare, offer.arrivee_gare), duree, offer.numero ? `train ${offer.numero}` : ""]
-    .filter(Boolean)
-    .join(", ");
-}
-
-export function trainHorairesDetails(offers: TrainOffer[]) {
-  return offers.slice(0, TRAIN_LIST_TRAINS_MAX).map((offer) => trainDetailLine(offer)).join("\n");
 }
 
 export function trainHorairesButtons(offers: TrainOffer[], leg: TrainLeg): TrainQuickButton[] {
@@ -278,31 +244,33 @@ export function trainHorairesButtons(offers: TrainOffer[], leg: TrainLeg): Train
   return buttons;
 }
 
+function buttonVariableStart(leg: TrainLeg) {
+  return leg === "retour" ? 2 : 3;
+}
+
 export function trainHorairesVariables(input: {
   greeting: string;
   route: string;
-  dateLabel: string;
   leg: TrainLeg;
   offers: TrainOffer[];
 }) {
   const offers = input.offers.slice(0, TRAIN_LIST_TRAINS_MAX);
-  const variables: Record<string, string> = {
-    "1": plain(input.greeting, 80) || "cher client",
-    "2": plain(input.route, 80) || "votre trajet",
-    "3": plain(input.dateLabel, 40) || "ce jour",
-    "4": trainHorairesDetails(offers).replace(/\s*\n\s*/g, "\n").slice(0, 900) || "Horaires proposés",
-  };
+  const route = plain(input.route, 80) || "ton trajet";
+  const variables: Record<string, string> =
+    input.leg === "retour"
+      ? { "1": route }
+      : { "1": plain(input.greeting, 40) || "toi", "2": route };
   offers.forEach((offer, index) => {
-    const base = 5 + index * 2;
+    const base = buttonVariableStart(input.leg) + index * 2;
     variables[String(base)] = trainTimeButton(offer);
     variables[String(base + 1)] = `train:${input.leg}:${index}`;
   });
   return variables;
 }
 
-function horairesTemplateButtons(count: number): TrainQuickButton[] {
+function horairesTemplateButtons(count: number, leg: TrainLeg): TrainQuickButton[] {
   const buttons = Array.from({ length: count }, (_, index) => {
-    const base = 5 + index * 2;
+    const base = buttonVariableStart(leg) + index * 2;
     return { type: "QUICK_REPLY" as const, title: `{{${base}}}`, id: `{{${base + 1}}}` };
   });
   buttons.push({ type: "QUICK_REPLY", title: "Autres horaires", id: TRAIN_HOURS_ID });
@@ -323,22 +291,22 @@ function exampleOffers(count: number): TrainOffer[] {
 }
 
 /** Boutons pour un nombre de trains fixé (3 à 9), plus Autres horaires. */
-export function trainHorairesContentCreateBody(count = TRAIN_LIST_MIN) {
+export function trainHorairesContentCreateBody(count = TRAIN_LIST_MIN, leg: TrainLeg = "aller") {
   const trains = Math.min(TRAIN_LIST_TRAINS_MAX, Math.max(TRAIN_LIST_MIN, count));
+  const route = leg === "retour" ? "Grenoble → Paris" : "Paris → Grenoble";
   return {
-    friendly_name: trainHorairesTemplateName(trains),
+    friendly_name: trainHorairesTemplateName(trains, leg),
     language: "fr",
     variables: trainHorairesVariables({
-      greeting: "Monsieur Dupont",
-      route: "Paris Gare de Lyon → Lyon Part-Dieu",
-      dateLabel: "mardi 2 juin",
-      leg: "aller" as const,
+      greeting: "Rudy",
+      route,
+      leg,
       offers: exampleOffers(trains),
     }),
     types: {
       "twilio/quick-reply": {
-        body: trainHorairesBody(),
-        actions: horairesTemplateButtons(trains),
+        body: trainHorairesBody(leg),
+        actions: horairesTemplateButtons(trains, leg),
       },
     },
   };
@@ -348,7 +316,7 @@ export function trainClasseContentCreateBody() {
   return {
     friendly_name: TRAIN_CLASSE_NAME,
     language: "fr",
-    variables: { "1": "Monsieur Dupont", "2": "train 6601 à 08h12" },
+    variables: {},
     types: {
       "twilio/quick-reply": {
         body: trainClasseBody(),
@@ -362,7 +330,7 @@ export function trainTarifContentCreateBody() {
   return {
     friendly_name: TRAIN_TARIF_NAME,
     language: "fr",
-    variables: { "1": "Monsieur Dupont", "2": "1re classe" },
+    variables: {},
     types: {
       "twilio/quick-reply": {
         body: trainTarifBody(),
@@ -377,7 +345,7 @@ export function trainAccordContentCreateBody() {
     friendly_name: TRAIN_ACCORD_NAME,
     language: "fr",
     variables: {
-      "1": "Monsieur Dupont",
+      "1": "Rudy",
       "2": "Aller train 6601 le mardi 2 juin à 08h12, 1re classe, tarif Flex.",
       "3": "90 € pour 2 voyageurs",
     },
@@ -398,13 +366,12 @@ export function trainTemplateSubmission() {
     "Modèles Utility, français, sans emoji. Le choix du train se fait avec des boutons, comme la classe et le tarif. Le CRM n’achète pas les billets.",
     "",
     "Ordre : horaires aller, horaires retour s’il y en a un, classe, tarif, accord.",
-    "Boutons train_horaires_3 à train_horaires_9 : un bouton par train (heure de départ → arrivée, 20 caractères), plus Autres horaires. Les gares, la durée et le numéro sont dans le texte. Un numéro tapé ne choisit pas le train.",
+    "Tutoiement, prénom seul. Ordre : aller, tarif, retour s’il y en a un, classe, récap.",
+    "Boutons train_horaires_aller_3 à _9 et train_horaires_retour_3 à _9. Un bouton par horaire, plus Autres horaires.",
     "",
-    `1. ${trainHorairesTemplateName(TRAIN_LIST_MIN)} à ${trainHorairesTemplateName(TRAIN_LIST_TRAINS_MAX)}`,
-    `Variables : ${trainHorairesTemplateEnv(TRAIN_LIST_MIN)} à ${trainHorairesTemplateEnv(TRAIN_LIST_TRAINS_MAX)}`,
+    `1. ${trainHorairesTemplateName(TRAIN_LIST_MIN, "aller")} et ${trainHorairesTemplateName(TRAIN_LIST_MIN, "retour")}`,
+    `Variables : ${trainHorairesTemplateEnv(TRAIN_LIST_MIN, "aller")} et ${trainHorairesTemplateEnv(TRAIN_LIST_MIN, "retour")}`,
     "Type : twilio/quick-reply",
-    "{{4}} le détail des trains. Puis {{5}} libellé, {{6}} identifiant, et le même couple. Dernier bouton fixe : Autres horaires, id train:horaires.",
-    "L’identifiant d’un train est train:aller:0 ou train:retour:0.",
     "",
     horaires.types["twilio/quick-reply"].body,
     "",
@@ -456,26 +423,24 @@ export function planTrainLegQuestion(input: {
   sessionOpen?: boolean;
 }): TrainPlan {
   void input.sessionOpen;
-  const greeting = plain(input.greeting, 80) || "cher client";
-  const route = plain(input.route, 80) || "votre trajet";
-  const dateLabel = formatTrainDateFr(input.date) || "ce jour";
+  const route = plain(input.route, 80) || "ton trajet";
   const offers = input.offers.slice(0, TRAIN_LIST_TRAINS_MAX);
-  const variables = trainHorairesVariables({ greeting, route, dateLabel, leg: input.leg, offers });
+  const variables = trainHorairesVariables({ greeting: firstWord(input.greeting), route, leg: input.leg, offers });
   const inRange = offers.length >= TRAIN_LIST_MIN && offers.length <= TRAIN_LIST_TRAINS_MAX;
   return {
     modele: "train_horaires" as const,
-    corps: fill(trainHorairesBody(), variables),
+    corps: fill(trainHorairesBody(input.leg), variables),
     ...(inRange ? { variables } : {}),
     boutons: trainHorairesButtons(offers, input.leg),
   };
 }
 
-export function planTrainClasseQuestion(input: { greeting: string; offer: TrainOffer }): TrainPlan {
-  const variables = {
-    "1": plain(input.greeting, 80) || "cher client",
-    "2": trainOfferLabel(input.offer),
-  };
-  return { modele: "train_classe", corps: fill(trainClasseBody(), variables), variables };
+function firstWord(value: string) {
+  return plain(value, 40).split(/\s+/)[0] || "toi";
+}
+
+export function planTrainClasseQuestion(_input?: { greeting?: string; offer?: TrainOffer }): TrainPlan {
+  return { modele: "train_classe", corps: trainClasseBody(), variables: {} };
 }
 
 export function classeLabel(classe: TrainClasse) {
@@ -486,12 +451,8 @@ export function tarifLabel(tarif: TrainTarif) {
   return tarif === "flex" ? "Flex" : "Non remboursable";
 }
 
-export function planTrainTarifQuestion(input: { greeting: string; classe: TrainClasse }): TrainPlan {
-  const variables = {
-    "1": plain(input.greeting, 80) || "cher client",
-    "2": classeLabel(input.classe),
-  };
-  return { modele: "train_tarif", corps: fill(trainTarifBody(), variables), variables };
+export function planTrainTarifQuestion(_input?: { greeting?: string; classe?: TrainClasse }): TrainPlan {
+  return { modele: "train_tarif", corps: trainTarifBody(), variables: {} };
 }
 
 export function trainChoiceSummary(input: {
@@ -510,86 +471,42 @@ export function trainChoiceSummary(input: {
 }
 
 export function trainDoneBody(input: { greeting: string; summary: string }) {
-  const greeting = plain(input.greeting, 80) || "cher client";
-  return [
-    `${greeting}, votre choix est enregistré. ${plain(input.summary, 500)}`,
-    "",
-    "L’agence achète les billets et vous confirme.",
-    "",
-    TRAIN_SIGNATURE,
-  ].join("\n");
+  const name = firstWord(input.greeting);
+  return `${name}, c’est noté. ${plain(input.summary, 500)} On achète et on te confirme.`;
 }
 
 export function trainRepromptBody(question: string) {
-  return [`Je n’ai pas reconnu ce choix. ${question}`, "", TRAIN_SIGNATURE].join("\n");
+  return `J’ai pas bien compris. ${question}`;
 }
 
 export function trainHandoffBody() {
-  return [
-    "Je transmets votre message à l’agence. Un conseiller reprend avec vous le choix des trains.",
-    "",
-    TRAIN_SIGNATURE,
-  ].join("\n");
+  return "Je passe le message à l’agence. Quelqu’un reprend avec toi.";
 }
 
 export function trainHoursAskBody(leg: TrainLeg) {
   const which = leg === "retour" ? "le retour" : "l’aller";
-  return [
-    `À partir de quelle heure souhaitez-vous ${which} ?`,
-    "",
-    "Par exemple : avant 7h, ou après 18h.",
-    "",
-    TRAIN_SIGNATURE,
-  ].join("\n");
+  return `Tu veux partir à quelle heure pour ${which} ? Par exemple avant 7h, ou après 18h.`;
 }
 
 export function trainWaitBody() {
-  return [
-    "Nous gardons votre choix. Rien n’est acheté.",
-    "",
-    "Quand vous reprendrez, le prix sera revérifié avant l’achat.",
-    "",
-    TRAIN_SIGNATURE,
-  ].join("\n");
+  return "Ok, je garde ton choix. Quand tu reviens, je revérifie le prix.";
 }
 
 export function trainRepriceNoticeBody() {
-  return [
-    "Nous vérifions le prix auprès de la SNCF et nous vous le confirmons avant d’acheter.",
-    "",
-    TRAIN_SIGNATURE,
-  ].join("\n");
+  return "Je revérifie le prix. Je te le redonne avant d’acheter.";
 }
 
 export function trainUnavailableBody(train: string) {
-  return [
-    `Le train ${train} n’est plus disponible. Nous n’achetons rien.`,
-    "",
-    "La recherche reprend. Nous vous enverrons d’autres horaires.",
-    "",
-    TRAIN_SIGNATURE,
-  ].join("\n");
+  return `Le train ${train} n’est plus dispo. Je relance la recherche et je te renvoie des horaires.`;
 }
 
 export function trainRefuseBody() {
-  return [
-    "Nous n’achetons pas ces billets.",
-    "",
-    "La demande est annulée. Dites-le à l’agence si vous souhaitez recommencer.",
-    "",
-    TRAIN_SIGNATURE,
-  ].join("\n");
+  return "Ok, on annule. Dis-le à l’agence si tu veux recommencer.";
 }
 
 export function trainSuiteBody(kind: "echange" | "annulation") {
-  const ask = kind === "annulation" ? "annulation" : "échange";
-  return [
-    `Nous transmettons votre demande d’${ask} à l’agence.`,
-    "",
-    "Les billets déjà émis ne changent pas tant que l’agence ne vous a pas confirmé les conditions.",
-    "",
-    TRAIN_SIGNATURE,
-  ].join("\n");
+  const ask = kind === "annulation" ? "d’annulation" : "d’échange";
+  return `Je transmets ta demande ${ask}. Les billets ne bougent pas tant que l’agence ne t’a pas confirmé.`;
 }
 
 export function fareAmount(offer: TrainOffer, classe: TrainClasse, tarif: TrainTarif) {
@@ -618,18 +535,18 @@ export function quoteTotal(input: {
 export function trainQuestionPrompt(step: TrainStep) {
   if (step === "aller" || step === "retour") {
     const which = step === "retour" ? "du retour" : "de l’aller";
-    return `Choisissez un horaire ${which}, ou Autres horaires.`;
+    return `Dis-moi l’horaire ${which}, ou Autres horaires.`;
   }
-  if (step === "horaires") return "Indiquez l’heure souhaitée, par exemple avant 7h.";
-  if (step === "classe") return "Répondez 2de classe ou 1re classe.";
-  if (step === "tarif") return "Répondez Non remboursable ou Flex.";
-  if (step === "accord") return "Répondez Je confirme, Modifier ou Je refuse.";
+  if (step === "horaires") return "Dis-moi l’heure, par exemple avant 7h.";
+  if (step === "classe") return "2de classe ou 1re classe ?";
+  if (step === "tarif") return "Non remboursable ou Flex ?";
+  if (step === "accord") return "Je confirme, Modifier ou Je refuse.";
   return "";
 }
 
 export function planTrainAccord(input: { greeting: string; summary: string; total: string }): TrainPlan {
   const variables = {
-    "1": plain(input.greeting, 80) || "cher client",
+    "1": firstWord(input.greeting),
     "2": plain(input.summary, 500),
     "3": plain(input.total, 80),
   };
@@ -821,6 +738,61 @@ function sessionPlan(corps: string): TrainPlan {
   return { modele: "session", corps };
 }
 
+function askNext(args: {
+  state: TrainChoiceState;
+  clear: { ambigu_compte: number; besoin_agence: boolean };
+  greeting: string;
+  input: { depart: string; arrivee: string; voyageurs?: number; placement?: string | null };
+  patch: Partial<TrainChoiceState>;
+}): TrainTurn {
+  const state = args.state;
+  const patch = { ...args.clear, ...args.patch };
+  if (!state.tarif) {
+    return { action: "question", patch: { ...patch, step: "tarif" }, plan: planTrainTarifQuestion() };
+  }
+  if (state.retour.length && state.choix_retour == null) {
+    return {
+      action: "question",
+      patch: { ...patch, step: "retour" },
+      plan: planTrainLegQuestion({
+        greeting: args.greeting,
+        route: trainRouteLabel(args.input.arrivee, args.input.depart),
+        date: state.retour[0]?.date || "",
+        leg: "retour",
+        offers: state.retour,
+      }),
+    };
+  }
+  if (!state.classe) {
+    return { action: "question", patch: { ...patch, step: "classe" }, plan: planTrainClasseQuestion() };
+  }
+  const aller = state.aller[state.choix_aller ?? -1];
+  const retour = state.choix_retour == null ? null : state.retour[state.choix_retour] || null;
+  if (!aller) return { action: "ignorer" };
+  const quote = quoteTotal({
+    aller,
+    retour,
+    classe: state.classe,
+    tarif: state.tarif,
+    voyageurs: args.input.voyageurs || 1,
+  });
+  if (!quote) {
+    return {
+      action: "reprise",
+      patch: { ...patch, status: "prix_a_reconfirmer", step: "accord" },
+      plan: sessionPlan(trainRepriceNoticeBody()),
+    };
+  }
+  const summary = [trainChoiceSummary({ aller, retour, classe: state.classe, tarif: state.tarif }), args.input.placement || ""]
+    .filter(Boolean)
+    .join(" ");
+  return {
+    action: "question",
+    patch: { ...patch, status: "propositions", step: "accord" },
+    plan: planTrainAccord({ greeting: args.greeting, summary, total: quote.libelle }),
+  };
+}
+
 export function nextTrainTurn(input: {
   state: TrainChoiceState;
   greeting: string;
@@ -910,7 +882,7 @@ export function nextTrainTurn(input: {
         horaire_leg: leg,
       },
       plan: sessionPlan(
-        [`Nous cherchons d’autres trains pour ${leg === "retour" ? "le retour" : "l’aller"}, ${parsed.texte}.`, "", TRAIN_SIGNATURE].join("\n")
+        `Je cherche d’autres trains pour ${leg === "retour" ? "le retour" : "l’aller"}, ${parsed.texte}.`
       ),
     };
   }
@@ -923,14 +895,14 @@ export function nextTrainTurn(input: {
       patch: { ...clear, step: "accord" },
       plan: {
         modele: "train_modifier",
-        corps: ["Que souhaitez-vous modifier ?", "", "Le train, la classe ou le tarif. Rien n’est acheté.", "", TRAIN_SIGNATURE].join("\n"),
+        corps: "Tu veux changer quoi ?",
+        variables: {},
       },
     };
   }
   if (parsed.kind === "changer") {
     if (parsed.cible === "classe" && state.choix_aller != null) {
-      const offer = state.aller[state.choix_aller];
-      return { action: "question", patch: { ...clear, step: "classe", classe: null, tarif: null }, plan: planTrainClasseQuestion({ greeting, offer }) };
+      return { action: "question", patch: { ...clear, step: "classe", classe: null }, plan: planTrainClasseQuestion() };
     }
     if (parsed.cible === "tarif" && state.classe) {
       return { action: "question", patch: { ...clear, step: "tarif", tarif: null }, plan: planTrainTarifQuestion({ greeting, classe: state.classe }) };
@@ -964,68 +936,40 @@ export function nextTrainTurn(input: {
     };
   }
   if (state.step === "aller" && parsed.kind === "index") {
-    const offer = state.aller[parsed.index];
-    if (state.retour.length) {
-      return {
-        action: "question",
-        patch: { ...clear, step: "retour", choix_aller: parsed.index },
-        plan: planTrainLegQuestion({
-          greeting,
-          route: trainRouteLabel(input.arrivee, input.depart),
-          date: state.retour[0]?.date || offer.date,
-          leg: "retour",
-          offers: state.retour,
-          sessionOpen: true,
-        }),
-      };
-    }
-    return {
-      action: "question",
-      patch: { ...clear, step: "classe", choix_aller: parsed.index },
-      plan: planTrainClasseQuestion({ greeting, offer }),
-    };
+    return askNext({
+      state: { ...state, choix_aller: parsed.index },
+      clear,
+      greeting,
+      input,
+      patch: { choix_aller: parsed.index },
+    });
   }
   if (state.step === "retour" && parsed.kind === "index") {
-    const aller = state.aller[state.choix_aller ?? 0] || state.aller[0];
-    return {
-      action: "question",
-      patch: { ...clear, step: "classe", choix_retour: parsed.index },
-      plan: planTrainClasseQuestion({ greeting, offer: aller }),
-    };
+    return askNext({
+      state: { ...state, choix_retour: parsed.index },
+      clear,
+      greeting,
+      input,
+      patch: { choix_retour: parsed.index },
+    });
   }
   if (state.step === "classe" && parsed.kind === "classe") {
-    return {
-      action: "question",
-      patch: { ...clear, step: "tarif", classe: parsed.classe },
-      plan: planTrainTarifQuestion({ greeting, classe: parsed.classe }),
-    };
+    return askNext({
+      state: { ...state, classe: parsed.classe },
+      clear,
+      greeting,
+      input,
+      patch: { classe: parsed.classe },
+    });
   }
   if (state.step === "tarif" && parsed.kind === "tarif") {
-    const aller = state.aller[state.choix_aller ?? -1];
-    const retour = state.choix_retour == null ? null : state.retour[state.choix_retour] || null;
-    if (!aller || !state.classe) return { action: "ignorer" };
-    const quote = quoteTotal({
-      aller,
-      retour,
-      classe: state.classe,
-      tarif: parsed.tarif,
-      voyageurs: input.voyageurs || 1,
+    return askNext({
+      state: { ...state, tarif: parsed.tarif },
+      clear,
+      greeting,
+      input,
+      patch: { tarif: parsed.tarif },
     });
-    if (!quote) {
-      return {
-        action: "reprise",
-        patch: { ...clear, status: "prix_a_reconfirmer", step: "tarif", tarif: parsed.tarif },
-        plan: sessionPlan(trainRepriceNoticeBody()),
-      };
-    }
-    const summary = [trainChoiceSummary({ aller, retour, classe: state.classe, tarif: parsed.tarif }), input.placement || ""]
-      .filter(Boolean)
-      .join(" ");
-    return {
-      action: "question",
-      patch: { ...clear, status: "propositions", step: "accord", tarif: parsed.tarif },
-      plan: planTrainAccord({ greeting, summary, total: quote.libelle }),
-    };
   }
   return {
     action: "reposer",

@@ -43,13 +43,16 @@ test("les modèles portent les boutons d’horaire, de classe et de tarif", () =
   assert.equal(trainAccordContentCreateBody().types["twilio/quick-reply"].actions.length, 3);
   const horaires = trainHorairesContentCreateBody().types["twilio/quick-reply"];
   assert.equal(horaires.actions.length, 4);
-  assert.equal(horaires.actions[0]?.title, "{{5}}");
+  assert.equal(horaires.actions[0]?.title, "{{3}}");
   assert.equal(horaires.actions[3]?.title, "Autres horaires");
   assert.equal(horaires.actions[3]?.id, "train:horaires");
   assert.equal(trainHorairesContentCreateBody(9).types["twilio/quick-reply"].actions.length, 10);
+  const retour = trainHorairesContentCreateBody(3, "retour").types["twilio/quick-reply"];
+  assert.equal(retour.actions[0]?.title, "{{2}}");
+  assert.match(retour.body, /pour le retour/);
   for (const action of horaires.actions) assert.ok((action?.title || "").length <= 20);
-  assert.match(horaires.body, /Choisissez un horaire/);
-  assert.doesNotMatch(horaires.body, /carrousel|dans la liste/);
+  assert.match(horaires.body, /Dis-moi lequel tu préfères/);
+  assert.doesNotMatch(horaires.body, /Rien n’est acheté|Monsieur/);
 });
 
 test("le récapitulatif précède l’achat, et un refus n’achète pas", () => {
@@ -72,13 +75,15 @@ test("le récapitulatif précède l’achat, et un refus n’achète pas", () =>
   assert.match(family?.placement || "", /salle basse/);
   const round = recipes.find((recipe) => recipe.id === "aller-retour");
   const outbound = round?.steps[0]?.bubbles[0]?.buttons || [];
-  const back = round?.steps[1]?.bubbles.find((bubble) => bubble.buttons?.[0]?.includes("→"))?.buttons || [];
+  const back = round?.steps.flatMap((row) => row.bubbles).find((bubble) => bubble.buttons?.[0]?.includes("16h"))?.buttons || [];
   assert.equal(outbound.length, 4);
   assert.equal(back.length, 4);
   assert.equal(outbound[0], "08h12 → 10h05");
-  assert.match(round?.steps[0]?.bubbles[0]?.text || "", /train 6601/);
-  assert.equal(back[0], "16h12 → 18h05");
-  assert.match(round?.steps[1]?.bubbles.find((bubble) => bubble.buttons)?.text || "", /train 6630/);
+  assert.match(round?.steps[0]?.bubbles[0]?.text || "", /Bonjour Hugo/);
+  assert.match(round?.steps[0]?.bubbles[0]?.text || "", /Dis-moi lequel tu préfères/);
+  const returnBubble = round?.steps.flatMap((row) => row.bubbles).find((bubble) => bubble.buttons?.includes("16h12 → 18h05"));
+  assert.match(returnBubble?.text || "", /retour/);
+  assert.equal(returnBubble?.buttons?.[0], "16h12 → 18h05");
   assert.equal(outbound.at(-1), "Autres horaires");
   for (const label of [...outbound, ...back]) assert.ok(label.length <= 20);
   assert.match(trainRecipeMarkdown(recipes), /Je confirme/);
@@ -106,8 +111,8 @@ test("moins de 3 trains est refusé, un numéro tapé ne choisit pas", async () 
   };
   const typed = nextTrainTurn({ state: base, greeting: "Camille", depart: "Paris", arrivee: "Lyon", body: "2" });
   assert.equal(typed.action, "reposer");
-  const savedListe = process.env.TWILIO_CONTENT_TRAIN_HORAIRES_3;
-  delete process.env.TWILIO_CONTENT_TRAIN_HORAIRES_3;
+  const savedListe = process.env.TWILIO_CONTENT_TRAIN_HORAIRES_ALLER_3;
+  delete process.env.TWILIO_CONTENT_TRAIN_HORAIRES_ALLER_3;
   let called = false;
   const plan = {
     modele: "train_horaires" as const,
@@ -130,7 +135,7 @@ test("moins de 3 trains est refusé, un numéro tapé ne choisit pas", async () 
   });
   assert.equal(called, false);
   assert.equal(sent.ok, false);
-  if (savedListe !== undefined) process.env.TWILIO_CONTENT_TRAIN_HORAIRES_3 = savedListe;
+  if (savedListe !== undefined) process.env.TWILIO_CONTENT_TRAIN_HORAIRES_ALLER_3 = savedListe;
   const savedBillet = process.env.TWILIO_CONTENT_TRAIN_BILLET;
   delete process.env.TWILIO_CONTENT_TRAIN_BILLET;
   const morning = await runMorningTrainTickets({ from() { throw new Error("pas de lecture"); } } as never);

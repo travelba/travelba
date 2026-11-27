@@ -172,18 +172,18 @@ export function trainRecipes(): Recipe[] {
   const oneWay = (() => {
     let current = state({ retour: [] });
     const steps: RecipeStep[] = [
-      step("propositions", "Le bot a déposé deux trains aller. Il attend.", [agency(open({ greeting: "Camille Martin", retour: false }))]),
+      step("propositions", "Le bot a déposé les trains aller. Il attend.", [agency(open({ greeting: "Camille", retour: false }))]),
     ];
-    let moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, clientText: "08h12 → 10h05", payload: "train:aller:0" });
+    let moved = walk({ current, greeting: "Camille", voyageurs: 1, placement: solo, clientText: "08h12 → 10h05", payload: "train:aller:0" });
     current = moved.next;
     steps.push(step(current.status as TrainStatus, "Rien. Le client choisit encore.", [client("08h12 → 10h05"), agency(moved.plan)]));
-    moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, payload: "train:classe:1re" });
+    moved = walk({ current, greeting: "Camille", voyageurs: 1, placement: solo, payload: "train:tarif:flex" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Rien.", [client("1re classe"), agency(moved.plan)]));
-    moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, payload: "train:tarif:flex" });
+    steps.push(step(current.status as TrainStatus, "Rien.", [client("Flex"), agency(moved.plan)]));
+    moved = walk({ current, greeting: "Camille", voyageurs: 1, placement: solo, payload: "train:classe:1re" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Rien. L’achat attend l’accord.", [client("Flex"), agency(moved.plan)]));
-    moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, payload: "train:accord:confirme" });
+    steps.push(step(current.status as TrainStatus, "Récap. L’achat attend l’ok.", [client("1re classe"), agency(moved.plan)]));
+    moved = walk({ current, greeting: "Camille", voyageurs: 1, placement: solo, payload: "train:accord:confirme" });
     current = moved.next;
     steps.push(step(current.status as TrainStatus, "Le bot achète le 6601 en 1re Flex, carte Pliant du dossier, sans 3DS.", [client("Je confirme"), agency(moved.plan)]));
     return {
@@ -198,7 +198,7 @@ export function trainRecipes(): Recipe[] {
   const round = buildRoundTrip({
     id: "aller-retour",
     titre: "Aller-retour, 2 voyageurs",
-    greeting: "Monsieur Bernard",
+    greeting: "Hugo",
     voyageurs: 2,
     placement: pair,
     who: "Hugo Bernard et Inès Bernard",
@@ -207,7 +207,7 @@ export function trainRecipes(): Recipe[] {
   const home = buildRoundTrip({
     id: "famille",
     titre: "Famille de 4, avec enfants",
-    greeting: "Madame Morel",
+    greeting: "Claire",
     voyageurs: 4,
     placement: family,
     who: "Claire Morel, Marc Morel, Léa Morel (8 ans), Tom Morel (5 ans)",
@@ -253,29 +253,26 @@ export function trainRecipes(): Recipe[] {
   const change = (() => {
     let current = state({ retour: [] });
     const steps: RecipeStep[] = [];
-    const first = open({ greeting: "Camille Martin", retour: false });
+    const first = open({ greeting: "Camille", retour: false });
     steps.push(step("propositions", "Trains déposés.", [agency(first)]));
     for (const reply of [
       { text: "08h12 → 10h05", payload: "train:aller:0" },
-      { text: "1re classe", payload: "train:classe:1re" },
       { text: "Flex", payload: "train:tarif:flex" },
+      { text: "1re classe", payload: "train:classe:1re" },
     ]) {
-      const moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, clientText: reply.text, payload: reply.payload });
+      const moved = walk({ current, greeting: "Camille", voyageurs: 1, placement: solo, clientText: reply.text, payload: reply.payload });
       current = moved.next;
       steps.push(step(current.status as TrainStatus, "Pas d’achat.", [client(reply.text), agency(moved.plan)]));
     }
-    let moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, payload: "train:accord:modifier" });
+    let moved = walk({ current, greeting: "Camille", voyageurs: 1, placement: solo, payload: "train:accord:modifier" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Le bot n’achète pas. Le client change la classe.", [client("Modifier"), agency(moved.plan)]));
-    moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, payload: "train:modifier:classe" });
+    steps.push(step(current.status as TrainStatus, "Pas d’achat. Le client change la classe.", [client("Modifier"), agency(moved.plan)]));
+    moved = walk({ current, greeting: "Camille", voyageurs: 1, placement: solo, payload: "train:modifier:classe" });
     current = moved.next;
     steps.push(step(current.status as TrainStatus, "Rien.", [client("La classe"), agency(moved.plan)]));
-    moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, payload: "train:classe:2de" });
+    moved = walk({ current, greeting: "Camille", voyageurs: 1, placement: solo, payload: "train:classe:2de" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Rien.", [client("2de classe"), agency(moved.plan)]));
-    moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, clientText: "Non remboursable" });
-    current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Nouveau récapitulatif. L’achat attend encore l’accord.", [client("Non remboursable"), agency(moved.plan)]));
+    steps.push(step(current.status as TrainStatus, "Nouveau récap. L’achat attend encore l’ok.", [client("2de classe"), agency(moved.plan)]));
     return {
       id: "modifier-classe",
       titre: "Le client change de classe ou de tarif au récapitulatif",
@@ -419,9 +416,9 @@ function buildRoundTrip(input: { id: string; titre: string; greeting: string; vo
   ];
   const replies = [
     { text: "08h12 → 10h05", payload: "train:aller:0" },
+    { text: "Non remboursable", payload: "train:tarif:non_remboursable" },
     { text: "16h12 → 18h05", payload: "train:retour:0" },
     { text: "2de classe", payload: "train:classe:2de" },
-    { text: "Non remboursable", payload: "train:tarif:non_remboursable" },
     { text: "Je confirme", payload: "train:accord:confirme" },
   ];
   for (const reply of replies) {
@@ -449,10 +446,10 @@ export function trainRecipeMarkdown(recipes = trainRecipes()) {
     "",
     "Parcours fictif. Aucun envoi réel. Les textes sont ceux du CRM, variables remplies.",
     "",
-    "Ordre : trains (aller, puis retour), classe, tarif, récapitulatif avec le prix, accord. Rien n’est acheté avant « Je confirme ».",
+    "Ordre : aller, tarif, retour s’il y en a un, classe, récapitulatif. Tutoiement, prénom seul. On n’achète qu’après ton ok, dit seulement au récap.",
     "Horaires proposés par défaut : aller à partir de 8h, retour à partir de 16h. Dates déduites de l’hôtel (lundi → mardi : aller lundi, retour mardi), modifiables.",
     "Paiement : `creer_carte_pliant` sur le dossier, `trois_ds` faux. Le numéro n’est pas dans ces messages.",
-    "Le train se choisit avec des boutons, comme la classe et le tarif. Un bouton par horaire (08h12 → 10h05), plus Autres horaires. Les gares, la durée et le numéro sont dans le texte. L’aller part d’abord, le retour ensuite. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.",
+    "Tutoiement, prénom seul. Aller, puis tarif, puis retour s’il y en a un, puis classe. Un bouton par horaire (08h12 → 10h05), plus Autres horaires. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.",
     "Au moins 3 trains par sens, 9 au plus (10 boutons avec Autres horaires). L’envoi utilise le content SID `TWILIO_CONTENT_TRAIN_HORAIRES_N`, puis les modèles des étapes et `TWILIO_CONTENT_TRAIN_BILLET` le matin.",
     "",
     "## Lancer la demande dans le CRM",

@@ -19,7 +19,8 @@ function trainCount(plan: TrainPlan) {
 function contentEnv(plan: TrainPlan) {
   if (plan.modele === "train_horaires") {
     const count = trainCount(plan);
-    return count >= 3 && count <= 9 ? trainHorairesTemplateEnv(count) : "";
+    const leg = plan.boutons?.some((button) => button.id.startsWith("train:retour:")) ? "retour" : "aller";
+    return count >= 3 && count <= 9 ? trainHorairesTemplateEnv(count, leg) : "";
   }
   if (plan.modele === "train_classe") return TRAIN_CLASSE_ENV;
   if (plan.modele === "train_tarif") return TRAIN_TARIF_ENV;

@@ -2,10 +2,10 @@
 
 Parcours fictif. Aucun envoi réel. Les textes sont ceux du CRM, variables remplies.
 
-Ordre : trains (aller, puis retour), classe, tarif, récapitulatif avec le prix, accord. Rien n’est acheté avant « Je confirme ».
+Ordre : aller, tarif, retour s’il y en a un, classe, récapitulatif. Tutoiement, prénom seul. On n’achète qu’après ton ok, dit seulement au récap.
 Horaires proposés par défaut : aller à partir de 8h, retour à partir de 16h. Dates déduites de l’hôtel (lundi → mardi : aller lundi, retour mardi), modifiables.
 Paiement : `creer_carte_pliant` sur le dossier, `trois_ds` faux. Le numéro n’est pas dans ces messages.
-Le train se choisit avec des boutons, comme la classe et le tarif. Un bouton par horaire (08h12 → 10h05), plus Autres horaires. Les gares, la durée et le numéro sont dans le texte. L’aller part d’abord, le retour ensuite. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.
+Tutoiement, prénom seul. Aller, puis tarif, puis retour s’il y en a un, puis classe. Un bouton par horaire (08h12 → 10h05), plus Autres horaires. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.
 Au moins 3 trains par sens, 9 au plus (10 boutons avec Autres horaires). L’envoi utilise le content SID `TWILIO_CONTENT_TRAIN_HORAIRES_N`, puis les modèles des étapes et `TWILIO_CONTENT_TRAIN_BILLET` le matin.
 
 ## Lancer la demande dans le CRM
@@ -59,21 +59,14 @@ Placement : Place isolée ou côté fenêtre.
 
 ### 1. Propositions envoyées
 
-Bot SNCF : Le bot a déposé deux trains aller. Il attend.
+Bot SNCF : Le bot a déposé les trains aller. Il attend.
 
 **Agence**
 
-Bonjour Camille Martin,
+Bonjour Camille,
 
-Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin :
-
-08h12 → 10h05, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6601
-12h18 → 14h11, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6615
-14h12 → 16h05, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6621
-
-Choisissez un horaire, ou Autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
-
-La Conciergerie Travel BA
+Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
+Dis-moi lequel tu préfères ?
 
 Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
 
@@ -87,13 +80,9 @@ Bot SNCF : Rien. Le client choisit encore.
 
 **Agence**
 
-Camille Martin, vous avez choisi le train 6601 à 08h12.
+Au niveau des conditions tarifaires, on part sur un billet non remboursable ou Flex ?
 
-Souhaitez-vous voyager en 2de classe ou en 1re classe ?
-
-La Conciergerie Travel BA
-
-Boutons : 2de classe · 1re classe
+Boutons : Non remboursable · Flex
 
 ### 3. Propositions envoyées
 
@@ -101,37 +90,30 @@ Bot SNCF : Rien.
 
 **Client**
 
-1re classe
-
-**Agence**
-
-Camille Martin, en 1re classe.
-
-Quel tarif préférez-vous ? Le non remboursable ne s’échange pas. Flex est échangeable et remboursable.
-
-La Conciergerie Travel BA
-
-Boutons : Non remboursable · Flex
-
-### 4. Propositions envoyées
-
-Bot SNCF : Rien. L’achat attend l’accord.
-
-**Client**
-
 Flex
 
 **Agence**
 
-Camille Martin, voici votre choix :
+Ok très bien, on part sur quelle classe ?
+
+Boutons : 2de classe · 1re classe
+
+### 4. Propositions envoyées
+
+Bot SNCF : Récap. L’achat attend l’ok.
+
+**Client**
+
+1re classe
+
+**Agence**
+
+Camille, on part là-dessus.
 
 Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex. Place isolée ou côté fenêtre.
 
 Total : 120 €.
-
-L’agence n’achète les billets qu’après votre accord.
-
-La Conciergerie Travel BA
+On n’achète qu’après ton ok.
 
 Boutons : Je confirme · Modifier · Je refuse
 
@@ -145,11 +127,7 @@ Je confirme
 
 **Agence**
 
-Camille Martin, votre choix est enregistré. Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex.
-
-L’agence achète les billets et vous confirme.
-
-La Conciergerie Travel BA
+Camille, c’est noté. Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex. On achète et on te confirme.
 
 ## Aller-retour, 2 voyageurs
 
@@ -165,17 +143,10 @@ Bot SNCF : Le bot a déposé l’aller et le retour pour Hugo Bernard et Inès B
 
 **Agence**
 
-Bonjour Monsieur Bernard,
+Bonjour Hugo,
 
-Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin :
-
-08h12 → 10h05, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6601
-12h18 → 14h11, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6615
-14h12 → 16h05, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6621
-
-Choisissez un horaire, ou Autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
-
-La Conciergerie Travel BA
+Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
+Dis-moi lequel tu préfères ?
 
 Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
 
@@ -189,57 +160,11 @@ Bot SNCF : Pas d’achat.
 
 **Agence**
 
-Bonjour Monsieur Bernard,
-
-Pour Lyon Part-Dieu → Paris Gare de Lyon, le mercredi 3 juin :
-
-16h12 → 18h05, Lyon Part-Dieu → Paris Gare de Lyon, 1 h 53, train 6630
-18h42 → 20h35, Lyon Part-Dieu → Paris Gare de Lyon, 1 h 53, train 6644
-20h12 → 22h05, Lyon Part-Dieu → Paris Gare de Lyon, 1 h 53, train 6652
-
-Choisissez un horaire, ou Autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
-
-La Conciergerie Travel BA
-
-Boutons : 16h12 → 18h05 · 18h42 → 20h35 · 20h12 → 22h05 · Autres horaires
-
-### 3. Propositions envoyées
-
-Bot SNCF : Pas d’achat.
-
-**Client**
-
-16h12 → 18h05
-
-**Agence**
-
-Monsieur Bernard, vous avez choisi le train 6601 à 08h12.
-
-Souhaitez-vous voyager en 2de classe ou en 1re classe ?
-
-La Conciergerie Travel BA
-
-Boutons : 2de classe · 1re classe
-
-### 4. Propositions envoyées
-
-Bot SNCF : Pas d’achat.
-
-**Client**
-
-2de classe
-
-**Agence**
-
-Monsieur Bernard, en 2de classe.
-
-Quel tarif préférez-vous ? Le non remboursable ne s’échange pas. Flex est échangeable et remboursable.
-
-La Conciergerie Travel BA
+Au niveau des conditions tarifaires, on part sur un billet non remboursable ou Flex ?
 
 Boutons : Non remboursable · Flex
 
-### 5. Propositions envoyées
+### 3. Propositions envoyées
 
 Bot SNCF : Pas d’achat.
 
@@ -249,15 +174,41 @@ Non remboursable
 
 **Agence**
 
-Monsieur Bernard, voici votre choix :
+Et voici les propositions de train pour le retour Lyon Part-Dieu → Paris Gare de Lyon.
+Dis-moi lequel tu préfères ?
+
+Boutons : 16h12 → 18h05 · 18h42 → 20h35 · 20h12 → 22h05 · Autres horaires
+
+### 4. Propositions envoyées
+
+Bot SNCF : Pas d’achat.
+
+**Client**
+
+16h12 → 18h05
+
+**Agence**
+
+Ok très bien, on part sur quelle classe ?
+
+Boutons : 2de classe · 1re classe
+
+### 5. Propositions envoyées
+
+Bot SNCF : Pas d’achat.
+
+**Client**
+
+2de classe
+
+**Agence**
+
+Hugo, on part là-dessus.
 
 Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. Retour : Lyon Part-Dieu → Paris Gare de Lyon, train 6630, mercredi 3 juin à 16h12. 2de classe, tarif Non remboursable. Côte à côte ou face à face.
 
 Total : 87 € par personne, 174 € pour 2 voyageurs.
-
-L’agence n’achète les billets qu’après votre accord.
-
-La Conciergerie Travel BA
+On n’achète qu’après ton ok.
 
 Boutons : Je confirme · Modifier · Je refuse
 
@@ -271,11 +222,7 @@ Je confirme
 
 **Agence**
 
-Monsieur Bernard, votre choix est enregistré. Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. Retour : Lyon Part-Dieu → Paris Gare de Lyon, train 6630, mercredi 3 juin à 16h12. 2de classe, tarif Non remboursable.
-
-L’agence achète les billets et vous confirme.
-
-La Conciergerie Travel BA
+Hugo, c’est noté. Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. Retour : Lyon Part-Dieu → Paris Gare de Lyon, train 6630, mercredi 3 juin à 16h12. 2de classe, tarif Non remboursable. On achète et on te confirme.
 
 ## Famille de 4, avec enfants
 
@@ -291,17 +238,10 @@ Bot SNCF : Le bot a déposé l’aller et le retour pour Claire Morel, Marc More
 
 **Agence**
 
-Bonjour Madame Morel,
+Bonjour Claire,
 
-Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin :
-
-08h12 → 10h05, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6601
-12h18 → 14h11, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6615
-14h12 → 16h05, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6621
-
-Choisissez un horaire, ou Autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
-
-La Conciergerie Travel BA
+Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
+Dis-moi lequel tu préfères ?
 
 Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
 
@@ -315,57 +255,11 @@ Bot SNCF : Pas d’achat.
 
 **Agence**
 
-Bonjour Madame Morel,
-
-Pour Lyon Part-Dieu → Paris Gare de Lyon, le mercredi 3 juin :
-
-16h12 → 18h05, Lyon Part-Dieu → Paris Gare de Lyon, 1 h 53, train 6630
-18h42 → 20h35, Lyon Part-Dieu → Paris Gare de Lyon, 1 h 53, train 6644
-20h12 → 22h05, Lyon Part-Dieu → Paris Gare de Lyon, 1 h 53, train 6652
-
-Choisissez un horaire, ou Autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
-
-La Conciergerie Travel BA
-
-Boutons : 16h12 → 18h05 · 18h42 → 20h35 · 20h12 → 22h05 · Autres horaires
-
-### 3. Propositions envoyées
-
-Bot SNCF : Pas d’achat.
-
-**Client**
-
-16h12 → 18h05
-
-**Agence**
-
-Madame Morel, vous avez choisi le train 6601 à 08h12.
-
-Souhaitez-vous voyager en 2de classe ou en 1re classe ?
-
-La Conciergerie Travel BA
-
-Boutons : 2de classe · 1re classe
-
-### 4. Propositions envoyées
-
-Bot SNCF : Pas d’achat.
-
-**Client**
-
-2de classe
-
-**Agence**
-
-Madame Morel, en 2de classe.
-
-Quel tarif préférez-vous ? Le non remboursable ne s’échange pas. Flex est échangeable et remboursable.
-
-La Conciergerie Travel BA
+Au niveau des conditions tarifaires, on part sur un billet non remboursable ou Flex ?
 
 Boutons : Non remboursable · Flex
 
-### 5. Propositions envoyées
+### 3. Propositions envoyées
 
 Bot SNCF : Pas d’achat.
 
@@ -375,15 +269,41 @@ Non remboursable
 
 **Agence**
 
-Madame Morel, voici votre choix :
+Et voici les propositions de train pour le retour Lyon Part-Dieu → Paris Gare de Lyon.
+Dis-moi lequel tu préfères ?
+
+Boutons : 16h12 → 18h05 · 18h42 → 20h35 · 20h12 → 22h05 · Autres horaires
+
+### 4. Propositions envoyées
+
+Bot SNCF : Pas d’achat.
+
+**Client**
+
+16h12 → 18h05
+
+**Agence**
+
+Ok très bien, on part sur quelle classe ?
+
+Boutons : 2de classe · 1re classe
+
+### 5. Propositions envoyées
+
+Bot SNCF : Pas d’achat.
+
+**Client**
+
+2de classe
+
+**Agence**
+
+Claire, on part là-dessus.
 
 Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. Retour : Lyon Part-Dieu → Paris Gare de Lyon, train 6630, mercredi 3 juin à 16h12. 2de classe, tarif Non remboursable. Carré, sinon quatre places alignées, sinon deux et deux l’une derrière l’autre. Avec enfant, salle basse prioritaire (TGV duplex).
 
 Total : 87 € par personne, 348 € pour 4 voyageurs.
-
-L’agence n’achète les billets qu’après votre accord.
-
-La Conciergerie Travel BA
+On n’achète qu’après ton ok.
 
 Boutons : Je confirme · Modifier · Je refuse
 
@@ -397,11 +317,7 @@ Je confirme
 
 **Agence**
 
-Madame Morel, votre choix est enregistré. Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. Retour : Lyon Part-Dieu → Paris Gare de Lyon, train 6630, mercredi 3 juin à 16h12. 2de classe, tarif Non remboursable.
-
-L’agence achète les billets et vous confirme.
-
-La Conciergerie Travel BA
+Claire, c’est noté. Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. Retour : Lyon Part-Dieu → Paris Gare de Lyon, train 6630, mercredi 3 juin à 16h12. 2de classe, tarif Non remboursable. On achète et on te confirme.
 
 ## Autres horaires, plus tôt ou plus tard
 
@@ -417,17 +333,10 @@ Bot SNCF : Le bot a déposé les trains à partir de 8h et 16h.
 
 **Agence**
 
-Bonjour Camille Martin,
+Bonjour Camille,
 
-Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin :
-
-08h12 → 10h05, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6601
-12h18 → 14h11, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6615
-14h12 → 16h05, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6621
-
-Choisissez un horaire, ou Autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
-
-La Conciergerie Travel BA
+Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
+Dis-moi lequel tu préfères ?
 
 Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
 
@@ -441,11 +350,7 @@ Autres horaires
 
 **Agence**
 
-À partir de quelle heure souhaitez-vous l’aller ?
-
-Par exemple : avant 7h, ou après 18h.
-
-La Conciergerie Travel BA
+Tu veux partir à quelle heure pour l’aller ? Par exemple avant 7h, ou après 18h.
 
 ### 3. Recherche en cours
 
@@ -457,9 +362,7 @@ avant 7h
 
 **Agence**
 
-Nous cherchons d’autres trains pour l’aller, avant 7h.
-
-La Conciergerie Travel BA
+Je cherche d’autres trains pour l’aller, avant 7h.
 
 ### 4. Recherche en cours
 
@@ -479,17 +382,10 @@ Bot SNCF : Trains déposés.
 
 **Agence**
 
-Bonjour Camille Martin,
+Bonjour Camille,
 
-Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin :
-
-08h12 → 10h05, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6601
-12h18 → 14h11, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6615
-14h12 → 16h05, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6621
-
-Choisissez un horaire, ou Autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
-
-La Conciergerie Travel BA
+Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
+Dis-moi lequel tu préfères ?
 
 Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
 
@@ -503,33 +399,11 @@ Bot SNCF : Pas d’achat.
 
 **Agence**
 
-Camille Martin, vous avez choisi le train 6601 à 08h12.
-
-Souhaitez-vous voyager en 2de classe ou en 1re classe ?
-
-La Conciergerie Travel BA
-
-Boutons : 2de classe · 1re classe
-
-### 3. Propositions envoyées
-
-Bot SNCF : Pas d’achat.
-
-**Client**
-
-1re classe
-
-**Agence**
-
-Camille Martin, en 1re classe.
-
-Quel tarif préférez-vous ? Le non remboursable ne s’échange pas. Flex est échangeable et remboursable.
-
-La Conciergerie Travel BA
+Au niveau des conditions tarifaires, on part sur un billet non remboursable ou Flex ?
 
 Boutons : Non remboursable · Flex
 
-### 4. Propositions envoyées
+### 3. Propositions envoyées
 
 Bot SNCF : Pas d’achat.
 
@@ -539,21 +413,32 @@ Flex
 
 **Agence**
 
-Camille Martin, voici votre choix :
+Ok très bien, on part sur quelle classe ?
+
+Boutons : 2de classe · 1re classe
+
+### 4. Propositions envoyées
+
+Bot SNCF : Pas d’achat.
+
+**Client**
+
+1re classe
+
+**Agence**
+
+Camille, on part là-dessus.
 
 Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex. Place isolée ou côté fenêtre.
 
 Total : 120 €.
-
-L’agence n’achète les billets qu’après votre accord.
-
-La Conciergerie Travel BA
+On n’achète qu’après ton ok.
 
 Boutons : Je confirme · Modifier · Je refuse
 
 ### 5. Propositions envoyées
 
-Bot SNCF : Le bot n’achète pas. Le client change la classe.
+Bot SNCF : Pas d’achat. Le client change la classe.
 
 **Client**
 
@@ -561,11 +446,7 @@ Modifier
 
 **Agence**
 
-Que souhaitez-vous modifier ?
-
-Le train, la classe ou le tarif. Rien n’est acheté.
-
-La Conciergerie Travel BA
+Tu veux changer quoi ?
 
 Boutons : Le train · La classe · Le tarif
 
@@ -579,17 +460,13 @@ La classe
 
 **Agence**
 
-Camille Martin, vous avez choisi le train 6601 à 08h12.
-
-Souhaitez-vous voyager en 2de classe ou en 1re classe ?
-
-La Conciergerie Travel BA
+Ok très bien, on part sur quelle classe ?
 
 Boutons : 2de classe · 1re classe
 
 ### 7. Propositions envoyées
 
-Bot SNCF : Rien.
+Bot SNCF : Nouveau récap. L’achat attend encore l’ok.
 
 **Client**
 
@@ -597,33 +474,12 @@ Bot SNCF : Rien.
 
 **Agence**
 
-Camille Martin, en 2de classe.
+Camille, on part là-dessus.
 
-Quel tarif préférez-vous ? Le non remboursable ne s’échange pas. Flex est échangeable et remboursable.
+Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 2de classe, tarif Flex. Place isolée ou côté fenêtre.
 
-La Conciergerie Travel BA
-
-Boutons : Non remboursable · Flex
-
-### 8. Propositions envoyées
-
-Bot SNCF : Nouveau récapitulatif. L’achat attend encore l’accord.
-
-**Client**
-
-Non remboursable
-
-**Agence**
-
-Camille Martin, voici votre choix :
-
-Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 2de classe, tarif Non remboursable. Place isolée ou côté fenêtre.
-
-Total : 45 €.
-
-L’agence n’achète les billets qu’après votre accord.
-
-La Conciergerie Travel BA
+Total : 72 €.
+On n’achète qu’après ton ok.
 
 Boutons : Je confirme · Modifier · Je refuse
 
@@ -641,17 +497,10 @@ Bot SNCF : Trains déposés.
 
 **Agence**
 
-Bonjour Camille Martin,
+Bonjour Camille,
 
-Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin :
-
-08h12 → 10h05, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6601
-12h18 → 14h11, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6615
-14h12 → 16h05, Paris Gare de Lyon → Lyon Part-Dieu, 1 h 53, train 6621
-
-Choisissez un horaire, ou Autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
-
-La Conciergerie Travel BA
+Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
+Dis-moi lequel tu préfères ?
 
 Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
 
@@ -665,9 +514,7 @@ bof le truc
 
 **Agence**
 
-Je n’ai pas reconnu ce choix. Choisissez un horaire de l’aller, ou Autres horaires.
-
-La Conciergerie Travel BA
+J’ai pas bien compris. Dis-moi l’horaire de l’aller, ou Autres horaires.
 
 ### 3. Propositions envoyées
 
@@ -679,9 +526,7 @@ heu
 
 **Agence**
 
-Je transmets votre message à l’agence. Un conseiller reprend avec vous le choix des trains.
-
-La Conciergerie Travel BA
+Je passe le message à l’agence. Quelqu’un reprend avec toi.
 
 ## Aucune réponse, puis relance avec un prix plus élevé
 
@@ -697,15 +542,12 @@ Bot SNCF : Récapitulatif envoyé. Pas de réponse : la demande reste en proposi
 
 **Agence**
 
-Camille Martin, voici votre choix :
+Camille, on part là-dessus.
 
 Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex. Place isolée ou côté fenêtre.
 
 Total : 120 €.
-
-L’agence n’achète les billets qu’après votre accord.
-
-La Conciergerie Travel BA
+On n’achète qu’après ton ok.
 
 Boutons : Je confirme · Modifier · Je refuse
 
@@ -719,11 +561,7 @@ Je réfléchis, demain
 
 **Agence**
 
-Nous gardons votre choix. Rien n’est acheté.
-
-Quand vous reprendrez, le prix sera revérifié avant l’achat.
-
-La Conciergerie Travel BA
+Ok, je garde ton choix. Quand tu reviens, je revérifie le prix.
 
 ### 3. Prix à reconfirmer
 
@@ -735,9 +573,7 @@ On reprend
 
 **Agence**
 
-Nous vérifions le prix auprès de la SNCF et nous vous le confirmons avant d’acheter.
-
-La Conciergerie Travel BA
+Je revérifie le prix. Je te le redonne avant d’acheter.
 
 ### 4. Propositions envoyées
 
@@ -745,15 +581,12 @@ Bot SNCF : Le bot a renvoyé le prix augmenté. Le CRM redemande l’accord. San
 
 **Agence**
 
-Camille Martin, voici votre choix :
+Camille, on part là-dessus.
 
 Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex.
 
 Total : 135 € (auparavant 120 €).
-
-L’agence n’achète les billets qu’après votre accord.
-
-La Conciergerie Travel BA
+On n’achète qu’après ton ok.
 
 Boutons : Je confirme · Modifier · Je refuse
 
@@ -771,11 +604,7 @@ Bot SNCF : Le bot tente l’achat et voit que le 6601 est complet.
 
 **Agence**
 
-Camille Martin, votre choix est enregistré. Aller train 6601.
-
-L’agence achète les billets et vous confirme.
-
-La Conciergerie Travel BA
+Camille, c’est noté. Aller train 6601. On achète et on te confirme.
 
 ### 2. Recherche en cours
 
@@ -783,11 +612,7 @@ Bot SNCF : Le bot prévient le CRM. Le CRM écrit au client et redemande une rec
 
 **Agence**
 
-Le train 6601 n’est plus disponible. Nous n’achetons rien.
-
-La recherche reprend. Nous vous enverrons d’autres horaires.
-
-La Conciergerie Travel BA
+Le train 6601 n’est plus dispo. Je relance la recherche et je te renvoie des horaires.
 
 ## Le client refuse au récapitulatif
 
@@ -803,15 +628,12 @@ Bot SNCF : Récapitulatif en attente d’accord.
 
 **Agence**
 
-Camille Martin, voici votre choix :
+Camille, on part là-dessus.
 
 Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex.
 
 Total : 120 €.
-
-L’agence n’achète les billets qu’après votre accord.
-
-La Conciergerie Travel BA
+On n’achète qu’après ton ok.
 
 Boutons : Je confirme · Modifier · Je refuse
 
@@ -825,11 +647,7 @@ Je refuse
 
 **Agence**
 
-Nous n’achetons pas ces billets.
-
-La demande est annulée. Dites-le à l’agence si vous souhaitez recommencer.
-
-La Conciergerie Travel BA
+Ok, on annule. Dis-le à l’agence si tu veux recommencer.
 
 ## Envoi des billets le jour du départ
 
@@ -869,11 +687,7 @@ Je voudrais échanger mon billet
 
 **Agence**
 
-Nous transmettons votre demande d’échange à l’agence.
-
-Les billets déjà émis ne changent pas tant que l’agence ne vous a pas confirmé les conditions.
-
-La Conciergerie Travel BA
+Je transmets ta demande d’échange. Les billets ne bougent pas tant que l’agence ne t’a pas confirmé.
 
 ### 2. Commandé
 
@@ -885,8 +699,4 @@ Je souhaite annuler
 
 **Agence**
 
-Nous transmettons votre demande d’annulation à l’agence.
-
-Les billets déjà émis ne changent pas tant que l’agence ne vous a pas confirmé les conditions.
-
-La Conciergerie Travel BA
+Je transmets ta demande d’annulation. Les billets ne bougent pas tant que l’agence ne t’a pas confirmé.
