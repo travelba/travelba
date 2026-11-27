@@ -147,8 +147,8 @@ function walk(input: {
     voyageurs: input.voyageurs,
     placement: input.placement,
   });
-  if (turn.action === "ignorer") return { turn, next: input.current };
-  return { turn, next: { ...input.current, ...turn.patch } };
+  if (turn.action === "ignorer") throw new Error("réponse ignorée");
+  return { turn, next: { ...input.current, ...turn.patch }, plan: turn.plan };
 }
 
 export function trainRecipes(): Recipe[] {
@@ -163,16 +163,16 @@ export function trainRecipes(): Recipe[] {
     ];
     let moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, clientText: "le 1" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Rien. Le client choisit encore.", [client("le 1"), agency(moved.turn.action === "ignorer" ? open({ greeting: "Camille Martin", retour: false }) : moved.turn.plan)]));
+    steps.push(step(current.status as TrainStatus, "Rien. Le client choisit encore.", [client("le 1"), agency(moved.plan)]));
     moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, payload: "train:classe:1re" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Rien.", [client("1re classe"), agency(moved.turn.plan)]));
+    steps.push(step(current.status as TrainStatus, "Rien.", [client("1re classe"), agency(moved.plan)]));
     moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, payload: "train:tarif:flex" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Rien. L’achat attend l’accord.", [client("Flex"), agency(moved.turn.plan)]));
+    steps.push(step(current.status as TrainStatus, "Rien. L’achat attend l’accord.", [client("Flex"), agency(moved.plan)]));
     moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, payload: "train:accord:confirme" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Le bot achète le 6601 en 1re Flex, carte Pliant du dossier, sans 3DS.", [client("Je confirme"), agency(moved.turn.plan)]));
+    steps.push(step(current.status as TrainStatus, "Le bot achète le 6601 en 1re Flex, carte Pliant du dossier, sans 3DS.", [client("Je confirme"), agency(moved.plan)]));
     return {
       id: "aller-simple",
       titre: "Aller simple, 1 voyageur",
@@ -218,7 +218,7 @@ export function trainRecipes(): Recipe[] {
         step("propositions", "Le bot a déposé les trains à partir de 8h et 16h.", [agency(open({ greeting: "Camille Martin", retour: true, session: true }))]),
         step(moved.next.status as TrainStatus, "Le bot relance une recherche aller avant 7h. Il ne commande pas.", [
           client("Plus tôt, avant 7h"),
-          agency(moved.turn.plan),
+          agency(moved.plan),
         ]),
         step("recherche", "Même geste pour le retour : « plus tard, après 19h » renvoie la contrainte du retour.", []),
       ],
@@ -237,20 +237,20 @@ export function trainRecipes(): Recipe[] {
     ]) {
       const moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, clientText: reply.text, payload: reply.payload });
       current = moved.next;
-      steps.push(step(current.status as TrainStatus, "Pas d’achat.", [client(reply.text), agency(moved.turn.plan)]));
+      steps.push(step(current.status as TrainStatus, "Pas d’achat.", [client(reply.text), agency(moved.plan)]));
     }
     let moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, payload: "train:accord:modifier" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Le bot n’achète pas. Le client change la classe.", [client("Modifier"), agency(moved.turn.plan)]));
+    steps.push(step(current.status as TrainStatus, "Le bot n’achète pas. Le client change la classe.", [client("Modifier"), agency(moved.plan)]));
     moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, payload: "train:modifier:classe" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Rien.", [client("La classe"), agency(moved.turn.plan)]));
+    steps.push(step(current.status as TrainStatus, "Rien.", [client("La classe"), agency(moved.plan)]));
     moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, payload: "train:classe:2de" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Rien.", [client("2de classe"), agency(moved.turn.plan)]));
+    steps.push(step(current.status as TrainStatus, "Rien.", [client("2de classe"), agency(moved.plan)]));
     moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, clientText: "Non remboursable" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Nouveau récapitulatif. L’achat attend encore l’accord.", [client("Non remboursable"), agency(moved.turn.plan)]));
+    steps.push(step(current.status as TrainStatus, "Nouveau récapitulatif. L’achat attend encore l’accord.", [client("Non remboursable"), agency(moved.plan)]));
     return {
       id: "modifier-classe",
       titre: "Le client change de classe ou de tarif au récapitulatif",
@@ -265,10 +265,10 @@ export function trainRecipes(): Recipe[] {
     const steps: RecipeStep[] = [step("propositions", "Trains déposés.", [agency(open({ greeting: "Camille Martin", retour: false }))])];
     let moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, clientText: "bof le truc" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Rien. La question est reposée.", [client("bof le truc"), agency(moved.turn.plan)]));
+    steps.push(step(current.status as TrainStatus, "Rien. La question est reposée.", [client("bof le truc"), agency(moved.plan)]));
     moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, clientText: "heu" });
     current = moved.next;
-    steps.push(step("propositions", "La main passe à l’agence. Le bot n’achète pas.", [client("heu"), agency(moved.turn.plan)]));
+    steps.push(step("propositions", "La main passe à l’agence. Le bot n’achète pas.", [client("heu"), agency(moved.plan)]));
     return {
       id: "texte-libre",
       titre: "Texte libre ou réponse incompréhensible",
@@ -294,10 +294,10 @@ export function trainRecipes(): Recipe[] {
     const steps: RecipeStep[] = [step("propositions", "Récapitulatif envoyé. Pas de réponse : la demande reste en propositions, les choix restent.", [agency(quote)])];
     let moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, clientText: "Je réfléchis, demain" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Le bot n’achète pas. Les choix restent enregistrés.", [client("Je réfléchis, demain"), agency(moved.turn.plan)]));
+    steps.push(step(current.status as TrainStatus, "Le bot n’achète pas. Les choix restent enregistrés.", [client("Je réfléchis, demain"), agency(moved.plan)]));
     moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, clientText: "On reprend" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Le bot refait une simulation SNCF.", [client("On reprend"), agency(moved.turn.plan)]));
+    steps.push(step(current.status as TrainStatus, "Le bot refait une simulation SNCF.", [client("On reprend"), agency(moved.plan)]));
     const raised = ALLER.map((offer, index) => (index === 0 ? { ...offer, prix: { ...offer.prix, "1re": { non_remboursable: 99, flex: 135 } } } : offer));
     const again = planTrainAccord({
       greeting: "Camille Martin",
@@ -339,7 +339,7 @@ export function trainRecipes(): Recipe[] {
         step("propositions", "Récapitulatif en attente d’accord.", [
           agency(planTrainAccord({ greeting: "Camille Martin", summary: trainChoiceSummary({ aller: ALLER[0], classe: "1re", tarif: "flex" }), total: "120 €" })),
         ]),
-        step(moved.next.status as TrainStatus, "Le bot n’achète pas. La demande est annulée.", [client("Je refuse"), agency(moved.turn.plan)]),
+        step(moved.next.status as TrainStatus, "Le bot n’achète pas. La demande est annulée.", [client("Je refuse"), agency(moved.plan)]),
       ],
     };
   })();
@@ -413,7 +413,7 @@ function buildRoundTrip(input: { id: string; titre: string; greeting: string; vo
       current.status === "choix"
         ? "Le bot achète les deux trains, carte Pliant du dossier, sans 3DS, places selon la préférence."
         : "Pas d’achat.";
-    steps.push(step(current.status as TrainStatus, bot, [client(reply.text), agency(moved.turn.plan)]));
+    steps.push(step(current.status as TrainStatus, bot, [client(reply.text), agency(moved.plan)]));
   }
   return { id: input.id, titre: input.titre, voyageurs: input.who, placement: input.placement, steps };
 }

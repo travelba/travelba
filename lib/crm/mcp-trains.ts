@@ -66,8 +66,18 @@ export async function demandesTrain(input: Record<string, unknown>) {
   const ids = [...new Set((data || []).map((row) => String((row as { booking_id: string }).booking_id)))];
   const refs = ids.length ? await admin.from("crm_bookings").select("id, reference").in("id", ids) : { data: [] };
   const byId = new Map(((refs.data || []) as { id: string; reference: string }[]).map((row) => [row.id, row.reference]));
+  const listed = (data || []) as unknown as {
+    id: string;
+    booking_id: string;
+    status: TrainStatus;
+    depart_ville: string;
+    arrivee_ville: string;
+    aller_date: string;
+    retour_date: string | null;
+    placement: string;
+  }[];
   return {
-    demandes: ((data || []) as Row[]).map((row) => ({
+    demandes: listed.map((row) => ({
       demande_id: row.id,
       dossier_id: row.booking_id,
       reference: byId.get(row.booking_id) || null,
@@ -184,13 +194,13 @@ export async function deposerPropositionsTrain(input: Record<string, unknown>) {
   const id = text(input.demande_id);
   if (!UUID.test(id)) throw new McpWriteError("Demande invalide.");
   const aller = parseTrainOffers(input.aller, "Aller", { min: 1, max: 9 });
-  if ("error" in aller) throw new McpWriteError(aller.error);
+  if ("error" in aller) throw new McpWriteError(aller.error || "Trains illisibles.");
   const admin = await db();
   const row = await load(admin, id);
   const retourRaw = input.retour;
   const hasReturn = Boolean(row.retour_date);
   const retour = hasReturn ? parseTrainOffers(retourRaw, "Retour", { min: 1, max: 9 }) : { offers: [] as TrainOffer[] };
-  if ("error" in retour) throw new McpWriteError(retour.error);
+  if ("error" in retour) throw new McpWriteError(retour.error || "Trains illisibles.");
   if (!OPEN.includes(row.status) || row.status === "choix" || row.status === "commande") {
     throw new McpWriteError("Cette demande n’attend plus de propositions.");
   }

@@ -8,6 +8,20 @@ Paiement : `creer_carte_pliant` sur le dossier, `trois_ds` faux. Le numéro n’
 
 Les fils ci-dessous sont des images. Chaque fichier est dans `docs/recette-billets-train/`.
 
+## Lancer la demande dans le CRM
+
+Même bouton que la fiche dossier. Aperçu local, données fictives (Camille et Hugo Martin, hôtel à Lyon du 1er au 2 juin), sans écriture en base : `/apercu/demande-train`.
+
+Le départ reprend le domicile. L’arrivée et les dates viennent de l’hôtel. Les créneaux sont à partir de 8h et de 16h. Les voyageurs du dossier sont cochés. Si le domicile est vide, la ville de départ reste à saisir.
+
+![Fiche avec le bouton Demande de train](recette-billets-train/crm-bouton.png)
+
+![Formulaire prérempli](recette-billets-train/crm-formulaire.png)
+
+![Ville de départ inconnue](recette-billets-train/crm-depart-inconnu.png)
+
+![Demande créée, statut Nouvelle](recette-billets-train/crm-suivi.png)
+
 ## Modèles
 
 | Nom | Rôle |
