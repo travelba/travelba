@@ -2,17 +2,21 @@
 
 import { useEffect, useState } from "react";
 import type { TrainProgress, TrainProgressCard } from "@/lib/crm/train-progress";
+import { TrainRequestDesk, type TrainDeskState } from "@/components/admin/TrainRequestDesk";
 
 export function TrainRequestTrack({
   bookingId,
   requestId,
   preview,
+  bureau,
 }: {
   bookingId: string;
   requestId: string;
   preview?: TrainProgress | null;
+  bureau?: TrainDeskState | null;
 }) {
   const [suivi, setSuivi] = useState<TrainProgress | null>(preview || null);
+  const [desk, setDesk] = useState<TrainDeskState | null>(bureau || null);
   const [erreur, setErreur] = useState("");
 
   useEffect(() => {
@@ -20,13 +24,14 @@ export function TrainRequestTrack({
     let cancelled = false;
     void fetch(`/api/admin/bookings/${bookingId}/demande-train?demande=${encodeURIComponent(requestId)}`)
       .then(async (response) => {
-        const body = (await response.json().catch(() => null)) as { suivi?: TrainProgress; error?: string } | null;
+        const body = (await response.json().catch(() => null)) as { suivi?: TrainProgress; bureau?: TrainDeskState; error?: string } | null;
         if (cancelled) return;
         if (!response.ok || !body?.suivi) {
           setErreur(body?.error || "Le suivi n’a pas pu être lu.");
           return;
         }
         setSuivi(body.suivi);
+        if (body.bureau) setDesk(body.bureau);
       })
       .catch(() => {
         if (!cancelled) setErreur("Le suivi n’a pas pu être lu.");
@@ -38,7 +43,12 @@ export function TrainRequestTrack({
 
   if (erreur) return <p className="text-xs font-semibold text-[var(--admin-red)]">{erreur}</p>;
   if (!suivi) return <p className="text-xs text-muted">Lecture du suivi…</p>;
-  return <TrainRequestTrackView suivi={suivi} />;
+  return (
+    <div className="space-y-2">
+      {desk ? <TrainRequestDesk bookingId={bookingId} requestId={requestId} state={desk} preview={Boolean(preview)} /> : null}
+      <TrainRequestTrackView suivi={suivi} />
+    </div>
+  );
 }
 
 function TrainCard({ card }: { card: TrainProgressCard }) {
@@ -183,6 +193,23 @@ export function TrainRequestTrackView({ suivi }: { suivi: TrainProgress }) {
       ) : null}
       {aller.length ? <Leg titre="Aller" cartes={aller} /> : null}
       {retour.length ? <Leg titre="Retour" cartes={retour} /> : null}
+      {suivi.journal.length ? (
+        <ul className="space-y-1">
+          {suivi.journal.map((line) => (
+            <li key={`${line.quand}-${line.texte}`} className="flex items-start gap-2 text-[11px] leading-snug text-[var(--admin-navy)]">
+              {line.ia ? (
+                <span className="mt-px shrink-0 rounded-full bg-[var(--admin-navy)] px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-white">IA</span>
+              ) : (
+                <span className="mt-px shrink-0 rounded-full bg-[#f3f5f7] px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-muted">Suivi</span>
+              )}
+              <span>
+                {line.texte}
+                {line.quand ? <span className="ml-1 text-muted">{line.quand}</span> : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
