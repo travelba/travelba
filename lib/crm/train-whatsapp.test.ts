@@ -43,13 +43,32 @@ test("les modèles portent les boutons d’horaire, de classe et de tarif", () =
   assert.equal(trainAccordContentCreateBody().types["twilio/quick-reply"].actions.length, 3);
   const horaires = trainHorairesContentCreateBody().types["twilio/quick-reply"];
   assert.equal(horaires.actions.length, 4);
-  assert.equal(horaires.actions[0]?.title, "{{3}}");
+  assert.equal(horaires.actions[0]?.title, "Train 1");
+  assert.equal(horaires.actions[0]?.id, "train:aller:0");
+  assert.equal(horaires.actions[1]?.id, "train:aller:1");
   assert.equal(horaires.actions[3]?.title, "Autres horaires");
   assert.equal(horaires.actions[3]?.id, "train:horaires");
+  assert.equal(trainHorairesContentCreateBody(9).types["twilio/quick-reply"].actions.at(-2)?.title, "Train 9");
   assert.equal(trainHorairesContentCreateBody(9).types["twilio/quick-reply"].actions.length, 10);
   const retour = trainHorairesContentCreateBody(3, "retour").types["twilio/quick-reply"];
-  assert.equal(retour.actions[0]?.title, "{{2}}");
+  assert.equal(retour.actions[0]?.title, "Train 1");
+  assert.equal(retour.actions[0]?.id, "train:retour:0");
+  assert.match(retour.body, /1\. \{\{2\}\}/);
+  assert.match(horaires.body, /1\. \{\{3\}\}/);
   assert.match(retour.body, /pour le retour/);
+  for (const leg of ["aller", "retour"] as const) {
+    for (let count = 3; count <= 9; count += 1) {
+      const actions = trainHorairesContentCreateBody(count, leg).types["twilio/quick-reply"].actions;
+      assert.equal(actions.length, count + 1);
+      assert.equal(actions[0]?.id, `train:${leg}:0`);
+      assert.equal(actions.at(-1)?.title, "Autres horaires");
+      for (const action of actions) {
+        assert.doesNotMatch(action.title, /[{}]/);
+        assert.doesNotMatch(action.id, /[{}]/);
+        assert.ok(action.title.length <= 20);
+      }
+    }
+  }
   for (const action of horaires.actions) assert.ok((action?.title || "").length <= 20);
   assert.match(horaires.body, /Dis-moi lequel tu préfères/);
   assert.doesNotMatch(horaires.body, /Rien n’est acheté|Monsieur/);
@@ -75,15 +94,17 @@ test("le récapitulatif précède l’achat, et un refus n’achète pas", () =>
   assert.match(family?.placement || "", /salle basse/);
   const round = recipes.find((recipe) => recipe.id === "aller-retour");
   const outbound = round?.steps[0]?.bubbles[0]?.buttons || [];
-  const back = round?.steps.flatMap((row) => row.bubbles).find((bubble) => bubble.buttons?.[0]?.includes("16h"))?.buttons || [];
+  const returnBubble = round?.steps.flatMap((row) => row.bubbles).find((bubble) => /retour/.test(bubble.text) && bubble.buttons?.length);
+  const back = returnBubble?.buttons || [];
   assert.equal(outbound.length, 4);
   assert.equal(back.length, 4);
-  assert.equal(outbound[0], "08h12 → 10h05");
+  assert.equal(outbound[0], "Train 1");
   assert.match(round?.steps[0]?.bubbles[0]?.text || "", /Bonjour Hugo/);
+  assert.match(round?.steps[0]?.bubbles[0]?.text || "", /08h12 → 10h05/);
   assert.match(round?.steps[0]?.bubbles[0]?.text || "", /Dis-moi lequel tu préfères/);
-  const returnBubble = round?.steps.flatMap((row) => row.bubbles).find((bubble) => bubble.buttons?.includes("16h12 → 18h05"));
   assert.match(returnBubble?.text || "", /retour/);
-  assert.equal(returnBubble?.buttons?.[0], "16h12 → 18h05");
+  assert.match(returnBubble?.text || "", /16h12 → 18h05/);
+  assert.equal(returnBubble?.buttons?.[0], "Train 1");
   assert.equal(outbound.at(-1), "Autres horaires");
   for (const label of [...outbound, ...back]) assert.ok(label.length <= 20);
   assert.match(trainRecipeMarkdown(recipes), /Je confirme/);

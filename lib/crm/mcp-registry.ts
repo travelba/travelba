@@ -3041,7 +3041,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Dépose chez Twilio les modèles Utility du parcours train : train_horaires_aller_3 à _9 et train_horaires_retour_3 à _9 (boutons d’horaire, plus Autres horaires), train_classe, train_tarif, train_accord, train_modifier, train_billet. Tutoiement, prénom seul. Idempotent par nom. N’envoie aucun WhatsApp. Ne renvoie aucun secret.",
+      "Dépose chez Twilio les modèles Utility du parcours train : train_horaires_aller_3 à _9 et train_horaires_retour_3 à _9 (horaires dans le texte, boutons Train 1 à Train N et Autres horaires, sans accolade dans le titre, id train:aller:N ou train:retour:N), train_classe, train_tarif, train_accord, train_modifier, train_billet. Un modèle dont le titre contient une accolade est recréé. Tutoiement, prénom seul. N’envoie aucun WhatsApp. Ne renvoie aucun secret.",
     run: (args) => deposerModelesTrainWhatsapp(args),
   },
   {

@@ -5,7 +5,7 @@ Parcours fictif. Aucun envoi réel. Les textes sont ceux du CRM, variables rempl
 Ordre : aller, tarif, retour s’il y en a un, classe, récapitulatif. Tutoiement, prénom seul. On n’achète qu’après ton ok, dit seulement au récap.
 Horaires proposés par défaut : aller à partir de 8h, retour à partir de 16h. Dates déduites de l’hôtel (lundi → mardi : aller lundi, retour mardi), modifiables.
 Paiement : `creer_carte_pliant` sur le dossier, `trois_ds` faux. Le numéro n’est pas dans ces messages.
-Tutoiement, prénom seul. Aller, puis tarif, puis retour s’il y en a un, puis classe. Un bouton par horaire (08h12 → 10h05), plus Autres horaires. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.
+Tutoiement, prénom seul. Aller, puis tarif, puis retour s’il y en a un, puis classe. L’horaire est dans le texte (1. 08h12 → 10h05). Les boutons sont Train 1, Train 2, Train 3 et Autres horaires. Le train choisi est l’id du bouton (train:aller:0). Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.
 Au moins 3 trains par sens, 9 au plus (10 boutons avec Autres horaires). L’envoi utilise le content SID `TWILIO_CONTENT_TRAIN_HORAIRES_N`, puis les modèles des étapes et `TWILIO_CONTENT_TRAIN_BILLET` le matin.
 
 ## Lancer la demande dans le CRM
@@ -38,7 +38,7 @@ Les fils ci-dessous sont des images. Chaque fichier est dans `docs/recette-bille
 
 | Nom | Rôle |
 | --- | --- |
-| `train_horaires_3` à `train_horaires_9` | Boutons d’horaire, plus Autres horaires |
+| `train_horaires_aller_3` à `_9` et `train_horaires_retour_3` à `_9` | Horaires dans le texte, boutons Train 1 à Train N et Autres horaires |
 | `train_classe` | Boutons 2de classe / 1re classe |
 | `train_tarif` | Boutons Non remboursable / Flex |
 | `train_accord` | Récapitulatif, Je confirme / Modifier / Je refuse |
@@ -66,9 +66,13 @@ Bot SNCF : Le bot a déposé les trains aller. Il attend.
 Bonjour Camille,
 
 Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
+1. 08h12 → 10h05
+2. 12h18 → 14h11
+3. 14h12 → 16h05
+
 Dis-moi lequel tu préfères ?
 
-Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
+Boutons : Train 1 · Train 2 · Train 3 · Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -76,7 +80,7 @@ Bot SNCF : Rien. Le client choisit encore.
 
 **Client**
 
-08h12 → 10h05
+Train 1
 
 **Agence**
 
@@ -146,9 +150,13 @@ Bot SNCF : Le bot a déposé l’aller et le retour pour Hugo Bernard et Inès B
 Bonjour Hugo,
 
 Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
+1. 08h12 → 10h05
+2. 12h18 → 14h11
+3. 14h12 → 16h05
+
 Dis-moi lequel tu préfères ?
 
-Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
+Boutons : Train 1 · Train 2 · Train 3 · Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -156,7 +164,7 @@ Bot SNCF : Pas d’achat.
 
 **Client**
 
-08h12 → 10h05
+Train 1
 
 **Agence**
 
@@ -175,9 +183,13 @@ Non remboursable
 **Agence**
 
 Et voici les propositions de train pour le retour Lyon Part-Dieu → Paris Gare de Lyon.
+1. 16h12 → 18h05
+2. 18h42 → 20h35
+3. 20h12 → 22h05
+
 Dis-moi lequel tu préfères ?
 
-Boutons : 16h12 → 18h05 · 18h42 → 20h35 · 20h12 → 22h05 · Autres horaires
+Boutons : Train 1 · Train 2 · Train 3 · Autres horaires
 
 ### 4. Propositions envoyées
 
@@ -185,7 +197,7 @@ Bot SNCF : Pas d’achat.
 
 **Client**
 
-16h12 → 18h05
+Train 1
 
 **Agence**
 
@@ -241,9 +253,13 @@ Bot SNCF : Le bot a déposé l’aller et le retour pour Claire Morel, Marc More
 Bonjour Claire,
 
 Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
+1. 08h12 → 10h05
+2. 12h18 → 14h11
+3. 14h12 → 16h05
+
 Dis-moi lequel tu préfères ?
 
-Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
+Boutons : Train 1 · Train 2 · Train 3 · Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -251,7 +267,7 @@ Bot SNCF : Pas d’achat.
 
 **Client**
 
-08h12 → 10h05
+Train 1
 
 **Agence**
 
@@ -270,9 +286,13 @@ Non remboursable
 **Agence**
 
 Et voici les propositions de train pour le retour Lyon Part-Dieu → Paris Gare de Lyon.
+1. 16h12 → 18h05
+2. 18h42 → 20h35
+3. 20h12 → 22h05
+
 Dis-moi lequel tu préfères ?
 
-Boutons : 16h12 → 18h05 · 18h42 → 20h35 · 20h12 → 22h05 · Autres horaires
+Boutons : Train 1 · Train 2 · Train 3 · Autres horaires
 
 ### 4. Propositions envoyées
 
@@ -280,7 +300,7 @@ Bot SNCF : Pas d’achat.
 
 **Client**
 
-16h12 → 18h05
+Train 1
 
 **Agence**
 
@@ -336,9 +356,13 @@ Bot SNCF : Le bot a déposé les trains à partir de 8h et 16h.
 Bonjour Camille,
 
 Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
+1. 08h12 → 10h05
+2. 12h18 → 14h11
+3. 14h12 → 16h05
+
 Dis-moi lequel tu préfères ?
 
-Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
+Boutons : Train 1 · Train 2 · Train 3 · Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -385,9 +409,13 @@ Bot SNCF : Trains déposés.
 Bonjour Camille,
 
 Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
+1. 08h12 → 10h05
+2. 12h18 → 14h11
+3. 14h12 → 16h05
+
 Dis-moi lequel tu préfères ?
 
-Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
+Boutons : Train 1 · Train 2 · Train 3 · Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -395,7 +423,7 @@ Bot SNCF : Pas d’achat.
 
 **Client**
 
-08h12 → 10h05
+Train 1
 
 **Agence**
 
@@ -500,9 +528,13 @@ Bot SNCF : Trains déposés.
 Bonjour Camille,
 
 Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
+1. 08h12 → 10h05
+2. 12h18 → 14h11
+3. 14h12 → 16h05
+
 Dis-moi lequel tu préfères ?
 
-Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
+Boutons : Train 1 · Train 2 · Train 3 · Autres horaires
 
 ### 2. Propositions envoyées
 

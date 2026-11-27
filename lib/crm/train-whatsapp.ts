@@ -202,16 +202,39 @@ function plain(value: string, max: number) {
   return clip(value, max);
 }
 
-export function trainHorairesAllerBody() {
-  return ["Bonjour {{1}},", "", "Voici les propositions de train pour l’aller {{2}}.", "Dis-moi lequel tu préfères ?"].join("\n");
+function horaireLines(count: number, firstVariable: number) {
+  return Array.from({ length: count }, (_, index) => `${index + 1}. {{${firstVariable + index}}}`);
 }
 
-export function trainHorairesRetourBody() {
-  return ["Et voici les propositions de train pour le retour {{1}}.", "Dis-moi lequel tu préfères ?"].join("\n");
+/** Horaires dans le corps. Les boutons restent « Train N », sans accolade. */
+export function trainHorairesAllerBody(count = TRAIN_LIST_MIN) {
+  const trains = Math.min(TRAIN_LIST_TRAINS_MAX, Math.max(TRAIN_LIST_MIN, count));
+  return [
+    "Bonjour {{1}},",
+    "",
+    "Voici les propositions de train pour l’aller {{2}}.",
+    ...horaireLines(trains, 3),
+    "",
+    "Dis-moi lequel tu préfères ?",
+  ].join("\n");
 }
 
-export function trainHorairesBody(leg: TrainLeg = "aller") {
-  return leg === "retour" ? trainHorairesRetourBody() : trainHorairesAllerBody();
+export function trainHorairesRetourBody(count = TRAIN_LIST_MIN) {
+  const trains = Math.min(TRAIN_LIST_TRAINS_MAX, Math.max(TRAIN_LIST_MIN, count));
+  return [
+    "Et voici les propositions de train pour le retour {{1}}.",
+    ...horaireLines(trains, 2),
+    "",
+    "Dis-moi lequel tu préfères ?",
+  ].join("\n");
+}
+
+export function trainHorairesBody(leg: TrainLeg = "aller", count = TRAIN_LIST_MIN) {
+  return leg === "retour" ? trainHorairesRetourBody(count) : trainHorairesAllerBody(count);
+}
+
+export function trainChoiceButtonTitle(index: number) {
+  return `Train ${index + 1}`;
 }
 
 export function trainClasseBody() {
@@ -235,16 +258,16 @@ export function trainTimeButton(offer: TrainOffer) {
 }
 
 export function trainHorairesButtons(offers: TrainOffer[], leg: TrainLeg): TrainQuickButton[] {
-  const buttons = offers.slice(0, TRAIN_LIST_TRAINS_MAX).map((offer, index) => ({
+  const buttons = offers.slice(0, TRAIN_LIST_TRAINS_MAX).map((_, index) => ({
     type: "QUICK_REPLY" as const,
-    title: trainTimeButton(offer),
+    title: trainChoiceButtonTitle(index),
     id: `train:${leg}:${index}`,
   }));
   buttons.push({ type: "QUICK_REPLY", title: "Autres horaires", id: TRAIN_HOURS_ID });
   return buttons;
 }
 
-function buttonVariableStart(leg: TrainLeg) {
+function timeVariableStart(leg: TrainLeg) {
   return leg === "retour" ? 2 : 3;
 }
 
@@ -261,18 +284,17 @@ export function trainHorairesVariables(input: {
       ? { "1": route }
       : { "1": plain(input.greeting, 40) || "toi", "2": route };
   offers.forEach((offer, index) => {
-    const base = buttonVariableStart(input.leg) + index * 2;
-    variables[String(base)] = trainTimeButton(offer);
-    variables[String(base + 1)] = `train:${input.leg}:${index}`;
+    variables[String(timeVariableStart(input.leg) + index)] = trainTimeButton(offer);
   });
   return variables;
 }
 
 function horairesTemplateButtons(count: number, leg: TrainLeg): TrainQuickButton[] {
-  const buttons = Array.from({ length: count }, (_, index) => {
-    const base = buttonVariableStart(leg) + index * 2;
-    return { type: "QUICK_REPLY" as const, title: `{{${base}}}`, id: `{{${base + 1}}}` };
-  });
+  const buttons = Array.from({ length: count }, (_, index) => ({
+    type: "QUICK_REPLY" as const,
+    title: trainChoiceButtonTitle(index),
+    id: `train:${leg}:${index}`,
+  }));
   buttons.push({ type: "QUICK_REPLY", title: "Autres horaires", id: TRAIN_HOURS_ID });
   return buttons;
 }
@@ -305,7 +327,7 @@ export function trainHorairesContentCreateBody(count = TRAIN_LIST_MIN, leg: Trai
     }),
     types: {
       "twilio/quick-reply": {
-        body: trainHorairesBody(leg),
+        body: trainHorairesBody(leg, trains),
         actions: horairesTemplateButtons(trains, leg),
       },
     },
@@ -367,7 +389,7 @@ export function trainTemplateSubmission() {
     "",
     "Ordre : horaires aller, horaires retour s’il y en a un, classe, tarif, accord.",
     "Tutoiement, prénom seul. Ordre : aller, tarif, retour s’il y en a un, classe, récap.",
-    "Boutons train_horaires_aller_3 à _9 et train_horaires_retour_3 à _9. Un bouton par horaire, plus Autres horaires.",
+    "Boutons train_horaires_aller_3 à _9 et train_horaires_retour_3 à _9. Titres fixes Train 1 à Train N, plus Autres horaires. L’horaire est dans le texte. L’id du bouton désigne le train.",
     "",
     `1. ${trainHorairesTemplateName(TRAIN_LIST_MIN, "aller")} et ${trainHorairesTemplateName(TRAIN_LIST_MIN, "retour")}`,
     `Variables : ${trainHorairesTemplateEnv(TRAIN_LIST_MIN, "aller")} et ${trainHorairesTemplateEnv(TRAIN_LIST_MIN, "retour")}`,
@@ -429,7 +451,7 @@ export function planTrainLegQuestion(input: {
   const inRange = offers.length >= TRAIN_LIST_MIN && offers.length <= TRAIN_LIST_TRAINS_MAX;
   return {
     modele: "train_horaires" as const,
-    corps: fill(trainHorairesBody(input.leg), variables),
+    corps: fill(trainHorairesBody(input.leg, offers.length || TRAIN_LIST_MIN), variables),
     ...(inRange ? { variables } : {}),
     boutons: trainHorairesButtons(offers, input.leg),
   };

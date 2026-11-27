@@ -174,9 +174,9 @@ export function trainRecipes(): Recipe[] {
     const steps: RecipeStep[] = [
       step("propositions", "Le bot a déposé les trains aller. Il attend.", [agency(open({ greeting: "Camille", retour: false }))]),
     ];
-    let moved = walk({ current, greeting: "Camille", voyageurs: 1, placement: solo, clientText: "08h12 → 10h05", payload: "train:aller:0" });
+    let moved = walk({ current, greeting: "Camille", voyageurs: 1, placement: solo, clientText: "Train 1", payload: "train:aller:0" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Rien. Le client choisit encore.", [client("08h12 → 10h05"), agency(moved.plan)]));
+    steps.push(step(current.status as TrainStatus, "Rien. Le client choisit encore.", [client("Train 1"), agency(moved.plan)]));
     moved = walk({ current, greeting: "Camille", voyageurs: 1, placement: solo, payload: "train:tarif:flex" });
     current = moved.next;
     steps.push(step(current.status as TrainStatus, "Rien.", [client("Flex"), agency(moved.plan)]));
@@ -256,7 +256,7 @@ export function trainRecipes(): Recipe[] {
     const first = open({ greeting: "Camille", retour: false });
     steps.push(step("propositions", "Trains déposés.", [agency(first)]));
     for (const reply of [
-      { text: "08h12 → 10h05", payload: "train:aller:0" },
+      { text: "Train 1", payload: "train:aller:0" },
       { text: "Flex", payload: "train:tarif:flex" },
       { text: "1re classe", payload: "train:classe:1re" },
     ]) {
@@ -415,9 +415,9 @@ function buildRoundTrip(input: { id: string; titre: string; greeting: string; vo
     ]),
   ];
   const replies = [
-    { text: "08h12 → 10h05", payload: "train:aller:0" },
+    { text: "Train 1", payload: "train:aller:0" },
     { text: "Non remboursable", payload: "train:tarif:non_remboursable" },
-    { text: "16h12 → 18h05", payload: "train:retour:0" },
+    { text: "Train 1", payload: "train:retour:0" },
     { text: "2de classe", payload: "train:classe:2de" },
     { text: "Je confirme", payload: "train:accord:confirme" },
   ];
@@ -449,7 +449,7 @@ export function trainRecipeMarkdown(recipes = trainRecipes()) {
     "Ordre : aller, tarif, retour s’il y en a un, classe, récapitulatif. Tutoiement, prénom seul. On n’achète qu’après ton ok, dit seulement au récap.",
     "Horaires proposés par défaut : aller à partir de 8h, retour à partir de 16h. Dates déduites de l’hôtel (lundi → mardi : aller lundi, retour mardi), modifiables.",
     "Paiement : `creer_carte_pliant` sur le dossier, `trois_ds` faux. Le numéro n’est pas dans ces messages.",
-    "Tutoiement, prénom seul. Aller, puis tarif, puis retour s’il y en a un, puis classe. Un bouton par horaire (08h12 → 10h05), plus Autres horaires. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.",
+    "Tutoiement, prénom seul. Aller, puis tarif, puis retour s’il y en a un, puis classe. L’horaire est dans le texte (1. 08h12 → 10h05). Les boutons sont Train 1, Train 2, Train 3 et Autres horaires. Le train choisi est l’id du bouton (train:aller:0). Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.",
     "Au moins 3 trains par sens, 9 au plus (10 boutons avec Autres horaires). L’envoi utilise le content SID `TWILIO_CONTENT_TRAIN_HORAIRES_N`, puis les modèles des étapes et `TWILIO_CONTENT_TRAIN_BILLET` le matin.",
     "",
     "## Lancer la demande dans le CRM",
@@ -480,7 +480,7 @@ export function trainRecipeMarkdown(recipes = trainRecipes()) {
     "",
     "| Nom | Rôle |",
     "| --- | --- |",
-    "| `train_horaires_3` à `train_horaires_9` | Boutons d’horaire, plus Autres horaires |",
+    "| `train_horaires_aller_3` à `_9` et `train_horaires_retour_3` à `_9` | Horaires dans le texte, boutons Train 1 à Train N et Autres horaires |",
     "| `train_classe` | Boutons 2de classe / 1re classe |",
     "| `train_tarif` | Boutons Non remboursable / Flex |",
     "| `train_accord` | Récapitulatif, Je confirme / Modifier / Je refuse |",
