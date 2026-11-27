@@ -621,7 +621,7 @@ export function quoteTotal(input: {
   return { perPerson, total, count, libelle: people };
 }
 
-export function trainQuestionPrompt(step: TrainStep, count: number) {
+export function trainQuestionPrompt(step: TrainStep) {
   if (step === "aller" || step === "retour") {
     const which = step === "retour" ? "du retour" : "de l’aller";
     return `Choisissez un train ${which} dans la liste, ou Autres horaires.`;
@@ -885,7 +885,7 @@ export function nextTrainTurn(input: {
     return {
       action: "reposer",
       patch: { ambigu_compte: state.ambigu_compte + 1, step: state.step },
-      plan: sessionPlan(trainRepromptBody(trainQuestionPrompt(state.step, offers.length || 2))),
+      plan: sessionPlan(trainRepromptBody(trainQuestionPrompt(state.step))),
     };
   }
   const greeting = input.greeting;
@@ -1036,7 +1036,7 @@ export function nextTrainTurn(input: {
   return {
     action: "reposer",
     patch: { ambigu_compte: state.ambigu_compte + 1, step: state.step },
-    plan: sessionPlan(trainRepromptBody(trainQuestionPrompt(state.step, offers.length || 2))),
+    plan: sessionPlan(trainRepromptBody(trainQuestionPrompt(state.step))),
   };
 }
 
