@@ -3,7 +3,8 @@ import { runIfConfirmed } from "./mcp-preview";
 import { McpWriteError } from "./mcp-write";
 import { notifyTrainBot } from "./train-bot";
 import { ageOnDate, partyHasChild, seatingPreference, TRAIN_STATUS_LABEL, type TrainStatus } from "./train-request";
-import { parseTrainOffers, planTrainLegQuestion, trainGreeting, trainUnavailableBody, type TrainOffer } from "./train-whatsapp";
+import { availableTrainFares } from "./train-fares";
+import { parseTrainOffers, planTrainAccord, planTrainCombinations, planTrainLegQuestion, quoteTotal, trainChoiceSummary, trainGreeting, trainUnavailableBody, type TrainOffer } from "./train-whatsapp";
 import { decodeUploadedBytes } from "./mcp-piece";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -328,6 +329,70 @@ export async function enregistrerCommandeTrain(input: Record<string, unknown>) {
     }
     await admin.from("crm_train_requests").update({ status: "commande", reference_sncf: reference, prix_paye: prix, item_id: carteId, updated_at: new Date().toISOString() }).eq("id", id);
     return { ecrit: true, carte_id: carteId, document_id: documentId, statut: "commande", ...preview };
+  });
+}
+
+export async function reproposerTarifTrain(input: Record<string, unknown>) {
+  const id = text(input.demande_id);
+  if (!UUID.test(id)) throw new McpWriteError("Demande invalide.");
+  const admin = await db();
+  const row = await load(admin, id);
+  if (row.status === "commande" || row.status === "annulee") throw new McpWriteError("Cette demande n’attend plus de tarif.");
+  if (row.choix_aller == null) throw new McpWriteError("L’aller n’est pas choisi.");
+  const aller = row.aller[row.choix_aller];
+  if (!aller) throw new McpWriteError("Train aller manquant.");
+  const retour = row.choix_retour == null ? null : row.retour[row.choix_retour] || null;
+  if ((row.retour_date || row.retour.length) && !retour) throw new McpWriteError("Le retour n’est pas choisi.");
+  const fares = availableTrainFares(retour ? [aller, retour] : [aller]);
+  if (!fares.length) throw new McpWriteError("Aucun tarif n’est chiffré sur ces trains.");
+  const seul = fares.length === 1 ? fares[0] : null;
+  const { data: customer } = seul
+    ? await admin.from("crm_customers").select("first_name, last_name, sex").eq("id", row.customer_id).maybeSingle()
+    : { data: null };
+  const person = customer as { first_name?: string | null; last_name?: string | null; sex?: string | null } | null;
+  const quote = seul
+    ? quoteTotal({ aller, retour, classe: seul.classe, tarif: seul.tarif, voyageurs: row.voyageur_ids.length || 1 })
+    : null;
+  const plan = seul && quote
+    ? planTrainAccord({
+        greeting: trainGreeting({ sex: person?.sex, lastName: person?.last_name, firstName: person?.first_name }),
+        summary: trainChoiceSummary({ aller, retour, classe: seul.classe, tarif: seul.tarif }),
+        total: quote.libelle,
+      })
+    : planTrainCombinations(fares);
+  const preview = {
+    demande_id: id,
+    aller: aller.numero,
+    retour: retour?.numero || null,
+    combinaisons: fares.map((fare) => fare.titre),
+    texte: plan.corps,
+    boutons: plan.boutons || [],
+    envoie: true as const,
+    note: seul
+      ? "Un seul tarif : pas de question. Le récapitulatif part avec le prix. L’aller et le retour choisis restent."
+      : "Le prix est au récapitulatif. L’aller et le retour choisis restent.",
+  };
+  return runIfConfirmed(input, preview, async () => {
+    const { error } = await admin
+      .from("crm_train_requests")
+      .update({
+        status: "propositions",
+        step: seul ? "accord" : "tarif",
+        classe: seul?.classe || null,
+        tarif: seul?.tarif || null,
+        ambigu_compte: 0,
+        besoin_agence: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+    if (error) throw new McpWriteError("Mise à jour impossible.");
+    const { syncServiceCardStatus } = await import("./service-request");
+    await syncServiceCardStatus(admin, id, "propositions");
+    const { data: personRow } = await admin.from("crm_customers").select("phone").eq("id", row.customer_id).maybeSingle();
+    const phone = (personRow as { phone?: string | null } | null)?.phone || "";
+    const { deliverTrainPlan } = await import("./train-send");
+    const sent = phone ? await deliverTrainPlan({ phone, plan }) : { ok: false as const, raison: "Téléphone absent" };
+    return { ecrit: true, envoye: sent.ok, ...(sent.ok ? { sid: sent.sid } : { raison: sent.raison }), ...preview };
   });
 }
 

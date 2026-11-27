@@ -114,7 +114,9 @@ export function TrainRequestTrackView({ suivi }: { suivi: TrainProgress }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm font-semibold text-[var(--admin-navy)]">{suivi.maintenant}</p>
-        {suivi.branche ? (
+        {suivi.relance ? (
+          <span className="rounded-full bg-[#eef2f6] px-2 py-0.5 text-[11px] font-semibold text-[var(--admin-navy)]">{suivi.relance.titre}</span>
+        ) : suivi.branche ? (
           <span className="rounded-full bg-[#f8f3eb] px-2 py-0.5 text-[11px] font-semibold text-[var(--admin-navy)] ring-1 ring-[var(--admin-gold)]">
             {suivi.branche.label}
             {suivi.branche.quand ? <span className="ml-1.5 font-medium text-muted">{suivi.branche.quand}</span> : null}
@@ -160,11 +162,22 @@ export function TrainRequestTrackView({ suivi }: { suivi: TrainProgress }) {
         <aside className="rounded-2xl bg-white px-4 py-3.5 ring-1 ring-[var(--border)]">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold-dark)]">WhatsApp</p>
-            <span className="rounded-full bg-[#eef2f6] px-2 py-0.5 text-[10px] font-semibold text-[var(--admin-navy)]">Accroche</span>
+            <span className="rounded-full bg-[#eef2f6] px-2 py-0.5 text-[10px] font-semibold text-[var(--admin-navy)]">
+              {suivi.relance ? "Choix" : "Accroche"}
+            </span>
           </div>
           <p className="mt-2 text-sm font-semibold text-[var(--admin-navy)]">{suivi.message.titre}</p>
           <p className="mt-0.5 text-xs text-muted">{suivi.message.detail}</p>
           <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--admin-navy)]">{suivi.message.texte}</p>
+          {suivi.relance?.combinaisons.length ? (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {suivi.relance.combinaisons.map((titre) => (
+                <span key={titre} className="rounded-full bg-[var(--admin-navy)] px-2.5 py-1 text-[11px] font-semibold text-white">
+                  {titre}
+                </span>
+              ))}
+            </div>
+          ) : null}
           {suivi.message.quand ? <p className="mt-2 text-xs text-muted">{suivi.message.quand}</p> : null}
         </aside>
       ) : null}

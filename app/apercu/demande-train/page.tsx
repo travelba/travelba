@@ -246,7 +246,12 @@ export default function ApercuDemandeTrainPage() {
             <Suivi
               id="suivi-choix"
               titre="Demande de train · Choix en cours"
-              partial={{ ...TRAJET, status: "propositions", step: "tarif", aller: OFFRES, retour: RETOURS, choixAller: 0 }}
+              partial={{ ...TRAJET, status: "propositions", step: "classe", aller: OFFRES, retour: RETOURS, choixAller: 0, choixRetour: 1 }}
+            />
+            <Suivi
+              id="suivi-combinaisons"
+              titre="Demande de train · Combinaisons renvoyées"
+              partial={{ ...TRAJET, status: "propositions", step: "tarif", aller: OFFRES, retour: RETOURS, choixAller: 0, choixRetour: 1 }}
             />
             <Suivi
               id="suivi-commande"

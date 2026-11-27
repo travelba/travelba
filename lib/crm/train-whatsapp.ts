@@ -1,3 +1,4 @@
+import { availableTrainFares, trainCombinationsBody, type TrainFare } from "./train-fares";
 import { fold } from "./text";
 
 /**
@@ -498,6 +499,16 @@ export function planTrainTarifQuestion(_input?: { greeting?: string; classe?: Tr
   return { modele: "train_tarif", corps: trainTarifBody(), variables: {} };
 }
 
+/** Boutons de session, sans prix. Le montant reste au récapitulatif. */
+export function planTrainCombinations(fares: TrainFare[]): TrainPlan {
+  return {
+    modele: "session",
+    corps: trainCombinationsBody(),
+    boutons: fares.map((fare) => ({ title: fare.titre, id: `train:offre:${fare.classe}:${fare.tarif}` })),
+    ...(fares.length > 3 ? { liste: "Voir les choix" } : {}),
+  };
+}
+
 export function trainChoiceSummary(input: {
   aller: TrainOffer;
   retour?: TrainOffer | null;
@@ -665,6 +676,7 @@ export type TrainParse =
   | { kind: "index"; index: number }
   | { kind: "classe"; classe: TrainClasse }
   | { kind: "tarif"; tarif: TrainTarif }
+  | { kind: "offre"; classe: TrainClasse; tarif: TrainTarif }
   | { kind: "horaires" }
   | { kind: "liste" }
   | { kind: "confirme" }
@@ -702,6 +714,10 @@ export function parseTrainInbound(input: {
       if (payload === "train:classe:2de") return { kind: "classe", classe: "2de" };
       if (payload === "train:classe:1re") return { kind: "classe", classe: "1re" };
       return { kind: "ambigu" };
+    }
+    const offre = payload.match(/^train:offre:(2de|1re):(non_remboursable|flex)$/);
+    if (offre && (input.step === "tarif" || input.step === "accord")) {
+      return { kind: "offre", classe: offre[1] as TrainClasse, tarif: offre[2] as TrainTarif };
     }
     if (input.step === "tarif") {
       if (payload === "train:tarif:non_remboursable") return { kind: "tarif", tarif: "non_remboursable" };
@@ -783,6 +799,24 @@ function sessionPlan(corps: string): TrainPlan {
   return { modele: "session", corps };
 }
 
+function chosenLegs(state: TrainChoiceState) {
+  const aller = state.aller[state.choix_aller ?? -1];
+  const retour = state.choix_retour == null ? null : state.retour[state.choix_retour] || null;
+  if (!aller) return null;
+  return { aller, retour, fares: availableTrainFares(retour ? [aller, retour] : [aller]) };
+}
+
+function combinationsTurn(args: {
+  patch: Partial<TrainChoiceState> & { status?: string; step: TrainStep };
+  fares: TrainFare[];
+}): TrainTurn {
+  return {
+    action: "question",
+    patch: { ...args.patch, status: "propositions", step: "tarif", classe: null, tarif: null },
+    plan: planTrainCombinations(args.fares),
+  };
+}
+
 function askNext(args: {
   state: TrainChoiceState;
   clear: { ambigu_compte: number; besoin_agence: boolean };
@@ -790,11 +824,8 @@ function askNext(args: {
   input: { depart: string; arrivee: string; voyageurs?: number; placement?: string | null; sessionOpen?: boolean };
   patch: Partial<TrainChoiceState>;
 }): TrainTurn {
-  const state = args.state;
-  const patch = { ...args.clear, ...args.patch };
-  if (!state.tarif) {
-    return { action: "question", patch: { ...patch, step: "tarif" }, plan: planTrainTarifQuestion() };
-  }
+  let state = args.state;
+  const patch: Partial<TrainChoiceState> & { status?: string; step: TrainStep } = { ...args.clear, ...args.patch, step: state.step };
   if (state.retour.length && state.choix_retour == null) {
     return {
       action: "question",
@@ -809,32 +840,67 @@ function askNext(args: {
       }),
     };
   }
-  if (!state.classe) {
-    return { action: "question", patch: { ...patch, step: "classe" }, plan: planTrainClasseQuestion() };
+  const legs = chosenLegs(state);
+  if (!legs) return { action: "ignorer" };
+  const priced = (classe: TrainClasse | null, tarif: TrainTarif | null) =>
+    Boolean(classe && tarif && legs.fares.some((fare) => fare.classe === classe && fare.tarif === tarif));
+  if (state.classe && state.tarif && !priced(state.classe, state.tarif)) {
+    if (!legs.fares.length) {
+      return {
+        action: "reprise",
+        patch: { ...patch, status: "prix_a_reconfirmer", step: "accord" },
+        plan: sessionPlan(trainRepriceNoticeBody()),
+      };
+    }
+    return combinationsTurn({ patch, fares: legs.fares });
   }
-  const aller = state.aller[state.choix_aller ?? -1];
-  const retour = state.choix_retour == null ? null : state.retour[state.choix_retour] || null;
-  if (!aller) return { action: "ignorer" };
+  if (!state.classe) {
+    const classes = [...new Set(legs.fares.map((fare) => fare.classe))];
+    if (classes.length === 1) {
+      state = { ...state, classe: classes[0] };
+      patch.classe = classes[0];
+    } else if (classes.length > 1) {
+      return { action: "question", patch: { ...patch, step: "classe", classe: null, tarif: null }, plan: planTrainClasseQuestion() };
+    } else {
+      return {
+        action: "reprise",
+        patch: { ...patch, status: "prix_a_reconfirmer", step: "accord" },
+        plan: sessionPlan(trainRepriceNoticeBody()),
+      };
+    }
+  }
+  if (!state.tarif) {
+    const forClass = legs.fares.filter((fare) => fare.classe === state.classe);
+    if (forClass.length === 1) {
+      state = { ...state, tarif: forClass[0].tarif };
+      patch.tarif = forClass[0].tarif;
+    } else if (forClass.length > 1) {
+      return { action: "question", patch: { ...patch, step: "tarif", tarif: null }, plan: planTrainTarifQuestion({ classe: state.classe || undefined }) };
+    } else {
+      return combinationsTurn({ patch, fares: legs.fares });
+    }
+  }
   const quote = quoteTotal({
-    aller,
-    retour,
-    classe: state.classe,
-    tarif: state.tarif,
+    aller: legs.aller,
+    retour: legs.retour,
+    classe: state.classe as TrainClasse,
+    tarif: state.tarif as TrainTarif,
     voyageurs: args.input.voyageurs || 1,
   });
   if (!quote) {
+    if (legs.fares.length) return combinationsTurn({ patch, fares: legs.fares });
     return {
       action: "reprise",
       patch: { ...patch, status: "prix_a_reconfirmer", step: "accord" },
       plan: sessionPlan(trainRepriceNoticeBody()),
     };
   }
-  const summary = [trainChoiceSummary({ aller, retour, classe: state.classe, tarif: state.tarif }), args.input.placement || ""]
+  const summary = [trainChoiceSummary({ aller: legs.aller, retour: legs.retour, classe: state.classe as TrainClasse, tarif: state.tarif as TrainTarif }), args.input.placement || ""]
     .filter(Boolean)
     .join(" ");
   return {
     action: "question",
-    patch: { ...patch, status: "propositions", step: "accord" },
+    patch: { ...patch, status: "propositions", step: "accord", classe: state.classe, tarif: state.tarif },
     plan: planTrainAccord({ greeting: args.greeting, summary, total: quote.libelle }),
   };
 }
@@ -886,6 +952,30 @@ export function nextTrainTurn(input: {
     buttonPayload: input.buttonPayload,
   });
   if (parsed.kind === "ignorer") return { action: "ignorer" };
+  const greeting = input.greeting;
+  const clear = { ambigu_compte: 0, besoin_agence: false };
+  if (parsed.kind === "offre") {
+    return askNext({
+      state: { ...state, classe: parsed.classe, tarif: parsed.tarif },
+      clear,
+      greeting,
+      input,
+      patch: { classe: parsed.classe, tarif: parsed.tarif },
+    });
+  }
+  const legsNow = chosenLegs(state);
+  if (
+    legsNow &&
+    state.classe &&
+    state.tarif &&
+    !legsNow.fares.some((fare) => fare.classe === state.classe && fare.tarif === state.tarif) &&
+    legsNow.fares.length
+  ) {
+    return combinationsTurn({
+      patch: { ambigu_compte: 0, besoin_agence: false, step: state.step },
+      fares: legsNow.fares,
+    });
+  }
   if (parsed.kind === "ambigu") {
     if (state.ambigu_compte >= 1) {
       return {
@@ -900,8 +990,6 @@ export function nextTrainTurn(input: {
       plan: sessionPlan(trainRepromptBody(trainQuestionPrompt(state.step))),
     };
   }
-  const greeting = input.greeting;
-  const clear = { ambigu_compte: 0, besoin_agence: false };
   const leg: TrainLeg = state.step === "retour" ? "retour" : state.horaire_leg === "retour" ? "retour" : "aller";
   if (parsed.kind === "delai") {
     return { action: "delai", patch: { ...clear, status: "en_attente", step: state.step }, plan: sessionPlan(trainWaitBody()) };
@@ -964,10 +1052,22 @@ export function nextTrainTurn(input: {
   }
   if (parsed.kind === "changer") {
     if (parsed.cible === "classe" && state.choix_aller != null) {
-      return { action: "question", patch: { ...clear, step: "classe", classe: null }, plan: planTrainClasseQuestion() };
+      return askNext({
+        state: { ...state, classe: null, tarif: null },
+        clear,
+        greeting,
+        input,
+        patch: { classe: null, tarif: null },
+      });
     }
     if (parsed.cible === "tarif" && state.classe) {
-      return { action: "question", patch: { ...clear, step: "tarif", tarif: null }, plan: planTrainTarifQuestion({ greeting, classe: state.classe }) };
+      return askNext({
+        state: { ...state, tarif: null },
+        clear,
+        greeting,
+        input,
+        patch: { tarif: null },
+      });
     }
     return {
       action: "question",
