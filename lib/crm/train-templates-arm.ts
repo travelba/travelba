@@ -46,7 +46,17 @@ type Payload = {
   meta?: { next_page_url?: string | null };
   whatsapp?: { status?: string; rejection_reason?: string | null };
   status?: string;
+  types?: {
+    "twilio/quick-reply"?: { actions?: { title?: string }[] };
+    "twilio/list-picker"?: { items?: { item?: string }[] };
+  };
 } | null;
+
+/** Meta refuse { et } dans un titre de réponse rapide. Un modèle déjà créé ainsi est ignoré. */
+export function trainReplyTitlesRejected(payload: Payload) {
+  const actions = payload?.types?.["twilio/quick-reply"]?.actions || [];
+  return actions.some((action) => /[{}]/.test(action.title || ""));
+}
 
 async function twilio(url: string, fetchImpl: typeof fetch, init?: RequestInit) {
   const { sid, token } = account();
@@ -86,6 +96,12 @@ async function findByName(name: string, fetchImpl: typeof fetch) {
   return found?.sid || null;
 }
 
+async function storedContent(sid: string, fetchImpl: typeof fetch) {
+  const { response, payload } = await twilio(`${CONTENT_URL}/${sid}`, fetchImpl);
+  if (!response.ok) return null;
+  return payload;
+}
+
 async function approval(sid: string, fetchImpl: typeof fetch) {
   const { response, payload } = await twilio(`${CONTENT_URL}/${sid}/ApprovalRequests`, fetchImpl);
   if (response.status === 404) return { statut: "unsubmitted" as const, motif: null };
@@ -112,7 +128,11 @@ export async function ensureTrainTemplates(fetchImpl: typeof fetch = fetch) {
     try {
       const fromEnv = productionOnlySecret(process.env[draft.env]);
       let sid = fromEnv || (await findByName(draft.friendlyName, fetchImpl));
-      report.source = fromEnv ? "env" : sid ? "twilio" : null;
+      const stored = sid ? await storedContent(sid, fetchImpl) : null;
+      const list = !draft.approuver;
+      if (sid && stored && list && !stored.types?.["twilio/list-picker"]) sid = "";
+      if (sid && stored && !list && trainReplyTitlesRejected(stored)) sid = "";
+      report.source = fromEnv && sid ? "env" : sid ? "twilio" : null;
       if (!sid) {
         const created = await twilio(CONTENT_URL, fetchImpl, { method: "POST", body: JSON.stringify(draft.create) });
         if (!created.response.ok || !created.payload?.sid) throw new Error(created.payload?.message || `HTTP ${created.response.status}`);
@@ -121,6 +141,12 @@ export async function ensureTrainTemplates(fetchImpl: typeof fetch = fetch) {
         report.source = "twilio";
       }
       report.content_sid = sid;
+      if (!draft.approuver) {
+        report.statut = "unsubmitted";
+        report.soumis = false;
+        modeles.push(report);
+        continue;
+      }
       const before = await approval(sid, fetchImpl);
       if (before.statut === "unsubmitted" || before.statut === "rejected" || before.statut === "inconnu") {
         const submitted = await twilio(`${CONTENT_URL}/${sid}/ApprovalRequests/whatsapp`, fetchImpl, {

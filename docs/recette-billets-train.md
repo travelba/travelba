@@ -5,7 +5,7 @@ Parcours fictif. Aucun envoi réel. Les textes sont ceux du CRM, variables rempl
 Ordre : aller, tarif, retour s’il y en a un, classe, récapitulatif. Tutoiement, prénom seul. On n’achète qu’après ton ok, dit seulement au récap.
 Horaires proposés par défaut : aller à partir de 8h, retour à partir de 16h. Dates déduites de l’hôtel (lundi → mardi : aller lundi, retour mardi), modifiables.
 Paiement : `creer_carte_pliant` sur le dossier, `trois_ds` faux. Le numéro n’est pas dans ces messages.
-Tutoiement, prénom seul. Aller, puis tarif, puis retour s’il y en a un, puis classe. Un bouton par horaire (08h12 → 10h05), plus Autres horaires. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.
+Tutoiement, prénom seul. Aller, puis tarif, puis retour s’il y en a un, puis classe. Dans la fenêtre de 24 h, une liste : chaque ligne est l’heure de départ (08h12), plus Autres horaires. Le train choisi est l’id (train:aller:0). Hors fenêtre, un court modèle « Voir les horaires » ouvre la session, puis la liste part. Un numéro tapé ne choisit pas le train.
 Au moins 3 trains par sens, 9 au plus (10 boutons avec Autres horaires). L’envoi utilise le content SID `TWILIO_CONTENT_TRAIN_HORAIRES_N`, puis les modèles des étapes et `TWILIO_CONTENT_TRAIN_BILLET` le matin.
 
 ## Lancer la demande dans le CRM
@@ -38,7 +38,8 @@ Les fils ci-dessous sont des images. Chaque fichier est dans `docs/recette-bille
 
 | Nom | Rôle |
 | --- | --- |
-| `train_horaires_3` à `train_horaires_9` | Boutons d’horaire, plus Autres horaires |
+| `train_horaires_aller_3` à `_9` et `train_horaires_retour_3` à `_9` | Liste en session, titre = heure de départ, plus Autres horaires |
+| `train_accroche` | Hors fenêtre : bouton Voir les horaires, sans accolade |
 | `train_classe` | Boutons 2de classe / 1re classe |
 | `train_tarif` | Boutons Non remboursable / Flex |
 | `train_accord` | Récapitulatif, Je confirme / Modifier / Je refuse |
@@ -68,7 +69,9 @@ Bonjour Camille,
 Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
 Dis-moi lequel tu préfères ?
 
-Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
+Liste : Voir les horaires
+
+Lignes : 08h12 · 12h18 · 14h12 · Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -76,13 +79,13 @@ Bot SNCF : Rien. Le client choisit encore.
 
 **Client**
 
-08h12 → 10h05
+08h12
 
 **Agence**
 
 Au niveau des conditions tarifaires, on part sur un billet non remboursable ou Flex ?
 
-Boutons : Non remboursable · Flex
+Lignes : Non remboursable · Flex
 
 ### 3. Propositions envoyées
 
@@ -96,7 +99,7 @@ Flex
 
 Ok très bien, on part sur quelle classe ?
 
-Boutons : 2de classe · 1re classe
+Lignes : 2de classe · 1re classe
 
 ### 4. Propositions envoyées
 
@@ -115,7 +118,7 @@ Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12
 Total : 120 €.
 On n’achète qu’après ton ok.
 
-Boutons : Je confirme · Modifier · Je refuse
+Lignes : Je confirme · Modifier · Je refuse
 
 ### 5. Choix reçu
 
@@ -148,7 +151,9 @@ Bonjour Hugo,
 Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
 Dis-moi lequel tu préfères ?
 
-Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
+Liste : Voir les horaires
+
+Lignes : 08h12 · 12h18 · 14h12 · Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -156,13 +161,13 @@ Bot SNCF : Pas d’achat.
 
 **Client**
 
-08h12 → 10h05
+08h12
 
 **Agence**
 
 Au niveau des conditions tarifaires, on part sur un billet non remboursable ou Flex ?
 
-Boutons : Non remboursable · Flex
+Lignes : Non remboursable · Flex
 
 ### 3. Propositions envoyées
 
@@ -177,7 +182,9 @@ Non remboursable
 Et voici les propositions de train pour le retour Lyon Part-Dieu → Paris Gare de Lyon.
 Dis-moi lequel tu préfères ?
 
-Boutons : 16h12 → 18h05 · 18h42 → 20h35 · 20h12 → 22h05 · Autres horaires
+Liste : Voir les horaires
+
+Lignes : 16h12 · 18h42 · 20h12 · Autres horaires
 
 ### 4. Propositions envoyées
 
@@ -185,13 +192,13 @@ Bot SNCF : Pas d’achat.
 
 **Client**
 
-16h12 → 18h05
+16h12
 
 **Agence**
 
 Ok très bien, on part sur quelle classe ?
 
-Boutons : 2de classe · 1re classe
+Lignes : 2de classe · 1re classe
 
 ### 5. Propositions envoyées
 
@@ -210,7 +217,7 @@ Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12
 Total : 87 € par personne, 174 € pour 2 voyageurs.
 On n’achète qu’après ton ok.
 
-Boutons : Je confirme · Modifier · Je refuse
+Lignes : Je confirme · Modifier · Je refuse
 
 ### 6. Choix reçu
 
@@ -243,7 +250,9 @@ Bonjour Claire,
 Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
 Dis-moi lequel tu préfères ?
 
-Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
+Liste : Voir les horaires
+
+Lignes : 08h12 · 12h18 · 14h12 · Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -251,13 +260,13 @@ Bot SNCF : Pas d’achat.
 
 **Client**
 
-08h12 → 10h05
+08h12
 
 **Agence**
 
 Au niveau des conditions tarifaires, on part sur un billet non remboursable ou Flex ?
 
-Boutons : Non remboursable · Flex
+Lignes : Non remboursable · Flex
 
 ### 3. Propositions envoyées
 
@@ -272,7 +281,9 @@ Non remboursable
 Et voici les propositions de train pour le retour Lyon Part-Dieu → Paris Gare de Lyon.
 Dis-moi lequel tu préfères ?
 
-Boutons : 16h12 → 18h05 · 18h42 → 20h35 · 20h12 → 22h05 · Autres horaires
+Liste : Voir les horaires
+
+Lignes : 16h12 · 18h42 · 20h12 · Autres horaires
 
 ### 4. Propositions envoyées
 
@@ -280,13 +291,13 @@ Bot SNCF : Pas d’achat.
 
 **Client**
 
-16h12 → 18h05
+16h12
 
 **Agence**
 
 Ok très bien, on part sur quelle classe ?
 
-Boutons : 2de classe · 1re classe
+Lignes : 2de classe · 1re classe
 
 ### 5. Propositions envoyées
 
@@ -305,7 +316,7 @@ Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12
 Total : 87 € par personne, 348 € pour 4 voyageurs.
 On n’achète qu’après ton ok.
 
-Boutons : Je confirme · Modifier · Je refuse
+Lignes : Je confirme · Modifier · Je refuse
 
 ### 6. Choix reçu
 
@@ -338,7 +349,9 @@ Bonjour Camille,
 Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
 Dis-moi lequel tu préfères ?
 
-Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
+Liste : Voir les horaires
+
+Lignes : 08h12 · 12h18 · 14h12 · Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -387,7 +400,9 @@ Bonjour Camille,
 Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
 Dis-moi lequel tu préfères ?
 
-Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
+Liste : Voir les horaires
+
+Lignes : 08h12 · 12h18 · 14h12 · Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -395,13 +410,13 @@ Bot SNCF : Pas d’achat.
 
 **Client**
 
-08h12 → 10h05
+08h12
 
 **Agence**
 
 Au niveau des conditions tarifaires, on part sur un billet non remboursable ou Flex ?
 
-Boutons : Non remboursable · Flex
+Lignes : Non remboursable · Flex
 
 ### 3. Propositions envoyées
 
@@ -415,7 +430,7 @@ Flex
 
 Ok très bien, on part sur quelle classe ?
 
-Boutons : 2de classe · 1re classe
+Lignes : 2de classe · 1re classe
 
 ### 4. Propositions envoyées
 
@@ -434,7 +449,7 @@ Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12
 Total : 120 €.
 On n’achète qu’après ton ok.
 
-Boutons : Je confirme · Modifier · Je refuse
+Lignes : Je confirme · Modifier · Je refuse
 
 ### 5. Propositions envoyées
 
@@ -448,7 +463,7 @@ Modifier
 
 Tu veux changer quoi ?
 
-Boutons : Le train · La classe · Le tarif
+Lignes : Le train · La classe · Le tarif
 
 ### 6. Propositions envoyées
 
@@ -462,7 +477,7 @@ La classe
 
 Ok très bien, on part sur quelle classe ?
 
-Boutons : 2de classe · 1re classe
+Lignes : 2de classe · 1re classe
 
 ### 7. Propositions envoyées
 
@@ -481,7 +496,7 @@ Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12
 Total : 72 €.
 On n’achète qu’après ton ok.
 
-Boutons : Je confirme · Modifier · Je refuse
+Lignes : Je confirme · Modifier · Je refuse
 
 ## Texte libre ou réponse incompréhensible
 
@@ -502,7 +517,9 @@ Bonjour Camille,
 Voici les propositions de train pour l’aller Paris Gare de Lyon → Lyon Part-Dieu.
 Dis-moi lequel tu préfères ?
 
-Boutons : 08h12 → 10h05 · 12h18 → 14h11 · 14h12 → 16h05 · Autres horaires
+Liste : Voir les horaires
+
+Lignes : 08h12 · 12h18 · 14h12 · Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -549,7 +566,7 @@ Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12
 Total : 120 €.
 On n’achète qu’après ton ok.
 
-Boutons : Je confirme · Modifier · Je refuse
+Lignes : Je confirme · Modifier · Je refuse
 
 ### 2. En attente
 
@@ -588,7 +605,7 @@ Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12
 Total : 135 € (auparavant 120 €).
 On n’achète qu’après ton ok.
 
-Boutons : Je confirme · Modifier · Je refuse
+Lignes : Je confirme · Modifier · Je refuse
 
 ## Train complet ou plus disponible au moment d’acheter
 
@@ -635,7 +652,7 @@ Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12
 Total : 120 €.
 On n’achète qu’après ton ok.
 
-Boutons : Je confirme · Modifier · Je refuse
+Lignes : Je confirme · Modifier · Je refuse
 
 ### 2. Annulé
 
