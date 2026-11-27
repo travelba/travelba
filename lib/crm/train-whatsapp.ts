@@ -241,7 +241,7 @@ export function trainTarifBody() {
 }
 
 export function trainAccordBody() {
-  return ["{{1}}, on part là-dessus.", "", "{{2}}", "", "Total : {{3}}.", "On n’achète qu’après ton ok."].join("\n");
+  return ["Ok {{1}}, on part là-dessus.", "", "Voici le détail : {{2}}", "", "Total : {{3}}.", "On n’achète qu’après ton ok."].join("\n");
 }
 
 export type TrainQuickButton = { type: "QUICK_REPLY"; title: string; id: string };
