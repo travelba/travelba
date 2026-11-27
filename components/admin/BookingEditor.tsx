@@ -4,6 +4,8 @@ import { FormEvent, KeyboardEvent, Suspense, useCallback, useEffect, useMemo, us
 import { DeferredHotels, DeferredLedger, DeferredSlice, type DeferredLedgerValue } from "@/components/admin/BookingDeferred";
 import { SpouseTravelWhatsapp } from "@/components/admin/SpouseTravelWhatsapp";
 import { Mb3mFicheAction } from "@/components/admin/Mb3mFicheAction";
+import { HotelDirectDesk } from "@/components/admin/HotelDirectDesk";
+import type { DirectDeskStay } from "@/lib/crm/hotel-direct-desk";
 import type { DossierPanels } from "@/lib/crm/admin-booking-load";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -396,6 +398,7 @@ export function BookingEditor({
   ownership = null,
   twinNames = [],
   discounts = null,
+  directStays = [],
 }: {
   booking: CrmBooking;
   /** Taux appliqué et taux hérité du compte. Le sélecteur reste à l’agence. */
@@ -517,6 +520,8 @@ export function BookingEditor({
   twinNames?: string[];
   /** null : la table n’est pas là, les colonnes restent. Tableau : les lignes, même vides. */
   discounts?: DiscountLine[] | null;
+  /** Demandes hôtel direct encore ouvertes sur ce dossier. */
+  directStays?: DirectDeskStay[];
   /** E-mails, activité, WhatsApp, formalités, Pliant et compta, après le premier affichage. */
   panels?: DossierPanels | null;
 }) {
@@ -1910,6 +1915,7 @@ export function BookingEditor({
         {flash ? <p className="text-sm text-[var(--admin-navy)]">{flash}</p> : null}
         <IssuesList issues={issues} />
       </header>
+      <HotelDirectDesk stays={directStays} />
       {clientSpace.dialog}
       {passesOpen ? (
         <BoardingPassSend

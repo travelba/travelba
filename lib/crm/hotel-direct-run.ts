@@ -11,6 +11,7 @@ import {
   clientStayLabel,
   directCardCeilingCents,
   failLeBooking,
+  refuseCancelledDirectStay,
   idempotencyKeyFor,
   openLeConfirmed,
   openStay,
@@ -1496,9 +1497,12 @@ export async function actOnDirectStay(input: { customerId: string; stayId: strin
     .eq("customer_id", input.customerId)
     .maybeSingle();
   if (!data) return { ok: false as const, message: "Demande introuvable." };
-  const row = data as { id: string; offer_id: string | null; booking_id: string | null; state: DirectStay };
+  const row = data as { id: string; offer_id: string | null; booking_id: string | null; state: DirectStay; phase?: string | null };
   const now = new Date().toISOString();
   const state = readStay(row.state);
+  const phase = row.phase === "cancelled" || state.phase === "cancelled" ? "cancelled" : state.phase;
+  const refused = refuseCancelledDirectStay(phase, input.event.type);
+  if (refused) return { ok: false as const, message: refused };
   let event = input.event;
   if (event.type === "cancel_client" && state.supplier === "api" && state.leBookingId) {
     const preview = applyStay(state, event, now);

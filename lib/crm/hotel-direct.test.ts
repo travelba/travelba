@@ -9,9 +9,13 @@ import {
   cancelOffer,
   clientStayLabel,
   directCardCeilingCents,
+  directDeskMoneyActions,
+  directStayMoneyOpen,
+  directStayOnDesk,
   LE_PAY_COPY,
   openLeConfirmed,
   openStay,
+  refuseCancelledDirectStay,
   PAY_COPY,
   readHotelReply,
   redactAudit,
@@ -303,4 +307,82 @@ test("le journal retire un numéro, le port membre ne crée rien, le message cli
   }
   assert.doesNotMatch(journey, /hotel-direct-mail/);
   assert.match(readFileSync(join(import.meta.dirname, "../../app/apercu/membres/layout.tsx"), "utf8"), /exampleSessionEnabled/);
+});
+
+test("le bureau ne garde que les phases encore actionnables", () => {
+  const base = opened().stay;
+  assert.equal(directStayOnDesk({ phase: "transmitted", trial: false, state: base }), true);
+  assert.equal(directStayOnDesk({ phase: "confirming", trial: false, state: base }), true);
+  assert.equal(directStayOnDesk({ phase: "refunding", trial: true, state: base }), true);
+  assert.equal(directStayOnDesk({ phase: "cancelled", trial: false, state: base }), false);
+  assert.equal(directStayOnDesk({ phase: "placing", trial: false, state: base }), false);
+  assert.equal(directStayOnDesk({ phase: "transmitted", trial: true, state: base }), true);
+  assert.equal(
+    directStayOnDesk({
+      phase: "confirmed",
+      trial: true,
+      state: { stripe: "authorized", hotelPay: "link_ready", clientRefunded: false },
+    }),
+    false
+  );
+  assert.equal(
+    directStayOnDesk({
+      phase: "confirmed",
+      trial: false,
+      state: { stripe: "captured", hotelPay: "paid", clientRefunded: false },
+    }),
+    false
+  );
+  assert.equal(
+    directStayOnDesk({
+      phase: "confirmed",
+      trial: false,
+      state: { stripe: "captured", hotelPay: "link_ready", clientRefunded: false },
+    }),
+    true
+  );
+  assert.equal(directStayMoneyOpen({ stripe: "authorized", hotelPay: "none", clientRefunded: false }), true);
+  assert.equal(directStayMoneyOpen({ stripe: "captured", hotelPay: "card_sent", clientRefunded: false }), true);
+  assert.equal(directStayMoneyOpen({ stripe: "captured", hotelPay: "expired", clientRefunded: false }), true);
+  assert.equal(directStayMoneyOpen({ stripe: "captured", hotelPay: "refund_requested", clientRefunded: false }), true);
+  assert.equal(directStayMoneyOpen({ stripe: "captured", hotelPay: "partial", clientRefunded: false }), true);
+  assert.equal(directStayMoneyOpen({ stripe: "refunded", hotelPay: "refunded", clientRefunded: false }), true);
+  assert.equal(directStayMoneyOpen({ stripe: "refunded", hotelPay: "refunded", clientRefunded: true }), false);
+  assert.equal(directStayMoneyOpen({ stripe: "captured", hotelPay: "paid", clientRefunded: true }), false);
+  assert.equal(directDeskMoneyActions("cancelled"), false);
+  assert.equal(directDeskMoneyActions("confirmed"), true);
+  assert.equal(directDeskMoneyActions("transmitted"), true);
+});
+
+test("lien payé, annuler et rembourser refusent un séjour annulé sans changer l’état", () => {
+  const cancelled = {
+    ...opened().stay,
+    phase: "cancelled" as const,
+    hotelPay: "paid" as const,
+    pliant: "charged" as const,
+    stripe: "captured" as const,
+  };
+  const before = JSON.stringify(cancelled);
+  for (const type of ["mark_paid", "cancel_agency", "refund_now"] as const) {
+    assert.equal(refuseCancelledDirectStay("cancelled", type), "Ce séjour est annulé. Cette action n’est plus possible.");
+    const step = applyStay(cancelled, { type }, NOW);
+    assert.equal("error" in step, true);
+    if ("error" in step) assert.equal(step.error, "Ce séjour est annulé. Cette action n’est plus possible.");
+  }
+  assert.equal(JSON.stringify(cancelled), before);
+  assert.equal(refuseCancelledDirectStay("confirming", "mark_paid"), null);
+  const paid = applyStay(opened().stay, { type: "mark_paid" }, NOW);
+  assert.equal("error" in paid, false);
+  if (!("error" in paid)) {
+    assert.equal(paid.stay.hotelPay, "paid");
+    assert.equal(paid.stay.phase, "confirming");
+  }
+  const clock = applyStay(cancelled, { type: "clock" }, NOW);
+  assert.equal("error" in clock, false);
+  if (!("error" in clock)) assert.equal(clock.stay.phase, "cancelled");
+  const run = readFileSync(join(import.meta.dirname, "hotel-direct-run.ts"), "utf8");
+  const body = run.slice(run.indexOf("export async function actOnDirectStay"));
+  const guard = body.indexOf("refuseCancelledDirectStay");
+  const write = body.indexOf(".update({ state: step.stay");
+  assert.ok(guard >= 0 && write > guard);
 });

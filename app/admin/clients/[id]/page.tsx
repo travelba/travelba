@@ -9,8 +9,6 @@ import { CustomerEditor } from "@/components/admin/CustomerEditor";
 import { openPersonalDossiers } from "@/lib/crm/company-dossiers";
 import { TwinAccountPanel } from "@/components/admin/TwinAccountPanel";
 import { HotelAccessCard } from "@/components/admin/HotelAccessCard";
-import { HotelDirectDesk, type DirectDeskStay } from "@/components/admin/HotelDirectDesk";
-import { CLIENT_PHASE_LABEL, type ClientPhase } from "@/lib/crm/hotel-direct";
 import { GroupedInvoicePanel } from "@/components/admin/GroupedInvoicePanel";
 import { Mb3mFicheAction } from "@/components/admin/Mb3mFicheAction";
 import {
@@ -99,7 +97,6 @@ export default async function AdminClientDetailPage({ params }: Props) {
   console.time("[fiche] vague 1");
   const [
     hotelRequest,
-    hotelStays,
     mb3mParty,
     { data: companions },
     { data: documents },
@@ -118,7 +115,6 @@ export default async function AdminClientDetailPage({ params }: Props) {
     revealPassports,
   ] = await Promise.all([
     readPendingAccess(id).catch(() => null),
-    loadDirectStays(id),
     createServiceClient()
       .from("crm_mb3m_parties")
       .select("id, billing_company_id")
@@ -360,7 +356,6 @@ export default async function AdminClientDetailPage({ params }: Props) {
         pendingAt={hotelRequest?.created_at || null}
         admin={staff.role === "admin"}
       />
-      <HotelDirectDesk customerId={c.id} stays={hotelStays} />
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-5">
@@ -628,31 +623,6 @@ async function TwinAccounts({ customerId, customerName }: { customerId: string; 
       twins={twins}
     />
   );
-}
-
-async function loadDirectStays(customerId: string): Promise<DirectDeskStay[]> {
-  try {
-    const { data } = await createServiceClient()
-      .from("crm_hotel_direct_stays")
-      .select("id, phase, pay_method, trial, state")
-      .eq("customer_id", customerId)
-      .order("created_at", { ascending: false })
-      .limit(8);
-    return ((data || []) as { id: string; phase: string; pay_method: string; trial: boolean; state: { confirmation?: string | null; hotelName?: string } }[])
-      .filter((row) => row.phase in CLIENT_PHASE_LABEL)
-      .map(
-        (row): DirectDeskStay => ({
-          id: row.id,
-          phase: row.phase as ClientPhase,
-          payMethod: row.pay_method,
-          trial: row.trial !== false,
-          hotel: row.state?.hotelName || "",
-          confirmation: row.state?.confirmation || null,
-        })
-      );
-  } catch {
-    return [];
-  }
 }
 
 async function TravelClubSlot({
