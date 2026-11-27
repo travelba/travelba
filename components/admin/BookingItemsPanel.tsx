@@ -1019,6 +1019,19 @@ export function BookingItemsPanel({
           return (
           <ReorderStep key={item.id} item={item} locked={locked} onDragEnd={finishCardDrag}>
             {(handle) => (
+            <>
+            {item.kind === "hotel" ? (
+              <ServiceInsert
+                bookingId={bookingId}
+                homeCity={homeCity}
+                hotel={item}
+                side="avant"
+                travelers={travelers.map((traveler) => ({
+                  id: traveler.id,
+                  name: [traveler.first_name, traveler.last_name].filter(Boolean).join(" ") || "Voyageur",
+                }))}
+              />
+            ) : null}
             <div
               id={bookingStepAnchor(item.id)}
               className={`relative scroll-mt-40 rounded-2xl border px-3 py-3 lg:scroll-mt-28 ${
@@ -1031,16 +1044,6 @@ export function BookingItemsPanel({
                       : "border-[var(--border)] bg-white"
               }`}
             >
-            <ServiceInsert
-              bookingId={bookingId}
-              homeCity={homeCity}
-              previous={position > 0 ? cardRows[position - 1] : null}
-              next={item}
-              travelers={travelers.map((traveler) => ({
-                id: traveler.id,
-                name: [traveler.first_name, traveler.last_name].filter(Boolean).join(" ") || "Voyageur",
-              }))}
-            />
             {concealed ? (
               <div className="mb-2 flex justify-end">
                 <HiddenCardBadge />
@@ -1313,23 +1316,24 @@ export function BookingItemsPanel({
             )}
             </div>
             </div>
+            {item.kind === "hotel" ? (
+              <ServiceInsert
+                bookingId={bookingId}
+                homeCity={homeCity}
+                hotel={item}
+                side="apres"
+                travelers={travelers.map((traveler) => ({
+                  id: traveler.id,
+                  name: [traveler.first_name, traveler.last_name].filter(Boolean).join(" ") || "Voyageur",
+                }))}
+              />
+            ) : null}
+            </>
             )}
           </ReorderStep>
           );
         })}
       </Reorder.Group>
-      {cardRows.length ? (
-        <ServiceInsert
-          bookingId={bookingId}
-          homeCity={homeCity}
-          previous={cardRows[cardRows.length - 1]}
-          next={null}
-          travelers={travelers.map((traveler) => ({
-            id: traveler.id,
-            name: [traveler.first_name, traveler.last_name].filter(Boolean).join(" ") || "Voyageur",
-          }))}
-        />
-      ) : null}
       <ProposedDuplicates
         duplicates={groupAttachedEmails(attachedEmails).duplicates}
         busy={busy}

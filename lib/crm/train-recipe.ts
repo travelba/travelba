@@ -16,7 +16,6 @@ export type RecipeBubble = {
   from: "agence" | "client";
   text: string;
   buttons?: string[];
-  cards?: { title: string; body: string; button: string }[];
 };
 
 export type RecipeStep = {
@@ -111,6 +110,7 @@ function state(partial: Partial<TrainChoiceState> & { aller?: TrainOffer[]; reto
 }
 
 function buttonsOf(plan: TrainPlan) {
+  if (plan.boutons?.length) return plan.boutons.map((button) => button.title);
   if (plan.modele === "train_classe") return ["2de classe", "1re classe"];
   if (plan.modele === "train_tarif") return ["Non remboursable", "Flex"];
   if (plan.modele === "train_accord") return ["Je confirme", "Modifier", "Je refuse"];
@@ -118,13 +118,8 @@ function buttonsOf(plan: TrainPlan) {
   return undefined;
 }
 
-function cardsOf(plan: TrainPlan) {
-  const cards = plan.carrousel?.types["twilio/carousel"].cards;
-  return cards?.map((card) => ({ title: card.title, body: card.body, button: card.actions[0]?.title || "Choisir ce train" }));
-}
-
 function agency(plan: TrainPlan): RecipeBubble {
-  return { from: "agence", text: plan.corps, ...(buttonsOf(plan) ? { buttons: buttonsOf(plan) } : {}), ...(cardsOf(plan) ? { cards: cardsOf(plan) } : {}) };
+  return { from: "agence", text: plan.corps, ...(buttonsOf(plan) ? { buttons: buttonsOf(plan) } : {}) };
 }
 
 function client(text: string): RecipeBubble {
@@ -457,12 +452,14 @@ export function trainRecipeMarkdown(recipes = trainRecipes()) {
     "Ordre : trains (aller, puis retour), classe, tarif, récapitulatif avec le prix, accord. Rien n’est acheté avant « Je confirme ».",
     "Horaires proposés par défaut : aller à partir de 8h, retour à partir de 16h. Dates déduites de l’hôtel (lundi → mardi : aller lundi, retour mardi), modifiables.",
     "Paiement : `creer_carte_pliant` sur le dossier, `trois_ds` faux. Le numéro n’est pas dans ces messages.",
-    "Le train se choisit en faisant défiler un carrousel : une carte par train (heure de départ → arrivée, gares, date, durée, numéro, bouton Choisir ce train). La dernière carte est Autres horaires. L’aller part d’abord, le retour ensuite. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.",
-    "Au moins 3 trains par sens, 9 au plus (10 cartes avec Autres horaires). L’envoi utilise le content SID `TWILIO_CONTENT_TRAIN_CARROUSEL_N`, puis les modèles des étapes et `TWILIO_CONTENT_TRAIN_BILLET` le matin.",
+    "Le train se choisit avec des boutons, comme la classe et le tarif. Un bouton par horaire (08h12 → 10h05), plus Autres horaires. Les gares, la durée et le numéro sont dans le texte. L’aller part d’abord, le retour ensuite. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.",
+    "Au moins 3 trains par sens, 9 au plus (10 boutons avec Autres horaires). L’envoi utilise le content SID `TWILIO_CONTENT_TRAIN_HORAIRES_N`, puis les modèles des étapes et `TWILIO_CONTENT_TRAIN_BILLET` le matin.",
     "",
     "## Lancer la demande dans le CRM",
     "",
-    "Même bouton que la fiche dossier, et un point d’insertion entre les cartes (avant ou après, comme un transfert). Aperçu local, données fictives, sans écriture en base : `/apercu/demande-train`.",
+    "Même bouton que la fiche dossier. Avant et après chaque hôtel, une carte en pointillés : Ajouter une demande de train. Aperçu local, données fictives, sans écriture en base : `/apercu/demande-train`.",
+    "",
+    "![Carte d’ajout avant et après l’hôtel](recette-billets-train/crm-ajout.png)",
     "",
     "![Demande avant l’hôtel](recette-billets-train/crm-avant.png)",
     "",
@@ -484,7 +481,7 @@ export function trainRecipeMarkdown(recipes = trainRecipes()) {
     "",
     "| Nom | Rôle |",
     "| --- | --- |",
-    "| `train_carrousel_3` à `train_carrousel_9` | Carrousel, une carte par train, plus Autres horaires |",
+    "| `train_horaires_3` à `train_horaires_9` | Boutons d’horaire, plus Autres horaires |",
     "| `train_classe` | Boutons 2de classe / 1re classe |",
     "| `train_tarif` | Boutons Non remboursable / Flex |",
     "| `train_accord` | Récapitulatif, Je confirme / Modifier / Je refuse |",
@@ -504,11 +501,6 @@ export function trainRecipeMarkdown(recipes = trainRecipes()) {
       for (const bubble of row.bubbles) {
         lines.push(`**${bubble.from === "agence" ? "Agence" : "Client"}**`, "", bubble.text, "");
         if (bubble.buttons?.length) lines.push(`Boutons : ${bubble.buttons.join(" · ")}`, "");
-        if (bubble.cards?.length) {
-          lines.push("Carrousel :", "");
-          for (const card of bubble.cards) lines.push(`- **${card.title}** — ${card.body} — bouton ${card.button}`);
-          lines.push("");
-        }
       }
     });
   }

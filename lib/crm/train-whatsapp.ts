@@ -1,4 +1,3 @@
-import { siteConfig } from "../site";
 import { fold } from "./text";
 import { restaurantGreeting } from "./restaurant-whatsapp";
 
@@ -13,33 +12,30 @@ import { restaurantGreeting } from "./restaurant-whatsapp";
 
 export const TRAIN_SIGNATURE = "La Conciergerie Travel BA";
 
-export const TRAIN_CARROUSEL_ENV = "TWILIO_CONTENT_TRAIN_CARROUSEL";
+export const TRAIN_HORAIRES_ENV = "TWILIO_CONTENT_TRAIN_HORAIRES";
 export const TRAIN_CLASSE_ENV = "TWILIO_CONTENT_TRAIN_CLASSE";
 export const TRAIN_TARIF_ENV = "TWILIO_CONTENT_TRAIN_TARIF";
 export const TRAIN_ACCORD_ENV = "TWILIO_CONTENT_TRAIN_ACCORD";
 export const TRAIN_BILLET_ENV = "TWILIO_CONTENT_TRAIN_BILLET";
 
-export const TRAIN_CARROUSEL_NAME = "train_carrousel";
+export const TRAIN_HORAIRES_NAME = "train_horaires";
 export const TRAIN_CLASSE_NAME = "train_classe";
 export const TRAIN_TARIF_NAME = "train_tarif";
 export const TRAIN_ACCORD_NAME = "train_accord";
 export const TRAIN_MODIFIER_NAME = "train_modifier";
 
-/** Image d’en-tête exigée par twilio/carousel. Même visuel sur chaque carte. */
-export const TRAIN_CARD_MEDIA = `${siteConfig.url}/whatsapp/train-carte.jpg`;
-export const TRAIN_CHOOSE_TITLE = "Choisir ce train";
-
-/** Au moins 3 trains. Le carrousel WhatsApp a 10 cartes : 9 trains et Autres horaires. */
+/** Bouton quick reply : 20 caractères. Dix boutons approuvés, dont Autres horaires. */
+export const TRAIN_BUTTON_TITLE_MAX = 20;
+export const TRAIN_QUICK_REPLY_MAX = 10;
 export const TRAIN_LIST_MIN = 3;
-export const TRAIN_LIST_TRAINS_MAX = 9;
-export const TRAIN_CAROUSEL_CARDS_MAX = 10;
+export const TRAIN_LIST_TRAINS_MAX = TRAIN_QUICK_REPLY_MAX - 1;
 
-export function trainCarouselTemplateName(count: number) {
-  return `${TRAIN_CARROUSEL_NAME}_${count}`;
+export function trainHorairesTemplateName(count: number) {
+  return `${TRAIN_HORAIRES_NAME}_${count}`;
 }
 
-export function trainCarouselTemplateEnv(count: number) {
-  return `${TRAIN_CARROUSEL_ENV}_${count}`;
+export function trainHorairesTemplateEnv(count: number) {
+  return `${TRAIN_HORAIRES_ENV}_${count}`;
 }
 
 export const TRAIN_CLASSE_BUTTONS = [
@@ -205,11 +201,15 @@ function plain(value: string, max: number) {
   return clip(value, max);
 }
 
-export function trainCarouselBody() {
+export function trainHorairesBody() {
   return [
     "Bonjour {{1}},",
     "",
-    "Pour {{2}}, le {{3}}, faites défiler les trains et choisissez-en un. La dernière carte propose d’autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.",
+    "Pour {{2}}, le {{3}} :",
+    "",
+    "{{4}}",
+    "",
+    "Choisissez un horaire, ou Autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.",
     "",
     TRAIN_SIGNATURE,
   ].join("\n");
@@ -249,79 +249,64 @@ export function trainAccordBody() {
   ].join("\n");
 }
 
-export type TrainCarouselCard = {
-  title: string;
-  body: string;
-  media: string;
-  actions: { type: "QUICK_REPLY"; title: string; id: string }[];
-};
+export type TrainQuickButton = { type: "QUICK_REPLY"; title: string; id: string };
 
-/** Titre et corps ensemble : 160 caractères, limite Twilio du carrousel. */
-export function trainCardCopy(offer: TrainOffer) {
+export function trainTimeButton(offer: TrainOffer) {
   const depart = trainClock(offer.heure_depart) || offer.heure_depart;
   const arrivee = trainClock(offer.heure_arrivee) || offer.heure_arrivee;
-  const title = clip(`${depart} → ${arrivee}`, 40) || "Train";
+  return clip(`${depart} → ${arrivee}`, TRAIN_BUTTON_TITLE_MAX) || "Horaire";
+}
+
+export function trainDetailLine(offer: TrainOffer) {
   const duree = (offer.duree || "").trim() || trainDuration(offer.heure_depart, offer.heure_arrivee) || "";
-  const when = formatTrainDateFr(offer.date);
-  const body = clip(
-    [trainRouteLabel(offer.depart_gare, offer.arrivee_gare), when, duree, offer.numero ? `train ${offer.numero}` : ""].filter(Boolean).join(", "),
-    Math.max(20, 160 - title.length - 1)
-  );
-  return { title, body: body || "Horaire proposé" };
+  return [trainTimeButton(offer), trainRouteLabel(offer.depart_gare, offer.arrivee_gare), duree, offer.numero ? `train ${offer.numero}` : ""]
+    .filter(Boolean)
+    .join(", ");
 }
 
-export function trainChooseCard(offer: TrainOffer, leg: TrainLeg, index: number): TrainCarouselCard {
-  const copy = trainCardCopy(offer);
-  return {
-    ...copy,
-    media: TRAIN_CARD_MEDIA,
-    actions: [{ type: "QUICK_REPLY", title: TRAIN_CHOOSE_TITLE, id: `train:${leg}:${index}` }],
-  };
+export function trainHorairesDetails(offers: TrainOffer[]) {
+  return offers.slice(0, TRAIN_LIST_TRAINS_MAX).map((offer) => trainDetailLine(offer)).join("\n");
 }
 
-export function trainHoursCard(): TrainCarouselCard {
-  return {
-    title: "Autres horaires",
-    body: "Un autre créneau, plus tôt ou plus tard.",
-    media: TRAIN_CARD_MEDIA,
-    actions: [{ type: "QUICK_REPLY", title: "Autres horaires", id: TRAIN_HOURS_ID }],
-  };
+export function trainHorairesButtons(offers: TrainOffer[], leg: TrainLeg): TrainQuickButton[] {
+  const buttons = offers.slice(0, TRAIN_LIST_TRAINS_MAX).map((offer, index) => ({
+    type: "QUICK_REPLY" as const,
+    title: trainTimeButton(offer),
+    id: `train:${leg}:${index}`,
+  }));
+  buttons.push({ type: "QUICK_REPLY", title: "Autres horaires", id: TRAIN_HOURS_ID });
+  return buttons;
 }
 
-export function trainCarouselVariables(input: {
+export function trainHorairesVariables(input: {
   greeting: string;
   route: string;
   dateLabel: string;
   leg: TrainLeg;
   offers: TrainOffer[];
 }) {
+  const offers = input.offers.slice(0, TRAIN_LIST_TRAINS_MAX);
   const variables: Record<string, string> = {
     "1": plain(input.greeting, 80) || "cher client",
     "2": plain(input.route, 80) || "votre trajet",
     "3": plain(input.dateLabel, 40) || "ce jour",
+    "4": trainHorairesDetails(offers).replace(/\s*\n\s*/g, "\n").slice(0, 900) || "Horaires proposés",
   };
-  input.offers.slice(0, TRAIN_LIST_TRAINS_MAX).forEach((offer, index) => {
-    const card = trainChooseCard(offer, input.leg, index);
-    const base = 4 + index * 3;
-    variables[String(base)] = card.title;
-    variables[String(base + 1)] = card.body;
-    variables[String(base + 2)] = card.actions[0].id;
+  offers.forEach((offer, index) => {
+    const base = 5 + index * 2;
+    variables[String(base)] = trainTimeButton(offer);
+    variables[String(base + 1)] = `train:${input.leg}:${index}`;
   });
   return variables;
 }
 
-function carouselTemplateCards(count: number): TrainCarouselCard[] {
-  const cards = Array.from({ length: count }, (_, index) => {
-    const base = 4 + index * 3;
-    return {
-      title: `{{${base}}}`,
-      body: `{{${base + 1}}}`,
-      media: TRAIN_CARD_MEDIA,
-      actions: [{ type: "QUICK_REPLY" as const, title: TRAIN_CHOOSE_TITLE, id: `{{${base + 2}}}` }],
-    };
+function horairesTemplateButtons(count: number): TrainQuickButton[] {
+  const buttons = Array.from({ length: count }, (_, index) => {
+    const base = 5 + index * 2;
+    return { type: "QUICK_REPLY" as const, title: `{{${base}}}`, id: `{{${base + 1}}}` };
   });
-  cards.push(trainHoursCard());
-  return cards;
+  buttons.push({ type: "QUICK_REPLY", title: "Autres horaires", id: TRAIN_HOURS_ID });
+  return buttons;
 }
 
 function exampleOffers(count: number): TrainOffer[] {
@@ -337,13 +322,13 @@ function exampleOffers(count: number): TrainOffer[] {
   }));
 }
 
-/** Carrousel pour un nombre de trains fixé (3 à 9), plus la carte Autres horaires. */
-export function trainCarouselContentCreateBody(count = TRAIN_LIST_MIN) {
+/** Boutons pour un nombre de trains fixé (3 à 9), plus Autres horaires. */
+export function trainHorairesContentCreateBody(count = TRAIN_LIST_MIN) {
   const trains = Math.min(TRAIN_LIST_TRAINS_MAX, Math.max(TRAIN_LIST_MIN, count));
   return {
-    friendly_name: trainCarouselTemplateName(trains),
+    friendly_name: trainHorairesTemplateName(trains),
     language: "fr",
-    variables: trainCarouselVariables({
+    variables: trainHorairesVariables({
       greeting: "Monsieur Dupont",
       route: "Paris Gare de Lyon → Lyon Part-Dieu",
       dateLabel: "mardi 2 juin",
@@ -351,25 +336,9 @@ export function trainCarouselContentCreateBody(count = TRAIN_LIST_MIN) {
       offers: exampleOffers(trains),
     }),
     types: {
-      "twilio/carousel": {
-        body: trainCarouselBody(),
-        cards: carouselTemplateCards(trains),
-      },
-    },
-  };
-}
-
-/** Carrousel affiché : une carte par train, puis Autres horaires. */
-export function trainSessionCarouselContent(input: { body: string; leg: TrainLeg; offers: TrainOffer[] }) {
-  return {
-    language: "fr",
-    types: {
-      "twilio/carousel": {
-        body: input.body,
-        cards: [
-          ...input.offers.slice(0, TRAIN_LIST_TRAINS_MAX).map((offer, index) => trainChooseCard(offer, input.leg, index)),
-          trainHoursCard(),
-        ],
+      "twilio/quick-reply": {
+        body: trainHorairesBody(),
+        actions: horairesTemplateButtons(trains),
       },
     },
   };
@@ -422,22 +391,22 @@ export function trainAccordContentCreateBody() {
 }
 
 export function trainTemplateSubmission() {
-  const carousel = trainCarouselContentCreateBody();
+  const horaires = trainHorairesContentCreateBody();
   const classe = trainClasseContentCreateBody();
   const tarif = trainTarifContentCreateBody();
   return [
-    "Modèles Utility, français, sans emoji. Le choix du train se fait en cliquant une carte. Le CRM n’achète pas les billets.",
+    "Modèles Utility, français, sans emoji. Le choix du train se fait avec des boutons, comme la classe et le tarif. Le CRM n’achète pas les billets.",
     "",
-    "Ordre : carrousel aller, carrousel retour s’il y en a un, classe, tarif, accord.",
-    "Carrousel train_carrousel_3 à train_carrousel_9 : une carte par train (heure, gares, date, durée, numéro, bouton Choisir ce train), puis la carte Autres horaires. Un numéro tapé ne choisit pas le train. Image d’en-tête : /whatsapp/train-carte.jpg.",
+    "Ordre : horaires aller, horaires retour s’il y en a un, classe, tarif, accord.",
+    "Boutons train_horaires_3 à train_horaires_9 : un bouton par train (heure de départ → arrivée, 20 caractères), plus Autres horaires. Les gares, la durée et le numéro sont dans le texte. Un numéro tapé ne choisit pas le train.",
     "",
-    `1. ${trainCarouselTemplateName(TRAIN_LIST_MIN)} à ${trainCarouselTemplateName(TRAIN_LIST_TRAINS_MAX)}`,
-    `Variables : ${trainCarouselTemplateEnv(TRAIN_LIST_MIN)} à ${trainCarouselTemplateEnv(TRAIN_LIST_TRAINS_MAX)}`,
-    "Type : twilio/carousel",
-    "Pour N trains : {{4}} titre, {{5}} corps, {{6}} identifiant, puis le même triplet. Dernière carte fixe : Autres horaires, id train:horaires.",
-    "L’identifiant d’un train est train:aller:0 ou train:retour:0. Le média est fixe, le même sur chaque carte.",
+    `1. ${trainHorairesTemplateName(TRAIN_LIST_MIN)} à ${trainHorairesTemplateName(TRAIN_LIST_TRAINS_MAX)}`,
+    `Variables : ${trainHorairesTemplateEnv(TRAIN_LIST_MIN)} à ${trainHorairesTemplateEnv(TRAIN_LIST_TRAINS_MAX)}`,
+    "Type : twilio/quick-reply",
+    "{{4}} le détail des trains. Puis {{5}} libellé, {{6}} identifiant, et le même couple. Dernier bouton fixe : Autres horaires, id train:horaires.",
+    "L’identifiant d’un train est train:aller:0 ou train:retour:0.",
     "",
-    carousel.types["twilio/carousel"].body,
+    horaires.types["twilio/quick-reply"].body,
     "",
     `2. ${TRAIN_CLASSE_NAME}`,
     `Variable : ${TRAIN_CLASSE_ENV}`,
@@ -458,7 +427,7 @@ export function trainTemplateSubmission() {
 
 export type TrainPlan = {
   modele:
-    | "train_carrousel"
+    | "train_horaires"
     | "train_classe"
     | "train_tarif"
     | "train_accord"
@@ -471,7 +440,7 @@ export type TrainPlan = {
     | "session";
   corps: string;
   variables?: Record<string, string>;
-  carrousel?: ReturnType<typeof trainSessionCarouselContent>;
+  boutons?: { title: string; id: string }[];
 };
 
 function fill(template: string, variables: Record<string, string>) {
@@ -491,13 +460,13 @@ export function planTrainLegQuestion(input: {
   const route = plain(input.route, 80) || "votre trajet";
   const dateLabel = formatTrainDateFr(input.date) || "ce jour";
   const offers = input.offers.slice(0, TRAIN_LIST_TRAINS_MAX);
-  const carouselBody = fill(trainCarouselBody(), { "1": greeting, "2": route, "3": dateLabel });
+  const variables = trainHorairesVariables({ greeting, route, dateLabel, leg: input.leg, offers });
   const inRange = offers.length >= TRAIN_LIST_MIN && offers.length <= TRAIN_LIST_TRAINS_MAX;
   return {
-    modele: "train_carrousel" as const,
-    corps: carouselBody,
-    ...(inRange ? { variables: trainCarouselVariables({ greeting, route, dateLabel, leg: input.leg, offers }) } : {}),
-    carrousel: trainSessionCarouselContent({ body: carouselBody, leg: input.leg, offers }),
+    modele: "train_horaires" as const,
+    corps: fill(trainHorairesBody(), variables),
+    ...(inRange ? { variables } : {}),
+    boutons: trainHorairesButtons(offers, input.leg),
   };
 }
 
@@ -649,7 +618,7 @@ export function quoteTotal(input: {
 export function trainQuestionPrompt(step: TrainStep) {
   if (step === "aller" || step === "retour") {
     const which = step === "retour" ? "du retour" : "de l’aller";
-    return `Choisissez un train ${which} sur une carte, ou la carte Autres horaires.`;
+    return `Choisissez un horaire ${which}, ou Autres horaires.`;
   }
   if (step === "horaires") return "Indiquez l’heure souhaitée, par exemple avant 7h.";
   if (step === "classe") return "Répondez 2de classe ou 1re classe.";
@@ -1126,7 +1095,7 @@ function parsePrix(raw: unknown): { prix?: TrainOffer["prix"] } | { error: strin
 export function parseTrainOffers(raw: unknown, label: string, bounds: { min: number; max: number }) {
   if (!Array.isArray(raw)) return { error: `${label} : liste attendue.` };
   if (raw.length < bounds.min || raw.length > bounds.max) {
-    return { error: `${label} : au moins ${bounds.min} trains, ${bounds.max} au plus. Le carrousel WhatsApp a 10 cartes : les trains, puis Autres horaires.` };
+    return { error: `${label} : au moins ${bounds.min} trains, ${bounds.max} au plus. Les boutons WhatsApp en ont 10 : les trains, puis Autres horaires.` };
   }
   const offers: TrainOffer[] = [];
   for (let index = 0; index < raw.length; index += 1) {

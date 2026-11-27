@@ -14,9 +14,9 @@ import {
   TRAIN_TARIF_ENV,
   TRAIN_TARIF_NAME,
   trainAccordContentCreateBody,
-  trainCarouselContentCreateBody,
-  trainCarouselTemplateEnv,
-  trainCarouselTemplateName,
+  trainHorairesContentCreateBody,
+  trainHorairesTemplateEnv,
+  trainHorairesTemplateName,
   trainClasseContentCreateBody,
   trainTarifContentCreateBody,
 } from "./train-whatsapp";
@@ -67,7 +67,7 @@ export function trainBilletContentCreateBody() {
 export function trainContentDrafts() {
   const lists = Array.from({ length: TRAIN_LIST_TRAINS_MAX - TRAIN_LIST_MIN + 1 }, (_, index) => {
     const count = TRAIN_LIST_MIN + index;
-    return { env: trainCarouselTemplateEnv(count), friendlyName: trainCarouselTemplateName(count), create: trainCarouselContentCreateBody(count) };
+    return { env: trainHorairesTemplateEnv(count), friendlyName: trainHorairesTemplateName(count), create: trainHorairesContentCreateBody(count) };
   });
   return [
     ...lists,

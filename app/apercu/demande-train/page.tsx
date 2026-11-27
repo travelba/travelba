@@ -109,32 +109,21 @@ export default function ApercuDemandeTrainPage() {
             <Desk id="suivi">
               <TrainRequestButton bookingId="apercu" travelers={TRAVELERS} defaults={KNOWN} initial={CREATED} preview />
             </Desk>
+            <article id="ajout" className="space-y-3 rounded-3xl border border-[var(--border)] bg-[#faf9f6] p-6">
+              <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>
+              <ServiceInsert bookingId="apercu" travelers={TRAVELERS} homeCity="Paris" hotel={HOTEL} side="avant" preview />
+              <Step title="Hôtel Lyon" meta="1 juin 2026 → 2 juin 2026 · Lyon" />
+              <ServiceInsert bookingId="apercu" travelers={TRAVELERS} homeCity="Paris" hotel={HOTEL} side="apres" preview />
+            </article>
             <article id="avant" className="space-y-3 rounded-3xl border border-[var(--border)] bg-[#faf9f6] p-6">
               <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>
-              <Step title="Vol Paris → Lyon" meta="1 juin 2026 · 08h12" />
-              <ServiceInsert
-                bookingId="apercu"
-                travelers={TRAVELERS}
-                homeCity="Paris"
-                previous={null}
-                next={HOTEL}
-                preview
-                startChoice={{ side: "avant", item: HOTEL }}
-              />
+              <ServiceInsert bookingId="apercu" travelers={TRAVELERS} homeCity="Paris" hotel={HOTEL} side="avant" preview startOpen />
               <Step title="Hôtel Lyon" meta="1 juin 2026 → 2 juin 2026 · Lyon" />
             </article>
             <article id="apres" className="space-y-3 rounded-3xl border border-[var(--border)] bg-[#faf9f6] p-6">
               <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>
               <Step title="Hôtel Lyon" meta="1 juin 2026 → 2 juin 2026 · Lyon" />
-              <ServiceInsert
-                bookingId="apercu"
-                travelers={TRAVELERS}
-                homeCity="Paris"
-                previous={HOTEL}
-                next={null}
-                preview
-                startChoice={{ side: "apres", item: HOTEL }}
-              />
+              <ServiceInsert bookingId="apercu" travelers={TRAVELERS} homeCity="Paris" hotel={HOTEL} side="apres" preview startOpen />
             </article>
             <article id="fil" className="space-y-3 rounded-3xl border border-[var(--border)] bg-[#faf9f6] p-6">
               <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>

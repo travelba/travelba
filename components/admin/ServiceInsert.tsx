@@ -22,91 +22,62 @@ function neighborOf(item: CrmBookingItem): ServiceNeighbor {
   };
 }
 
-function labelOf(item: CrmBookingItem) {
-  return item.title || "cette carte";
-}
-
-/** Point d’insertion entre deux cartes. Même geste qu’un ajout de transfert : le menu choisit le côté. */
+/** Carte d’ajout, juste avant ou juste après un hôtel. */
 export function ServiceInsert({
   bookingId,
   travelers,
   homeCity = "",
-  previous = null,
-  next = null,
+  hotel,
+  side,
   preview = false,
-  startChoice = null,
+  startOpen = false,
 }: {
   bookingId: string;
   travelers: { id: string; name: string }[];
   homeCity?: string;
-  previous?: CrmBookingItem | null;
-  next?: CrmBookingItem | null;
+  hotel: CrmBookingItem;
+  side: ServiceSide;
   preview?: boolean;
-  startChoice?: { side: ServiceSide; item: CrmBookingItem } | null;
+  startOpen?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [choice, setChoice] = useState<{ side: ServiceSide; item: CrmBookingItem } | null>(startChoice);
-  const options = [
-    previous ? { side: "apres" as const, item: previous, label: `Demande de train · après ${labelOf(previous)}` } : null,
-    next ? { side: "avant" as const, item: next, label: `Demande de train · avant ${labelOf(next)}` } : null,
-  ].filter((option): option is { side: ServiceSide; item: CrmBookingItem; label: string } => Boolean(option));
-  if (!options.length) return null;
-  const filled = choice
-    ? serviceRequestPrefill({ kind: "train", side: choice.side, neighbor: neighborOf(choice.item), homeCity })
-    : null;
+  const [open, setOpen] = useState(startOpen);
+  const filled = serviceRequestPrefill({ kind: "train", side, neighbor: neighborOf(hotel), homeCity });
+  const where = side === "avant" ? "avant cet hôtel" : "après cet hôtel";
+
+  if (open) {
+    return (
+      <div className="my-2 rounded-2xl border border-dashed border-[var(--admin-navy)] bg-white p-3">
+        <TrainRequestButton
+          bookingId={bookingId}
+          travelers={travelers}
+          defaults={filled}
+          embedded
+          startOpen
+          preview={preview}
+          anchorItemId={hotel.id}
+          anchorSide={side}
+          onDone={() => {
+            setOpen(false);
+            if (!preview) router.refresh();
+          }}
+        />
+        <button type="button" className="mt-2 text-xs font-semibold text-muted" onClick={() => setOpen(false)}>
+          Fermer
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="relative z-10 py-1">
-      {choice && filled ? (
-        <div className="rounded-2xl border border-dashed border-[var(--admin-gold)] bg-white p-3">
-          <TrainRequestButton
-            bookingId={bookingId}
-            travelers={travelers}
-            defaults={filled}
-            embedded
-            startOpen
-            preview={preview}
-            anchorItemId={choice.item.id}
-            anchorSide={choice.side}
-            onDone={() => {
-              setChoice(null);
-              setOpen(false);
-              if (!preview) router.refresh();
-            }}
-          />
-          <button type="button" className="mt-2 text-xs font-semibold text-muted" onClick={() => setChoice(null)}>
-            Fermer
-          </button>
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-label="Ajouter une demande entre ces cartes"
-            onClick={() => setOpen((value) => !value)}
-            className="admin-tap inline-flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-[var(--admin-navy)] text-sm font-semibold text-[var(--admin-navy)]"
-          >
-            +
-          </button>
-          {open
-            ? options.map((option) => (
-                <button
-                  key={`${option.side}-${option.item.id}`}
-                  type="button"
-                  className="admin-tap rounded-full bg-white px-3 py-1 text-xs font-semibold text-[var(--admin-navy)] ring-1 ring-[var(--border)]"
-                  onClick={() => {
-                    setChoice({ side: option.side, item: option.item });
-                    setOpen(false);
-                  }}
-                >
-                  {option.label}
-                </button>
-              ))
-            : null}
-        </div>
-      )}
-    </div>
+    <button
+      type="button"
+      aria-label={`Ajouter une demande de train ${where}`}
+      onClick={() => setOpen(true)}
+      className="admin-tap my-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[var(--admin-navy)] bg-[#faf9f6] px-4 py-5 text-sm font-semibold text-[var(--admin-navy)]"
+    >
+      <span aria-hidden className="text-xl leading-none">+</span>
+      Ajouter une demande de train
+    </button>
   );
 }
