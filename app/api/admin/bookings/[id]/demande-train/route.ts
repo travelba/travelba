@@ -61,7 +61,7 @@ export async function POST(request: Request, ctx: Ctx) {
     const existing = await admin.from("crm_booking_items").select("id, sort_order").eq("booking_id", id);
     if (existing.error) return jsonError("Lecture des cartes impossible.");
     const plan = insertionPlan((existing.data || []) as { id: string; sort_order: number | null }[], anchorId, anchorSide);
-    if ("error" in plan) return jsonError(plan.error);
+    if ("error" in plan) return jsonError(plan.error || "Carte introuvable.");
     sortOrder = plan.sortOrder;
     for (const shift of plan.shifts) {
       const moved = await admin.from("crm_booking_items").update({ sort_order: shift.sort_order }).eq("id", shift.id).eq("booking_id", id);
