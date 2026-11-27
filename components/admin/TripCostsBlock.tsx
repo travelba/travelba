@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { OutgoingRow, type TargetOption } from "@/components/admin/OutgoingAttach";
 import { TripProposalError, TripProposalSearch } from "@/components/admin/TripProposalSearch";
 import type { TripProposalStatus } from "@/components/admin/use-trip-proposals";
-import { ConfirmAction } from "@/components/crm/ConfirmAction";
+import { ConfirmAction, type ConfirmOutcome } from "@/components/crm/ConfirmAction";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { StatusChip } from "@/components/crm/ui";
 import { formatDateFr, formatMoney } from "@/lib/crm/money";
@@ -21,14 +21,16 @@ import {
 } from "@/lib/crm/trip-cost-lines";
 import {
   TRIP_ACCOUNTING_LABELS,
-  saleLineFigures,
+  tripCostIsPending,
   settlementLabel,
   visibleTripState,
+  type AccountedLine,
   type OutgoingLine,
   type TripAccountingState,
   type TripAccountingView,
   type TripCost,
 } from "@/lib/crm/trip-costs";
+import { lineProfitability, profitabilityTotals, type LineProfitability } from "@/lib/crm/theoretical-cost";
 
 function eur(value: number) {
   return formatMoney(value, "EUR");
@@ -80,6 +82,74 @@ function costPersisted(cost: TripCost) {
   return !cost.id.startsWith("pending:");
 }
 
+/** Débit réel d’abord. Sans débit, le coût net de la carte. La marge MB3M n’est pas touchée. */
+function profitabilityOf(line: AccountedLine) {
+  return lineProfitability({
+    sale: line.sale,
+    nature: line.nature,
+    debits: line.costs.filter((cost) => !tripCostIsPending(cost)).map((cost) => cost.amountEur),
+    cardCost: line.cardCost ?? null,
+  });
+}
+
+function costTone(source: LineProfitability["source"]) {
+  return source === "theoretical" ? "italic text-muted" : "text-[var(--admin-navy)]";
+}
+
+function SaleCostNote({
+  line,
+  figures,
+  locked,
+  onDetach,
+  linkClass,
+  dense,
+}: {
+  line: AccountedLine;
+  figures: LineProfitability;
+  locked: boolean;
+  onDetach: (costId: string) => Promise<ConfirmOutcome>;
+  linkClass: string;
+  dense?: boolean;
+}) {
+  if (line.costs.length) {
+    return (
+      <ul className={dense ? "mt-1 space-y-0.5" : "mt-2 space-y-1"}>
+        {line.costs.map((cost) => (
+          <li key={cost.id} className="flex flex-wrap items-center gap-2 text-xs text-muted">
+            <span className="min-w-0 break-words">{costCaption(cost)}</span>
+            <span className="tabular-nums">{eur(cost.amountEur)}</span>
+            {costPersisted(cost) ? (
+              <ConfirmAction
+                size="sm"
+                align="end"
+                label="Retirer"
+                confirmLabel="Retirer le coût"
+                question="Retirer ce coût du dossier ? La sortie revient dans les coûts à pointer."
+                disabled={locked}
+                className={linkClass}
+                onConfirm={() => onDetach(cost.id)}
+              />
+            ) : null}
+          </li>
+        ))}
+        {figures.theoreticalNote != null ? (
+          <li className="text-xs italic text-muted">théorique {eur(figures.theoreticalNote)}</li>
+        ) : null}
+        {figures.source === "theoretical" ? (
+          <li className="text-xs italic text-muted">Coût théorique (carte)</li>
+        ) : null}
+      </ul>
+    );
+  }
+  if (figures.source === "theoretical") {
+    return <p className={`${dense ? "mt-1" : "mt-2"} text-xs italic text-muted`}>Coût théorique (carte)</p>;
+  }
+  if (figures.cost != null) {
+    return <p className={`${dense ? "mt-1" : "mt-2"} text-xs text-muted`}>Aucun coût rattaché</p>;
+  }
+  return null;
+}
+
 /**
  * Coûts du voyage : une seule liste de sorties (Pliant et Revolut) avec un seul geste, Rattacher ;
  * puis chaque ligne vendue avec ses coûts et sa marge. Rien ne part au client.
@@ -124,6 +194,8 @@ export function TripCostsBlock({
     : view.state;
   const placements = useMemo(() => costPlacements(view), [view]);
   const legacyRevolut = useMemo(() => revolutLinkedWithoutCost(revolutLinked, placements), [revolutLinked, placements]);
+  const profit = useMemo(() => view.lines.map((line) => ({ line, figures: profitabilityOf(line) })), [view.lines]);
+  const profitTotals = useMemo(() => profitabilityTotals(profit.map((row) => row.figures)), [profit]);
 
   async function post(key: string, body: Record<string, unknown>, failure: string) {
     setWorking(key);
@@ -299,9 +371,8 @@ export function TripCostsBlock({
       {view.lines.length ? (
         <>
         <ul className="space-y-3 lg:hidden">
-          {view.lines.map((line) => {
+          {profit.map(({ line, figures }) => {
             const piece = view.invoice.byTransaction[line.transactionId];
-            const figures = saleLineFigures(line);
             return (
               <li key={line.transactionId} className="rounded-2xl border border-border px-3 py-3 text-sm">
                 <p className="break-words font-medium text-[var(--admin-navy)]">{line.label}</p>
@@ -313,7 +384,7 @@ export function TripCostsBlock({
                   {showMargins ? (
                     <div>
                       <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Coût</dt>
-                      <dd className="font-semibold tabular-nums text-[var(--admin-navy)]">
+                      <dd className={`font-semibold tabular-nums ${costTone(figures.source)}`}>
                         {figures.cost == null ? "—" : eur(figures.cost)}
                       </dd>
                     </div>
@@ -325,29 +396,14 @@ export function TripCostsBlock({
                     </div>
                   ) : null}
                 </dl>
-                {showMargins && line.costs.length ? (
-                  <ul className="mt-2 space-y-1">
-                    {line.costs.map((cost) => (
-                      <li key={cost.id} className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                        <span className="min-w-0 break-words">{costCaption(cost)}</span>
-                        <span className="tabular-nums">{eur(cost.amountEur)}</span>
-                        {costPersisted(cost) ? (
-                          <ConfirmAction
-                size="sm"
-                align="end"
-                label="Retirer"
-                confirmLabel="Retirer le coût"
-                question="Retirer ce coût du dossier ? La sortie revient dans les coûts à pointer."
-                disabled={locked}
-                className="admin-tap text-[#9e7e51] underline disabled:opacity-50"
-                onConfirm={() => detach(cost.id)}
-              />
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : showMargins && figures.cost != null ? (
-                  <p className="mt-2 text-xs text-muted">Aucun coût rattaché</p>
+                {showMargins ? (
+                  <SaleCostNote
+                    line={line}
+                    figures={figures}
+                    locked={locked}
+                    onDetach={detach}
+                    linkClass="admin-tap text-[#9e7e51] underline disabled:opacity-50"
+                  />
                 ) : null}
                 <p className="mt-2 text-xs text-muted">
                   {piece ? `Facture n° ${piece.number} · ${piece.printed ? "imprimée" : "pro forma"}` : "Facture —"}
@@ -360,18 +416,23 @@ export function TripCostsBlock({
             <dl className={`mt-2 grid gap-2 font-semibold ${showMargins ? "grid-cols-3" : "grid-cols-1"}`}>
               <div>
                 <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Vendu</dt>
-                <dd className="tabular-nums">{eur(view.totals.sale)}</dd>
+                <dd className="tabular-nums">{eur(profitTotals.sale)}</dd>
               </div>
               {showMargins ? (
                 <div>
                   <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Coût</dt>
-                  <dd className="tabular-nums">{eur(view.totals.cost)}</dd>
+                  <dd className={`tabular-nums ${profitTotals.theoreticalCost > 0 && profitTotals.theoreticalCost === profitTotals.cost ? "italic text-muted" : ""}`}>
+                    {eur(profitTotals.cost)}
+                  </dd>
+                  {profitTotals.theoreticalCost > 0 ? (
+                    <p className="text-xs font-normal italic text-muted">dont {eur(profitTotals.theoreticalCost)} théorique</p>
+                  ) : null}
                 </div>
               ) : null}
               {showMargins ? (
                 <div>
                   <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Marge</dt>
-                  <dd className={`tabular-nums ${signedTone(view.totals.margin)}`}>{eur(view.totals.margin)}</dd>
+                  <dd className={`tabular-nums ${signedTone(profitTotals.margin)}`}>{eur(profitTotals.margin)}</dd>
                 </div>
               ) : null}
             </dl>
@@ -389,41 +450,26 @@ export function TripCostsBlock({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {view.lines.map((line) => {
+              {profit.map(({ line, figures }) => {
                 const piece = view.invoice.byTransaction[line.transactionId];
-                const figures = saleLineFigures(line);
                 return (
                   <tr key={line.transactionId} className="align-top">
                     <td className="py-2 pr-3">
                       <p className="font-medium text-[var(--admin-navy)]">{line.label}</p>
-                      {showMargins && line.costs.length ? (
-                        <ul className="mt-1 space-y-0.5">
-                          {line.costs.map((cost) => (
-                            <li key={cost.id} className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                              <span>{costCaption(cost)}</span>
-                              <span className="tabular-nums">{eur(cost.amountEur)}</span>
-                              {costPersisted(cost) ? (
-                                <ConfirmAction
-                size="sm"
-                align="end"
-                label="Retirer"
-                confirmLabel="Retirer le coût"
-                question="Retirer ce coût du dossier ? La sortie revient dans les coûts à pointer."
-                disabled={locked}
-                className="text-[#9e7e51] underline disabled:opacity-50"
-                onConfirm={() => detach(cost.id)}
-              />
-                              ) : null}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : showMargins && figures.cost != null ? (
-                        <p className="mt-1 text-xs text-muted">Aucun coût rattaché</p>
+                      {showMargins ? (
+                        <SaleCostNote
+                          line={line}
+                          figures={figures}
+                          locked={locked}
+                          onDetach={detach}
+                          linkClass="text-[#9e7e51] underline disabled:opacity-50"
+                          dense
+                        />
                       ) : null}
                     </td>
                     <td className={`py-2 pr-3 text-right tabular-nums ${signedTone(figures.sale)}`}>{eur(figures.sale)}</td>
                     {showMargins ? (
-                      <td className="py-2 pr-3 text-right tabular-nums text-[var(--admin-navy)]">
+                      <td className={`py-2 pr-3 text-right tabular-nums ${costTone(figures.source)}`}>
                         {figures.cost == null ? "—" : eur(figures.cost)}
                       </td>
                     ) : null}
@@ -442,11 +488,18 @@ export function TripCostsBlock({
             <tfoot className="border-t border-[var(--admin-navy)]/20 font-semibold text-[var(--admin-navy)]">
               <tr>
                 <td className="py-2 pr-3">Total</td>
-                <td className="py-2 pr-3 text-right tabular-nums">{eur(view.totals.sale)}</td>
-                {showMargins ? <td className="py-2 pr-3 text-right tabular-nums">{eur(view.totals.cost)}</td> : null}
+                <td className="py-2 pr-3 text-right tabular-nums">{eur(profitTotals.sale)}</td>
                 {showMargins ? (
-                  <td className={`py-2 pr-3 text-right tabular-nums ${signedTone(view.totals.margin)}`}>
-                    {eur(view.totals.margin)}
+                  <td className={`py-2 pr-3 text-right tabular-nums ${profitTotals.theoreticalCost > 0 && profitTotals.theoreticalCost === profitTotals.cost ? "italic text-muted" : ""}`}>
+                    {eur(profitTotals.cost)}
+                    {profitTotals.theoreticalCost > 0 ? (
+                      <p className="text-xs font-normal italic text-muted">dont {eur(profitTotals.theoreticalCost)} théorique</p>
+                    ) : null}
+                  </td>
+                ) : null}
+                {showMargins ? (
+                  <td className={`py-2 pr-3 text-right tabular-nums ${signedTone(profitTotals.margin)}`}>
+                    {eur(profitTotals.margin)}
                   </td>
                 ) : null}
                 <td />
