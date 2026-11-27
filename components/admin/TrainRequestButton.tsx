@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { fieldControlClass } from "@/components/crm/fields";
+import { useState, type ReactNode } from "react";
+import { Icon } from "@/components/crm/icons";
 
 type Traveler = { id: string; name: string };
 type Defaults = {
@@ -12,6 +12,18 @@ type Defaults = {
   allerCreneau: string;
   retourCreneau: string;
 };
+
+const compactField =
+  "h-8 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-xs text-[var(--admin-navy)] outline-none focus:border-[var(--admin-navy)] disabled:bg-[#f3f5f7]";
+
+function Field({ label, muted = false, children }: { label: string; muted?: boolean; children: ReactNode }) {
+  return (
+    <div className={muted ? "opacity-40" : ""}>
+      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted">{label}</span>
+      <div className="mt-0.5">{children}</div>
+    </div>
+  );
+}
 
 export type TrainRequestFace = {
   statut: string;
@@ -33,6 +45,7 @@ export function TrainRequestButton({
   anchorItemId = "",
   anchorSide = "",
   onDone,
+  onCancel,
 }: {
   bookingId: string;
   travelers: Traveler[];
@@ -46,6 +59,7 @@ export function TrainRequestButton({
   anchorItemId?: string;
   anchorSide?: "" | "avant" | "apres";
   onDone?: () => void;
+  onCancel?: () => void;
 }) {
   const [open, setOpen] = useState(startOpen);
   const [busy, setBusy] = useState(false);
@@ -60,6 +74,17 @@ export function TrainRequestButton({
   const [allerCreneau, setAllerCreneau] = useState(defaults.allerCreneau);
   const [retourCreneau, setRetourCreneau] = useState(defaults.retourCreneau);
   const departMissing = !depart.trim();
+
+  function cancel() {
+    setOpen(false);
+    setError("");
+    onCancel?.();
+  }
+
+  function swap() {
+    setDepart(arrivee);
+    setArrivee(depart);
+  }
 
   async function submit() {
     if (departMissing || !arrivee.trim() || !selected.length) {
@@ -142,67 +167,105 @@ export function TrainRequestButton({
       ) : null}
       {open ? (
         <form
-          className="basis-full space-y-3 rounded-2xl border border-[var(--border)] bg-white p-4 text-sm"
+          className="basis-full rounded-2xl border border-[var(--border)] bg-white p-3"
           onSubmit={(event) => {
             event.preventDefault();
             void submit();
           }}
         >
-          <p className="font-semibold text-[var(--admin-navy)]">Demande de train</p>
-          <label className="block text-[var(--admin-navy)]">
-            Ville de départ
-            <input aria-label="Ville de départ" className={`${fieldControlClass} mt-1`} value={depart} onChange={(event) => setDepart(event.target.value)} required />
-            {departMissing ? <span className="mt-1 block text-xs font-semibold text-[var(--admin-red)]">Saisie obligatoire : le domicile n’est pas connu.</span> : null}
-          </label>
-          <label className="block text-[var(--admin-navy)]">
-            Ville d’arrivée
-            <input aria-label="Ville d’arrivée" className={`${fieldControlClass} mt-1`} value={arrivee} onChange={(event) => setArrivee(event.target.value)} required />
-          </label>
-          <label className="block text-[var(--admin-navy)]">
-            Date aller
-            <input aria-label="Date aller" className={`${fieldControlClass} mt-1`} type="date" value={allerDate} onChange={(event) => setAllerDate(event.target.value)} required />
-          </label>
-          <label className="block text-[var(--admin-navy)]">
-            Créneau aller
-            <input aria-label="Créneau aller" className={`${fieldControlClass} mt-1`} value={allerCreneau} onChange={(event) => setAllerCreneau(event.target.value)} />
-          </label>
-          <label className="flex items-center gap-2 text-[var(--admin-navy)]">
-            <input type="checkbox" checked={simple} onChange={(event) => setSimple(event.target.checked)} />
-            Aller simple
-          </label>
-          {simple ? null : (
-            <>
-              <label className="block text-[var(--admin-navy)]">
-                Date retour
-                <input aria-label="Date retour" className={`${fieldControlClass} mt-1`} type="date" value={retourDate} onChange={(event) => setRetourDate(event.target.value)} required />
-              </label>
-              <label className="block text-[var(--admin-navy)]">
-                Créneau retour
-                <input aria-label="Créneau retour" className={`${fieldControlClass} mt-1`} value={retourCreneau} onChange={(event) => setRetourCreneau(event.target.value)} />
-              </label>
-            </>
-          )}
-          <fieldset>
-            <legend className="font-semibold text-[var(--admin-navy)]">Voyageurs</legend>
-            {travelers.map((traveler) => (
-              <label key={traveler.id} className="mt-1 flex items-center gap-2 text-[var(--admin-navy)]">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(traveler.id)}
-                  onChange={(event) =>
-                    setSelected((current) =>
-                      event.target.checked ? [...current, traveler.id] : current.filter((id) => id !== traveler.id)
-                    )
-                  }
-                />
-                {traveler.name}
-              </label>
-            ))}
+          <div className="flex items-center gap-2">
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--admin-navy)] text-[#C5A880]">
+              <Icon name="train" className="h-3.5 w-3.5" />
+            </span>
+            <p className="text-sm font-semibold text-[var(--admin-navy)]">Demande de train</p>
+          </div>
+          <div className="mt-2 inline-flex rounded-full bg-[#f3f5f7] p-0.5 text-[11px] font-semibold" role="group" aria-label="Type de trajet">
+            <button
+              type="button"
+              aria-pressed={!simple}
+              onClick={() => setSimple(false)}
+              className={`rounded-full px-2.5 py-1 ${simple ? "text-muted" : "bg-[var(--admin-navy)] text-white"}`}
+            >
+              Aller-retour
+            </button>
+            <button
+              type="button"
+              aria-pressed={simple}
+              onClick={() => setSimple(true)}
+              className={`rounded-full px-2.5 py-1 ${simple ? "bg-[var(--admin-navy)] text-white" : "text-muted"}`}
+            >
+              Aller simple
+            </button>
+          </div>
+          <div className="mt-2 grid grid-cols-1 items-end gap-1.5 sm:grid-cols-[minmax(0,1fr)_2rem_minmax(0,1fr)]">
+            <Field label="Départ">
+              <input aria-label="Ville de départ" className={compactField} value={depart} onChange={(event) => setDepart(event.target.value)} required />
+            </Field>
+            <button
+              type="button"
+              aria-label="Inverser le trajet"
+              onClick={swap}
+              className="admin-tap mb-0.5 grid h-8 w-8 place-items-center justify-self-center rounded-full border border-[var(--border)] text-[var(--admin-navy)]"
+            >
+              <Icon name="sync_alt" className="h-3.5 w-3.5" />
+            </button>
+            <Field label="Arrivée">
+              <input aria-label="Ville d’arrivée" className={compactField} value={arrivee} onChange={(event) => setArrivee(event.target.value)} required />
+            </Field>
+          </div>
+          {departMissing ? <p className="mt-1 text-[11px] font-semibold text-[var(--admin-red)]">Saisie obligatoire : le domicile n’est pas connu.</p> : null}
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <Field label="Aller">
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                <input aria-label="Date aller" className={compactField} type="date" value={allerDate} onChange={(event) => setAllerDate(event.target.value)} required />
+                <input aria-label="Créneau aller" className={compactField} value={allerCreneau} onChange={(event) => setAllerCreneau(event.target.value)} />
+              </div>
+            </Field>
+            <Field label="Retour" muted={simple}>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                <input aria-label="Date retour" className={compactField} type="date" value={retourDate} onChange={(event) => setRetourDate(event.target.value)} required={!simple} disabled={simple} />
+                <input aria-label="Créneau retour" className={compactField} value={retourCreneau} onChange={(event) => setRetourCreneau(event.target.value)} disabled={simple} />
+              </div>
+            </Field>
+          </div>
+          <fieldset className="mt-2">
+            <legend className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted">Voyageurs</legend>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {travelers.map((traveler) => {
+                const checked = selected.includes(traveler.id);
+                return (
+                  <label
+                    key={traveler.id}
+                    className={`inline-flex h-7 cursor-pointer items-center rounded-full px-2.5 text-[11px] font-semibold ${
+                      checked ? "bg-[var(--admin-navy)] text-white" : "bg-[#f3f5f7] text-[var(--admin-navy)]"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={checked}
+                      aria-label={traveler.name}
+                      onChange={(event) =>
+                        setSelected((current) =>
+                          event.target.checked ? [...current, traveler.id] : current.filter((id) => id !== traveler.id)
+                        )
+                      }
+                    />
+                    {traveler.name}
+                  </label>
+                );
+              })}
+            </div>
           </fieldset>
-          {error ? <p className="font-semibold text-[var(--admin-red)]">{error}</p> : null}
-          <button type="submit" disabled={busy} className="admin-af-btn admin-tap rounded-full px-4 py-2 text-sm disabled:opacity-50">
-            {busy ? "Enregistrement…" : "Créer la demande"}
-          </button>
+          {error ? <p className="mt-2 text-xs font-semibold text-[var(--admin-red)]">{error}</p> : null}
+          <div className="mt-2 flex items-center justify-end gap-3">
+            <button type="button" onClick={cancel} className="text-xs font-semibold text-muted">
+              Annuler
+            </button>
+            <button type="submit" disabled={busy} className="admin-af-btn admin-tap h-8 rounded-full px-3 text-xs disabled:opacity-50">
+              {busy ? "Enregistrement…" : "Créer la demande"}
+            </button>
+          </div>
         </form>
       ) : null}
     </div>

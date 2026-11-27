@@ -27,6 +27,13 @@ const UNKNOWN = trainFormDefaults({
   hotels: [{ city: "Lyon", start: "2026-06-01", end: "2026-06-02" }],
 });
 
+const MONTPELLIER = trainFormDefaults({
+  homeCity: "Paris",
+  hotels: [{ city: "Montpellier", start: "2027-03-29", end: "2027-03-30" }],
+});
+
+const BENJAMIN = [{ id: "33333333-3333-4333-8333-333333333333", name: "Benjamin Boukris" }];
+
 const CREATED: TrainRequestFace = {
   statut: "Nouvelle",
   trajet: "Paris → Lyon",
@@ -210,6 +217,9 @@ export default function ApercuDemandeTrainPage() {
             <Desk id="formulaire">
               <TrainRequestButton bookingId="apercu" travelers={TRAVELERS} defaults={KNOWN} startOpen preview />
             </Desk>
+            <article id="moteur" className="max-w-xl rounded-3xl border border-[var(--border)] bg-[#f7f6f3] p-3">
+              <TrainRequestButton bookingId="apercu" travelers={BENJAMIN} defaults={MONTPELLIER} embedded startOpen preview />
+            </article>
             <Desk id="depart-inconnu">
               <TrainRequestButton bookingId="apercu" travelers={TRAVELERS} defaults={UNKNOWN} startOpen preview />
             </Desk>

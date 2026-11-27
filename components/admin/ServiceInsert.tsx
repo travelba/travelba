@@ -71,10 +71,8 @@ export function ServiceInsert({
             setKind(null);
             if (!preview) router.refresh();
           }}
+          onCancel={() => setKind(null)}
         />
-        <button type="button" className="mt-2 text-xs font-semibold text-muted" onClick={() => setKind(null)}>
-          Fermer
-        </button>
       </div>
     );
   }
