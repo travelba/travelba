@@ -53,6 +53,15 @@ const ALLER: TrainOffer[] = [
     heure_arrivee: "14:11",
     prix: { "2de": { non_remboursable: 39, flex: 68 }, "1re": { non_remboursable: 82, flex: 110 } },
   },
+  {
+    numero: "6621",
+    depart_gare: "Paris Gare de Lyon",
+    arrivee_gare: "Lyon Part-Dieu",
+    date: "2026-06-02",
+    heure_depart: "14:12",
+    heure_arrivee: "16:05",
+    prix: { "2de": { non_remboursable: 51, flex: 80 }, "1re": { non_remboursable: 95, flex: 125 } },
+  },
 ];
 
 const RETOUR: TrainOffer[] = [
@@ -73,6 +82,15 @@ const RETOUR: TrainOffer[] = [
     heure_depart: "18:42",
     heure_arrivee: "20:35",
     prix: { "2de": { non_remboursable: 48, flex: 76 }, "1re": { non_remboursable: 91, flex: 118 } },
+  },
+  {
+    numero: "6652",
+    depart_gare: "Lyon Part-Dieu",
+    arrivee_gare: "Paris Gare de Lyon",
+    date: "2026-06-03",
+    heure_depart: "20:12",
+    heure_arrivee: "22:05",
+    prix: { "2de": { non_remboursable: 55, flex: 84 }, "1re": { non_remboursable: 98, flex: 130 } },
   },
 ];
 
@@ -161,9 +179,9 @@ export function trainRecipes(): Recipe[] {
     const steps: RecipeStep[] = [
       step("propositions", "Le bot a déposé deux trains aller. Il attend.", [agency(open({ greeting: "Camille Martin", retour: false }))]),
     ];
-    let moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, clientText: "le 1" });
+    let moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, clientText: "08h12 → 10h05", payload: "train:aller:0" });
     current = moved.next;
-    steps.push(step(current.status as TrainStatus, "Rien. Le client choisit encore.", [client("le 1"), agency(moved.plan)]));
+    steps.push(step(current.status as TrainStatus, "Rien. Le client choisit encore.", [client("08h12 → 10h05"), agency(moved.plan)]));
     moved = walk({ current, greeting: "Camille Martin", voyageurs: 1, placement: solo, payload: "train:classe:1re" });
     current = moved.next;
     steps.push(step(current.status as TrainStatus, "Rien.", [client("1re classe"), agency(moved.plan)]));
@@ -202,12 +220,20 @@ export function trainRecipes(): Recipe[] {
 
   const earlier = (() => {
     const current = state({ retour: RETOUR });
-    const moved = walk({
+    const clicked = walk({
       current,
       greeting: "Camille Martin",
       voyageurs: 1,
       placement: solo,
-      clientText: "Plus tôt, avant 7h",
+      clientText: "Autres horaires",
+      payload: "train:horaires",
+    });
+    const typed = walk({
+      current: clicked.next,
+      greeting: "Camille Martin",
+      voyageurs: 1,
+      placement: solo,
+      clientText: "avant 7h",
     });
     return {
       id: "autres-horaires",
@@ -216,11 +242,15 @@ export function trainRecipes(): Recipe[] {
       placement: solo,
       steps: [
         step("propositions", "Le bot a déposé les trains à partir de 8h et 16h.", [agency(open({ greeting: "Camille Martin", retour: true, session: true }))]),
-        step(moved.next.status as TrainStatus, "Le bot relance une recherche aller avant 7h. Il ne commande pas.", [
-          client("Plus tôt, avant 7h"),
-          agency(moved.plan),
+        step(clicked.next.status as TrainStatus, "La ligne Autres horaires est cliquée. Le CRM demande le créneau, sans recherche encore.", [
+          client("Autres horaires"),
+          agency(clicked.plan),
         ]),
-        step("recherche", "Même geste pour le retour : « plus tard, après 19h » renvoie la contrainte du retour.", []),
+        step(typed.next.status as TrainStatus, "Le bot relance une recherche aller avant 7h. Il ne commande pas.", [
+          client("avant 7h"),
+          agency(typed.plan),
+        ]),
+        step("recherche", "Même geste pour le retour : la ligne Autres horaires, puis « après 19h ».", []),
       ],
     };
   })();
@@ -231,7 +261,7 @@ export function trainRecipes(): Recipe[] {
     const first = open({ greeting: "Camille Martin", retour: false });
     steps.push(step("propositions", "Trains déposés.", [agency(first)]));
     for (const reply of [
-      { text: "1", payload: undefined as string | undefined },
+      { text: "08h12 → 10h05", payload: "train:aller:0" },
       { text: "1re classe", payload: "train:classe:1re" },
       { text: "Flex", payload: "train:tarif:flex" },
     ]) {
@@ -393,8 +423,8 @@ function buildRoundTrip(input: { id: string; titre: string; greeting: string; vo
     ]),
   ];
   const replies = [
-    { text: "1", payload: "train:aller:0" },
-    { text: "1", payload: "train:retour:0" },
+    { text: "08h12 → 10h05", payload: "train:aller:0" },
+    { text: "16h12 → 18h05", payload: "train:retour:0" },
     { text: "2de classe", payload: "train:classe:2de" },
     { text: "Non remboursable", payload: "train:tarif:non_remboursable" },
     { text: "Je confirme", payload: "train:accord:confirme" },
@@ -427,13 +457,26 @@ export function trainRecipeMarkdown(recipes = trainRecipes()) {
     "Ordre : trains (aller, puis retour), classe, tarif, récapitulatif avec le prix, accord. Rien n’est acheté avant « Je confirme ».",
     "Horaires proposés par défaut : aller à partir de 8h, retour à partir de 16h. Dates déduites de l’hôtel (lundi → mardi : aller lundi, retour mardi), modifiables.",
     "Paiement : `creer_carte_pliant` sur le dossier, `trois_ds` faux. Le numéro n’est pas dans ces messages.",
+    "Le train se choisit en cliquant dans la liste (heure de départ → arrivée, durée, numéro). « Autres horaires » est une ligne de la liste. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.",
+    "Au moins 3 trains par sens, 9 au plus. L’envoi utilise le content SID `TWILIO_CONTENT_TRAIN_LISTE_N`, puis les modèles des étapes et `TWILIO_CONTENT_TRAIN_BILLET` le matin.",
+    "",
+    "## Lancer la demande dans le CRM",
+    "",
+    "Même bouton que la fiche dossier. Aperçu local, données fictives, sans écriture en base : `/apercu/demande-train`.",
+    "",
+    "![Fiche avec le bouton Demande de train](recette-billets-train/crm-bouton.png)",
+    "",
+    "![Formulaire prérempli](recette-billets-train/crm-formulaire.png)",
+    "",
+    "![Ville de départ inconnue](recette-billets-train/crm-depart-inconnu.png)",
+    "",
+    "![Demande créée, statut Nouvelle](recette-billets-train/crm-suivi.png)",
     "",
     "## Modèles",
     "",
     "| Nom | Rôle |",
     "| --- | --- |",
-    "| `train_proposition` | Texte numéroté, hors fenêtre de 24 h |",
-    "| `train_liste` | Liste interactive, dans la fenêtre ou trois trains |",
+    "| `train_liste_3` à `train_liste_9` | Liste cliquable, plus Autres horaires |",
     "| `train_classe` | Boutons 2de classe / 1re classe |",
     "| `train_tarif` | Boutons Non remboursable / Flex |",
     "| `train_accord` | Récapitulatif, Je confirme / Modifier / Je refuse |",

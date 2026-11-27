@@ -6,19 +6,18 @@ import {
   TRAIN_BILLET_ENV,
   TRAIN_CLASSE_ENV,
   TRAIN_CLASSE_NAME,
-  TRAIN_LISTE_ENV,
-  TRAIN_LISTE_NAME,
+  TRAIN_LIST_MIN,
+  TRAIN_LIST_TRAINS_MAX,
   TRAIN_MODIFIER_BUTTONS,
   TRAIN_MODIFIER_NAME,
-  TRAIN_PROPOSITION_ENV,
-  TRAIN_PROPOSITION_NAME,
   TRAIN_SIGNATURE,
   TRAIN_TARIF_ENV,
   TRAIN_TARIF_NAME,
   trainAccordContentCreateBody,
   trainClasseContentCreateBody,
   trainListContentCreateBody,
-  trainPropositionContentCreateBody,
+  trainListTemplateEnv,
+  trainListTemplateName,
   trainTarifContentCreateBody,
 } from "./train-whatsapp";
 
@@ -59,16 +58,19 @@ export function trainBilletContentCreateBody() {
           "",
           TRAIN_SIGNATURE,
         ].join("\n"),
-        media: [`${siteConfig.url}/api/whatsapp/cartes/{{1}}`],
+        media: [`${siteConfig.url}/api/whatsapp/autorisations/{{1}}`],
       },
     },
   };
 }
 
 export function trainContentDrafts() {
+  const lists = Array.from({ length: TRAIN_LIST_TRAINS_MAX - TRAIN_LIST_MIN + 1 }, (_, index) => {
+    const count = TRAIN_LIST_MIN + index;
+    return { env: trainListTemplateEnv(count), friendlyName: trainListTemplateName(count), create: trainListContentCreateBody(count) };
+  });
   return [
-    { env: TRAIN_PROPOSITION_ENV, friendlyName: TRAIN_PROPOSITION_NAME, create: trainPropositionContentCreateBody() },
-    { env: TRAIN_LISTE_ENV, friendlyName: TRAIN_LISTE_NAME, create: trainListContentCreateBody() },
+    ...lists,
     { env: TRAIN_CLASSE_ENV, friendlyName: TRAIN_CLASSE_NAME, create: trainClasseContentCreateBody() },
     { env: TRAIN_TARIF_ENV, friendlyName: TRAIN_TARIF_NAME, create: trainTarifContentCreateBody() },
     { env: TRAIN_ACCORD_ENV, friendlyName: TRAIN_ACCORD_NAME, create: trainAccordContentCreateBody() },

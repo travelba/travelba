@@ -193,13 +193,13 @@ export async function prendreDemandeTrain(input: Record<string, unknown>) {
 export async function deposerPropositionsTrain(input: Record<string, unknown>) {
   const id = text(input.demande_id);
   if (!UUID.test(id)) throw new McpWriteError("Demande invalide.");
-  const aller = parseTrainOffers(input.aller, "Aller", { min: 1, max: 9 });
+  const aller = parseTrainOffers(input.aller, "Aller", { min: 3, max: 9 });
   if ("error" in aller) throw new McpWriteError(aller.error || "Trains illisibles.");
   const admin = await db();
   const row = await load(admin, id);
   const retourRaw = input.retour;
   const hasReturn = Boolean(row.retour_date);
-  const retour = hasReturn ? parseTrainOffers(retourRaw, "Retour", { min: 1, max: 9 }) : { offers: [] as TrainOffer[] };
+  const retour = hasReturn ? parseTrainOffers(retourRaw, "Retour", { min: 3, max: 9 }) : { offers: [] as TrainOffer[] };
   if ("error" in retour) throw new McpWriteError(retour.error || "Trains illisibles.");
   if (!OPEN.includes(row.status) || row.status === "choix" || row.status === "commande") {
     throw new McpWriteError("Cette demande n’attend plus de propositions.");
@@ -238,7 +238,11 @@ export async function deposerPropositionsTrain(input: Record<string, unknown>) {
       })
       .eq("id", id);
     if (error) throw new McpWriteError("Enregistrement impossible.");
-    return { ecrit: true, envoye: false, raison: "L’envoi WhatsApp se fait par le serveur configuré. Ici, les propositions sont enregistrées.", ...preview };
+    const { data: personRow } = await admin.from("crm_customers").select("phone").eq("id", row.customer_id).maybeSingle();
+    const phone = (personRow as { phone?: string | null } | null)?.phone || "";
+    const { deliverTrainPlan } = await import("./train-send");
+    const sent = phone ? await deliverTrainPlan({ phone, plan }) : { ok: false as const, raison: "Téléphone absent" };
+    return { ecrit: true, envoye: sent.ok, ...(sent.ok ? { sid: sent.sid } : { raison: sent.raison }), ...preview };
   });
 }
 
@@ -254,7 +258,14 @@ export async function signalerTrainIndisponible(input: Record<string, unknown>) 
       .update({ status: "recherche", step: "aller", choix_aller: null, choix_retour: null, classe: null, tarif: null, updated_at: new Date().toISOString() })
       .eq("id", id);
     if (error) throw new McpWriteError("Mise à jour impossible.");
-    return { ecrit: true, envoye: false, texte: corps };
+    const current = await load(admin, id);
+    const { data: personRow } = await admin.from("crm_customers").select("phone").eq("id", current.customer_id).maybeSingle();
+    const phone = (personRow as { phone?: string | null } | null)?.phone || "";
+    const { deliverTrainPlan } = await import("./train-send");
+    const sent = phone
+      ? await deliverTrainPlan({ phone, plan: { modele: "train_indisponible", corps } })
+      : { ok: false as const, raison: "Téléphone absent" };
+    return { ecrit: true, envoye: sent.ok, ...(sent.ok ? { sid: sent.sid } : { raison: sent.raison }), texte: corps };
   });
 }
 

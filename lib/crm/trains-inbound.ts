@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { phoneFromWhatsapp } from "./whatsapp-inbound";
 import { notifyTrainBot } from "./train-bot";
 import { nextTrainTurn, trainGreeting, type TrainChoiceState, type TrainOffer } from "./train-whatsapp";
-import { sendWhatsappSession } from "./whatsapp-session";
+import { deliverTrainPlan } from "./train-send";
 
 type RequestRow = TrainChoiceState & {
   id: string;
@@ -63,7 +63,7 @@ export async function captureTrainReply(admin: SupabaseClient, params: URLSearch
     depart: row.depart_ville,
     arrivee: row.arrivee_ville,
     body: params.get("Body"),
-    buttonPayload: params.get("ButtonPayload"),
+    buttonPayload: params.get("ListId") || params.get("ButtonPayload"),
     sessionOpen: true,
     voyageurs: row.voyageur_ids?.length || 1,
     placement: row.placement,
@@ -85,6 +85,6 @@ export async function captureTrainReply(admin: SupabaseClient, params: URLSearch
     await admin.from("crm_train_requests").update({ suite: turn.suite }).eq("id", row.id);
     await notifyTrainBot({ evenement: "suite", demande_id: row.id, dossier_id: row.booking_id, suite: turn.suite });
   }
-  await sendWhatsappSession({ to: params.get("From") || "", body: turn.plan.corps });
+  if (phone) await deliverTrainPlan({ phone, plan: turn.plan });
   return { handled: true as const, action: turn.action };
 }

@@ -3,12 +3,14 @@ import test from "node:test";
 import { partyHasChild, seatingPreference, trainFormDefaults, TRAIN_DEFAULT_OUTBOUND, TRAIN_DEFAULT_RETURN } from "./train-request";
 import { trainRecipeMarkdown, trainRecipes } from "./train-recipe";
 import { trainTicketSendWindow } from "./train-ticket-plan";
+import { runMorningTrainTickets } from "./train-billets-run";
+import { deliverTrainPlan } from "./train-send";
 import {
   nextTrainTurn,
+  parseTrainOffers,
   trainAccordContentCreateBody,
   trainClasseContentCreateBody,
   trainListContentCreateBody,
-  trainPropositionContentCreateBody,
   trainTarifContentCreateBody,
 } from "./train-whatsapp";
 
@@ -36,11 +38,16 @@ test("placement selon le nombre de voyageurs", () => {
 });
 
 test("les modèles portent les boutons et la liste", () => {
-  assert.match(trainPropositionContentCreateBody().types["twilio/text"].body, /Autres horaires/);
   assert.equal(trainClasseContentCreateBody().types["twilio/quick-reply"].actions.length, 2);
   assert.equal(trainTarifContentCreateBody().types["twilio/quick-reply"].actions.length, 2);
   assert.equal(trainAccordContentCreateBody().types["twilio/quick-reply"].actions.length, 3);
-  assert.equal(trainListContentCreateBody().types["twilio/list-picker"].items.length, 3);
+  const list = trainListContentCreateBody().types["twilio/list-picker"];
+  assert.equal(list.items.length, 4);
+  assert.equal(list.items[0].item, "{{4}}");
+  assert.equal(list.items[3].item, "Autres horaires");
+  assert.equal(trainListContentCreateBody(9).types["twilio/list-picker"].items.length, 10);
+  assert.match(list.body, /dans la liste/);
+  assert.doesNotMatch(list.body, /numéro du train/);
 });
 
 test("le récapitulatif précède l’achat, et un refus n’achète pas", () => {
@@ -53,7 +60,8 @@ test("le récapitulatif précède l’achat, et un refus n’achète pas", () =>
   const refused = recipes.find((recipe) => recipe.id === "refus");
   assert.equal(refused?.steps.at(-1)?.statut, "annulee");
   const hours = recipes.find((recipe) => recipe.id === "autres-horaires");
-  assert.equal(hours?.steps[1]?.statut, "recherche");
+  assert.equal(hours?.steps[1]?.statut, "propositions");
+  assert.equal(hours?.steps[2]?.statut, "recherche");
   const wait = recipes.find((recipe) => recipe.id === "relance-prix");
   assert.ok(wait?.steps.some((row) => row.statut === "en_attente"));
   assert.ok(wait?.steps.some((row) => row.statut === "prix_a_reconfirmer"));
@@ -61,6 +69,61 @@ test("le récapitulatif précède l’achat, et un refus n’achète pas", () =>
   const family = recipes.find((recipe) => recipe.id === "famille");
   assert.match(family?.placement || "", /salle basse/);
   assert.match(trainRecipeMarkdown(recipes), /Je confirme/);
+});
+
+test("moins de 3 trains est refusé, un numéro tapé ne choisit pas", async () => {
+  const few = parseTrainOffers([{ numero: "6601" }, { numero: "6603" }], "Aller", { min: 3, max: 9 });
+  assert.ok("error" in few);
+  assert.match(few.error, /au moins 3 trains/);
+  const base = {
+    status: "propositions",
+    step: "aller" as const,
+    aller: [
+      { numero: "6601", depart_gare: "Paris", arrivee_gare: "Lyon", date: "2026-06-02", heure_depart: "08:12", heure_arrivee: "10:05" },
+      { numero: "6603", depart_gare: "Paris", arrivee_gare: "Lyon", date: "2026-06-02", heure_depart: "10:18", heure_arrivee: "12:11" },
+      { numero: "6611", depart_gare: "Paris", arrivee_gare: "Lyon", date: "2026-06-02", heure_depart: "14:12", heure_arrivee: "16:05" },
+    ],
+    retour: [],
+    choix_aller: null,
+    choix_retour: null,
+    classe: null,
+    tarif: null,
+    ambigu_compte: 0,
+    besoin_agence: false,
+  };
+  const typed = nextTrainTurn({ state: base, greeting: "Camille", depart: "Paris", arrivee: "Lyon", body: "2" });
+  assert.equal(typed.action, "reposer");
+  const savedListe = process.env.TWILIO_CONTENT_TRAIN_LISTE_3;
+  delete process.env.TWILIO_CONTENT_TRAIN_LISTE_3;
+  let called = false;
+  const plan = {
+    modele: "train_liste" as const,
+    corps: "Choisissez un train dans la liste.",
+    variables: { "1": "Camille" },
+    liste: { language: "fr", types: { "twilio/list-picker": { body: "x", button: "Voir les trains", items: [
+      { id: "train:aller:0", item: "a", description: "b" },
+      { id: "train:aller:1", item: "a", description: "b" },
+      { id: "train:aller:2", item: "a", description: "b" },
+      { id: "train:horaires", item: "Autres horaires", description: "Un autre créneau" },
+    ] } } },
+  };
+  const sent = await deliverTrainPlan({
+    phone: "+33600000000",
+    plan,
+    fetchImpl: async () => {
+      called = true;
+      return new Response("{}", { status: 200 });
+    },
+  });
+  assert.equal(called, false);
+  assert.equal(sent.ok, false);
+  if (savedListe !== undefined) process.env.TWILIO_CONTENT_TRAIN_LISTE_3 = savedListe;
+  const savedBillet = process.env.TWILIO_CONTENT_TRAIN_BILLET;
+  delete process.env.TWILIO_CONTENT_TRAIN_BILLET;
+  const morning = await runMorningTrainTickets({ from() { throw new Error("pas de lecture"); } } as never);
+  assert.match(morning.raison || "", /TWILIO_CONTENT_TRAIN_BILLET absente/);
+  assert.equal(morning.envoyes, 0);
+  if (savedBillet !== undefined) process.env.TWILIO_CONTENT_TRAIN_BILLET = savedBillet;
 });
 
 test("une réponse incompréhensible passe la main au second essai", () => {

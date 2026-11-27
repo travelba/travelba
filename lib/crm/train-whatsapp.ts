@@ -12,23 +12,31 @@ import { restaurantGreeting } from "./restaurant-whatsapp";
 
 export const TRAIN_SIGNATURE = "La Conciergerie Travel BA";
 
-export const TRAIN_PROPOSITION_ENV = "TWILIO_CONTENT_TRAIN_PROPOSITION";
 export const TRAIN_LISTE_ENV = "TWILIO_CONTENT_TRAIN_LISTE";
 export const TRAIN_CLASSE_ENV = "TWILIO_CONTENT_TRAIN_CLASSE";
 export const TRAIN_TARIF_ENV = "TWILIO_CONTENT_TRAIN_TARIF";
 export const TRAIN_ACCORD_ENV = "TWILIO_CONTENT_TRAIN_ACCORD";
 export const TRAIN_BILLET_ENV = "TWILIO_CONTENT_TRAIN_BILLET";
 
-export const TRAIN_PROPOSITION_NAME = "train_proposition";
 export const TRAIN_LISTE_NAME = "train_liste";
 export const TRAIN_CLASSE_NAME = "train_classe";
 export const TRAIN_TARIF_NAME = "train_tarif";
 export const TRAIN_ACCORD_NAME = "train_accord";
 export const TRAIN_MODIFIER_NAME = "train_modifier";
 
-/** Le modèle liste déposé a trois lignes. Un autre nombre passe par le texte, ou par une liste de session. */
+/** Au moins 3 trains. La liste WhatsApp a 10 lignes : 9 trains et « Autres horaires ». */
+export const TRAIN_LIST_MIN = 3;
+export const TRAIN_LIST_TRAINS_MAX = 9;
 export const TRAIN_LIST_SLOTS = 3;
 export const TRAIN_LIST_MAX = 10;
+
+export function trainListTemplateName(count: number) {
+  return `${TRAIN_LISTE_NAME}_${count}`;
+}
+
+export function trainListTemplateEnv(count: number) {
+  return `${TRAIN_LISTE_ENV}_${count}`;
+}
 
 export const TRAIN_CLASSE_BUTTONS = [
   { title: "2de classe", id: "train:classe:2de" },
@@ -193,25 +201,11 @@ function plain(value: string, max: number) {
   return clip(value, max);
 }
 
-export function trainPropositionBody() {
-  return [
-    "Bonjour {{1}},",
-    "",
-    "Pour {{2}}, le {{3}}, voici les trains que nous pouvons réserver :",
-    "",
-    "{{4}}",
-    "",
-    "Répondez avec le numéro du train, ou « Autres horaires » pour un autre créneau. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.",
-    "",
-    TRAIN_SIGNATURE,
-  ].join("\n");
-}
-
 export function trainListBody() {
   return [
     "Bonjour {{1}},",
     "",
-    "Pour {{2}}, le {{3}}, choisissez un train. « Autres horaires » demande un autre créneau. Vous pouvez aussi répondre par le numéro.",
+    "Pour {{2}}, le {{3}}, choisissez un train dans la liste. « Autres horaires » y figure aussi. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.",
     "",
     TRAIN_SIGNATURE,
   ].join("\n");
@@ -253,69 +247,19 @@ export function trainAccordBody() {
 
 export function trainListItem(offer: TrainOffer, leg: TrainLeg, index: number) {
   const depart = trainClock(offer.heure_depart) || offer.heure_depart;
-  const title = clip(`${depart} ${offer.numero}`.trim(), 24);
+  const arrivee = trainClock(offer.heure_arrivee) || offer.heure_arrivee;
   const duree = (offer.duree || "").trim() || trainDuration(offer.heure_depart, offer.heure_arrivee) || "";
-  const floor = trainFloorPrice(offer);
-  const price = floor == null ? "" : `dès ${formatEuro(floor)}`;
-  const description = clip(
-    [trainRouteLabel(offer.depart_gare, offer.arrivee_gare), duree, price].filter(Boolean).join(", "),
-    72
-  );
+  const description = clip([duree, offer.numero ? `train ${offer.numero}` : ""].filter(Boolean).join(", "), 72);
   return {
     id: `train:${leg}:${index}`,
-    item: title || `Train ${index + 1}`,
+    item: clip(`${depart} → ${arrivee}`, 24) || `Train ${index + 1}`,
     description: description || "Horaire proposé",
   };
 }
 
-export function trainPropositionContentCreateBody() {
-  return {
-    friendly_name: TRAIN_PROPOSITION_NAME,
-    language: "fr",
-    variables: {
-      "1": "Monsieur Dupont",
-      "2": "Paris Gare de Lyon → Lyon Part-Dieu",
-      "3": "mardi 2 juin",
-      "4": "1. 08h12 → 10h05, train 6601, 1 h 53, dès 45 €\n2. 10h18 → 12h11, train 6603, 1 h 53, dès 52 €",
-    },
-    types: {
-      "twilio/text": { body: trainPropositionBody() },
-    },
-  };
+export function trainHoursListItem() {
+  return { id: TRAIN_HOURS_ID, item: "Autres horaires", description: "Un autre créneau" };
 }
-
-const SAMPLE_OFFERS: TrainOffer[] = [
-  {
-    numero: "6601",
-    depart_gare: "Paris Gare de Lyon",
-    arrivee_gare: "Lyon Part-Dieu",
-    date: "2026-06-02",
-    heure_depart: "08:12",
-    heure_arrivee: "10:05",
-    duree: "1 h 53",
-    prix: { "2de": { non_remboursable: 45, flex: 72 } },
-  },
-  {
-    numero: "6603",
-    depart_gare: "Paris Gare de Lyon",
-    arrivee_gare: "Lyon Part-Dieu",
-    date: "2026-06-02",
-    heure_depart: "10:18",
-    heure_arrivee: "12:11",
-    duree: "1 h 53",
-    prix: { "2de": { non_remboursable: 52, flex: 79 } },
-  },
-  {
-    numero: "6611",
-    depart_gare: "Paris Gare de Lyon",
-    arrivee_gare: "Lyon Part-Dieu",
-    date: "2026-06-02",
-    heure_depart: "14:12",
-    heure_arrivee: "16:05",
-    duree: "1 h 53",
-    prix: { "2de": { non_remboursable: 61, flex: 88 } },
-  },
-];
 
 export function trainListVariables(input: {
   greeting: string;
@@ -329,7 +273,7 @@ export function trainListVariables(input: {
     "2": plain(input.route, 80) || "votre trajet",
     "3": plain(input.dateLabel, 40) || "ce jour",
   };
-  input.offers.slice(0, TRAIN_LIST_SLOTS).forEach((offer, index) => {
+  input.offers.slice(0, TRAIN_LIST_TRAINS_MAX).forEach((offer, index) => {
     const item = trainListItem(offer, input.leg, index);
     const base = 4 + index * 3;
     variables[String(base)] = item.item;
@@ -339,8 +283,8 @@ export function trainListVariables(input: {
   return variables;
 }
 
-function listPicker(variables: Record<string, string>) {
-  const items = [0, 1, 2].map((index) => {
+function listPicker(count: number) {
+  const items = Array.from({ length: count }, (_, index) => {
     const base = 4 + index * 3;
     return {
       item: `{{${base}}}`,
@@ -348,6 +292,7 @@ function listPicker(variables: Record<string, string>) {
       id: `{{${base + 2}}}`,
     };
   });
+  items.push({ item: "Autres horaires", description: "Un autre créneau", id: TRAIN_HOURS_ID });
   return {
     body: trainListBody(),
     button: "Voir les trains",
@@ -355,24 +300,39 @@ function listPicker(variables: Record<string, string>) {
   };
 }
 
-export function trainListContentCreateBody() {
+function exampleOffers(count: number): TrainOffer[] {
+  return Array.from({ length: count }, (_, index) => ({
+    numero: String(6601 + index * 2),
+    depart_gare: "Paris Gare de Lyon",
+    arrivee_gare: "Lyon Part-Dieu",
+    date: "2026-06-02",
+    heure_depart: `${String(8 + index).padStart(2, "0")}:12`,
+    heure_arrivee: `${String(10 + index).padStart(2, "0")}:05`,
+    duree: "1 h 53",
+    prix: { "2de": { non_remboursable: 45 + index * 4, flex: 72 + index * 4 } },
+  }));
+}
+
+/** Modèle liste pour un nombre de trains fixé (3 à 9), plus la ligne Autres horaires. */
+export function trainListContentCreateBody(count = TRAIN_LIST_MIN) {
+  const trains = Math.min(TRAIN_LIST_TRAINS_MAX, Math.max(TRAIN_LIST_MIN, count));
   return {
-    friendly_name: TRAIN_LISTE_NAME,
+    friendly_name: trainListTemplateName(trains),
     language: "fr",
     variables: trainListVariables({
       greeting: "Monsieur Dupont",
       route: "Paris Gare de Lyon → Lyon Part-Dieu",
       dateLabel: "mardi 2 juin",
       leg: "aller",
-      offers: SAMPLE_OFFERS,
+      offers: exampleOffers(trains),
     }),
     types: {
-      "twilio/list-picker": listPicker({}),
+      "twilio/list-picker": listPicker(trains),
     },
   };
 }
 
-/** Liste de session : le nombre de lignes est celui des trains (1 à 10), sans nouveau modèle Meta. */
+/** Liste affichée : les trains, puis la ligne cliquable Autres horaires. */
 export function trainSessionListContent(input: { body: string; leg: TrainLeg; offers: TrainOffer[] }) {
   return {
     language: "fr",
@@ -381,8 +341,8 @@ export function trainSessionListContent(input: { body: string; leg: TrainLeg; of
         body: input.body,
         button: "Voir les trains",
         items: [
-          ...input.offers.slice(0, TRAIN_LIST_MAX - 1).map((offer, index) => trainListItem(offer, input.leg, index)),
-          { id: TRAIN_HOURS_ID, item: "Autres horaires", description: "Un autre créneau" },
+          ...input.offers.slice(0, TRAIN_LIST_TRAINS_MAX).map((offer, index) => trainListItem(offer, input.leg, index)),
+          trainHoursListItem(),
         ],
       },
     },
@@ -436,43 +396,31 @@ export function trainAccordContentCreateBody() {
 }
 
 export function trainTemplateSubmission() {
-  const proposition = trainPropositionContentCreateBody();
   const liste = trainListContentCreateBody();
   const classe = trainClasseContentCreateBody();
   const tarif = trainTarifContentCreateBody();
   return [
-    "Quatre modèles Utility, français, sans emoji. Le CRM enregistre le choix. Il n’achète pas les billets.",
+    "Modèles Utility, français, sans emoji. Le choix du train se fait en cliquant. Le CRM n’achète pas les billets.",
     "",
-    "Ordre : train aller, train retour s’il y en a un, classe, tarif.",
-    "Hors fenêtre de 24 h, le texte numéroté part. Dans la fenêtre, une liste interactive (1 à 10 trains). Trois trains hors fenêtre peuvent utiliser le modèle liste. Classe et tarif : deux boutons.",
+    "Ordre : train aller, train retour s’il y en a un, classe, tarif, accord.",
+    "Liste cliquable train_liste_3 à train_liste_9 : chaque ligne est l’heure de départ, l’arrivée, la durée et le numéro. La dernière ligne est Autres horaires. Un numéro tapé ne choisit pas le train.",
     "",
-    `1. ${TRAIN_PROPOSITION_NAME}`,
-    `Variable : ${TRAIN_PROPOSITION_ENV}`,
-    "Type : twilio/text",
-    "",
-    proposition.types["twilio/text"].body,
-    "",
-    "{{1}} Monsieur Dupont",
-    "{{2}} Paris Gare de Lyon → Lyon Part-Dieu",
-    "{{3}} mardi 2 juin",
-    "{{4}} liste numérotée (heure, numéro, durée, prix plancher seulement s’il est connu)",
-    "",
-    `2. ${TRAIN_LISTE_NAME}`,
-    `Variable : ${TRAIN_LISTE_ENV}`,
+    `1. ${trainListTemplateName(TRAIN_LIST_MIN)} à ${trainListTemplateName(TRAIN_LIST_TRAINS_MAX)}`,
+    `Variables : ${trainListTemplateEnv(TRAIN_LIST_MIN)} à ${trainListTemplateEnv(TRAIN_LIST_TRAINS_MAX)}`,
     "Type : twilio/list-picker",
     "Bouton : Voir les trains",
-    "Trois lignes. {{4}} titre, {{5}} description, {{6}} identifiant, puis {{7}} à {{12}} pour les deux suivantes.",
-    "L’identifiant est train:aller:0 ou train:retour:0.",
+    "Pour N trains : {{4}} titre, {{5}} description, {{6}} identifiant, puis le même triplet. Dernière ligne fixe : Autres horaires, id train:horaires.",
+    "L’identifiant d’un train est train:aller:0 ou train:retour:0.",
     "",
     liste.types["twilio/list-picker"].body,
     "",
-    `3. ${TRAIN_CLASSE_NAME}`,
+    `2. ${TRAIN_CLASSE_NAME}`,
     `Variable : ${TRAIN_CLASSE_ENV}`,
     "Boutons : 2de classe (train:classe:2de), 1re classe (train:classe:1re).",
     "",
     classe.types["twilio/quick-reply"].body,
     "",
-    `4. ${TRAIN_TARIF_NAME}`,
+    `3. ${TRAIN_TARIF_NAME}`,
     `Variable : ${TRAIN_TARIF_ENV}`,
     "Boutons : Non remboursable (train:tarif:non_remboursable), Flex (train:tarif:flex).",
     "",
@@ -485,7 +433,6 @@ export function trainTemplateSubmission() {
 
 export type TrainPlan = {
   modele:
-    | "train_proposition"
     | "train_liste"
     | "train_classe"
     | "train_tarif"
@@ -512,31 +459,21 @@ export function planTrainLegQuestion(input: {
   date: string;
   leg: TrainLeg;
   offers: TrainOffer[];
-  sessionOpen: boolean;
+  sessionOpen?: boolean;
 }): TrainPlan {
+  void input.sessionOpen;
   const greeting = plain(input.greeting, 80) || "cher client";
   const route = plain(input.route, 80) || "votre trajet";
   const dateLabel = formatTrainDateFr(input.date) || "ce jour";
-  const offers = input.offers.slice(0, TRAIN_LIST_MAX);
-  const numbered = trainChoiceList(offers);
-  const textVariables = { "1": greeting, "2": route, "3": dateLabel, "4": numbered };
-  const corps = fill(trainPropositionBody(), textVariables);
+  const offers = input.offers.slice(0, TRAIN_LIST_TRAINS_MAX);
   const listBody = fill(trainListBody(), { "1": greeting, "2": route, "3": dateLabel });
-  if (input.sessionOpen && offers.length >= 1 && offers.length <= TRAIN_LIST_MAX) {
-    return {
-      modele: "train_liste",
-      corps,
-      liste: trainSessionListContent({ body: listBody, leg: input.leg, offers }),
-    };
-  }
-  if (offers.length === TRAIN_LIST_SLOTS) {
-    return {
-      modele: "train_liste",
-      corps,
-      variables: trainListVariables({ greeting, route, dateLabel, leg: input.leg, offers }),
-    };
-  }
-  return { modele: "train_proposition", corps, variables: textVariables };
+  const inRange = offers.length >= TRAIN_LIST_MIN && offers.length <= TRAIN_LIST_TRAINS_MAX;
+  return {
+    modele: "train_liste" as const,
+    corps: listBody,
+    ...(inRange ? { variables: trainListVariables({ greeting, route, dateLabel, leg: input.leg, offers }) } : {}),
+    liste: trainSessionListContent({ body: listBody, leg: input.leg, offers }),
+  };
 }
 
 export function planTrainClasseQuestion(input: { greeting: string; offer: TrainOffer }): TrainPlan {
@@ -687,7 +624,7 @@ export function quoteTotal(input: {
 export function trainQuestionPrompt(step: TrainStep, count: number) {
   if (step === "aller" || step === "retour") {
     const which = step === "retour" ? "du retour" : "de l’aller";
-    return `Répondez avec le numéro du train ${which}, de 1 à ${count}, ou Autres horaires.`;
+    return `Choisissez un train ${which} dans la liste, ou Autres horaires.`;
   }
   if (step === "horaires") return "Indiquez l’heure souhaitée, par exemple avant 7h.";
   if (step === "classe") return "Répondez 2de classe ou 1re classe.";
@@ -731,20 +668,6 @@ function wantsCancelTicket(folded: string) {
   return /\b(annul|rembours)\b/.test(folded);
 }
 
-const ORDINALS: [string, number][] = [
-  ["premier", 0],
-  ["deuxieme", 1],
-  ["second", 1],
-  ["troisieme", 2],
-  ["quatrieme", 3],
-  ["cinquieme", 4],
-  ["sixieme", 5],
-  ["septieme", 6],
-  ["huitieme", 7],
-  ["neuvieme", 8],
-  ["dixieme", 9],
-];
-
 function looksLikeQuestion(folded: string) {
   if (folded.includes("?")) return true;
   return /^(quelle|quel|quels|quelles|quand|comment|pourquoi|ou est|ou sont|ou se|hotel|vol|transfert|passeport)\b/.test(folded);
@@ -752,20 +675,6 @@ function looksLikeQuestion(folded: string) {
 
 function matchIndex(folded: string, offers: TrainOffer[]) {
   const hits = new Set<number>();
-  const numero = folded.match(/\b(?:n|no|numero|train)?\s*(\d{1,2})\b/);
-  if (numero) {
-    const value = Number(numero[1]);
-    if (value >= 1 && value <= offers.length && folded.replace(numero[0], "").trim().length < 24) hits.add(value - 1);
-  }
-  const only = folded.match(/^(?:le |la |l )?(?:train |n )?(\d{1,2})$/);
-  if (only) {
-    const value = Number(only[1]);
-    if (value >= 1 && value <= offers.length) hits.add(value - 1);
-  }
-  for (const [word, index] of ORDINALS) {
-    if (index < offers.length && folded.includes(word)) hits.add(index);
-  }
-  if (/\bdernier\b/.test(folded) && offers.length) hits.add(offers.length - 1);
   offers.forEach((offer, index) => {
     const number = fold(offer.numero).replace(/\s+/g, "");
     if (number.length >= 3 && folded.replace(/\s+/g, "").includes(number)) hits.add(index);
@@ -822,6 +731,10 @@ export function parseTrainInbound(input: {
 }): TrainParse {
   const payload = (input.buttonPayload || "").trim();
   if (payload.startsWith("train:")) {
+    if (payload === TRAIN_HOURS_ID) {
+      if (input.step === "aller" || input.step === "retour") return { kind: "horaires" };
+      return { kind: "ambigu" };
+    }
     if (input.step === "aller" || input.step === "retour") {
       const match = payload.match(/^train:(aller|retour):(\d+)$/);
       if (!match || match[1] !== input.step) return { kind: "ambigu" };
@@ -839,7 +752,6 @@ export function parseTrainInbound(input: {
       if (payload === "train:tarif:flex") return { kind: "tarif", tarif: "flex" };
       return { kind: "ambigu" };
     }
-    if (payload === TRAIN_HOURS_ID) return { kind: "horaires" };
     if (payload === "train:accord:confirme") return { kind: "confirme" };
     if (payload === "train:accord:modifier") return { kind: "modifier" };
     if (payload === "train:accord:refuse") return { kind: "refuse" };
@@ -1189,7 +1101,7 @@ function parsePrix(raw: unknown): { prix?: TrainOffer["prix"] } | { error: strin
 export function parseTrainOffers(raw: unknown, label: string, bounds: { min: number; max: number }) {
   if (!Array.isArray(raw)) return { error: `${label} : liste attendue.` };
   if (raw.length < bounds.min || raw.length > bounds.max) {
-    return { error: `${label} : ${bounds.min} à ${bounds.max} trains.` };
+    return { error: `${label} : au moins ${bounds.min} trains, ${bounds.max} au plus. La liste WhatsApp a besoin de ce nombre par sens.` };
   }
   const offers: TrainOffer[] = [];
   for (let index = 0; index < raw.length; index += 1) {
