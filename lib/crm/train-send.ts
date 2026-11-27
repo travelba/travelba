@@ -6,21 +6,21 @@ import {
   TRAIN_BILLET_ENV,
   TRAIN_CLASSE_ENV,
   TRAIN_TARIF_ENV,
-  trainListTemplateEnv,
+  trainCarouselTemplateEnv,
   type TrainPlan,
 } from "./train-whatsapp";
 
 const MODIFIER_ENV = "TWILIO_CONTENT_TRAIN_MODIFIER";
 
-function listCount(plan: TrainPlan) {
-  const items = plan.liste?.types["twilio/list-picker"].items || [];
-  return items.filter((item) => item.id !== "train:horaires" && !item.id.includes("horaires")).length;
+function trainCount(plan: TrainPlan) {
+  const cards = plan.carrousel?.types["twilio/carousel"].cards || [];
+  return cards.filter((card) => card.actions[0]?.id !== "train:horaires").length;
 }
 
 function contentEnv(plan: TrainPlan) {
-  if (plan.modele === "train_liste") {
-    const count = listCount(plan);
-    return count >= 3 && count <= 9 ? trainListTemplateEnv(count) : "";
+  if (plan.modele === "train_carrousel") {
+    const count = trainCount(plan);
+    return count >= 3 && count <= 9 ? trainCarouselTemplateEnv(count) : "";
   }
   if (plan.modele === "train_classe") return TRAIN_CLASSE_ENV;
   if (plan.modele === "train_tarif") return TRAIN_TARIF_ENV;

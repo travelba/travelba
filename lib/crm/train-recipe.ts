@@ -16,7 +16,7 @@ export type RecipeBubble = {
   from: "agence" | "client";
   text: string;
   buttons?: string[];
-  list?: string[];
+  cards?: { title: string; body: string; button: string }[];
 };
 
 export type RecipeStep = {
@@ -118,13 +118,13 @@ function buttonsOf(plan: TrainPlan) {
   return undefined;
 }
 
-function listOf(plan: TrainPlan) {
-  const items = plan.liste?.types["twilio/list-picker"].items;
-  return items?.map((item) => `${item.item} — ${item.description}`);
+function cardsOf(plan: TrainPlan) {
+  const cards = plan.carrousel?.types["twilio/carousel"].cards;
+  return cards?.map((card) => ({ title: card.title, body: card.body, button: card.actions[0]?.title || "Choisir ce train" }));
 }
 
 function agency(plan: TrainPlan): RecipeBubble {
-  return { from: "agence", text: plan.corps, ...(buttonsOf(plan) ? { buttons: buttonsOf(plan) } : {}), ...(listOf(plan) ? { list: listOf(plan) } : {}) };
+  return { from: "agence", text: plan.corps, ...(buttonsOf(plan) ? { buttons: buttonsOf(plan) } : {}), ...(cardsOf(plan) ? { cards: cardsOf(plan) } : {}) };
 }
 
 function client(text: string): RecipeBubble {
@@ -457,8 +457,8 @@ export function trainRecipeMarkdown(recipes = trainRecipes()) {
     "Ordre : trains (aller, puis retour), classe, tarif, récapitulatif avec le prix, accord. Rien n’est acheté avant « Je confirme ».",
     "Horaires proposés par défaut : aller à partir de 8h, retour à partir de 16h. Dates déduites de l’hôtel (lundi → mardi : aller lundi, retour mardi), modifiables.",
     "Paiement : `creer_carte_pliant` sur le dossier, `trois_ds` faux. Le numéro n’est pas dans ces messages.",
-    "Le train se choisit en cliquant dans la liste (heure de départ → arrivée, durée, numéro). « Autres horaires » est une ligne de la liste. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.",
-    "Au moins 3 trains par sens, 9 au plus. L’envoi utilise le content SID `TWILIO_CONTENT_TRAIN_LISTE_N`, puis les modèles des étapes et `TWILIO_CONTENT_TRAIN_BILLET` le matin.",
+    "Le train se choisit en faisant défiler un carrousel : une carte par train (heure de départ → arrivée, gares, date, durée, numéro, bouton Choisir ce train). La dernière carte est Autres horaires. L’aller part d’abord, le retour ensuite. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.",
+    "Au moins 3 trains par sens, 9 au plus (10 cartes avec Autres horaires). L’envoi utilise le content SID `TWILIO_CONTENT_TRAIN_CARROUSEL_N`, puis les modèles des étapes et `TWILIO_CONTENT_TRAIN_BILLET` le matin.",
     "",
     "## Lancer la demande dans le CRM",
     "",
@@ -476,7 +476,7 @@ export function trainRecipeMarkdown(recipes = trainRecipes()) {
     "",
     "| Nom | Rôle |",
     "| --- | --- |",
-    "| `train_liste_3` à `train_liste_9` | Liste cliquable, plus Autres horaires |",
+    "| `train_carrousel_3` à `train_carrousel_9` | Carrousel, une carte par train, plus Autres horaires |",
     "| `train_classe` | Boutons 2de classe / 1re classe |",
     "| `train_tarif` | Boutons Non remboursable / Flex |",
     "| `train_accord` | Récapitulatif, Je confirme / Modifier / Je refuse |",
@@ -496,7 +496,11 @@ export function trainRecipeMarkdown(recipes = trainRecipes()) {
       for (const bubble of row.bubbles) {
         lines.push(`**${bubble.from === "agence" ? "Agence" : "Client"}**`, "", bubble.text, "");
         if (bubble.buttons?.length) lines.push(`Boutons : ${bubble.buttons.join(" · ")}`, "");
-        if (bubble.list?.length) lines.push("Liste :", "", ...bubble.list.map((item) => `- ${item}`), "");
+        if (bubble.cards?.length) {
+          lines.push("Carrousel :", "");
+          for (const card of bubble.cards) lines.push(`- **${card.title}** — ${card.body} — bouton ${card.button}`);
+          lines.push("");
+        }
       }
     });
   }

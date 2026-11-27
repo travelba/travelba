@@ -5,8 +5,8 @@ Parcours fictif. Aucun envoi réel. Les textes sont ceux du CRM, variables rempl
 Ordre : trains (aller, puis retour), classe, tarif, récapitulatif avec le prix, accord. Rien n’est acheté avant « Je confirme ».
 Horaires proposés par défaut : aller à partir de 8h, retour à partir de 16h. Dates déduites de l’hôtel (lundi → mardi : aller lundi, retour mardi), modifiables.
 Paiement : `creer_carte_pliant` sur le dossier, `trois_ds` faux. Le numéro n’est pas dans ces messages.
-Le train se choisit en cliquant dans la liste (heure de départ → arrivée, durée, numéro). « Autres horaires » est une ligne de la liste. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.
-Au moins 3 trains par sens, 9 au plus. L’envoi utilise le content SID `TWILIO_CONTENT_TRAIN_LISTE_N`, puis les modèles des étapes et `TWILIO_CONTENT_TRAIN_BILLET` le matin.
+Le train se choisit en faisant défiler un carrousel : une carte par train (heure de départ → arrivée, gares, date, durée, numéro, bouton Choisir ce train). La dernière carte est Autres horaires. L’aller part d’abord, le retour ensuite. Un numéro tapé ne choisit pas le train. Le texte libre reste un secours.
+Au moins 3 trains par sens, 9 au plus (10 cartes avec Autres horaires). L’envoi utilise le content SID `TWILIO_CONTENT_TRAIN_CARROUSEL_N`, puis les modèles des étapes et `TWILIO_CONTENT_TRAIN_BILLET` le matin.
 
 ## Lancer la demande dans le CRM
 
@@ -26,7 +26,7 @@ Les fils ci-dessous sont des images. Chaque fichier est dans `docs/recette-bille
 
 | Nom | Rôle |
 | --- | --- |
-| `train_liste_3` à `train_liste_9` | Liste cliquable, plus Autres horaires |
+| `train_carrousel_3` à `train_carrousel_9` | Carrousel, une carte par train, plus Autres horaires |
 | `train_classe` | Boutons 2de classe / 1re classe |
 | `train_tarif` | Boutons Non remboursable / Flex |
 | `train_accord` | Récapitulatif, Je confirme / Modifier / Je refuse |
@@ -53,16 +53,16 @@ Bot SNCF : Le bot a déposé deux trains aller. Il attend.
 
 Bonjour Camille Martin,
 
-Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin, choisissez un train dans la liste. « Autres horaires » y figure aussi. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
+Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin, faites défiler les trains et choisissez-en un. La dernière carte propose d’autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
 
 La Conciergerie Travel BA
 
-Liste :
+Carrousel :
 
-- 08h12 → 10h05 — 1 h 53, train 6601
-- 12h18 → 14h11 — 1 h 53, train 6615
-- 14h12 → 16h05 — 1 h 53, train 6621
-- Autres horaires — Un autre créneau
+- **08h12 → 10h05** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6601 — bouton Choisir ce train
+- **12h18 → 14h11** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6615 — bouton Choisir ce train
+- **14h12 → 16h05** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6621 — bouton Choisir ce train
+- **Autres horaires** — Un autre créneau, plus tôt ou plus tard. — bouton Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -154,16 +154,16 @@ Bot SNCF : Le bot a déposé l’aller et le retour pour Hugo Bernard et Inès B
 
 Bonjour Monsieur Bernard,
 
-Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin, choisissez un train dans la liste. « Autres horaires » y figure aussi. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
+Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin, faites défiler les trains et choisissez-en un. La dernière carte propose d’autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
 
 La Conciergerie Travel BA
 
-Liste :
+Carrousel :
 
-- 08h12 → 10h05 — 1 h 53, train 6601
-- 12h18 → 14h11 — 1 h 53, train 6615
-- 14h12 → 16h05 — 1 h 53, train 6621
-- Autres horaires — Un autre créneau
+- **08h12 → 10h05** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6601 — bouton Choisir ce train
+- **12h18 → 14h11** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6615 — bouton Choisir ce train
+- **14h12 → 16h05** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6621 — bouton Choisir ce train
+- **Autres horaires** — Un autre créneau, plus tôt ou plus tard. — bouton Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -177,16 +177,16 @@ Bot SNCF : Pas d’achat.
 
 Bonjour Monsieur Bernard,
 
-Pour Lyon Part-Dieu → Paris Gare de Lyon, le mercredi 3 juin, choisissez un train dans la liste. « Autres horaires » y figure aussi. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
+Pour Lyon Part-Dieu → Paris Gare de Lyon, le mercredi 3 juin, faites défiler les trains et choisissez-en un. La dernière carte propose d’autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
 
 La Conciergerie Travel BA
 
-Liste :
+Carrousel :
 
-- 16h12 → 18h05 — 1 h 53, train 6630
-- 18h42 → 20h35 — 1 h 53, train 6644
-- 20h12 → 22h05 — 1 h 53, train 6652
-- Autres horaires — Un autre créneau
+- **16h12 → 18h05** — Lyon Part-Dieu → Paris Gare de Lyon, mercredi 3 juin, 1 h 53, train 6630 — bouton Choisir ce train
+- **18h42 → 20h35** — Lyon Part-Dieu → Paris Gare de Lyon, mercredi 3 juin, 1 h 53, train 6644 — bouton Choisir ce train
+- **20h12 → 22h05** — Lyon Part-Dieu → Paris Gare de Lyon, mercredi 3 juin, 1 h 53, train 6652 — bouton Choisir ce train
+- **Autres horaires** — Un autre créneau, plus tôt ou plus tard. — bouton Autres horaires
 
 ### 3. Propositions envoyées
 
@@ -278,16 +278,16 @@ Bot SNCF : Le bot a déposé l’aller et le retour pour Claire Morel, Marc More
 
 Bonjour Madame Morel,
 
-Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin, choisissez un train dans la liste. « Autres horaires » y figure aussi. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
+Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin, faites défiler les trains et choisissez-en un. La dernière carte propose d’autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
 
 La Conciergerie Travel BA
 
-Liste :
+Carrousel :
 
-- 08h12 → 10h05 — 1 h 53, train 6601
-- 12h18 → 14h11 — 1 h 53, train 6615
-- 14h12 → 16h05 — 1 h 53, train 6621
-- Autres horaires — Un autre créneau
+- **08h12 → 10h05** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6601 — bouton Choisir ce train
+- **12h18 → 14h11** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6615 — bouton Choisir ce train
+- **14h12 → 16h05** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6621 — bouton Choisir ce train
+- **Autres horaires** — Un autre créneau, plus tôt ou plus tard. — bouton Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -301,16 +301,16 @@ Bot SNCF : Pas d’achat.
 
 Bonjour Madame Morel,
 
-Pour Lyon Part-Dieu → Paris Gare de Lyon, le mercredi 3 juin, choisissez un train dans la liste. « Autres horaires » y figure aussi. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
+Pour Lyon Part-Dieu → Paris Gare de Lyon, le mercredi 3 juin, faites défiler les trains et choisissez-en un. La dernière carte propose d’autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
 
 La Conciergerie Travel BA
 
-Liste :
+Carrousel :
 
-- 16h12 → 18h05 — 1 h 53, train 6630
-- 18h42 → 20h35 — 1 h 53, train 6644
-- 20h12 → 22h05 — 1 h 53, train 6652
-- Autres horaires — Un autre créneau
+- **16h12 → 18h05** — Lyon Part-Dieu → Paris Gare de Lyon, mercredi 3 juin, 1 h 53, train 6630 — bouton Choisir ce train
+- **18h42 → 20h35** — Lyon Part-Dieu → Paris Gare de Lyon, mercredi 3 juin, 1 h 53, train 6644 — bouton Choisir ce train
+- **20h12 → 22h05** — Lyon Part-Dieu → Paris Gare de Lyon, mercredi 3 juin, 1 h 53, train 6652 — bouton Choisir ce train
+- **Autres horaires** — Un autre créneau, plus tôt ou plus tard. — bouton Autres horaires
 
 ### 3. Propositions envoyées
 
@@ -402,16 +402,16 @@ Bot SNCF : Le bot a déposé les trains à partir de 8h et 16h.
 
 Bonjour Camille Martin,
 
-Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin, choisissez un train dans la liste. « Autres horaires » y figure aussi. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
+Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin, faites défiler les trains et choisissez-en un. La dernière carte propose d’autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
 
 La Conciergerie Travel BA
 
-Liste :
+Carrousel :
 
-- 08h12 → 10h05 — 1 h 53, train 6601
-- 12h18 → 14h11 — 1 h 53, train 6615
-- 14h12 → 16h05 — 1 h 53, train 6621
-- Autres horaires — Un autre créneau
+- **08h12 → 10h05** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6601 — bouton Choisir ce train
+- **12h18 → 14h11** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6615 — bouton Choisir ce train
+- **14h12 → 16h05** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6621 — bouton Choisir ce train
+- **Autres horaires** — Un autre créneau, plus tôt ou plus tard. — bouton Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -463,16 +463,16 @@ Bot SNCF : Trains déposés.
 
 Bonjour Camille Martin,
 
-Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin, choisissez un train dans la liste. « Autres horaires » y figure aussi. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
+Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin, faites défiler les trains et choisissez-en un. La dernière carte propose d’autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
 
 La Conciergerie Travel BA
 
-Liste :
+Carrousel :
 
-- 08h12 → 10h05 — 1 h 53, train 6601
-- 12h18 → 14h11 — 1 h 53, train 6615
-- 14h12 → 16h05 — 1 h 53, train 6621
-- Autres horaires — Un autre créneau
+- **08h12 → 10h05** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6601 — bouton Choisir ce train
+- **12h18 → 14h11** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6615 — bouton Choisir ce train
+- **14h12 → 16h05** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6621 — bouton Choisir ce train
+- **Autres horaires** — Un autre créneau, plus tôt ou plus tard. — bouton Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -624,16 +624,16 @@ Bot SNCF : Trains déposés.
 
 Bonjour Camille Martin,
 
-Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin, choisissez un train dans la liste. « Autres horaires » y figure aussi. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
+Pour Paris Gare de Lyon → Lyon Part-Dieu, le mardi 2 juin, faites défiler les trains et choisissez-en un. La dernière carte propose d’autres horaires. Nous demanderons ensuite la classe, le tarif, puis votre accord sur le prix. Rien n’est acheté avant cet accord.
 
 La Conciergerie Travel BA
 
-Liste :
+Carrousel :
 
-- 08h12 → 10h05 — 1 h 53, train 6601
-- 12h18 → 14h11 — 1 h 53, train 6615
-- 14h12 → 16h05 — 1 h 53, train 6621
-- Autres horaires — Un autre créneau
+- **08h12 → 10h05** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6601 — bouton Choisir ce train
+- **12h18 → 14h11** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6615 — bouton Choisir ce train
+- **14h12 → 16h05** — Paris Gare de Lyon → Lyon Part-Dieu, mardi 2 juin, 1 h 53, train 6621 — bouton Choisir ce train
+- **Autres horaires** — Un autre créneau, plus tôt ou plus tard. — bouton Autres horaires
 
 ### 2. Propositions envoyées
 
@@ -645,7 +645,7 @@ bof le truc
 
 **Agence**
 
-Je n’ai pas reconnu ce choix. Choisissez un train de l’aller dans la liste, ou Autres horaires.
+Je n’ai pas reconnu ce choix. Choisissez un train de l’aller sur une carte, ou la carte Autres horaires.
 
 La Conciergerie Travel BA
 

@@ -3041,7 +3041,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Dépose chez Twilio les modèles Utility du parcours train : train_liste_3 à train_liste_9 (liste cliquable, ligne Autres horaires), train_classe, train_tarif, train_accord, train_modifier, train_billet. Idempotent par nom. N’envoie aucun WhatsApp. Ne renvoie aucun secret.",
+      "Dépose chez Twilio les modèles Utility du parcours train : train_carrousel_3 à train_carrousel_9 (carrousel, une carte par train, carte Autres horaires), train_classe, train_tarif, train_accord, train_modifier, train_billet. Idempotent par nom. N’envoie aucun WhatsApp. Ne renvoie aucun secret.",
     run: (args) => deposerModelesTrainWhatsapp(args),
   },
   {
@@ -3077,7 +3077,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Dépose les trains aller et retour. Au moins 3 trains par sens, 9 au plus (la liste WhatsApp en a 10 avec Autres horaires). Moins de 3 est refusé. Sans confirmer, aperçu. confirmer true enregistre et envoie la liste si TWILIO_CONTENT_TRAIN_LISTE_N est posé. Le choix se fait en cliquant. Rien n’est acheté ici.",
+      "Dépose les trains aller et retour. Au moins 3 trains par sens, 9 au plus (le carrousel a 10 cartes avec Autres horaires). Moins de 3 est refusé. Sans confirmer, aperçu. confirmer true enregistre et envoie le carrousel de l’aller si TWILIO_CONTENT_TRAIN_CARROUSEL_N est posé. Le retour part après le choix de l’aller. Le choix se fait en cliquant une carte. Rien n’est acheté ici.",
     input: {
       demande_id: z.string().trim().max(80),
       aller: z.array(z.record(z.string(), z.unknown())).max(9),

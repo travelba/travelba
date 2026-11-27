@@ -10,7 +10,9 @@ import {
   parseTrainOffers,
   trainAccordContentCreateBody,
   trainClasseContentCreateBody,
-  trainListContentCreateBody,
+  TRAIN_CARD_MEDIA,
+  TRAIN_CHOOSE_TITLE,
+  trainCarouselContentCreateBody,
   trainTarifContentCreateBody,
 } from "./train-whatsapp";
 
@@ -37,17 +39,25 @@ test("placement selon le nombre de voyageurs", () => {
   assert.equal(partyHasChild([40, null]), false);
 });
 
-test("les modèles portent les boutons et la liste", () => {
+test("les modèles portent les boutons et le carrousel", () => {
   assert.equal(trainClasseContentCreateBody().types["twilio/quick-reply"].actions.length, 2);
   assert.equal(trainTarifContentCreateBody().types["twilio/quick-reply"].actions.length, 2);
   assert.equal(trainAccordContentCreateBody().types["twilio/quick-reply"].actions.length, 3);
-  const list = trainListContentCreateBody().types["twilio/list-picker"];
-  assert.equal(list.items.length, 4);
-  assert.equal(list.items[0].item, "{{4}}");
-  assert.equal(list.items[3].item, "Autres horaires");
-  assert.equal(trainListContentCreateBody(9).types["twilio/list-picker"].items.length, 10);
-  assert.match(list.body, /dans la liste/);
-  assert.doesNotMatch(list.body, /numéro du train/);
+  const carousel = trainCarouselContentCreateBody().types["twilio/carousel"];
+  assert.equal(carousel.cards.length, 4);
+  assert.equal(carousel.cards[0].title, "{{4}}");
+  assert.equal(carousel.cards[0].actions[0].title, TRAIN_CHOOSE_TITLE);
+  assert.equal(carousel.cards[0].media, TRAIN_CARD_MEDIA);
+  assert.equal(carousel.cards[3].title, "Autres horaires");
+  assert.equal(carousel.cards[3].actions[0].id, "train:horaires");
+  assert.equal(trainCarouselContentCreateBody(9).types["twilio/carousel"].cards.length, 10);
+  for (const card of carousel.cards) {
+    assert.ok(card.title.length + card.body.length <= 160);
+    assert.equal(card.actions.length, 1);
+    assert.equal(card.actions[0].type, "QUICK_REPLY");
+  }
+  assert.match(carousel.body, /faites défiler/);
+  assert.doesNotMatch(carousel.body, /dans la liste/);
 });
 
 test("le récapitulatif précède l’achat, et un refus n’achète pas", () => {
@@ -68,6 +78,18 @@ test("le récapitulatif précède l’achat, et un refus n’achète pas", () =>
   assert.match(wait?.steps.at(-1)?.bubbles[0]?.text || "", /135 €/);
   const family = recipes.find((recipe) => recipe.id === "famille");
   assert.match(family?.placement || "", /salle basse/);
+  const round = recipes.find((recipe) => recipe.id === "aller-retour");
+  const outbound = round?.steps[0]?.bubbles[0]?.cards || [];
+  const back = round?.steps[1]?.bubbles.find((bubble) => bubble.cards)?.cards || [];
+  assert.equal(outbound.length, 4);
+  assert.equal(back.length, 4);
+  assert.match(outbound[0]?.title || "", /08h12 → 10h05/);
+  assert.match(outbound[0]?.body || "", /train 6601/);
+  assert.match(back[0]?.title || "", /16h12 → 18h05/);
+  assert.match(back[0]?.body || "", /train 6630/);
+  assert.equal(outbound[0]?.button, "Choisir ce train");
+  assert.equal(outbound.at(-1)?.title, "Autres horaires");
+  for (const card of [...outbound, ...back]) assert.ok(card.title.length + card.body.length <= 160);
   assert.match(trainRecipeMarkdown(recipes), /Je confirme/);
 });
 
@@ -93,19 +115,20 @@ test("moins de 3 trains est refusé, un numéro tapé ne choisit pas", async () 
   };
   const typed = nextTrainTurn({ state: base, greeting: "Camille", depart: "Paris", arrivee: "Lyon", body: "2" });
   assert.equal(typed.action, "reposer");
-  const savedListe = process.env.TWILIO_CONTENT_TRAIN_LISTE_3;
-  delete process.env.TWILIO_CONTENT_TRAIN_LISTE_3;
+  const savedListe = process.env.TWILIO_CONTENT_TRAIN_CARROUSEL_3;
+  delete process.env.TWILIO_CONTENT_TRAIN_CARROUSEL_3;
   let called = false;
+  const card = (id: string) => ({
+    title: "08h12 → 10h05",
+    body: "Paris → Lyon, train",
+    media: "https://travelba.fr/whatsapp/train-carte.jpg",
+    actions: [{ type: "QUICK_REPLY" as const, title: "Choisir ce train", id }],
+  });
   const plan = {
-    modele: "train_liste" as const,
-    corps: "Choisissez un train dans la liste.",
+    modele: "train_carrousel" as const,
+    corps: "Faites défiler les trains.",
     variables: { "1": "Camille" },
-    liste: { language: "fr", types: { "twilio/list-picker": { body: "x", button: "Voir les trains", items: [
-      { id: "train:aller:0", item: "a", description: "b" },
-      { id: "train:aller:1", item: "a", description: "b" },
-      { id: "train:aller:2", item: "a", description: "b" },
-      { id: "train:horaires", item: "Autres horaires", description: "Un autre créneau" },
-    ] } } },
+    carrousel: { language: "fr", types: { "twilio/carousel": { body: "x", cards: [card("train:aller:0"), card("train:aller:1"), card("train:aller:2"), card("train:horaires")] } } },
   };
   const sent = await deliverTrainPlan({
     phone: "+33600000000",
@@ -117,7 +140,7 @@ test("moins de 3 trains est refusé, un numéro tapé ne choisit pas", async () 
   });
   assert.equal(called, false);
   assert.equal(sent.ok, false);
-  if (savedListe !== undefined) process.env.TWILIO_CONTENT_TRAIN_LISTE_3 = savedListe;
+  if (savedListe !== undefined) process.env.TWILIO_CONTENT_TRAIN_CARROUSEL_3 = savedListe;
   const savedBillet = process.env.TWILIO_CONTENT_TRAIN_BILLET;
   delete process.env.TWILIO_CONTENT_TRAIN_BILLET;
   const morning = await runMorningTrainTickets({ from() { throw new Error("pas de lecture"); } } as never);
