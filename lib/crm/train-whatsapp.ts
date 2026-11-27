@@ -16,6 +16,10 @@ export const TRAIN_CLASSE_ENV = "TWILIO_CONTENT_TRAIN_CLASSE";
 export const TRAIN_TARIF_ENV = "TWILIO_CONTENT_TRAIN_TARIF";
 export const TRAIN_ACCORD_ENV = "TWILIO_CONTENT_TRAIN_ACCORD";
 export const TRAIN_BILLET_ENV = "TWILIO_CONTENT_TRAIN_BILLET";
+export const TRAIN_ACCROCHE_ENV = "TWILIO_CONTENT_TRAIN_ACCROCHE";
+export const TRAIN_ACCROCHE_NAME = "train_accroche";
+export const TRAIN_LIST_BUTTON = "Voir les horaires";
+export const TRAIN_LIST_ID = "train:liste";
 
 export const TRAIN_HORAIRES_NAME = "train_horaires";
 export const TRAIN_CLASSE_NAME = "train_classe";
@@ -202,39 +206,30 @@ function plain(value: string, max: number) {
   return clip(value, max);
 }
 
-function horaireLines(count: number, firstVariable: number) {
-  return Array.from({ length: count }, (_, index) => `${index + 1}. {{${firstVariable + index}}}`);
+/** Liste en session : l’heure est sur la ligne, pas dans un bouton approuvé. */
+export function trainHorairesAllerBody(_count = TRAIN_LIST_MIN) {
+  return ["Bonjour {{1}},", "", "Voici les propositions de train pour l’aller {{2}}.", "Dis-moi lequel tu préfères ?"].join("\n");
 }
 
-/** Horaires dans le corps. Les boutons restent « Train N », sans accolade. */
-export function trainHorairesAllerBody(count = TRAIN_LIST_MIN) {
-  const trains = Math.min(TRAIN_LIST_TRAINS_MAX, Math.max(TRAIN_LIST_MIN, count));
-  return [
-    "Bonjour {{1}},",
-    "",
-    "Voici les propositions de train pour l’aller {{2}}.",
-    ...horaireLines(trains, 3),
-    "",
-    "Dis-moi lequel tu préfères ?",
-  ].join("\n");
+export function trainHorairesRetourBody(_count = TRAIN_LIST_MIN) {
+  return ["Et voici les propositions de train pour le retour {{1}}.", "Dis-moi lequel tu préfères ?"].join("\n");
 }
 
-export function trainHorairesRetourBody(count = TRAIN_LIST_MIN) {
-  const trains = Math.min(TRAIN_LIST_TRAINS_MAX, Math.max(TRAIN_LIST_MIN, count));
-  return [
-    "Et voici les propositions de train pour le retour {{1}}.",
-    ...horaireLines(trains, 2),
-    "",
-    "Dis-moi lequel tu préfères ?",
-  ].join("\n");
+export function trainAccrocheBody() {
+  return ["Bonjour {{1}},", "", "J’ai des horaires de train pour {{2}}.", "Réponds ici, je te les montre."].join("\n");
 }
 
 export function trainHorairesBody(leg: TrainLeg = "aller", count = TRAIN_LIST_MIN) {
   return leg === "retour" ? trainHorairesRetourBody(count) : trainHorairesAllerBody(count);
 }
 
-export function trainChoiceButtonTitle(index: number) {
-  return `Train ${index + 1}`;
+export function trainDepartTitle(offer: TrainOffer) {
+  return clip(trainClock(offer.heure_depart) || offer.heure_depart || "Horaire", 20) || "Horaire";
+}
+
+export function trainArriveeLine(offer: TrainOffer) {
+  const clock = trainClock(offer.heure_arrivee) || offer.heure_arrivee;
+  return clip(clock ? `arrivée ${clock}` : offer.numero ? `train ${offer.numero}` : "Horaire", 72);
 }
 
 export function trainClasseBody() {
@@ -251,16 +246,10 @@ export function trainAccordBody() {
 
 export type TrainQuickButton = { type: "QUICK_REPLY"; title: string; id: string };
 
-export function trainTimeButton(offer: TrainOffer) {
-  const depart = trainClock(offer.heure_depart) || offer.heure_depart;
-  const arrivee = trainClock(offer.heure_arrivee) || offer.heure_arrivee;
-  return clip(`${depart} → ${arrivee}`, TRAIN_BUTTON_TITLE_MAX) || "Horaire";
-}
-
 export function trainHorairesButtons(offers: TrainOffer[], leg: TrainLeg): TrainQuickButton[] {
-  const buttons = offers.slice(0, TRAIN_LIST_TRAINS_MAX).map((_, index) => ({
+  const buttons = offers.slice(0, TRAIN_LIST_TRAINS_MAX).map((offer, index) => ({
     type: "QUICK_REPLY" as const,
-    title: trainChoiceButtonTitle(index),
+    title: trainDepartTitle(offer),
     id: `train:${leg}:${index}`,
   }));
   buttons.push({ type: "QUICK_REPLY", title: "Autres horaires", id: TRAIN_HOURS_ID });
@@ -284,19 +273,20 @@ export function trainHorairesVariables(input: {
       ? { "1": route }
       : { "1": plain(input.greeting, 40) || "toi", "2": route };
   offers.forEach((offer, index) => {
-    variables[String(timeVariableStart(input.leg) + index)] = trainTimeButton(offer);
+    const base = timeVariableStart(input.leg) + index * 2;
+    variables[String(base)] = trainDepartTitle(offer);
+    variables[String(base + 1)] = trainArriveeLine(offer);
   });
   return variables;
 }
 
-function horairesTemplateButtons(count: number, leg: TrainLeg): TrainQuickButton[] {
-  const buttons = Array.from({ length: count }, (_, index) => ({
-    type: "QUICK_REPLY" as const,
-    title: trainChoiceButtonTitle(index),
-    id: `train:${leg}:${index}`,
-  }));
-  buttons.push({ type: "QUICK_REPLY", title: "Autres horaires", id: TRAIN_HOURS_ID });
-  return buttons;
+function horairesListItems(count: number, leg: TrainLeg) {
+  const items = Array.from({ length: count }, (_, index) => {
+    const base = timeVariableStart(leg) + index * 2;
+    return { item: `{{${base}}}`, id: `train:${leg}:${index}`, description: `{{${base + 1}}}` };
+  });
+  items.push({ item: "Autres horaires", id: TRAIN_HOURS_ID, description: "Un autre créneau" });
+  return items;
 }
 
 function exampleOffers(count: number): TrainOffer[] {
@@ -312,7 +302,11 @@ function exampleOffers(count: number): TrainOffer[] {
   }));
 }
 
-/** Boutons pour un nombre de trains fixé (3 à 9), plus Autres horaires. */
+/**
+ * Liste WhatsApp, session de 24 h seulement. Meta n’approuve pas ce type.
+ * Le titre de ligne est une variable : à l’envoi c’est l’heure de départ (08h12).
+ * L’id reste train:aller:N. Pas de quick-reply : en session, sans approbation, il n’y a que 3 boutons.
+ */
 export function trainHorairesContentCreateBody(count = TRAIN_LIST_MIN, leg: TrainLeg = "aller") {
   const trains = Math.min(TRAIN_LIST_TRAINS_MAX, Math.max(TRAIN_LIST_MIN, count));
   const route = leg === "retour" ? "Grenoble → Paris" : "Paris → Grenoble";
@@ -326,9 +320,24 @@ export function trainHorairesContentCreateBody(count = TRAIN_LIST_MIN, leg: Trai
       offers: exampleOffers(trains),
     }),
     types: {
-      "twilio/quick-reply": {
+      "twilio/list-picker": {
         body: trainHorairesBody(leg, trains),
-        actions: horairesTemplateButtons(trains, leg),
+        button: TRAIN_LIST_BUTTON,
+        items: horairesListItems(trains, leg),
+      },
+    },
+  };
+}
+
+export function trainAccrocheContentCreateBody() {
+  return {
+    friendly_name: TRAIN_ACCROCHE_NAME,
+    language: "fr",
+    variables: { "1": "Rudy", "2": "Paris → Grenoble" },
+    types: {
+      "twilio/quick-reply": {
+        body: trainAccrocheBody(),
+        actions: [{ type: "QUICK_REPLY" as const, title: TRAIN_LIST_BUTTON, id: TRAIN_LIST_ID }],
       },
     },
   };
@@ -389,13 +398,13 @@ export function trainTemplateSubmission() {
     "",
     "Ordre : horaires aller, horaires retour s’il y en a un, classe, tarif, accord.",
     "Tutoiement, prénom seul. Ordre : aller, tarif, retour s’il y en a un, classe, récap.",
-    "Boutons train_horaires_aller_3 à _9 et train_horaires_retour_3 à _9. Titres fixes Train 1 à Train N, plus Autres horaires. L’horaire est dans le texte. L’id du bouton désigne le train.",
+    "Listes train_horaires_aller_3 à _9 et train_horaires_retour_3 à _9. Titre de ligne : heure de départ. Id train:aller:N. Plus Autres horaires. Session de 24 h, pas d’approbation Meta. Hors fenêtre : train_accroche, bouton Voir les horaires.",
     "",
     `1. ${trainHorairesTemplateName(TRAIN_LIST_MIN, "aller")} et ${trainHorairesTemplateName(TRAIN_LIST_MIN, "retour")}`,
     `Variables : ${trainHorairesTemplateEnv(TRAIN_LIST_MIN, "aller")} et ${trainHorairesTemplateEnv(TRAIN_LIST_MIN, "retour")}`,
-    "Type : twilio/quick-reply",
+    "Type : twilio/list-picker",
     "",
-    horaires.types["twilio/quick-reply"].body,
+    horaires.types["twilio/list-picker"].body,
     "",
     `2. ${TRAIN_CLASSE_NAME}`,
     `Variable : ${TRAIN_CLASSE_ENV}`,
@@ -426,10 +435,13 @@ export type TrainPlan = {
     | "train_indisponible"
     | "train_billet"
     | "train_suite"
+    | "train_accroche"
     | "session";
   corps: string;
   variables?: Record<string, string>;
   boutons?: { title: string; id: string }[];
+  /** Libellé du bouton qui ouvre la liste WhatsApp. */
+  liste?: string;
 };
 
 function fill(template: string, variables: Record<string, string>) {
@@ -444,16 +456,25 @@ export function planTrainLegQuestion(input: {
   offers: TrainOffer[];
   sessionOpen?: boolean;
 }): TrainPlan {
-  void input.sessionOpen;
   const route = plain(input.route, 80) || "ton trajet";
   const offers = input.offers.slice(0, TRAIN_LIST_TRAINS_MAX);
   const variables = trainHorairesVariables({ greeting: firstWord(input.greeting), route, leg: input.leg, offers });
   const inRange = offers.length >= TRAIN_LIST_MIN && offers.length <= TRAIN_LIST_TRAINS_MAX;
+  if (!input.sessionOpen) {
+    const hook = { "1": firstWord(input.greeting), "2": route };
+    return {
+      modele: "train_accroche" as const,
+      corps: fill(trainAccrocheBody(), hook),
+      variables: hook,
+      boutons: [{ title: TRAIN_LIST_BUTTON, id: TRAIN_LIST_ID }],
+    };
+  }
   return {
     modele: "train_horaires" as const,
     corps: fill(trainHorairesBody(input.leg, offers.length || TRAIN_LIST_MIN), variables),
     ...(inRange ? { variables } : {}),
     boutons: trainHorairesButtons(offers, input.leg),
+    liste: TRAIN_LIST_BUTTON,
   };
 }
 
@@ -645,6 +666,7 @@ export type TrainParse =
   | { kind: "classe"; classe: TrainClasse }
   | { kind: "tarif"; tarif: TrainTarif }
   | { kind: "horaires" }
+  | { kind: "liste" }
   | { kind: "confirme" }
   | { kind: "modifier" }
   | { kind: "refuse" }
@@ -664,6 +686,7 @@ export function parseTrainInbound(input: {
 }): TrainParse {
   const payload = (input.buttonPayload || "").trim();
   if (payload.startsWith("train:")) {
+    if (payload === TRAIN_LIST_ID) return { kind: "liste" };
     if (payload === TRAIN_HOURS_ID) {
       if (input.step === "aller" || input.step === "retour") return { kind: "horaires" };
       return { kind: "ambigu" };
@@ -764,7 +787,7 @@ function askNext(args: {
   state: TrainChoiceState;
   clear: { ambigu_compte: number; besoin_agence: boolean };
   greeting: string;
-  input: { depart: string; arrivee: string; voyageurs?: number; placement?: string | null };
+  input: { depart: string; arrivee: string; voyageurs?: number; placement?: string | null; sessionOpen?: boolean };
   patch: Partial<TrainChoiceState>;
 }): TrainTurn {
   const state = args.state;
@@ -782,6 +805,7 @@ function askNext(args: {
         date: state.retour[0]?.date || "",
         leg: "retour",
         offers: state.retour,
+        sessionOpen: true,
       }),
     };
   }
@@ -881,6 +905,22 @@ export function nextTrainTurn(input: {
   const leg: TrainLeg = state.step === "retour" ? "retour" : state.horaire_leg === "retour" ? "retour" : "aller";
   if (parsed.kind === "delai") {
     return { action: "delai", patch: { ...clear, status: "en_attente", step: state.step }, plan: sessionPlan(trainWaitBody()) };
+  }
+  if (parsed.kind === "liste" && (state.step === "aller" || state.step === "retour")) {
+    const leg: TrainLeg = state.step === "retour" ? "retour" : "aller";
+    const offers = leg === "retour" ? state.retour : state.aller;
+    return {
+      action: "question",
+      patch: { ambigu_compte: 0, besoin_agence: false, step: leg },
+      plan: planTrainLegQuestion({
+        greeting,
+        route: trainRouteLabel(leg === "retour" ? input.arrivee : input.depart, leg === "retour" ? input.depart : input.arrivee),
+        date: offers[0]?.date || "",
+        leg,
+        offers,
+        sessionOpen: true,
+      }),
+    };
   }
   if (parsed.kind === "horaires") {
     return {

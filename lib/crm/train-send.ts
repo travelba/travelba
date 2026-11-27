@@ -3,6 +3,7 @@ import { sendContentTemplate } from "./whatsapp";
 import { sendWhatsappSession, sessionAddress } from "./whatsapp-session";
 import {
   TRAIN_ACCORD_ENV,
+  TRAIN_ACCROCHE_ENV,
   TRAIN_BILLET_ENV,
   TRAIN_CLASSE_ENV,
   TRAIN_TARIF_ENV,
@@ -17,6 +18,7 @@ function trainCount(plan: TrainPlan) {
 }
 
 function contentEnv(plan: TrainPlan) {
+  if (plan.modele === "train_accroche") return TRAIN_ACCROCHE_ENV;
   if (plan.modele === "train_horaires") {
     const count = trainCount(plan);
     const leg = plan.boutons?.some((button) => button.id.startsWith("train:retour:")) ? "retour" : "aller";

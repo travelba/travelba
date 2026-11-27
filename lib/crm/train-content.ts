@@ -13,6 +13,9 @@ import {
   TRAIN_TARIF_ENV,
   TRAIN_TARIF_NAME,
   trainAccordContentCreateBody,
+  trainAccrocheContentCreateBody,
+  TRAIN_ACCROCHE_ENV,
+  TRAIN_ACCROCHE_NAME,
   trainHorairesContentCreateBody,
   trainHorairesTemplateEnv,
   trainHorairesTemplateName,
@@ -65,15 +68,21 @@ export function trainContentDrafts() {
   const lists = (["aller", "retour"] as const).flatMap((leg) =>
     Array.from({ length: TRAIN_LIST_TRAINS_MAX - TRAIN_LIST_MIN + 1 }, (_, index) => {
       const count = TRAIN_LIST_MIN + index;
-      return { env: trainHorairesTemplateEnv(count, leg), friendlyName: trainHorairesTemplateName(count, leg), create: trainHorairesContentCreateBody(count, leg) };
+      return {
+        env: trainHorairesTemplateEnv(count, leg),
+        friendlyName: trainHorairesTemplateName(count, leg),
+        create: trainHorairesContentCreateBody(count, leg),
+        approuver: false,
+      };
     })
   );
   return [
     ...lists,
-    { env: TRAIN_CLASSE_ENV, friendlyName: TRAIN_CLASSE_NAME, create: trainClasseContentCreateBody() },
-    { env: TRAIN_TARIF_ENV, friendlyName: TRAIN_TARIF_NAME, create: trainTarifContentCreateBody() },
-    { env: TRAIN_ACCORD_ENV, friendlyName: TRAIN_ACCORD_NAME, create: trainAccordContentCreateBody() },
-    { env: TRAIN_MODIFIER_ENV, friendlyName: TRAIN_MODIFIER_NAME, create: trainModifierContentCreateBody() },
-    { env: TRAIN_BILLET_ENV, friendlyName: TRAIN_BILLET_NAME, create: trainBilletContentCreateBody() },
+    { env: TRAIN_ACCROCHE_ENV, friendlyName: TRAIN_ACCROCHE_NAME, create: trainAccrocheContentCreateBody(), approuver: true },
+    { env: TRAIN_CLASSE_ENV, friendlyName: TRAIN_CLASSE_NAME, create: trainClasseContentCreateBody(), approuver: true },
+    { env: TRAIN_TARIF_ENV, friendlyName: TRAIN_TARIF_NAME, create: trainTarifContentCreateBody(), approuver: true },
+    { env: TRAIN_ACCORD_ENV, friendlyName: TRAIN_ACCORD_NAME, create: trainAccordContentCreateBody(), approuver: true },
+    { env: TRAIN_MODIFIER_ENV, friendlyName: TRAIN_MODIFIER_NAME, create: trainModifierContentCreateBody(), approuver: true },
+    { env: TRAIN_BILLET_ENV, friendlyName: TRAIN_BILLET_NAME, create: trainBilletContentCreateBody(), approuver: true },
   ];
 }

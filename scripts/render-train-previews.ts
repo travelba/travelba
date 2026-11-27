@@ -18,9 +18,10 @@ function escapeHtml(value: string) {
 
 function bubbleHtml(bubble: RecipeBubble) {
   const side = bubble.from === "client" ? "client" : "agence";
+  const menu = bubble.menu ? `<span class="btn menu">${escapeHtml(bubble.menu)}</span>` : "";
   const buttons = (bubble.buttons || []).map((label) => `<span class="btn">${escapeHtml(label)}</span>`).join("");
   return `<div class="row ${side}"><div class="bubble"><p>${escapeHtml(bubble.text).replace(/\n/g, "<br>")}</p>${
-    buttons ? `<div class="buttons">${buttons}</div>` : ""
+    menu || buttons ? `<div class="buttons">${menu}${buttons}</div>` : ""
   }</div></div>`;
 }
 
@@ -42,6 +43,7 @@ function phoneHtml(title: string, bubbles: RecipeBubble[]) {
     .bubble p { margin: 0; }
     .buttons { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
     .btn { display: block; text-align: center; background: #fff; color: #027eb5; border: 1px solid #d1d7db; border-radius: 16px; padding: 6px 8px; font-size: 13px; font-weight: 600; }
+    .btn.menu { background: #027eb5; color: #fff; border-color: #027eb5; }
   </style></head><body><div class="phone"><header><strong>Travel BA</strong><span>Conciergerie · exemple fictif</span></header><main><h1>${escapeHtml(title)}</h1>${bubbles.map((bubble) => bubbleHtml(bubble)).join("")}</main></div></body></html>`;
 }
 

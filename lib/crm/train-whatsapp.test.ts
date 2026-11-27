@@ -8,8 +8,10 @@ import { deliverTrainPlan } from "./train-send";
 import {
   nextTrainTurn,
   parseTrainOffers,
+  planTrainLegQuestion,
   trainAccordContentCreateBody,
   trainClasseContentCreateBody,
+  trainAccrocheContentCreateBody,
   trainHorairesContentCreateBody,
   trainTarifContentCreateBody,
 } from "./train-whatsapp";
@@ -41,35 +43,34 @@ test("les modèles portent les boutons d’horaire, de classe et de tarif", () =
   assert.equal(trainClasseContentCreateBody().types["twilio/quick-reply"].actions.length, 2);
   assert.equal(trainTarifContentCreateBody().types["twilio/quick-reply"].actions.length, 2);
   assert.equal(trainAccordContentCreateBody().types["twilio/quick-reply"].actions.length, 3);
-  const horaires = trainHorairesContentCreateBody().types["twilio/quick-reply"];
-  assert.equal(horaires.actions.length, 4);
-  assert.equal(horaires.actions[0]?.title, "Train 1");
-  assert.equal(horaires.actions[0]?.id, "train:aller:0");
-  assert.equal(horaires.actions[1]?.id, "train:aller:1");
-  assert.equal(horaires.actions[3]?.title, "Autres horaires");
-  assert.equal(horaires.actions[3]?.id, "train:horaires");
-  assert.equal(trainHorairesContentCreateBody(9).types["twilio/quick-reply"].actions.at(-2)?.title, "Train 9");
-  assert.equal(trainHorairesContentCreateBody(9).types["twilio/quick-reply"].actions.length, 10);
-  const retour = trainHorairesContentCreateBody(3, "retour").types["twilio/quick-reply"];
-  assert.equal(retour.actions[0]?.title, "Train 1");
-  assert.equal(retour.actions[0]?.id, "train:retour:0");
-  assert.match(retour.body, /1\. \{\{2\}\}/);
-  assert.match(horaires.body, /1\. \{\{3\}\}/);
+  const horaires = trainHorairesContentCreateBody().types["twilio/list-picker"];
+  assert.equal(horaires.items.length, 4);
+  assert.equal(horaires.items[0]?.item, "{{3}}");
+  assert.equal(horaires.items[0]?.id, "train:aller:0");
+  assert.equal(horaires.items[3]?.item, "Autres horaires");
+  assert.equal(horaires.items[3]?.id, "train:horaires");
+  assert.equal(horaires.button, "Voir les horaires");
+  assert.equal(trainHorairesContentCreateBody().variables["3"], "08h12");
+  assert.doesNotMatch(trainHorairesContentCreateBody().variables["3"], /[{}]/);
+  assert.equal(trainHorairesContentCreateBody(9).types["twilio/list-picker"].items.length, 10);
+  const retour = trainHorairesContentCreateBody(3, "retour").types["twilio/list-picker"];
+  assert.equal(retour.items[0]?.id, "train:retour:0");
+  assert.equal(trainHorairesContentCreateBody(3, "retour").variables["2"], "08h12");
   assert.match(retour.body, /pour le retour/);
+  const accroche = trainAccrocheContentCreateBody().types["twilio/quick-reply"].actions[0];
+  assert.equal(accroche?.title, "Voir les horaires");
+  assert.equal(accroche?.id, "train:liste");
+  assert.doesNotMatch(accroche?.title || "", /[{}]/);
   for (const leg of ["aller", "retour"] as const) {
     for (let count = 3; count <= 9; count += 1) {
-      const actions = trainHorairesContentCreateBody(count, leg).types["twilio/quick-reply"].actions;
-      assert.equal(actions.length, count + 1);
-      assert.equal(actions[0]?.id, `train:${leg}:0`);
-      assert.equal(actions.at(-1)?.title, "Autres horaires");
-      for (const action of actions) {
-        assert.doesNotMatch(action.title, /[{}]/);
-        assert.doesNotMatch(action.id, /[{}]/);
-        assert.ok(action.title.length <= 20);
-      }
+      const items = trainHorairesContentCreateBody(count, leg).types["twilio/list-picker"].items;
+      assert.equal(items.length, count + 1);
+      assert.equal(items[0]?.id, `train:${leg}:0`);
+      assert.equal(items.at(-1)?.item, "Autres horaires");
+      assert.doesNotMatch(items.at(-1)?.item || "", /[{}]/);
+      for (const item of items) assert.doesNotMatch(item.id, /[{}]/);
     }
   }
-  for (const action of horaires.actions) assert.ok((action?.title || "").length <= 20);
   assert.match(horaires.body, /Dis-moi lequel tu préfères/);
   assert.doesNotMatch(horaires.body, /Rien n’est acheté|Monsieur/);
 });
@@ -98,14 +99,27 @@ test("le récapitulatif précède l’achat, et un refus n’achète pas", () =>
   const back = returnBubble?.buttons || [];
   assert.equal(outbound.length, 4);
   assert.equal(back.length, 4);
-  assert.equal(outbound[0], "Train 1");
+  assert.equal(outbound[0], "08h12");
   assert.match(round?.steps[0]?.bubbles[0]?.text || "", /Bonjour Hugo/);
-  assert.match(round?.steps[0]?.bubbles[0]?.text || "", /08h12 → 10h05/);
   assert.match(round?.steps[0]?.bubbles[0]?.text || "", /Dis-moi lequel tu préfères/);
   assert.match(returnBubble?.text || "", /retour/);
-  assert.match(returnBubble?.text || "", /16h12 → 18h05/);
-  assert.equal(returnBubble?.buttons?.[0], "Train 1");
+  assert.equal(returnBubble?.buttons?.[0], "16h12");
   assert.equal(outbound.at(-1), "Autres horaires");
+  const closed = planTrainLegQuestion({
+    greeting: "Hugo",
+    route: "Paris → Lyon",
+    date: "2026-06-02",
+    leg: "aller",
+    offers: [
+      { numero: "6601", depart_gare: "Paris", arrivee_gare: "Lyon", date: "2026-06-02", heure_depart: "08:12", heure_arrivee: "10:05" },
+      { numero: "6603", depart_gare: "Paris", arrivee_gare: "Lyon", date: "2026-06-02", heure_depart: "10:18", heure_arrivee: "12:11" },
+      { numero: "6611", depart_gare: "Paris", arrivee_gare: "Lyon", date: "2026-06-02", heure_depart: "14:12", heure_arrivee: "16:05" },
+    ],
+    sessionOpen: false,
+  });
+  assert.equal(closed.modele, "train_accroche");
+  assert.equal(closed.boutons?.[0]?.title, "Voir les horaires");
+  assert.doesNotMatch(closed.boutons?.map((button) => button.title).join(" ") || "", /[{}]|Train /);
   for (const label of [...outbound, ...back]) assert.ok(label.length <= 20);
   assert.match(trainRecipeMarkdown(recipes), /Je confirme/);
 });

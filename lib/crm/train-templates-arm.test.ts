@@ -17,7 +17,7 @@ test("un modèle déjà créé avec des accolades est recréé, sans appel Messa
   process.env.TWILIO_ACCOUNT_SID = "ACtestaccount000000000000000000000";
   process.env.TWILIO_AUTH_TOKEN = "secret-token-that-must-never-leak";
   process.env.TWILIO_CONTENT_TRAIN_HORAIRES_ALLER_3 = "HXoldbraces";
-  const created: { title?: string; id?: string }[][] = [];
+  const created: { title?: string; item?: string; id?: string }[][] = [];
   const urls: string[] = [];
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = String(input);
@@ -34,10 +34,15 @@ test("un modèle déjà créé avec des accolades est recréé, sans appel Messa
     if (url.includes("/ApprovalRequests/whatsapp") && method === "POST") return Response.json({ status: "received" });
     if (url.endsWith("/v1/Content") && method === "GET") return Response.json({ contents: [], meta: {} });
     if (url.endsWith("/v1/Content") && method === "POST") {
-      const body = JSON.parse(String(init?.body)) as { types?: { "twilio/quick-reply"?: { actions?: { title?: string; id?: string }[] } } };
-      const actions = body.types?.["twilio/quick-reply"]?.actions || [];
+      const body = JSON.parse(String(init?.body)) as {
+        types?: {
+          "twilio/quick-reply"?: { actions?: { title?: string; id?: string }[] };
+          "twilio/list-picker"?: { items?: { item?: string; id?: string }[] };
+        };
+      };
+      const actions = body.types?.["twilio/quick-reply"]?.actions || body.types?.["twilio/list-picker"]?.items || [];
       created.push(actions);
-      for (const action of actions) assert.doesNotMatch(action.title || "", /[{}]/);
+      for (const action of body.types?.["twilio/quick-reply"]?.actions || []) assert.doesNotMatch(action.title || "", /[{}]/);
       return Response.json({ sid: `HXnew${created.length}` });
     }
     if (url.includes("/ApprovalRequests") && method === "GET") return Response.json({ whatsapp: { status: "received" } });
@@ -48,8 +53,10 @@ test("un modèle déjà créé avec des accolades est recréé, sans appel Messa
     const aller = result.modeles.find((row) => row.nom === "train_horaires_aller_3");
     assert.equal(aller?.cree, true);
     assert.equal(aller?.content_sid, "HXnew1");
-    assert.equal(created[0]?.[0]?.title, "Train 1");
+    assert.equal(aller?.soumis, false);
+    assert.equal(created[0]?.[0]?.item, "{{3}}");
     assert.equal(created[0]?.[0]?.id, "train:aller:0");
+    assert.equal(urls.some((url) => /\/HXnew1(?:\/|$)/.test(url) && url.includes("ApprovalRequests")), false);
     assert.equal(urls.some((url) => url.includes("Messages")), false);
     assert.equal(result.ok, true);
   } finally {
