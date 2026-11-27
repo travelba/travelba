@@ -260,6 +260,47 @@ test("le vrai Concierge mocké reste sous le plafond et sans pièce d’identit�
   assert.equal(prompts.some((prompt) => prompt.includes("12AB34567") || /\b\d{6,}\b/.test(prompt)), false);
 });
 
+test("une demande déjà jouée n’est pas refaite et l’écriture suit chaque demande", async () => {
+  const seen: string[] = [];
+  const skipped = await runReservationSimulation({
+    cases: [{ reference: "TB-2026-8801", dossier: dossier() }],
+    now: NOW,
+    style: "net",
+    skipKind: (_reference, kind) => kind === "heure" || kind === "devis",
+    onResult: async (row) => {
+      seen.push(row.kind);
+    },
+  });
+  assert.equal(skipped.some((row) => row.kind === "heure" || row.kind === "devis"), false);
+  assert.equal(skipped.length, 6);
+  assert.deepEqual(seen, skipped.map((row) => row.kind));
+  let ticks = 0;
+  const cut = await runReservationSimulation({
+    cases: [{ reference: "TB-2026-8801", dossier: dossier() }],
+    now: NOW,
+    style: "net",
+    clock: () => {
+      ticks += 1;
+      return ticks * 1000;
+    },
+    deadlineAt: 2500,
+  });
+  assert.equal(cut.length, 2);
+  await assert.rejects(
+    () =>
+      runReservationSimulation({
+        cases: [{ reference: "TB-2026-8801", dossier: dossier() }],
+        now: NOW,
+        style: "net",
+        budget: 4,
+        onResult: async () => {
+          throw new Error("arrêt");
+        },
+      }),
+    /arrêt/
+  );
+});
+
 test("le script est coupé et n’envoie rien", () => {
   const run = spawnSync(process.execPath, ["scripts/concierge-reservation-sim.mjs"], {
     cwd: fileURLToPath(new URL("../..", import.meta.url)),
@@ -268,12 +309,17 @@ test("le script est coupé et n’envoie rien", () => {
   });
   assert.equal(run.status, 0);
   assert.match(run.stdout, /coupée/);
+  const route = readFileSync("app/api/admin/concierge/simulation/route.ts", "utf8");
+  assert.match(route, /maxDuration = 800/);
+  assert.match(readFileSync("lib/crm/concierge-reservation-batch.ts", "utf8"), /BATCH_SOFT_DEADLINE_MS = 240_000/);
   const sources = [
     "lib/crm/concierge-reservation-sim.ts",
     "lib/crm/concierge-reservation-load.ts",
     "lib/crm/concierge-reservation-store.ts",
+    "lib/crm/concierge-reservation-batch.ts",
     "scripts/concierge-reservation-sim.mjs",
     "app/api/admin/concierge/simulation/route.ts",
+    "components/admin/ConciergeSimulationLaunch.tsx",
   ];
   for (const file of sources) {
     const source = readFileSync(file, "utf8");

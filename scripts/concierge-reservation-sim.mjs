@@ -61,33 +61,49 @@ if (llm) {
   process.exit(0);
 }
 const capped = loaded.cases.slice(0, sample);
-const results = await runReservationSimulation({
-  cases: capped,
-  maxAsks: 8,
-  budget: live ? plan.budget : sample * 8,
-  live,
-  web: live ? resolveWebProvider() : undefined,
-});
-const appels = results.reduce((sum, row) => sum + row.engine.calls, 0);
 const batchId = crypto.randomUUID();
-const stored = await storeReservationSimulation(admin, {
-  batchId,
-  batchKey: simulationBatchKey({
-    day,
-    references: capped.map((row) => row.reference),
-    sample,
-  }),
-  rows: results,
+const batchKey = simulationBatchKey({
+  day,
+  references: capped.map((row) => row.reference),
+  sample,
 });
+let enregistres = 0;
+let pending = false;
+let demandes = 0;
+let appels = 0;
+let interrompu = false;
+try {
+  await runReservationSimulation({
+    cases: capped,
+    maxAsks: 8,
+    budget: live ? plan.budget : sample * 8,
+    live,
+    web: live ? resolveWebProvider() : undefined,
+    onResult: async (row) => {
+      const stored = await storeReservationSimulation(admin, { batchId, batchKey, rows: [row] });
+      if (stored.pending) {
+        pending = true;
+        throw new Error("migration");
+      }
+      if (stored.error) throw new Error("insert");
+      enregistres += stored.stored;
+      demandes += 1;
+      appels += row.engine.calls || 0;
+    },
+  });
+} catch {
+  interrompu = !pending;
+}
 console.log(
   JSON.stringify(
     {
       lance: true,
       source: "simulation_reservations",
       dossiers: capped.length,
-      demandes: results.length,
-      enregistres: stored.stored,
-      enAttenteDeMigration: stored.pending,
+      demandes,
+      enregistres,
+      enAttenteDeMigration: pending,
+      interrompu,
       moteur: live ? "reel" : "simule",
       budget: plan.budget,
       appels,
