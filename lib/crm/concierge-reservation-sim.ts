@@ -587,12 +587,21 @@ export async function runReservationSimulation(input: {
   live?: boolean;
   engineGenerate?: EngineGenerate;
   web?: WebProvider;
+  /** Demande déjà enregistrée pour ce lot : on ne la rejoue pas. */
+  skipKind?: (reference: string, kind: string) => boolean;
+  /** Appelé après chaque demande, avant la suivante. Une erreur arrête le lot. */
+  onResult?: (result: AskResult) => Promise<void>;
+  /** Horloge du délai. Les tests la font avancer. */
+  clock?: () => number;
+  /** On n’entame pas une nouvelle demande à partir de cet instant (ms). */
+  deadlineAt?: number;
 }): Promise<AskResult[]> {
   const now = input.now ?? new Date();
   const budget = input.budget ?? Number.POSITIVE_INFINITY;
   const diversifyBudget = { left: input.diversifyBudget ?? 0 };
   const callBudget = { left: input.live ? (input.budget ?? DEFAULT_MODEL_BUDGET) : Number.POSITIVE_INFINITY };
   const web = input.web || (input.live ? resolveWebProvider() : fixtureWebProvider());
+  const clock = input.clock ?? Date.now;
   const results: AskResult[] = [];
   for (const row of input.cases) {
     const asks = generateReservationAsks(row.dossier, {
@@ -602,7 +611,9 @@ export async function runReservationSimulation(input: {
       style: input.style,
     });
     for (const ask of asks) {
+      if (input.skipKind?.(row.reference, ask.kind)) continue;
       if (!input.live && results.length >= budget) return results;
+      if (input.deadlineAt != null && clock() >= input.deadlineAt) return results;
       if (input.live && callBudget.left <= 0) return results;
       if (input.diversify) {
         ask.turns[0].clientText = await diversifyClientText(ask.turns[0].clientText, input.diversify, diversifyBudget);
@@ -611,7 +622,7 @@ export async function runReservationSimulation(input: {
       const engine = input.live
         ? await runLiveEngine(row.dossier, ask, now, callBudget, input.engineGenerate, web)
         : await runMode(row.dossier, ask, "engine", now);
-      results.push({
+      const result: AskResult = {
         reference: row.reference,
         kind: ask.kind,
         phase: ask.phase,
@@ -620,7 +631,9 @@ export async function runReservationSimulation(input: {
         clientText: scrubQualityText(ask.turns.map((turn) => turn.clientText).join("\n")),
         router,
         engine,
-      });
+      };
+      results.push(result);
+      if (input.onResult) await input.onResult(result);
     }
   }
   return results;
