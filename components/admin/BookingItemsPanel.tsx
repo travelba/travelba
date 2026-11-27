@@ -61,6 +61,8 @@ import { HotelGallery } from "@/components/crm/HotelGallery";
 import { HotelStayFacts } from "@/components/crm/HotelStayFacts";
 import { hotelPhotos } from "@/lib/crm/hotel-gallery";
 import { AccueilVipForm } from "@/components/admin/AccueilVipForm";
+import { ServiceInsert } from "@/components/admin/ServiceInsert";
+import { isServiceRequest, serviceRequestStatusLabel } from "@/lib/crm/service-request";
 import { composeAccueilVip, accueilVipQuietLine, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { MoveToDossier } from "@/components/admin/MoveToDossier";
@@ -199,6 +201,7 @@ function detailText(item: CrmBookingItem, key: string) {
 }
 
 function stepTitle(item: CrmBookingItem) {
+  if (isServiceRequest(item.details)) return item.details?.service_kind === "flight" ? "Demande d’avion" : "Demande de train";
   if (item.kind === "hotel") return hotelDisplayName(item);
   if (item.kind === "flight" || item.kind === "rail") return flightCardTitle(item);
   return visibleServiceCopy(item.title);
@@ -206,6 +209,11 @@ function stepTitle(item: CrmBookingItem) {
 
 /** Ligne fermée : le trajet ou la ville, comme le carnet. Le détail est dans l’étape ouverte. */
 function readingLine(item: CrmBookingItem) {
+  if (isServiceRequest(item.details)) {
+    const from = detailText(item, "city_from");
+    const to = detailText(item, "city_to");
+    return from && to ? `${from} → ${to}` : from || to;
+  }
   if (item.kind === "flight" || item.kind === "rail") return flightCardSubtitle(item);
   if (item.kind === "hotel") return hotelCityLine(item);
   if (item.kind === "accueil_vip") return accueilVipQuietLine(item);
@@ -318,6 +326,7 @@ export function BookingItemsPanel({
   checkins = [],
   tripStart = null,
   tripEnd = null,
+  homeCity = "",
 }: {
   bookingId: string;
   customerId?: string;
@@ -325,6 +334,7 @@ export function BookingItemsPanel({
   /** Dates du dossier : une nouvelle carte hôtel les reprend. Sans dates : demain et après-demain. */
   tripStart?: string | null;
   tripEnd?: string | null;
+  homeCity?: string;
   stayVisible?: boolean;
   hotelRequests?: CrmHotelRequest[];
   hotelSignatory?: string;
@@ -1009,6 +1019,19 @@ export function BookingItemsPanel({
           return (
           <ReorderStep key={item.id} item={item} locked={locked} onDragEnd={finishCardDrag}>
             {(handle) => (
+            <>
+            {item.kind === "hotel" ? (
+              <ServiceInsert
+                bookingId={bookingId}
+                homeCity={homeCity}
+                hotel={item}
+                side="avant"
+                travelers={travelers.map((traveler) => ({
+                  id: traveler.id,
+                  name: [traveler.first_name, traveler.last_name].filter(Boolean).join(" ") || "Voyageur",
+                }))}
+              />
+            ) : null}
             <div
               id={bookingStepAnchor(item.id)}
               className={`relative scroll-mt-40 rounded-2xl border px-3 py-3 lg:scroll-mt-28 ${
@@ -1123,6 +1146,9 @@ export function BookingItemsPanel({
                     {reading ? <span className="block break-words text-xs text-muted lg:truncate">{reading}</span> : null}
                   </span>
                   {price ? <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-[var(--admin-navy)] lg:block">{price}</span> : sansPrix ? <span className="hidden shrink-0 text-xs font-semibold text-muted lg:block">Sans prix</span> : null}
+                  {isServiceRequest(item.details) && serviceRequestStatusLabel(item.details) ? (
+                    <span className={stepPill}>{serviceRequestStatusLabel(item.details)}</span>
+                  ) : null}
                   {mark === "cancelled" ? <span className={stepPill}>Annulée</span> : null}
                   {mark === "review" ? <span className={stepPill}>À vérifier</span> : null}
                   <Icon
@@ -1290,6 +1316,19 @@ export function BookingItemsPanel({
             )}
             </div>
             </div>
+            {item.kind === "hotel" ? (
+              <ServiceInsert
+                bookingId={bookingId}
+                homeCity={homeCity}
+                hotel={item}
+                side="apres"
+                travelers={travelers.map((traveler) => ({
+                  id: traveler.id,
+                  name: [traveler.first_name, traveler.last_name].filter(Boolean).join(" ") || "Voyageur",
+                }))}
+              />
+            ) : null}
+            </>
             )}
           </ReorderStep>
           );
