@@ -3,10 +3,64 @@ import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { notifyTrainBot } from "@/lib/crm/train-bot";
 import { ageOnDate, partyHasChild, seatingPreference, TRAIN_DEFAULT_OUTBOUND, TRAIN_DEFAULT_RETURN, TRAIN_STATUS_LABEL } from "@/lib/crm/train-request";
+import { trainProgress, type TrainProgressInput } from "@/lib/crm/train-progress";
+import type { TrainOffer } from "@/lib/crm/train-whatsapp";
 import { insertionPlan, serviceKindOf, serviceRequestCard, type ServiceSide } from "@/lib/crm/service-request";
 
 type Ctx = { params: Promise<{ id: string }> };
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+const UUID = /^[0-9a-f-]{36}$/i;
+
+export async function GET(request: Request, ctx: Ctx) {
+  const auth = await requireStaff();
+  if (auth instanceof NextResponse) return auth;
+  const { id } = await ctx.params;
+  const demande = new URL(request.url).searchParams.get("demande") || "";
+  if (!UUID.test(demande)) return jsonError("Demande invalide.");
+  const admin = createServiceClient();
+  const { data, error } = await admin
+    .from("crm_train_requests")
+    .select("status, step, created_at, updated_at, aller, retour, choix_aller, choix_retour, classe, tarif, reference_sncf, prix_paye, billets_envoyes, retour_date")
+    .eq("id", demande)
+    .eq("booking_id", id)
+    .maybeSingle();
+  if (error?.code === "42P01") return jsonError("La migration des demandes de train n’est pas appliquée.");
+  if (error || !data) return jsonError("Demande introuvable.", 404);
+  const row = data as {
+    status: string;
+    step: string;
+    created_at: string;
+    updated_at: string;
+    aller: TrainOffer[] | null;
+    retour: TrainOffer[] | null;
+    choix_aller: number | null;
+    choix_retour: number | null;
+    classe: string | null;
+    tarif: string | null;
+    reference_sncf: string | null;
+    prix_paye: number | null;
+    billets_envoyes: string[] | null;
+    retour_date: string | null;
+  };
+  const input: TrainProgressInput = {
+    status: row.status,
+    step: row.step,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    aller: row.aller || [],
+    retour: row.retour || [],
+    choixAller: row.choix_aller,
+    choixRetour: row.choix_retour,
+    classe: row.classe,
+    tarif: row.tarif,
+    reference: row.reference_sncf,
+    prix: row.prix_paye == null ? null : Number(row.prix_paye),
+    billets: row.billets_envoyes || [],
+    retourDate: row.retour_date,
+  };
+  return NextResponse.json({ suivi: trainProgress(input) });
+}
 
 export async function POST(request: Request, ctx: Ctx) {
   const auth = await requireStaff();

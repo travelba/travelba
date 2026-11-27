@@ -7,6 +7,9 @@ import type { CrmBookingItem } from "@/lib/crm/types";
 import { EMPTY_NAV_COUNTS } from "@/lib/crm/admin-nav";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { TRAIN_DEFAULT_OUTBOUND, TRAIN_DEFAULT_RETURN, trainFormDefaults } from "@/lib/crm/train-request";
+import { trainProgress, type TrainProgressInput } from "@/lib/crm/train-progress";
+import { TrainRequestTrackView } from "@/components/admin/TrainRequestTrack";
+import type { TrainOffer } from "@/lib/crm/train-whatsapp";
 import { emptyDockSnapshot } from "@/lib/crm/whatsapp-dock-load";
 
 const TRAVELERS = [
@@ -70,6 +73,47 @@ function Step({ title, meta, badge }: { title: string; meta: string; badge?: str
   );
 }
 
+const OFFRES: TrainOffer[] = [
+  { numero: "6601", depart_gare: "Paris Gare de Lyon", arrivee_gare: "Lyon Part-Dieu", date: "2026-06-01", heure_depart: "08:12", heure_arrivee: "10:05" },
+  { numero: "6615", depart_gare: "Paris Gare de Lyon", arrivee_gare: "Lyon Part-Dieu", date: "2026-06-01", heure_depart: "12:18", heure_arrivee: "14:11" },
+  { numero: "6621", depart_gare: "Paris Gare de Lyon", arrivee_gare: "Lyon Part-Dieu", date: "2026-06-01", heure_depart: "14:12", heure_arrivee: "16:05" },
+];
+const RETOURS: TrainOffer[] = [
+  { numero: "6630", depart_gare: "Lyon Part-Dieu", arrivee_gare: "Paris Gare de Lyon", date: "2026-06-02", heure_depart: "16:12", heure_arrivee: "18:05" },
+  { numero: "6644", depart_gare: "Lyon Part-Dieu", arrivee_gare: "Paris Gare de Lyon", date: "2026-06-02", heure_depart: "18:42", heure_arrivee: "20:35" },
+  { numero: "6652", depart_gare: "Lyon Part-Dieu", arrivee_gare: "Paris Gare de Lyon", date: "2026-06-02", heure_depart: "20:12", heure_arrivee: "22:05" },
+];
+
+function suiviDe(partial: Partial<TrainProgressInput>) {
+  return trainProgress({
+    status: "nouvelle",
+    step: "aller",
+    createdAt: "2026-11-27T08:00:00.000Z",
+    updatedAt: "2026-11-27T08:16:00.000Z",
+    aller: [],
+    retour: [],
+    choixAller: null,
+    choixRetour: null,
+    classe: null,
+    tarif: null,
+    reference: null,
+    prix: null,
+    billets: [],
+    retourDate: "2026-06-02",
+    ...partial,
+  });
+}
+
+function Suivi({ id, titre, partial }: { id: string; titre: string; partial: Partial<TrainProgressInput> }) {
+  return (
+    <article id={id} className="max-w-xl space-y-3 rounded-3xl border border-[var(--border)] bg-white p-4">
+      <p className="text-sm font-semibold text-[var(--admin-navy)]">{titre}</p>
+      <p className="text-xs text-muted">Paris → Lyon</p>
+      <TrainRequestTrackView suivi={suiviDe(partial)} />
+    </article>
+  );
+}
+
 function Desk({ id, children }: { id: string; children: ReactNode }) {
   return (
     <article id={id} className="rounded-3xl border border-[var(--border)] bg-[#faf9f6] p-6">
@@ -130,6 +174,24 @@ export default function ApercuDemandeTrainPage() {
               <Step title="Hôtel Lyon" meta="1 juin 2026 → 2 juin 2026 · Lyon" />
               <ServiceInsert bookingId="apercu" travelers={TRAVELERS} homeCity="Paris" hotel={HOTEL} side="apres" preview startOpen />
             </article>
+            <Suivi id="suivi-recherche" titre="Demande de train · Recherche" partial={{ status: "recherche", updatedAt: "2026-11-27T08:20:00.000Z" }} />
+            <Suivi
+              id="suivi-propositions"
+              titre="Demande de train · Propositions"
+              partial={{ status: "propositions", aller: OFFRES, retour: RETOURS, updatedAt: "2026-11-27T08:40:00.000Z" }}
+            />
+            <Suivi
+              id="suivi-choix"
+              titre="Demande de train · Choix"
+              partial={{ status: "propositions", step: "classe", aller: OFFRES, retour: RETOURS, choixAller: 0, tarif: "flex", choixRetour: 0, updatedAt: "2026-11-27T09:10:00.000Z" }}
+            />
+            <Suivi
+              id="suivi-commande"
+              titre="Demande de train · Commandé"
+              partial={{ status: "commande", step: "fait", aller: OFFRES, retour: RETOURS, choixAller: 0, choixRetour: 0, tarif: "flex", classe: "1re", reference: "SNCF42", prix: 186, updatedAt: "2026-11-27T09:40:00.000Z" }}
+            />
+            <Suivi id="suivi-attente" titre="Demande de train · En attente" partial={{ status: "en_attente", aller: OFFRES, retour: RETOURS, choixAller: 0, updatedAt: "2026-11-27T09:05:00.000Z" }} />
+            <Suivi id="suivi-refuse" titre="Demande de train · Refusé" partial={{ status: "annulee", step: "fait", aller: OFFRES, updatedAt: "2026-11-27T09:20:00.000Z" }} />
             <article id="fil" className="space-y-3 rounded-3xl border border-[var(--border)] bg-[#faf9f6] p-6">
               <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>
               <Step title="Vol Paris → Lyon" meta="1 juin 2026 · 08h12" />
