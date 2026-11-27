@@ -95,7 +95,7 @@ test("le récapitulatif précède l’achat, et un refus n’achète pas", () =>
 
 test("moins de 3 trains est refusé, un numéro tapé ne choisit pas", async () => {
   const few = parseTrainOffers([{ numero: "6601" }, { numero: "6603" }], "Aller", { min: 3, max: 9 });
-  assert.ok("error" in few);
+  if (!("error" in few)) assert.fail("moins de 3 trains doit être refusé");
   assert.match(few.error, /au moins 3 trains/);
   const base = {
     status: "propositions",
