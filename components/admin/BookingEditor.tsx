@@ -2445,6 +2445,7 @@ export function BookingEditor({
       </div>
       <div className="order-2">
       <BookingItemsPanel
+        homeCity={customer?.city || ""}
         bookingId={booking.id}
         customerId={booking.customer_id}
         items={items}

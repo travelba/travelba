@@ -32,6 +32,7 @@ type Row = {
   reference_sncf: string | null;
   prix_paye: number | null;
   suite: string | null;
+  item_id: string | null;
 };
 
 function text(value: unknown) {
@@ -186,6 +187,8 @@ export async function prendreDemandeTrain(input: Record<string, unknown>) {
     if (row.status !== "nouvelle" && row.status !== "recherche") throw new McpWriteError("Cette demande n’est plus à prendre.");
     const { error } = await admin.from("crm_train_requests").update({ status: "recherche", updated_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new McpWriteError("Mise à jour impossible.");
+    const { syncServiceCardStatus } = await import("./service-request");
+    await syncServiceCardStatus(admin, id, "recherche");
     return { ecrit: true, ...preview };
   });
 }
@@ -238,6 +241,8 @@ export async function deposerPropositionsTrain(input: Record<string, unknown>) {
       })
       .eq("id", id);
     if (error) throw new McpWriteError("Enregistrement impossible.");
+    const { syncServiceCardStatus } = await import("./service-request");
+    await syncServiceCardStatus(admin, id, "propositions");
     const { data: personRow } = await admin.from("crm_customers").select("phone").eq("id", row.customer_id).maybeSingle();
     const phone = (personRow as { phone?: string | null } | null)?.phone || "";
     const { deliverTrainPlan } = await import("./train-send");
@@ -284,31 +289,36 @@ export async function enregistrerCommandeTrain(input: Record<string, unknown>) {
     if (!offer) throw new McpWriteError("Train aller manquant.");
     const { addStaffBookingCard } = await import("./booking-item-write");
     const { attachBookingDocument } = await import("./booking-document-write");
+    const { fulfilledTrainCard } = await import("./service-request");
     const bytes = input.contenu ? decodeUploadedBytes(input.contenu) : null;
-    const card = await addStaffBookingCard(admin, row.booking_id, {
-      kind: "rail",
-      title: `${offer.depart_gare} → ${offer.arrivee_gare}`,
-      supplier: "SNCF",
-      confirmation_ref: reference,
-      start_at: `${offer.date}T${offer.heure_depart.length === 5 ? offer.heure_depart : "08:00"}:00`,
-      end_at: `${offer.date}T${offer.heure_arrivee.length === 5 ? offer.heure_arrivee : "10:00"}:00`,
-      amount: prix,
-      details: {
-        client_hidden: true,
-        train_number: offer.numero,
-        classe: row.classe,
-        tarif: row.tarif,
-        train_request_id: row.id,
-        amount_is_total: true,
-        ticket_count: row.voyageur_ids.length || 1,
-      },
+    const bought = fulfilledTrainCard({
+      depart: offer.depart_gare,
+      arrivee: offer.arrivee_gare,
+      date: offer.date,
+      heureDepart: offer.heure_depart,
+      heureArrivee: offer.heure_arrivee,
+      numero: offer.numero,
+      reference,
+      prix,
+      classe: row.classe,
+      tarif: row.tarif,
+      requestId: row.id,
+      voyageurs: row.voyageur_ids.length || 1,
     });
-    if ("error" in card) throw new McpWriteError(card.error);
+    let carteId = row.item_id || "";
+    if (carteId) {
+      const { error: cardError } = await admin.from("crm_booking_items").update(bought).eq("id", carteId).eq("booking_id", row.booking_id);
+      if (cardError) throw new McpWriteError("La carte du fil n’a pas pu devenir le train.");
+    } else {
+      const card = await addStaffBookingCard(admin, row.booking_id, bought);
+      if ("error" in card) throw new McpWriteError(card.error);
+      carteId = String(card.item.id);
+    }
     let documentId: string | null = null;
     if (bytes) {
       const saved = await attachBookingDocument(admin, {
         bookingId: row.booking_id,
-        itemId: String(card.item.id),
+        itemId: carteId,
         kind: "billet de train",
         visibleToClient: false,
         file: { name: text(input.nom_fichier) || "billet-train.pdf", type: "application/pdf", size: bytes.length, bytes },
@@ -316,8 +326,8 @@ export async function enregistrerCommandeTrain(input: Record<string, unknown>) {
       if ("error" in saved) throw new McpWriteError(saved.error);
       documentId = String(saved.document.id || "") || null;
     }
-    await admin.from("crm_train_requests").update({ status: "commande", reference_sncf: reference, prix_paye: prix, updated_at: new Date().toISOString() }).eq("id", id);
-    return { ecrit: true, carte_id: card.item.id, document_id: documentId, statut: "commande", ...preview };
+    await admin.from("crm_train_requests").update({ status: "commande", reference_sncf: reference, prix_paye: prix, item_id: carteId, updated_at: new Date().toISOString() }).eq("id", id);
+    return { ecrit: true, carte_id: carteId, document_id: documentId, statut: "commande", ...preview };
   });
 }
 
@@ -330,6 +340,8 @@ export async function annulerDemandeTrain(input: Record<string, unknown>) {
     if (row.status === "commande") throw new McpWriteError("La commande est déjà passée. Une annulation de billet passe par le message du client.");
     const { error } = await admin.from("crm_train_requests").update({ status: "annulee", updated_at: new Date().toISOString() }).eq("id", id);
     if (error) throw new McpWriteError("Annulation impossible.");
+    const { syncServiceCardStatus } = await import("./service-request");
+    await syncServiceCardStatus(admin, id, "annulee");
     await notifyTrainBot({ evenement: "refus", demande_id: id, dossier_id: row.booking_id });
     return { ecrit: true, statut: "annulee" };
   });

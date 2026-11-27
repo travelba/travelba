@@ -29,6 +29,10 @@ export function TrainRequestButton({
   initial,
   startOpen = false,
   preview = false,
+  embedded = false,
+  anchorItemId = "",
+  anchorSide = "",
+  onDone,
 }: {
   bookingId: string;
   travelers: Traveler[];
@@ -37,6 +41,11 @@ export function TrainRequestButton({
   startOpen?: boolean;
   /** Aperçu local : n’écrit pas en base. */
   preview?: boolean;
+  /** Formulaire seul, ouvert depuis le fil des cartes. */
+  embedded?: boolean;
+  anchorItemId?: string;
+  anchorSide?: "" | "avant" | "apres";
+  onDone?: () => void;
 }) {
   const [open, setOpen] = useState(startOpen);
   const [busy, setBusy] = useState(false);
@@ -76,6 +85,7 @@ export function TrainRequestButton({
       setFace(next);
       setOpen(false);
       setBusy(false);
+      onDone?.();
       return;
     }
     const response = await fetch(`/api/admin/bookings/${bookingId}/demande-train`, {
@@ -90,6 +100,8 @@ export function TrainRequestButton({
         retour_creneau: simple ? "" : retourCreneau,
         aller_simple: simple,
         voyageur_ids: selected,
+        kind: "train",
+        ...(anchorItemId && anchorSide ? { anchor_item_id: anchorItemId, anchor_side: anchorSide } : {}),
       }),
     });
     const json = (await response.json().catch(() => null)) as { error?: string; statut_libelle?: string; placement?: string } | null;
@@ -100,10 +112,12 @@ export function TrainRequestButton({
     }
     setFace({ ...next, statut: json?.statut_libelle || "Nouvelle", placement: json?.placement || next.placement });
     setOpen(false);
+    onDone?.();
   }
 
   return (
     <div className="contents">
+      {embedded ? null : (
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -111,6 +125,7 @@ export function TrainRequestButton({
       >
         {face ? `Train · ${face.statut}` : "Demande de train"}
       </button>
+      )}
       {face ? (
         <section className="basis-full rounded-2xl border border-[var(--border)] bg-white p-4 text-sm text-[var(--admin-navy)]">
           <p className="font-label text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--admin-gold-dark)]">Demande de train</p>

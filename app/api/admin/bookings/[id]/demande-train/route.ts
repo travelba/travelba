@@ -3,6 +3,7 @@ import { jsonError, requireStaff } from "@/lib/crm/auth";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { notifyTrainBot } from "@/lib/crm/train-bot";
 import { ageOnDate, partyHasChild, seatingPreference, TRAIN_DEFAULT_OUTBOUND, TRAIN_DEFAULT_RETURN, TRAIN_STATUS_LABEL } from "@/lib/crm/train-request";
+import { insertionPlan, serviceKindOf, serviceRequestCard, type ServiceSide } from "@/lib/crm/service-request";
 
 type Ctx = { params: Promise<{ id: string }> };
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -52,11 +53,27 @@ export async function POST(request: Request, ctx: Ctx) {
     ageOnDate(person.companion_id ? births.get(person.companion_id) : (holder.data as { birth_date?: string | null } | null)?.birth_date, allerDate)
   );
   const placement = seatingPreference({ count: ids.length, child: partyHasChild(ages) });
+  const kind = serviceKindOf(body.kind);
+  const anchorId = typeof body.anchor_item_id === "string" ? body.anchor_item_id : "";
+  const anchorSide: ServiceSide | "" = body.anchor_side === "avant" || body.anchor_side === "apres" ? body.anchor_side : "";
+  let sortOrder: number | null = null;
+  if (anchorId && anchorSide) {
+    const existing = await admin.from("crm_booking_items").select("id, sort_order").eq("booking_id", id);
+    if (existing.error) return jsonError("Lecture des cartes impossible.");
+    const plan = insertionPlan((existing.data || []) as { id: string; sort_order: number | null }[], anchorId, anchorSide);
+    if ("error" in plan) return jsonError(plan.error);
+    sortOrder = plan.sortOrder;
+    for (const shift of plan.shifts) {
+      const moved = await admin.from("crm_booking_items").update({ sort_order: shift.sort_order }).eq("id", shift.id).eq("booking_id", id);
+      if (moved.error) return jsonError("Le rang des cartes n’a pas pu être décalé.");
+    }
+  }
   const inserted = await admin
     .from("crm_train_requests")
     .insert({
       booking_id: id,
       customer_id: booking.customer_id,
+      kind,
       status: "nouvelle",
       depart_ville: depart,
       arrivee_ville: arrivee,
@@ -66,10 +83,24 @@ export async function POST(request: Request, ctx: Ctx) {
       retour_creneau: simple ? null : typeof body.retour_creneau === "string" && body.retour_creneau.trim() ? body.retour_creneau.trim() : TRAIN_DEFAULT_RETURN,
       voyageur_ids: ids,
       placement,
+      ...(anchorId && anchorSide ? { anchor_item_id: anchorId, anchor_side: anchorSide } : {}),
     })
     .select("id")
     .single();
   if (inserted.error || !inserted.data) return jsonError("Enregistrement impossible.");
+  const { addStaffBookingCard } = await import("@/lib/crm/booking-item-write");
+  const cardBody = serviceRequestCard({
+    kind,
+    depart,
+    arrivee,
+    allerDate,
+    sortOrder,
+    requestId: inserted.data.id,
+  });
+  const card = await addStaffBookingCard(admin, id, cardBody);
+  if (!("error" in card)) {
+    await admin.from("crm_train_requests").update({ item_id: card.item.id }).eq("id", inserted.data.id);
+  }
   const bot = await notifyTrainBot({
     evenement: "demande_creee",
     demande_id: inserted.data.id,

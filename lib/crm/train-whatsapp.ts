@@ -253,7 +253,7 @@ export type TrainCarouselCard = {
   title: string;
   body: string;
   media: string;
-  actions: [{ type: "QUICK_REPLY"; title: string; id: string }];
+  actions: { type: "QUICK_REPLY"; title: string; id: string }[];
 };
 
 /** Titre et corps ensemble : 160 caractères, limite Twilio du carrousel. */

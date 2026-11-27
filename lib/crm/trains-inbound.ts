@@ -73,6 +73,10 @@ export async function captureTrainReply(admin: SupabaseClient, params: URLSearch
     .from("crm_train_requests")
     .update({ ...turn.patch, updated_at: new Date().toISOString() })
     .eq("id", row.id);
+  if (typeof turn.patch.status === "string") {
+    const { syncServiceCardStatus } = await import("./service-request");
+    await syncServiceCardStatus(admin, row.id, turn.patch.status);
+  }
   if (turn.action === "choix") {
     await notifyTrainBot({ evenement: "choix_recu", demande_id: row.id, dossier_id: row.booking_id });
   } else if (turn.action === "contrainte") {

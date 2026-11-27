@@ -10,7 +10,15 @@ Au moins 3 trains par sens, 9 au plus (10 cartes avec Autres horaires). L’envo
 
 ## Lancer la demande dans le CRM
 
-Même bouton que la fiche dossier. Aperçu local, données fictives, sans écriture en base : `/apercu/demande-train`.
+Même bouton que la fiche dossier, et un point d’insertion entre les cartes (avant ou après, comme un transfert). Aperçu local, données fictives, sans écriture en base : `/apercu/demande-train`.
+
+![Demande avant l’hôtel](recette-billets-train/crm-avant.png)
+
+![Demande après l’hôtel](recette-billets-train/crm-apres.png)
+
+![Carte Demande de train dans le fil](recette-billets-train/crm-fil.png)
+
+![La demande devenue le train](recette-billets-train/crm-billet.png)
 
 ![Fiche avec le bouton Demande de train](recette-billets-train/crm-bouton.png)
 

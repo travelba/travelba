@@ -8,6 +8,10 @@ const shots = [
   ["formulaire", "crm-formulaire.png"],
   ["depart-inconnu", "crm-depart-inconnu.png"],
   ["suivi", "crm-suivi.png"],
+  ["avant", "crm-avant.png"],
+  ["apres", "crm-apres.png"],
+  ["fil", "crm-fil.png"],
+  ["billet", "crm-billet.png"],
 ] as const;
 
 async function main() {
