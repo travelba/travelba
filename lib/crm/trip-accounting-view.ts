@@ -17,6 +17,7 @@ import {
   type TripCost,
 } from "./trip-costs";
 import { loadDossierPendingCosts } from "./pliant-dossier-run";
+import { cardTheoreticalCostEur } from "./theoretical-cost";
 import { loadOutgoingQueue, loadTripCosts } from "./trip-costs-db";
 
 export type PieceRow = {
@@ -100,9 +101,19 @@ export async function buildTripAccountingView(
   // Lignes synthétiques, sommées une fois par tripTotals. Les charges MB3M restent les débits :
   // withCommercialDiscountLines ajoute les remises de la pro forma, sans seconde ligne.
   const sales = withCommercialDiscountSales(saleLines(inputs.charges, booking.id), cuts);
-  const { lines, unsold } = accountLines(sales, [...inputs.costs, ...pending]);
+  const { lines: accounted, unsold } = accountLines(sales, [...inputs.costs, ...pending]);
+  const cardCostByItem = new Map<string, number>();
+  for (const item of items) {
+    if (!item.id) continue;
+    const cardCost = cardTheoreticalCostEur(item.details);
+    if (cardCost != null) cardCostByItem.set(item.id, cardCost);
+  }
+  const lines = accounted.map((line) => {
+    const cardCost = line.itemId ? cardCostByItem.get(line.itemId) ?? null : null;
+    return cardCost == null ? line : { ...line, cardCost };
+  });
   const mbLines = withCommercialDiscountLines(
-    mb3mDossierLines(inputs.charges, items, marginByTransaction(lines)),
+    mb3mDossierLines(inputs.charges, items, marginByTransaction(accounted)),
     cuts
   );
   const valid = inputs.pieces.filter((row) => row.printed_at && !row.credited_at);

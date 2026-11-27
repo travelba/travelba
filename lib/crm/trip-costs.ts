@@ -333,6 +333,11 @@ export type AccountedLine = SaleLine & {
   cost: number;
   margin: number;
   costs: TripCost[];
+  /**
+   * Coût net de la carte, en euros. Sert au tableau de rentabilité seulement :
+   * `cost` et la marge envoyée à MB3M restent la somme des débits réels.
+   */
+  cardCost?: number | null;
 };
 
 /**
