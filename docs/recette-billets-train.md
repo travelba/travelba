@@ -111,9 +111,9 @@ Bot SNCF : Récap. L’achat attend l’ok.
 
 **Agence**
 
-Camille, on part là-dessus.
+Ok Camille, on part là-dessus.
 
-Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex. Place isolée ou côté fenêtre.
+Voici le détail : Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex. Place isolée ou côté fenêtre.
 
 Total : 120 €.
 On n’achète qu’après ton ok.
@@ -210,9 +210,9 @@ Bot SNCF : Pas d’achat.
 
 **Agence**
 
-Hugo, on part là-dessus.
+Ok Hugo, on part là-dessus.
 
-Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. Retour : Lyon Part-Dieu → Paris Gare de Lyon, train 6630, mercredi 3 juin à 16h12. 2de classe, tarif Non remboursable. Côte à côte ou face à face.
+Voici le détail : Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. Retour : Lyon Part-Dieu → Paris Gare de Lyon, train 6630, mercredi 3 juin à 16h12. 2de classe, tarif Non remboursable. Côte à côte ou face à face.
 
 Total : 87 € par personne, 174 € pour 2 voyageurs.
 On n’achète qu’après ton ok.
@@ -309,9 +309,9 @@ Bot SNCF : Pas d’achat.
 
 **Agence**
 
-Claire, on part là-dessus.
+Ok Claire, on part là-dessus.
 
-Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. Retour : Lyon Part-Dieu → Paris Gare de Lyon, train 6630, mercredi 3 juin à 16h12. 2de classe, tarif Non remboursable. Carré, sinon quatre places alignées, sinon deux et deux l’une derrière l’autre. Avec enfant, salle basse prioritaire (TGV duplex).
+Voici le détail : Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. Retour : Lyon Part-Dieu → Paris Gare de Lyon, train 6630, mercredi 3 juin à 16h12. 2de classe, tarif Non remboursable. Carré, sinon quatre places alignées, sinon deux et deux l’une derrière l’autre. Avec enfant, salle basse prioritaire (TGV duplex).
 
 Total : 87 € par personne, 348 € pour 4 voyageurs.
 On n’achète qu’après ton ok.
@@ -442,9 +442,9 @@ Bot SNCF : Pas d’achat.
 
 **Agence**
 
-Camille, on part là-dessus.
+Ok Camille, on part là-dessus.
 
-Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex. Place isolée ou côté fenêtre.
+Voici le détail : Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex. Place isolée ou côté fenêtre.
 
 Total : 120 €.
 On n’achète qu’après ton ok.
@@ -489,9 +489,9 @@ Bot SNCF : Nouveau récap. L’achat attend encore l’ok.
 
 **Agence**
 
-Camille, on part là-dessus.
+Ok Camille, on part là-dessus.
 
-Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 2de classe, tarif Flex. Place isolée ou côté fenêtre.
+Voici le détail : Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 2de classe, tarif Flex. Place isolée ou côté fenêtre.
 
 Total : 72 €.
 On n’achète qu’après ton ok.
@@ -559,9 +559,9 @@ Bot SNCF : Récapitulatif envoyé. Pas de réponse : la demande reste en proposi
 
 **Agence**
 
-Camille, on part là-dessus.
+Ok Camille, on part là-dessus.
 
-Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex. Place isolée ou côté fenêtre.
+Voici le détail : Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex. Place isolée ou côté fenêtre.
 
 Total : 120 €.
 On n’achète qu’après ton ok.
@@ -598,9 +598,9 @@ Bot SNCF : Le bot a renvoyé le prix augmenté. Le CRM redemande l’accord. San
 
 **Agence**
 
-Camille, on part là-dessus.
+Ok Camille, on part là-dessus.
 
-Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex.
+Voici le détail : Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex.
 
 Total : 135 € (auparavant 120 €).
 On n’achète qu’après ton ok.
@@ -645,9 +645,9 @@ Bot SNCF : Récapitulatif en attente d’accord.
 
 **Agence**
 
-Camille, on part là-dessus.
+Ok Camille, on part là-dessus.
 
-Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex.
+Voici le détail : Aller : Paris Gare de Lyon → Lyon Part-Dieu, train 6601, mardi 2 juin à 08h12. 1re classe, tarif Flex.
 
 Total : 120 €.
 On n’achète qu’après ton ok.

@@ -5,10 +5,12 @@ import { trainRecipeMarkdown, trainRecipes } from "./train-recipe";
 import { trainTicketSendWindow } from "./train-ticket-plan";
 import { runMorningTrainTickets } from "./train-billets-run";
 import { deliverTrainPlan } from "./train-send";
+import { trainBilletContentCreateBody } from "./train-content";
 import {
   nextTrainTurn,
   parseTrainOffers,
   planTrainLegQuestion,
+  trainAccordBody,
   trainAccordContentCreateBody,
   trainClasseContentCreateBody,
   trainAccrocheContentCreateBody,
@@ -43,6 +45,21 @@ test("les modèles portent les boutons d’horaire, de classe et de tarif", () =
   assert.equal(trainClasseContentCreateBody().types["twilio/quick-reply"].actions.length, 2);
   assert.equal(trainTarifContentCreateBody().types["twilio/quick-reply"].actions.length, 2);
   assert.equal(trainAccordContentCreateBody().types["twilio/quick-reply"].actions.length, 3);
+  const accord = trainAccordBody();
+  assert.match(accord, /^Ok \{\{1\}\}/);
+  assert.match(accord, /On n’achète qu’après ton ok\.$/);
+  assert.doesNotMatch(accord, /^\s*\{\{/);
+  assert.doesNotMatch(accord.trim(), /\{\{\d+\}\}$/);
+  const billet = trainBilletContentCreateBody();
+  const billetBody = billet.types["twilio/media"].body;
+  assert.match(billetBody, /^Bonjour \{\{2\}\}/);
+  assert.match(billetBody, /On te l’envoie pour le départ\.$/);
+  assert.doesNotMatch(billetBody.trim(), /\{\{\d+\}\}[.]?$/);
+  assert.equal(billet.variables["1"], "exemple/esta-exemple.pdf");
+  assert.equal(
+    billet.types["twilio/media"].media[0].replace("{{1}}", billet.variables["1"]),
+    "https://travelba.fr/api/whatsapp/autorisations/exemple/esta-exemple.pdf",
+  );
   const horaires = trainHorairesContentCreateBody().types["twilio/list-picker"];
   assert.equal(horaires.items.length, 4);
   assert.equal(horaires.items[0]?.item, "{{3}}");

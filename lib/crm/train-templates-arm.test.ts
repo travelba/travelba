@@ -2,6 +2,58 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ensureTrainTemplates, trainReplyTitlesRejected } from "./train-templates-arm";
 
+test("un modèle refusé est recréé, l’ancien contenu n’est pas resoumis", async () => {
+  const saved = {
+    sid: process.env.TWILIO_ACCOUNT_SID,
+    token: process.env.TWILIO_AUTH_TOKEN,
+    env: process.env.VERCEL_ENV,
+    accord: process.env.TWILIO_CONTENT_TRAIN_ACCORD,
+  };
+  delete process.env.VERCEL_ENV;
+  process.env.TWILIO_ACCOUNT_SID = "ACtestaccount000000000000000000000";
+  process.env.TWILIO_AUTH_TOKEN = "secret-token-that-must-never-leak";
+  process.env.TWILIO_CONTENT_TRAIN_ACCORD = "HXrefused";
+  const approvals: string[] = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = String(input);
+    const method = init?.method || "GET";
+    assert.equal(url.includes("Messages"), false);
+    if (url.endsWith("/Content/HXrefused") && method === "GET") {
+      return Response.json({ sid: "HXrefused", types: { "twilio/quick-reply": { actions: [{ title: "Je confirme" }] } } });
+    }
+    if (url.endsWith("/ApprovalRequests") && method === "GET") {
+      const sid = url.split("/Content/")[1]?.split("/")[0];
+      if (sid === "HXrefused") return Response.json({ whatsapp: { status: "rejected", rejection_reason: "variable" } });
+      return Response.json({ whatsapp: { status: "received" } });
+    }
+    if (url.endsWith("/v1/Content") && method === "POST") return Response.json({ sid: "HXfresh" });
+    if (url.includes("/ApprovalRequests/whatsapp") && method === "POST") {
+      approvals.push(url);
+      return Response.json({ status: "received" });
+    }
+    return Response.json({ contents: [], meta: {} });
+  };
+  try {
+    const result = await ensureTrainTemplates(fetchImpl);
+    const accord = result.modeles.find((row) => row.nom === "train_accord");
+    assert.equal(accord?.content_sid, "HXfresh");
+    assert.equal(accord?.cree, true);
+    assert.equal(approvals.some((url) => url.includes("HXrefused")), false);
+    assert.equal(approvals.some((url) => url.includes("HXfresh")), true);
+    assert.equal(result.ok, true);
+  } finally {
+    for (const [key, value] of [
+      ["TWILIO_ACCOUNT_SID", saved.sid],
+      ["TWILIO_AUTH_TOKEN", saved.token],
+      ["VERCEL_ENV", saved.env],
+      ["TWILIO_CONTENT_TRAIN_ACCORD", saved.accord],
+    ] as const) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test("un titre avec accolade est refusé, un titre fixe passe", () => {
   assert.equal(trainReplyTitlesRejected({ types: { "twilio/quick-reply": { actions: [{ title: "{{3}}" }] } } }), true);
   assert.equal(trainReplyTitlesRejected({ types: { "twilio/quick-reply": { actions: [{ title: "Train 1" }] } } }), false);

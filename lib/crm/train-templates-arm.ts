@@ -147,7 +147,16 @@ export async function ensureTrainTemplates(fetchImpl: typeof fetch = fetch) {
         modeles.push(report);
         continue;
       }
-      const before = await approval(sid, fetchImpl);
+      let before = await approval(sid, fetchImpl);
+      if (before.statut === "rejected") {
+        const created = await twilio(CONTENT_URL, fetchImpl, { method: "POST", body: JSON.stringify(draft.create) });
+        if (!created.response.ok || !created.payload?.sid) throw new Error(created.payload?.message || `HTTP ${created.response.status}`);
+        sid = created.payload.sid;
+        report.content_sid = sid;
+        report.cree = true;
+        report.source = "twilio";
+        before = { statut: "unsubmitted", motif: null };
+      }
       if (before.statut === "unsubmitted" || before.statut === "rejected" || before.statut === "inconnu") {
         const submitted = await twilio(`${CONTENT_URL}/${sid}/ApprovalRequests/whatsapp`, fetchImpl, {
           method: "POST",

@@ -1,5 +1,5 @@
 import { siteConfig } from "../site";
-import { BOARDING_PASS_SAMPLE_PATH } from "./boarding-pass-whatsapp";
+import { FREE_MESSAGE_SAMPLE_PDF_PATH } from "./free-message-whatsapp";
 import {
   TRAIN_ACCORD_ENV,
   TRAIN_ACCORD_NAME,
@@ -44,7 +44,7 @@ export function trainBilletContentCreateBody() {
     friendly_name: TRAIN_BILLET_NAME,
     language: "fr",
     variables: {
-      "1": BOARDING_PASS_SAMPLE_PATH,
+      "1": FREE_MESSAGE_SAMPLE_PDF_PATH,
       "2": "Camille",
       "3": "TGV 6601",
       "4": "Paris Gare de Lyon → Lyon Part-Dieu",
@@ -54,9 +54,12 @@ export function trainBilletContentCreateBody() {
     types: {
       "twilio/media": {
         body: [
-          "{{2}}, ton billet {{3}} est là.",
-          "{{4}}, départ {{5}}.",
+          "Bonjour {{2}},",
+          "",
+          "Ton billet {{3}} est là.",
+          "Trajet : {{4}}, départ {{5}}.",
           "Place : {{6}}.",
+          "On te l’envoie pour le départ.",
         ].join("\n"),
         media: [`${siteConfig.url}/api/whatsapp/autorisations/{{1}}`],
       },
