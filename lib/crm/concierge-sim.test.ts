@@ -149,6 +149,17 @@ test("chaque critère a un cas qui passe et un cas qui échoue", () => {
     now: new Date("2026-06-01T08:00:00.000Z"),
     expect: { handoff: null },
   });
+  const failCheckin = grade({
+    message: "Tu pourras me faire le check-in ?",
+    reply: "L’agence effectuera l’enregistrement.",
+    expect: { handoff: null },
+  });
+  const failRestaurant = grade({
+    message: "Vous pouvez réserver un restaurant ?",
+    reply: "Je transmets la demande de restaurant à l’agence. Rien n’est réservé.",
+    expect: { handoff: "question" },
+    handoff: "question",
+  });
   const failPan = grade({
     message: "Bonjour",
     reply: "La carte est 4242424242424242.",
@@ -236,6 +247,8 @@ test("chaque critère a un cas qui passe et un cas qui échoue", () => {
     fait_hors_dossier: { pass, fail: failFact },
     ville: { pass, fail: failCity },
     segment_passe: { pass, fail: failPast },
+    checkin: { pass, fail: failCheckin },
+    restaurant: { pass, fail: failRestaurant },
     pan: { pass, fail: failPan },
     handoff: { pass, fail: failHandoff },
     promesse_agence: { pass, fail: failPromise },

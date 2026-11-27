@@ -40,8 +40,9 @@ test("le simulateur note les réponses des scénarios du moteur", async () => {
   assert.match(await bySlug("heure-aeroport"), /10h30/);
   assert.match(await bySlug("visa-cancun"), /Mayakoba/);
   assert.match(await bySlug("visa-cancun"), /Mexique/);
-  assert.match(await bySlug("check-in-agence"), /l’agence qui fait l’enregistrement/i);
-  assert.doesNotMatch(await bySlug("check-in-agence"), /compagnie/i);
+  assert.match(await bySlug("check-in-agence"), /à faire/i);
+  assert.match(await bySlug("check-in-agence"), /sans engagement/i);
+  assert.doesNotMatch(await bySlug("check-in-agence"), /compagnie|effectuera|qui fait l’enregistrement/i);
   const room = await bySlug("chambre-tot-mexique");
   assert.match(room, /Mayakoba/);
   assert.match(await bySlug("cest-une-question"), /question/i);

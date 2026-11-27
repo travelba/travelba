@@ -354,6 +354,30 @@ const FIXTURES: { test: RegExp; hit: WebHit }[] = [
       snippet: "Un mouvement social est annoncé. Les horaires peuvent changer.",
     },
   },
+  {
+    test: /restaurant/,
+    hit: {
+      title: "Le Comptoir",
+      url: "https://www.lecomptoir-exemple.fr/",
+      snippet: "Table du quartier, à deux pas de l’hôtel.",
+    },
+  },
+  {
+    test: /restaurant/,
+    hit: {
+      title: "Chez Marcel",
+      url: "https://www.chezmarcel-exemple.fr/",
+      snippet: "Adresse à proximité de l’hôtel.",
+    },
+  },
+  {
+    test: /restaurant/,
+    hit: {
+      title: "La Table",
+      url: "https://www.latable-exemple.fr/",
+      snippet: "Cuisine du quartier.",
+    },
+  },
 ];
 
 export function fixtureWebProvider(): WebProvider {

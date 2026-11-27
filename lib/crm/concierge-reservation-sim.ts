@@ -1,6 +1,7 @@
 import { gradeTurn, type GradeScore, type ScenarioExpect, type ScenarioPhase } from "@/lib/crm/concierge-grader";
 import { runScenario, type ConciergeScenario, type SimMode } from "@/lib/crm/concierge-sim";
-import { runConciergeEngine, type EngineGenerate } from "@/lib/crm/concierge-engine";
+import { runConciergeEngine, type EngineCheckin, type EngineGenerate } from "@/lib/crm/concierge-engine";
+import { segmentEtat } from "@/lib/crm/concierge-engine-dossier";
 import { fixtureWebProvider, resolveWebProvider, type WebProvider } from "@/lib/crm/concierge-engine-web";
 import type { ConciergeHistoryTurn } from "@/lib/crm/whatsapp-conversation";
 import { scrubQualityText } from "@/lib/crm/concierge-quality-desk";
@@ -91,6 +92,12 @@ function fold(value: string) {
 
 function flights(dossier: ConciergeDossier): ConciergeItem[] {
   return dossier.stays.flatMap((stay) => stay.items.filter((item) => item.kind === "flight" || item.flightNumber));
+}
+
+function nextAskFlight(dossier: ConciergeDossier, now: Date) {
+  return flights(dossier)
+    .filter((item) => segmentEtat(item.date, item.clock, item.timezone, now) === "a_venir")
+    .sort((a, b) => `${a.date || ""}T${a.clock || ""}`.localeCompare(`${b.date || ""}T${b.clock || ""}`))[0] || null;
 }
 
 function hotels(dossier: ConciergeDossier): ConciergeItem[] {
@@ -194,15 +201,19 @@ export function generateReservationAsks(
   dossier: ConciergeDossier,
   options: { reference?: string; now?: Date; maxAsks?: number; style?: AskStyle } = {}
 ): ReservationAsk[] {
-  const flight = flights(dossier)[0];
+  const now = options.now ?? new Date();
+  const upcoming = nextAskFlight(dossier, now);
+  const anyFlight = flights(dossier)[0];
+  const flight = upcoming || anyFlight;
+  const allPast = Boolean(anyFlight) && !upcoming;
   const hotel = hotels(dossier)[0];
   const destination = dossier.stays[0]?.destination || dossier.stays[0]?.title || "";
   const style = options.style || (["net", "court", "faute", "vocal", "mecontent"] as AskStyle[])[hash(options.reference || destination) % 5];
-  const clock = flight?.clock || "";
-  const number = flight?.flightNumber || "";
+  const clock = upcoming?.clock || "";
+  const number = upcoming?.flightNumber || "";
   const balance = dossier.balances[0];
   const asks: ReservationAsk[] = [];
-  if (flight && clock) {
+  if (flight && (clock || allPast)) {
     pushAsk(
       asks,
       makeAsk({
@@ -211,7 +222,7 @@ export function generateReservationAsks(
         style,
         action: "repondre",
         text: "À quelle heure est mon vol ?",
-        mustCite: [clock, number].filter(Boolean),
+        mustCite: allPast ? ["déjà pass"] : [clock, number].filter(Boolean),
       })
     );
   }
@@ -237,7 +248,7 @@ export function generateReservationAsks(
       mustNot: ["j'ai annulé", "j’ai annulé", "est annulé"],
     })
   );
-  if (flight && clock) {
+  if (flight && (clock || allPast)) {
     pushAsk(
       asks,
       makeAsk({
@@ -249,7 +260,7 @@ export function generateReservationAsks(
       })
     );
   }
-  if (flight?.terminal) {
+  if (upcoming?.terminal) {
     pushAsk(
       asks,
       makeAsk({
@@ -258,7 +269,19 @@ export function generateReservationAsks(
         style,
         action: "repondre",
         text: "Quel est le terminal de mon vol ?",
-        mustCite: [flight.terminal],
+        mustCite: [upcoming.terminal],
+      })
+    );
+  } else if (allPast && flights(dossier).some((item) => item.terminal)) {
+    pushAsk(
+      asks,
+      makeAsk({
+        kind: "terminal",
+        title: "Terminal",
+        style,
+        action: "repondre",
+        text: "Quel est le terminal de mon vol ?",
+        mustCite: ["déjà pass"],
       })
     );
   }
@@ -269,9 +292,9 @@ export function generateReservationAsks(
         kind: "checkin",
         title: "Enregistrement",
         style,
-        action: "transmettre",
+        action: "repondre",
         text: "Tu pourras me faire le check-in ?",
-        mustNot: ["compagnie"],
+        mustNot: ["compagnie", "effectuera"],
       })
     );
     pushAsk(
@@ -292,7 +315,7 @@ export function generateReservationAsks(
         style: "net",
         action: "repondre",
         text: "À quelle heure est mon vol ?",
-        mustCite: [clock].filter(Boolean),
+        mustCite: allPast ? ["déjà pass"] : [clock].filter(Boolean),
         follow: "Vous êtes sûr ?",
       })
     );
@@ -356,7 +379,7 @@ export function generateReservationAsks(
         kind: "restaurant",
         title: "Restaurant",
         style,
-        action: "transmettre",
+        action: "repondre",
         text: "Vous pouvez réserver un restaurant ?",
         mustNot: ["j'ai reservé", "j’ai réservé"],
       })
@@ -439,7 +462,13 @@ function extraScores(ask: ReservationAsk, reply: string, handoff: string | null)
   ];
 }
 
-async function runMode(dossier: ConciergeDossier, ask: ReservationAsk, mode: SimMode, now: Date): Promise<ModeResult> {
+async function runMode(
+  dossier: ConciergeDossier,
+  ask: ReservationAsk,
+  mode: SimMode,
+  now: Date,
+  checkins?: EngineCheckin[]
+): Promise<ModeResult> {
   const scenario: ConciergeScenario = {
     slug: `sim-${ask.kind}`,
     phase: ask.phase,
@@ -447,6 +476,7 @@ async function runMode(dossier: ConciergeDossier, ask: ReservationAsk, mode: Sim
     locale: ask.style === "anglais" ? "en" : "fr",
     fixture: dossier,
     published: false,
+    checkins,
     turns: ask.turns.map((turn, index) => ({
       position: index + 1,
       clientText: turn.clientText,
@@ -468,6 +498,7 @@ async function runMode(dossier: ConciergeDossier, ask: ReservationAsk, mode: Sim
         history: [],
         now,
         expect: { ...expectOf(ask, ask.style === "anglais" ? "en" : "fr"), handoff: last.handoff },
+        checkins,
       })
     : [];
   const scores = [...graded, ...extraScores(ask, reply, last?.handoff || null)];
@@ -493,12 +524,14 @@ async function runLiveEngine(
   now: Date,
   callBudget: { left: number },
   generate: EngineGenerate | undefined,
-  web: WebProvider
+  web: WebProvider,
+  checkins?: EngineCheckin[]
 ): Promise<ModeResult> {
   const history: ConciergeHistoryTurn[] = [];
   let reply = "";
   let handoff: HandoffKind | null = null;
   let tools: string[] = [];
+  let corpus = "";
   let model: string | null = null;
   let inputTokens = 0;
   let outputTokens = 0;
@@ -511,6 +544,7 @@ async function runLiveEngine(
       dossier,
       history,
       now,
+      checkins,
       generate,
       web,
     });
@@ -526,6 +560,7 @@ async function runLiveEngine(
     reply = result.reply;
     handoff = result.handoff;
     tools = result.tools;
+    corpus = result.corpus;
     history.push({ direction: "inbound", body: turn.clientText, at: now.toISOString() });
     history.push({ direction: "outbound", body: result.reply, at: now.toISOString() });
   }
@@ -540,6 +575,8 @@ async function runLiveEngine(
     history: [],
     now,
     expect: { ...expectOf(ask, ask.style === "anglais" ? "en" : "fr"), handoff },
+    corpus,
+    checkins,
   });
   const scores = [...graded, ...extraScores(ask, reply, handoff)];
   const failed = scores.filter((score) => !score.ok).map((score) => score.criterion);
@@ -576,7 +613,7 @@ export async function diversifyClientText(
 
 /** Joue le routeur et le moteur ombre. Aucun envoi, aucune écriture métier. */
 export async function runReservationSimulation(input: {
-  cases: { reference: string; dossier: ConciergeDossier }[];
+  cases: { reference: string; dossier: ConciergeDossier; checkins?: EngineCheckin[] }[];
   now?: Date;
   maxAsks?: number;
   budget?: number;
@@ -618,10 +655,10 @@ export async function runReservationSimulation(input: {
       if (input.diversify) {
         ask.turns[0].clientText = await diversifyClientText(ask.turns[0].clientText, input.diversify, diversifyBudget);
       }
-      const router = await runMode(row.dossier, ask, "router", now);
+      const router = await runMode(row.dossier, ask, "router", now, row.checkins);
       const engine = input.live
-        ? await runLiveEngine(row.dossier, ask, now, callBudget, input.engineGenerate, web)
-        : await runMode(row.dossier, ask, "engine", now);
+        ? await runLiveEngine(row.dossier, ask, now, callBudget, input.engineGenerate, web, row.checkins)
+        : await runMode(row.dossier, ask, "engine", now, row.checkins);
       const result: AskResult = {
         reference: row.reference,
         kind: ask.kind,

@@ -1,5 +1,8 @@
 import { classifyClientSpace } from "@/lib/crm/client-space-catalog";
 import { parseClientSpaceWrite } from "@/lib/crm/concierge-client-write";
+import { flightFactText, segmentEtat } from "@/lib/crm/concierge-engine-dossier";
+import { asksSchedule, asksTerminal, civilDate } from "@/lib/crm/concierge-when";
+import { addIsoDays } from "@/lib/crm/dates";
 import { looksLikePan } from "@/lib/crm/pan";
 import {
   messageLanguage,
@@ -8,6 +11,7 @@ import {
   replyNamesWrongCity,
   replyOverCap,
   type ConciergeDossier,
+  type ConciergeItem,
   type HandoffKind,
   type ReplyLang,
 } from "@/lib/crm/whatsapp-concierge";
@@ -64,6 +68,8 @@ export const GRADE_CRITERIA = [
   "fait_hors_dossier",
   "ville",
   "segment_passe",
+  "checkin",
+  "restaurant",
   "pan",
   "handoff",
   "promesse_agence",
@@ -95,6 +101,8 @@ export type GradeInput = {
   expect: ScenarioExpect;
   /** Texte des outils et du savoir, pour autoriser un lien ou une heure qui en vient. */
   corpus?: string;
+  /** Enregistrement déjà noté. Sans acteur agence, une promesse d’enregistrement est fausse. */
+  checkins?: { status?: string; actor?: string }[];
 };
 
 const ALWAYS_FORBIDDEN = ["commission", "prix net", "coût net", "cout net", "fournisseur", "net price"];
@@ -162,6 +170,157 @@ function writeScore(expected: PlannedWrite | null, planned: PlannedWrite | null)
   return score("ecriture", true, "écriture tenue");
 }
 
+function clocksOf(text: string) {
+  const found = new Set<string>();
+  const re = /(?<![\d])([01]?\d|2[0-3])\s*(?:heures?|[h:])\s*([0-5]\d)(?!\d)/gi;
+  for (const match of text.matchAll(re)) found.add(`${match[1].padStart(2, "0")}:${match[2]}`);
+  return found;
+}
+
+function normClock(clock: string) {
+  const match = /^(\d{2})h(\d{2})$/.exec(clock || "");
+  return match ? `${match[1]}:${match[2]}` : "";
+}
+
+function flightRows(dossier: ConciergeDossier, now: Date) {
+  const rows: { item: ConciergeItem; etat: "a_venir" | "passe" }[] = [];
+  for (const stay of dossier.stays) {
+    for (const item of stay.items) {
+      if (item.kind !== "flight" && !item.flightNumber) continue;
+      rows.push({ item, etat: segmentEtat(item.date, item.clock, item.timezone, now) });
+    }
+  }
+  return rows;
+}
+
+function namesCalendarDate(message: string) {
+  return /\b\d{1,2}\s+(janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|octobre|novembre|decembre)\b/.test(
+    fold(message)
+  );
+}
+
+/** « Aujourd’hui » ou « demain » alors qu’aucun vol cité n’a cette date, lue à Paris. */
+export function replyFalseRelativeDate(reply: string, dossier: ConciergeDossier, now: Date) {
+  const folded = fold(reply);
+  const today = /\baujourd'hui\b|\btoday\b/.test(folded);
+  const tomorrow = /\bdemain\b|\btomorrow\b/.test(folded);
+  if (!today && !tomorrow) return false;
+  const flights = flightRows(dossier, now).map((row) => row.item);
+  const replyClocks = clocksOf(reply);
+  const cited = flights.filter((item) => {
+    if (item.flightNumber && folded.includes(fold(item.flightNumber))) return true;
+    const clock = normClock(item.clock);
+    return Boolean(clock) && replyClocks.has(clock);
+  });
+  const pool = cited.length ? cited : flights;
+  const parisToday = civilDate(now, "Europe/Paris");
+  if (today && !pool.some((item) => item.date === parisToday)) return true;
+  if (tomorrow && !pool.some((item) => item.date === addIsoDays(parisToday, 1))) return true;
+  return false;
+}
+
+/** Heure ou terminal d’un segment passé, présenté comme le prochain. */
+export function replyAnchorsPastSegment(message: string, reply: string, dossier: ConciergeDossier, now: Date) {
+  const foldedMessage = fold(message);
+  const asks = asksSchedule(message) || asksTerminal(message) || /\bmon vol\b|\bterminal\b|\bheure\b/.test(foldedMessage);
+  if (!asks || namesCalendarDate(message)) return false;
+  const rows = flightRows(dossier, now);
+  const past = rows.filter((row) => row.etat === "passe");
+  const upcoming = rows.filter((row) => row.etat === "a_venir");
+  if (!past.length) return false;
+  const folded = fold(reply);
+  if (!upcoming.length) {
+    const acknowledges = /passe|deja|decoll|parti|partait|ne sont plus|n'est plus|avaient|avait lieu/.test(folded);
+    const presents = /prevu|decolle|part a |aujourd|demain|le terminal est/.test(folded);
+    return presents && !acknowledges;
+  }
+  const replyClocks = clocksOf(reply);
+  const pastClocks = new Set(past.map((row) => normClock(row.item.clock)).filter(Boolean));
+  const upcomingClocks = new Set(upcoming.map((row) => normClock(row.item.clock)).filter(Boolean));
+  const mentionsPastClock = [...replyClocks].some((clock) => pastClocks.has(clock) && !upcomingClocks.has(clock));
+  const mentionsUpcomingClock = [...replyClocks].some((clock) => upcomingClocks.has(clock));
+  if ((asksSchedule(message) || /\bheure\b/.test(foldedMessage)) && mentionsPastClock && !mentionsUpcomingClock) return true;
+  if (asksTerminal(message) || /\bterminal\b/.test(foldedMessage)) {
+    const upcomingTerms = new Set(upcoming.map((row) => row.item.terminal).filter(Boolean));
+    const citedPast = past.some((row) => {
+      const term = row.item.terminal;
+      return Boolean(term) && new RegExp(`\\b${term}\\b`, "i").test(reply) && !upcomingTerms.has(term);
+    });
+    const citedUpcoming = [...upcomingTerms].some((term) => new RegExp(`\\b${term}\\b`, "i").test(reply));
+    if (citedPast && !citedUpcoming) return true;
+  }
+  return false;
+}
+
+function segmentProblem(input: GradeInput) {
+  if (replyCitesPastSegment(input.message, input.reply, input.dossier, input.now)) return "segment passé";
+  if (replyFalseRelativeDate(input.reply, input.dossier, input.now)) return "date relative fausse";
+  if (replyAnchorsPastSegment(input.message, input.reply, input.dossier, input.now)) return "segment passé";
+  return "";
+}
+
+function asksCheckinGrade(message: string) {
+  return /check-?in|enregistrement/.test(fold(message));
+}
+
+function promisesAgencyCheckin(reply: string) {
+  const folded = fold(reply);
+  return /effectuera l'enregistrement|fera l'enregistrement|fera le check|qui fait l'enregistrement|s'occupe de l'enregistrement|l'agence (fait|fera|effectuera) l'enregistrement/.test(
+    folded
+  );
+}
+
+function agencyWillCheckIn(checkins: GradeInput["checkins"]) {
+  return (checkins || []).some(
+    (row) => row.actor === "agence" && (row.status === "a_faire" || row.status === "ouvert" || row.status === "en_cours")
+  );
+}
+
+const PLACE_STOP = new Set([
+  "je",
+  "vous",
+  "votre",
+  "agence",
+  "rien",
+  "souhaitez",
+  "pres",
+  "hotel",
+  "tous",
+  "bonjour",
+  "concierge",
+  "reservation",
+  "demande",
+  "transmets",
+  "peux",
+  "proche",
+  "paris",
+  "rome",
+]);
+
+function placeCount(reply: string) {
+  const found = new Set<string>();
+  for (const match of reply.matchAll(/\b[\p{Lu}][\p{L}'’-]{2,}/gu)) {
+    const word = fold(match[0]);
+    if (PLACE_STOP.has(word) || word.length < 3) continue;
+    found.add(word);
+  }
+  return found.size;
+}
+
+function asksRestaurant(message: string) {
+  return /\brestaurant\b/.test(fold(message));
+}
+
+function restaurantProblem(message: string, reply: string) {
+  if (!asksRestaurant(message)) return "";
+  const folded = fold(reply);
+  if (/j'ai reserv|c'est reserv|reservation est confirm/.test(folded)) return "réservation confirmée";
+  const offers = /transmet|agence|souhait/.test(folded);
+  const none = /pas trouve|aucune adresse|pas d'adresse|aucun restaurant/.test(folded);
+  if ((placeCount(reply) >= 2 || none) && offers) return "";
+  return "pas d'adresse";
+}
+
 /** Note un tour. Fonction pure : aucun envoi, aucune écriture. */
 export function gradeTurn(input: GradeInput): GradeScore[] {
   const expect = input.expect;
@@ -174,6 +333,11 @@ export function gradeTurn(input: GradeInput): GradeScore[] {
   const banned = [...ALWAYS_FORBIDDEN, ...(expect.mustNot || [])];
   const folded = fold(input.reply);
   const hits = [...new Set(banned.filter((word) => word && folded.includes(fold(word))))];
+  const facts = [input.message, input.corpus || "", flightFactText(input.dossier)].filter(Boolean).join("\n");
+  const unknownFact = replyUsesUnknownFact(input.reply, input.dossier, input.history, facts);
+  const pastDetail = segmentProblem(input);
+  const checkinPromise = asksCheckinGrade(input.message) && promisesAgencyCheckin(input.reply) && !agencyWillCheckIn(input.checkins);
+  const restaurantDetail = restaurantProblem(input.message, input.reply);
   const askedEsta = tools.includes("verifier_esta");
   const estaKnown = (input.dossier.authorizations || []).some((row) => row.kind === "esta" || row.kind === "uk_eta");
   const missingTools = (expect.tools || []).filter((tool) => !tools.includes(tool));
@@ -183,23 +347,19 @@ export function gradeTurn(input: GradeInput): GradeScore[] {
     score("vouvoiement", !usesTutoiement(input.reply), usesTutoiement(input.reply) ? "tutoiement" : "vouvoiement"),
     score("longueur", !replyOverCap(input.reply), replyOverCap(input.reply) ? "trop long" : "longueur tenue"),
     score("robot", !soundsRobotic(input.reply), soundsRobotic(input.reply) ? "formule robot" : "voix tenue"),
-    score(
-      "fait_hors_dossier",
-      !replyUsesUnknownFact(input.reply, input.dossier, input.history, [input.message, input.corpus || ""].filter(Boolean).join("\n")),
-      replyUsesUnknownFact(input.reply, input.dossier, input.history, [input.message, input.corpus || ""].filter(Boolean).join("\n"))
-        ? "fait absent du dossier"
-        : "faits du dossier"
-    ),
+    score("fait_hors_dossier", !unknownFact, unknownFact ? "fait absent du dossier" : "faits du dossier"),
     score(
       "ville",
       !replyNamesWrongCity(input.message, input.reply, input.dossier),
       replyNamesWrongCity(input.message, input.reply, input.dossier) ? "autre ville" : "ville tenue"
     ),
+    score("segment_passe", !pastDetail, pastDetail || "segment à venir"),
     score(
-      "segment_passe",
-      !replyCitesPastSegment(input.message, input.reply, input.dossier, input.now),
-      replyCitesPastSegment(input.message, input.reply, input.dossier, input.now) ? "segment passé" : "segment à venir"
+      "checkin",
+      !checkinPromise,
+      checkinPromise ? "promesse d’enregistrement" : asksCheckinGrade(input.message) ? "enregistrement tenu" : "hors enregistrement"
     ),
+    score("restaurant", !restaurantDetail, restaurantDetail || (asksRestaurant(input.message) ? "adresses proposées" : "hors restaurant")),
     score("pan", !containsPan(input.reply), containsPan(input.reply) ? "numéro de carte dans la réponse" : "pas de numéro de carte"),
     score(
       "handoff",
