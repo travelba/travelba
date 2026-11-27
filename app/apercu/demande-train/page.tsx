@@ -7,6 +7,9 @@ import type { CrmBookingItem } from "@/lib/crm/types";
 import { EMPTY_NAV_COUNTS } from "@/lib/crm/admin-nav";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { TRAIN_DEFAULT_OUTBOUND, TRAIN_DEFAULT_RETURN, trainFormDefaults } from "@/lib/crm/train-request";
+import { trainProgress, type TrainProgressInput } from "@/lib/crm/train-progress";
+import { TrainRequestTrackView } from "@/components/admin/TrainRequestTrack";
+import type { TrainOffer } from "@/lib/crm/train-whatsapp";
 import { emptyDockSnapshot } from "@/lib/crm/whatsapp-dock-load";
 
 const TRAVELERS = [
@@ -70,6 +73,110 @@ function Step({ title, meta, badge }: { title: string; meta: string; badge?: str
   );
 }
 
+const OFFRES: TrainOffer[] = [
+  {
+    numero: "6255",
+    depart_gare: "Paris Gare de Lyon",
+    arrivee_gare: "Montpellier Sud de France",
+    date: "2027-03-29",
+    heure_depart: "08:52",
+    heure_arrivee: "12:10",
+    duree: "3h18",
+    prix: { "2de": { non_remboursable: 74 }, "1re": { flex: 184, non_remboursable: 91 } },
+  },
+  {
+    numero: "12339",
+    depart_gare: "Paris Gare de Lyon",
+    arrivee_gare: "Montpellier Saint-Roch",
+    date: "2027-03-29",
+    heure_depart: "11:46",
+    heure_arrivee: "15:15",
+    duree: "3h29",
+    prix: { "2de": { non_remboursable: 137 }, "1re": { non_remboursable: 181 } },
+  },
+  {
+    numero: "12337",
+    depart_gare: "Paris Gare de Lyon",
+    arrivee_gare: "Montpellier Saint-Roch",
+    date: "2027-03-29",
+    heure_depart: "14:42",
+    heure_arrivee: "18:12",
+    duree: "3h30",
+    prix: { "2de": { non_remboursable: 137 }, "1re": { non_remboursable: 181 } },
+  },
+];
+const RETOURS: TrainOffer[] = [
+  {
+    numero: "6206",
+    depart_gare: "Montpellier Saint-Roch",
+    arrivee_gare: "Paris Gare de Lyon",
+    date: "2027-03-30",
+    heure_depart: "16:49",
+    heure_arrivee: "20:18",
+    duree: "3h29",
+    prix: { "2de": { non_remboursable: 74 }, "1re": { non_remboursable: 143 } },
+  },
+  {
+    numero: "6873",
+    depart_gare: "Montpellier Saint-Roch",
+    arrivee_gare: "Paris Gare de Lyon",
+    date: "2027-03-30",
+    heure_depart: "18:02",
+    heure_arrivee: "22:04",
+    duree: "4h02",
+    prix: { "2de": { non_remboursable: 163 }, "1re": { flex: 266, non_remboursable: 174 } },
+  },
+  {
+    numero: "6210",
+    depart_gare: "Montpellier Saint-Roch",
+    arrivee_gare: "Paris Gare de Lyon",
+    date: "2027-03-30",
+    heure_depart: "19:49",
+    heure_arrivee: "23:21",
+    duree: "3h32",
+    prix: { "2de": { non_remboursable: 51 }, "1re": { non_remboursable: 62 } },
+  },
+];
+
+const TRAJET = {
+  depart: "Paris",
+  arrivee: "Montpellier",
+  prenom: "Camille",
+  createdAt: "2026-11-27T08:58:04.219Z",
+  updatedAt: "2026-11-27T08:58:04.219Z",
+  retourDate: "2027-03-30",
+};
+
+function suiviDe(partial: Partial<TrainProgressInput>) {
+  return trainProgress({
+    status: "nouvelle",
+    step: "aller",
+    createdAt: "2026-11-27T08:00:00.000Z",
+    updatedAt: "2026-11-27T08:16:00.000Z",
+    aller: [],
+    retour: [],
+    choixAller: null,
+    choixRetour: null,
+    classe: null,
+    tarif: null,
+    reference: null,
+    prix: null,
+    billets: [],
+    retourDate: "2026-06-02",
+    ...partial,
+  });
+}
+
+function Suivi({ id, titre, partial }: { id: string; titre: string; partial: Partial<TrainProgressInput> }) {
+  return (
+    <article id={id} className="max-w-5xl space-y-3 rounded-3xl border border-[var(--border)] bg-[#f7f6f3] p-4 sm:p-5">
+      <p className="text-sm font-semibold text-[var(--admin-navy)]">{titre}</p>
+      <p className="text-xs text-muted">Paris → Montpellier · 29 et 30 mars 2027</p>
+      <TrainRequestTrackView suivi={suiviDe(partial)} />
+    </article>
+  );
+}
+
 function Desk({ id, children }: { id: string; children: ReactNode }) {
   return (
     <article id={id} className="rounded-3xl border border-[var(--border)] bg-[#faf9f6] p-6">
@@ -130,6 +237,29 @@ export default function ApercuDemandeTrainPage() {
               <Step title="Hôtel Lyon" meta="1 juin 2026 → 2 juin 2026 · Lyon" />
               <ServiceInsert bookingId="apercu" travelers={TRAVELERS} homeCity="Paris" hotel={HOTEL} side="apres" preview startOpen />
             </article>
+            <Suivi id="suivi-recherche" titre="Demande de train · Recherche" partial={{ ...TRAJET, status: "recherche" }} />
+            <Suivi
+              id="suivi-propositions"
+              titre="Demande de train · Propositions envoyées"
+              partial={{ ...TRAJET, status: "propositions", aller: OFFRES, retour: RETOURS }}
+            />
+            <Suivi
+              id="suivi-choix"
+              titre="Demande de train · Choix en cours"
+              partial={{ ...TRAJET, status: "propositions", step: "classe", aller: OFFRES, retour: RETOURS, choixAller: 0, choixRetour: 1 }}
+            />
+            <Suivi
+              id="suivi-combinaisons"
+              titre="Demande de train · Combinaisons renvoyées"
+              partial={{ ...TRAJET, status: "propositions", step: "tarif", aller: OFFRES, retour: RETOURS, choixAller: 0, choixRetour: 1 }}
+            />
+            <Suivi
+              id="suivi-commande"
+              titre="Demande de train · Commandé"
+              partial={{ ...TRAJET, status: "commande", step: "fait", aller: OFFRES, retour: RETOURS, choixAller: 0, choixRetour: 1, tarif: "flex", classe: "2de" }}
+            />
+            <Suivi id="suivi-attente" titre="Demande de train · En attente" partial={{ ...TRAJET, status: "en_attente", aller: OFFRES, retour: RETOURS, choixAller: 0 }} />
+            <Suivi id="suivi-refuse" titre="Demande de train · Refusé" partial={{ ...TRAJET, status: "annulee", step: "fait", aller: OFFRES }} />
             <article id="fil" className="space-y-3 rounded-3xl border border-[var(--border)] bg-[#faf9f6] p-6">
               <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>
               <Step title="Vol Paris → Lyon" meta="1 juin 2026 · 08h12" />

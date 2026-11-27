@@ -155,6 +155,7 @@ import { envoyerRestaurants, fileWhatsapp, partagerSejour, propositionConcierge 
 import { deposerModelesTrainWhatsapp, statutModelesTrainWhatsapp } from "@/lib/crm/mcp-train-templates";
 import {
   annulerDemandeTrain,
+  reproposerTarifTrain,
   demandesTrain,
   deposerPropositionsTrain,
   enregistrerCommandeTrain,
@@ -169,7 +170,7 @@ import { societeDepense } from "@/lib/crm/mcp-expense-company";
 import { attachPostedCredit, payerKindFromInput } from "@/lib/crm/attach-credit";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 167;
+export const MCP_TOOL_CAP = 168;
 
 async function attachCreditFromRegistry(args: Record<string, unknown>) {
   const id = [args.id, args.mouvement_id].find((value) => typeof value === "string" && value.trim());
@@ -3077,7 +3078,7 @@ export const MCP_TOOLS: ToolDef[] = [
     write: true,
     openWorld: true,
     description:
-      "Dépose les trains aller et retour. Au moins 3 trains par sens, 9 au plus (10 boutons avec Autres horaires). Moins de 3 est refusé. Sans confirmer, aperçu. confirmer true enregistre et envoie les boutons de l’aller si TWILIO_CONTENT_TRAIN_HORAIRES_ALLER_N est posé. Ensuite le tarif, le retour s’il y en a un, puis la classe. Le choix se fait en cliquant un bouton. Rien n’est acheté ici.",
+      "Dépose les trains aller et retour. Au moins 3 trains par sens, 9 au plus (10 boutons avec Autres horaires). Moins de 3 est refusé. Sans confirmer, aperçu. confirmer true enregistre et envoie les boutons de l’aller si TWILIO_CONTENT_TRAIN_HORAIRES_ALLER_N est posé. Ensuite le retour s’il y en a un, la classe, puis le tarif seulement s’il en existe plusieurs pour cette classe sur les trains choisis. Le choix se fait en cliquant un bouton. Rien n’est acheté ici.",
     input: {
       demande_id: z.string().trim().max(80),
       aller: z.array(z.record(z.string(), z.unknown())).max(9),
@@ -3116,6 +3117,15 @@ export const MCP_TOOLS: ToolDef[] = [
     description: "Annule une demande qui n’est pas encore commandée. Sans confirmer, aperçu. confirmer true écrit.",
     input: { demande_id: z.string().trim().max(80), confirmer: confirmOpt },
     run: (args) => annulerDemandeTrain(args),
+  },
+  {
+    name: "reproposer_tarif_train",
+    write: true,
+    openWorld: true,
+    description:
+      "Relance la question classe et tarif sur une demande déjà choisie (aller et retour gardés). Sans confirmer, aperçu des combinaisons chiffrées sur les deux trains, sans prix. confirmer true efface le tarif impossible et envoie les boutons. Un seul tarif n’est pas une question : il est indiqué au récapitulatif. Rien n’est acheté.",
+    input: { demande_id: z.string().trim().max(80), confirmer: confirmOpt },
+    run: (args) => reproposerTarifTrain(args),
   },
   {
     name: "sejour_hotel",

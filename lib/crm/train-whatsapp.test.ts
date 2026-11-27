@@ -231,6 +231,108 @@ test("une réponse incompréhensible passe la main au second essai", () => {
   assert.equal(second.action, "agence");
 });
 
+test("le Flex en 2de absent des trains choisis n’est pas proposé", async () => {
+  const aller = {
+    numero: "6255",
+    depart_gare: "Paris Gare de Lyon",
+    arrivee_gare: "Montpellier Sud de France",
+    date: "2027-03-29",
+    heure_depart: "08:52",
+    heure_arrivee: "12:10",
+    prix: { "2de": { non_remboursable: 74 }, "1re": { non_remboursable: 91, flex: 184 } },
+  };
+  const retour = {
+    numero: "6873",
+    depart_gare: "Montpellier Saint-Roch",
+    arrivee_gare: "Paris Gare de Lyon",
+    date: "2027-03-30",
+    heure_depart: "18:02",
+    heure_arrivee: "22:04",
+    prix: { "2de": { non_remboursable: 163 }, "1re": { non_remboursable: 174, flex: 266 } },
+  };
+  const choisi = {
+    status: "propositions",
+    step: "classe" as const,
+    aller: [aller],
+    retour: [retour],
+    choix_aller: 0,
+    choix_retour: 0,
+    classe: null,
+    tarif: null,
+    ambigu_compte: 0,
+    besoin_agence: false,
+  };
+  const seconde = nextTrainTurn({
+    state: choisi,
+    greeting: "Camille",
+    depart: "Paris",
+    arrivee: "Montpellier",
+    buttonPayload: "train:classe:2de",
+  });
+  assert.equal(seconde.action, "question");
+  if (seconde.action !== "question") return;
+  assert.equal(seconde.patch.classe, "2de");
+  assert.equal(seconde.patch.tarif, "non_remboursable");
+  assert.equal(seconde.plan.modele, "train_accord");
+  assert.match(seconde.plan.corps, /Non remboursable/);
+  const premiere = nextTrainTurn({
+    state: choisi,
+    greeting: "Camille",
+    depart: "Paris",
+    arrivee: "Montpellier",
+    buttonPayload: "train:classe:1re",
+  });
+  if (premiere.action !== "question") return;
+  assert.equal(premiere.plan.modele, "train_tarif");
+  const bloque = nextTrainTurn({
+    state: { ...choisi, status: "prix_a_reconfirmer", step: "accord", classe: "2de", tarif: "flex" },
+    greeting: "Camille",
+    depart: "Paris",
+    arrivee: "Montpellier",
+    buttonPayload: "train:accord:confirme",
+  });
+  if (bloque.action !== "question") return;
+  assert.equal(bloque.patch.status, "propositions");
+  assert.equal(bloque.patch.classe, null);
+  assert.equal(bloque.patch.tarif, null);
+  const titres = (bloque.plan.boutons || []).map((button) => button.title);
+  assert.deepEqual(titres, ["2de Standard", "1re Standard", "1re Flex"]);
+  assert.equal(titres.some((titre) => titre.includes("2de Flex")), false);
+  assert.doesNotMatch(bloque.plan.corps, /\d+\s*€/);
+  const urls: string[] = [];
+  const saved = {
+    sid: process.env.TWILIO_ACCOUNT_SID,
+    token: process.env.TWILIO_AUTH_TOKEN,
+    from: process.env.TWILIO_WHATSAPP_FROM,
+  };
+  process.env.TWILIO_ACCOUNT_SID = "ACtest";
+  process.env.TWILIO_AUTH_TOKEN = "token";
+  process.env.TWILIO_WHATSAPP_FROM = "whatsapp:+33600000000";
+  const sent = await deliverTrainPlan({
+    phone: "+33600000000",
+    plan: bloque.plan,
+    fetchImpl: async (url, init) => {
+      urls.push(String(url));
+      if (String(url).includes("/Content")) {
+        const body = JSON.parse(String(init?.body || "{}")) as {
+          types?: { "twilio/quick-reply"?: { actions?: { title?: string }[] } };
+        };
+        assert.deepEqual(
+          body.types?.["twilio/quick-reply"]?.actions?.map((action) => action.title),
+          ["2de Standard", "1re Standard", "1re Flex"],
+        );
+        return new Response(JSON.stringify({ sid: "HXtest" }), { status: 201 });
+      }
+      return new Response(JSON.stringify({ sid: "SMtest", status: "queued" }), { status: 201 });
+    },
+  });
+  process.env.TWILIO_ACCOUNT_SID = saved.sid;
+  process.env.TWILIO_AUTH_TOKEN = saved.token;
+  process.env.TWILIO_WHATSAPP_FROM = saved.from;
+  assert.equal(sent.ok, true);
+  assert.equal(urls.some((url) => url.includes("ApprovalRequests")), false);
+});
+
 test("le billet part à 8h, ou deux heures avant si le train est tôt", () => {
   const morning = trainTicketSendWindow({
     departureLocal: "2026-06-02T10:05:00",

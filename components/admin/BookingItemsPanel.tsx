@@ -63,6 +63,8 @@ import { hotelPhotos } from "@/lib/crm/hotel-gallery";
 import { AccueilVipForm } from "@/components/admin/AccueilVipForm";
 import { ServiceInsert } from "@/components/admin/ServiceInsert";
 import { isServiceRequest, serviceRequestStatusLabel } from "@/lib/crm/service-request";
+import { trainAgentHint } from "@/lib/crm/train-progress";
+import { TrainRequestTrack } from "@/components/admin/TrainRequestTrack";
 import { composeAccueilVip, accueilVipQuietLine, readAccueilVipFields, type AccueilVipFlight } from "@/lib/crm/accueil-vip";
 import { BusyBar } from "@/components/crm/BusyBar";
 import { MoveToDossier } from "@/components/admin/MoveToDossier";
@@ -1144,6 +1146,9 @@ export function BookingItemsPanel({
                     </span>
                     <span className="mt-0.5 block text-xs font-semibold text-muted lg:hidden">{when || "Sans date"}</span>
                     {reading ? <span className="block break-words text-xs text-muted lg:truncate">{reading}</span> : null}
+                    {isServiceRequest(item.details) && item.details?.service_kind !== "flight" ? (
+                      <span className="mt-1 block text-xs font-semibold text-[var(--admin-navy)]">{trainAgentHint(String(item.details?.service_status || ""))}</span>
+                    ) : null}
                   </span>
                   {price ? <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-[var(--admin-navy)] lg:block">{price}</span> : sansPrix ? <span className="hidden shrink-0 text-xs font-semibold text-muted lg:block">Sans prix</span> : null}
                   {isServiceRequest(item.details) && serviceRequestStatusLabel(item.details) ? (
@@ -1160,6 +1165,9 @@ export function BookingItemsPanel({
                 </div>
               {openStep === item.id ? (
                 <div className="mt-3 space-y-3 border-t border-[var(--border)] pt-3">
+                  {typeof item.details?.train_request_id === "string" && item.details.service_kind !== "flight" ? (
+                    <TrainRequestTrack bookingId={bookingId} requestId={item.details.train_request_id} />
+                  ) : null}
                   {doubts.length ? <p className="text-xs font-semibold text-accent">{doubts.join(" ")}</p> : null}
                   {retiredLabel ? <p className="text-xs font-semibold text-muted">{retiredLabel}</p> : null}
                   {ticketTravelers.length ? <TravelerChips people={ticketTravelers} /> : null}
