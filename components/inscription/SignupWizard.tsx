@@ -1,14 +1,12 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
-import { HotelClubSheet } from "@/components/account/HotelClubSheet";
 import { BusyBar } from "@/components/crm/BusyBar";
-import { HOTEL_SEARCH_HERO_FALLBACK } from "@/lib/crm/hotel-search-home";
-import { TRAVEL_CLUB_OFFER } from "@/lib/crm/signup-options";
-
-const fieldClass =
-  "mt-1 w-full rounded-xl border border-[#0B192C]/10 bg-white px-3.5 py-2.5 text-[#0B192C] outline-none focus:border-[#C5A880] focus:ring-2 focus:ring-[#C5A880]/40";
+import { greetingGivenName } from "@/lib/crm/identity";
+import { HOTEL_ACCESS_UNTIL, HOTEL_CLUB_NUMBER, hotelMemberNumber } from "@/lib/crm/hotel-search-home";
+import { TRAVEL_CLUB_OFFER, TRAVEL_CLUB_PRIVILEGES } from "@/lib/crm/signup-options";
 
 export type SignupPrefill = {
   firstName?: string;
@@ -20,7 +18,34 @@ export type SignupPrefill = {
   resume?: boolean;
 };
 
-export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
+function quietMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/** Carte métal noir, propre à l’invitation. Photo : Unsplash, photo-1566665797739. */
+function MemberCard({ name, number }: { name: string; number: string }) {
+  return (
+    <div className="invite-stage">
+      <article className="invite-metal" data-invite-card="1" aria-label="Carte de membre Platinum">
+        <span className="invite-metal-sheen" aria-hidden="true" />
+        <p className="invite-metal-mark" aria-hidden="true">
+          TBA
+        </p>
+        <p className="invite-metal-name">{name}</p>
+        <p className="invite-metal-rank">Platinum</p>
+        <p className="invite-metal-quiet">
+          <span>Travel Club TBA</span>
+          <span>{HOTEL_ACCESS_UNTIL}</span>
+        </p>
+        <p className="sr-only">
+          {HOTEL_CLUB_NUMBER} {number}
+        </p>
+      </article>
+    </div>
+  );
+}
+
+export function SignupWizard({ prefill, linkUntil }: { prefill: SignupPrefill; linkUntil?: string | null }) {
   const [step, setStep] = useState(0);
   const [firstName, setFirstName] = useState(prefill.firstName || "");
   const [lastName, setLastName] = useState(prefill.lastName || "");
@@ -38,7 +63,7 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
     event.preventDefault();
     setError(null);
     if (!firstName.trim() || !lastName.trim() || !email.trim() || !phone.trim() || !birthDate) {
-      setError("Confirmez le prénom, le nom, l’e-mail et la date de naissance.");
+      setError("Indiquez le prénom, le nom, l’adresse e-mail et la date de naissance.");
       return;
     }
     setStep(1);
@@ -72,95 +97,144 @@ export function SignupWizard({ prefill }: { prefill: SignupPrefill }) {
     setDone(true);
   }
 
+  function revealForm() {
+    document.getElementById("invite-form")?.scrollIntoView({
+      behavior: quietMotion() ? "auto" : "smooth",
+      block: "start",
+    });
+  }
+
+  const given = greetingGivenName(firstName);
+  const engraved = [given, lastName.trim()].filter(Boolean).join(" ") || "—";
+  const night = (
+    <>
+      <div className="invite-night-photo" aria-hidden="true">
+        <Image
+          src="/invitation/nuit.webp"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="invite-night-img"
+        />
+      </div>
+      <div className="invite-night-shade" aria-hidden="true" />
+    </>
+  );
+
   if (done) {
     return (
-      <div className="space-y-3">
-        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
-        <h1 className="font-display text-3xl font-extrabold tracking-tight text-[#0B192C]">Vérifiez votre e-mail</h1>
-        <p className="text-sm leading-relaxed text-[#0B192C]">
-          Un message part pour confirmer l’adresse. Le Travel Club TBA relit ensuite la demande. L’accès reste fermé jusque-là.
-        </p>
+      <div className="invite-night">
+        {night}
+        <section className="invite-form">
+          <p className="invite-kicker">Sur invitation</p>
+          <h1 className="invite-hello">Un message vous attend</h1>
+          <p className="invite-offer">
+            Il confirme votre adresse. Le Travel Club TBA relit ensuite la demande. L’accès reste fermé jusque-là.
+          </p>
+        </section>
       </div>
     );
   }
 
   return (
-    <form noValidate onSubmit={step === 0 ? next : submit} className="space-y-4">
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8A7349]">Cercle privé</p>
-        <h1 className="mt-1 font-display text-2xl font-extrabold tracking-tight text-[#0B192C]">Vous êtes invité</h1>
-        <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#8A7349]">Étape {step + 1} sur 2</p>
-      </div>
+    <form className="invite-night" noValidate onSubmit={step === 0 ? next : submit}>
+      {night}
       {step === 0 ? (
         <>
-          <div className="hotel-theme min-w-0 max-w-full rounded-2xl">
-            <HotelClubSheet
-              embedded
-              showPrices={false}
-              firstName={firstName}
-              lastName={lastName}
-              customerId={prefill.invitationToken || phone || "invitation"}
-              heroSrc={HOTEL_SEARCH_HERO_FALLBACK}
-            />
-          </div>
-          <p className="text-[13px] leading-snug text-[#0B192C]">{TRAVEL_CLUB_OFFER}</p>
-          <label className="block text-[13px] font-semibold text-[#0B192C]">
-            Prénom
-            <input className={fieldClass} value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" />
-          </label>
-          <label className="block text-[13px] font-semibold text-[#0B192C]">
-            Nom
-            <input className={fieldClass} value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" />
-          </label>
-          <label className="block text-[13px] font-semibold text-[#0B192C]">
-            E-mail
-            <input className={fieldClass} type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
-          </label>
-          <label className="block text-[13px] font-semibold text-[#0B192C]">
-            Téléphone
-            <input className={`${fieldClass} cursor-default bg-[#ebe6dc]`} type="tel" value={phone} readOnly aria-readonly="true" />
-          </label>
-          <p className="-mt-2 text-xs text-[#5c6570]">Ce numéro est celui de l’invitation.</p>
-          <label className="block text-[13px] font-semibold text-[#0B192C]">
-            Date de naissance
-            <input className={fieldClass} type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} />
-          </label>
+          <section className="invite-hero" data-invite-hero="1">
+            <div className="invite-hero-grid">
+              <div className="invite-hero-card">
+                <p className="invite-kicker">Sur invitation</p>
+                <MemberCard
+                  name={engraved}
+                  number={hotelMemberNumber(prefill.invitationToken || phone || "invitation")}
+                />
+              </div>
+              <div className="invite-hero-copy">
+                <h1 className="invite-hello">{given ? `${given}, vous êtes attendu.` : "Vous êtes attendu."}</h1>
+                <div className="invite-rule" aria-hidden="true" />
+                <p className="invite-offer">{TRAVEL_CLUB_OFFER}</p>
+                <button type="button" className="invite-accept" onClick={revealForm}>
+                  Accepter l’invitation
+                </button>
+              </div>
+            </div>
+          </section>
+          <section id="invite-form" className="invite-form">
+            <ul className="invite-lines">
+              {TRAVEL_CLUB_PRIVILEGES.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            <p className="invite-kicker">Vos coordonnées</p>
+            <div className="mt-5 space-y-5">
+              <label className="invite-label">
+                Prénom
+                <input className="invite-field" value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" />
+              </label>
+              <label className="invite-label">
+                Nom
+                <input className="invite-field" value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" />
+              </label>
+              <label className="invite-label">
+                Adresse e-mail
+                <input className="invite-field" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
+              </label>
+              <label className="invite-label">
+                Téléphone
+                <input className="invite-field" type="tel" value={phone} readOnly aria-readonly="true" />
+              </label>
+              <p className="invite-note">Ce numéro est celui de votre invitation.</p>
+              <label className="invite-label">
+                Date de naissance
+                <input className="invite-field" type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} />
+              </label>
+            </div>
+            {error ? <p className="mt-4 text-sm text-[#e7b4b4]">{error}</p> : null}
+            <BusyBar active={loading} label="Envoi…" />
+            <button type="submit" disabled={loading} className="invite-accept mt-8">
+              Poursuivre
+            </button>
+            {linkUntil ? <p className="invite-link">Lien personnel, valable jusqu’au {linkUntil}.</p> : null}
+          </section>
         </>
       ) : (
-        <>
-          <label className="flex items-start gap-2 text-sm text-[#0B192C]">
-            <input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} className="mt-1 accent-[#0B192C]" />
-            <span>
-              J’accepte les <Link className="underline decoration-[#C5A880]" href="/fr/legal">conditions générales</Link>.
-            </span>
-          </label>
-          <label className="flex items-start gap-2 text-sm text-[#0B192C]">
-            <input type="checkbox" checked={privacy} onChange={(event) => setPrivacy(event.target.checked)} className="mt-1 accent-[#0B192C]" />
-            <span>
-              J’accepte que le Travel Club TBA utilise ces informations pour traiter ma demande, comme indiqué dans la{" "}
-              <Link className="underline decoration-[#C5A880]" href="/fr/confidentialite">politique de confidentialité</Link>.
-            </span>
-          </label>
-          <div className="absolute -left-[9999px] h-0 w-0 overflow-hidden" aria-hidden="true">
-            <label>
-              Site
-              <input tabIndex={-1} autoComplete="off" value={companyWebsite} onChange={(event) => setCompanyWebsite(event.target.value)} name="company_website" />
+        <section className="invite-form">
+          <p className="invite-kicker">Votre accord</p>
+          <div className="mt-6 space-y-4">
+            <label className="invite-check">
+              <input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} />
+              <span>
+                J’accepte les <Link href="/fr/legal">conditions générales</Link>.
+              </span>
             </label>
+            <label className="invite-check">
+              <input type="checkbox" checked={privacy} onChange={(event) => setPrivacy(event.target.checked)} />
+              <span>
+                J’accepte que le Travel Club TBA traite ces informations pour ma demande, selon la{" "}
+                <Link href="/fr/confidentialite">politique de confidentialité</Link>.
+              </span>
+            </label>
+            <div className="absolute -left-[9999px] h-0 w-0 overflow-hidden" aria-hidden="true">
+              <label>
+                Site
+                <input tabIndex={-1} autoComplete="off" value={companyWebsite} onChange={(event) => setCompanyWebsite(event.target.value)} name="company_website" />
+              </label>
+            </div>
           </div>
-        </>
+          {error ? <p className="mt-4 text-sm text-[#e7b4b4]">{error}</p> : null}
+          <BusyBar active={loading} label="Envoi…" />
+          <div className="mt-8 flex gap-3">
+            <button type="button" className="invite-back" onClick={() => setStep(0)}>
+              Revenir
+            </button>
+            <button type="submit" disabled={loading} className="invite-accept">
+              {loading ? "Envoi…" : "Présenter ma demande"}
+            </button>
+          </div>
+        </section>
       )}
-      {error ? <p className="text-sm text-[var(--admin-red)]">{error}</p> : null}
-      <BusyBar active={loading} label="Envoi…" />
-      <div className="flex gap-2">
-        {step > 0 ? (
-          <button type="button" className="rounded-full border border-[#0B192C]/35 px-4 py-3 text-sm font-semibold text-[#0B192C]" onClick={() => setStep(0)}>
-            Retour
-          </button>
-        ) : null}
-        <button type="submit" disabled={loading} className="flex-1 rounded-full bg-[#0B192C] px-4 py-3.5 text-sm font-bold text-[#C5A880] disabled:opacity-60">
-          {step === 0 ? "Continuer" : loading ? "Envoi…" : "Déposer ma demande"}
-        </button>
-      </div>
     </form>
   );
 }

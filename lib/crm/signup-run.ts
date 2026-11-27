@@ -1026,6 +1026,7 @@ export async function openSignupInvitation(token: string) {
   }
   return {
     ok: true as const,
+    expiresAt: row.expires_at,
     prefill: {
       firstName: row.first_name,
       lastName: row.last_name,
