@@ -12,6 +12,7 @@ import {
   visaGrantHeader,
   visaGrantSamplePdf,
 } from "@/lib/crm/visa-grant-whatsapp";
+import { TRAIN_BILLET_SAMPLE_FILE } from "@/lib/crm/train-content";
 import { isTravelAuthorization } from "@/lib/crm/types";
 import { createServiceClient } from "@/lib/supabase/admin";
 
@@ -53,6 +54,14 @@ export async function GET(_request: Request, ctx: { params: Promise<{ token: str
 
   if (token === "exemple" && filename === VISA_GRANT_SAMPLE_PDF) {
     return fileResponse(visaGrantSamplePdf(), "ESTA-Exemple.pdf", "application/pdf");
+  }
+  if (token === "exemple" && filename === TRAIN_BILLET_SAMPLE_FILE) {
+    try {
+      const bytes = await readFile(path.join(process.cwd(), "public", "whatsapp", TRAIN_BILLET_SAMPLE_FILE));
+      return fileResponse(bytes, "Billet-train-exemple.pdf", "application/pdf");
+    } catch {
+      return jsonError("Document introuvable", 404);
+    }
   }
   if (token === "exemple" && filename === VISA_GRANT_SAMPLE_IMAGE) {
     try {

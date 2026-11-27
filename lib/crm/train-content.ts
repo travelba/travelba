@@ -1,5 +1,4 @@
 import { siteConfig } from "../site";
-import { FREE_MESSAGE_SAMPLE_PDF_PATH } from "./free-message-whatsapp";
 import {
   TRAIN_ACCORD_ENV,
   TRAIN_ACCORD_NAME,
@@ -25,6 +24,8 @@ import {
 
 export const TRAIN_BILLET_NAME = "train_billet";
 export const TRAIN_MODIFIER_ENV = "TWILIO_CONTENT_TRAIN_MODIFIER";
+export const TRAIN_BILLET_SAMPLE_FILE = "billet-train-exemple.pdf";
+export const TRAIN_BILLET_SAMPLE_PATH = `exemple/${TRAIN_BILLET_SAMPLE_FILE}`;
 
 export function trainModifierContentCreateBody() {
   return {
@@ -44,24 +45,24 @@ export function trainBilletContentCreateBody() {
     friendly_name: TRAIN_BILLET_NAME,
     language: "fr",
     variables: {
-      "1": FREE_MESSAGE_SAMPLE_PDF_PATH,
-      "2": "Camille",
-      "3": "TGV 6601",
-      "4": "Paris Gare de Lyon → Lyon Part-Dieu",
-      "5": "mardi 2 juin à 08h12",
-      "6": "voiture 12, place 41",
+      "1": "Camille",
+      "2": "TGV 6601",
+      "3": "Paris Gare de Lyon → Lyon Part-Dieu",
+      "4": "mardi 2 juin à 08h12",
+      "5": "voiture 12, place 41",
+      "6": TRAIN_BILLET_SAMPLE_PATH,
     },
     types: {
       "twilio/media": {
         body: [
-          "Bonjour {{2}},",
+          "Bonjour {{1}},",
           "",
-          "Ton billet {{3}} est là.",
-          "Trajet : {{4}}, départ {{5}}.",
-          "Place : {{6}}.",
+          "Ton billet {{2}} est là.",
+          "Trajet : {{3}}, départ {{4}}.",
+          "Place : {{5}}.",
           "On te l’envoie pour le départ.",
         ].join("\n"),
-        media: [`${siteConfig.url}/api/whatsapp/autorisations/{{1}}`],
+        media: [`${siteConfig.url}/api/whatsapp/autorisations/{{6}}`],
       },
     },
   };

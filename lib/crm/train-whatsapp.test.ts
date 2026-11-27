@@ -52,13 +52,14 @@ test("les modèles portent les boutons d’horaire, de classe et de tarif", () =
   assert.doesNotMatch(accord.trim(), /\{\{\d+\}\}$/);
   const billet = trainBilletContentCreateBody();
   const billetBody = billet.types["twilio/media"].body;
-  assert.match(billetBody, /^Bonjour \{\{2\}\}/);
+  assert.match(billetBody, /^Bonjour \{\{1\}\}/);
   assert.match(billetBody, /On te l’envoie pour le départ\.$/);
   assert.doesNotMatch(billetBody.trim(), /\{\{\d+\}\}[.]?$/);
-  assert.equal(billet.variables["1"], "exemple/esta-exemple.pdf");
+  assert.deepEqual(billetBody.match(/\{\{(\d+)\}\}/g), ["{{1}}", "{{2}}", "{{3}}", "{{4}}", "{{5}}"]);
+  assert.equal(billet.variables["6"], "exemple/billet-train-exemple.pdf");
   assert.equal(
-    billet.types["twilio/media"].media[0].replace("{{1}}", billet.variables["1"]),
-    "https://travelba.fr/api/whatsapp/autorisations/exemple/esta-exemple.pdf",
+    billet.types["twilio/media"].media[0].replace("{{6}}", billet.variables["6"]),
+    "https://travelba.fr/api/whatsapp/autorisations/exemple/billet-train-exemple.pdf",
   );
   const horaires = trainHorairesContentCreateBody().types["twilio/list-picker"];
   assert.equal(horaires.items.length, 4);

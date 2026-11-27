@@ -60,12 +60,12 @@ export async function runMorningTrainTickets(
         phone,
         contentSid: sid,
         variables: {
-          "1": media,
-          "2": ((customer as { first_name?: string | null } | null)?.first_name || "voyageur").slice(0, 40),
-          "3": `train ${offer.numero || ""}`.trim(),
-          "4": trainRouteLabel(offer.depart_gare || "", offer.arrivee_gare || ""),
-          "5": `${formatTrainDateFr(offer.date)} à ${trainClock(offer.heure_depart) || offer.heure_depart}`,
-          "6": "indiqué sur le billet",
+          "1": ((customer as { first_name?: string | null } | null)?.first_name || "voyageur").slice(0, 40),
+          "2": `train ${offer.numero || ""}`.trim(),
+          "3": trainRouteLabel(offer.depart_gare || "", offer.arrivee_gare || ""),
+          "4": `${formatTrainDateFr(offer.date)} à ${trainClock(offer.heure_depart) || offer.heure_depart}`,
+          "5": "indiqué sur le billet",
+          "6": media,
         },
       });
       if (!sent.ok) continue;
