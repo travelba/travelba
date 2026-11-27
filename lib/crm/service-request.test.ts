@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fulfilledTrainCard, insertionPlan, serviceRequestCard, serviceRequestPrefill } from "./service-request";
+import { enabledServiceKind, fulfilledTrainCard, insertionPlan, SERVICE_STEP_OPTIONS, serviceRequestCard, serviceRequestPrefill } from "./service-request";
 
 const hotel = {
   id: "hotel",
@@ -11,6 +11,18 @@ const hotel = {
   end: "2026-06-02T11:00:00",
   sortOrder: 2,
 };
+
+test("le sélecteur d’étape active le train et laisse l’avion pour plus tard", () => {
+  const train = SERVICE_STEP_OPTIONS.find((option) => option.kind === "train");
+  const flight = SERVICE_STEP_OPTIONS.find((option) => option.kind === "flight");
+  assert.equal(train?.label, "Train");
+  assert.equal(train?.enabled, true);
+  assert.equal(enabledServiceKind("train"), "train");
+  assert.equal(flight?.label, "Avion");
+  assert.equal(flight?.enabled, false);
+  assert.equal(flight?.soon, "Bientôt");
+  assert.equal(enabledServiceKind("flight"), null);
+});
 
 test("avant un hôtel, l’arrivée et le jour viennent de l’hôtel", () => {
   const filled = serviceRequestPrefill({ kind: "train", side: "avant", neighbor: hotel, homeCity: "Paris" });

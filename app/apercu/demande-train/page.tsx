@@ -115,6 +115,11 @@ export default function ApercuDemandeTrainPage() {
               <Step title="Hôtel Lyon" meta="1 juin 2026 → 2 juin 2026 · Lyon" />
               <ServiceInsert bookingId="apercu" travelers={TRAVELERS} homeCity="Paris" hotel={HOTEL} side="apres" preview />
             </article>
+            <article id="selecteur" className="space-y-3 rounded-3xl border border-[var(--border)] bg-[#faf9f6] p-6">
+              <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>
+              <ServiceInsert bookingId="apercu" travelers={TRAVELERS} homeCity="Paris" hotel={HOTEL} side="avant" preview startPicker />
+              <Step title="Hôtel Lyon" meta="1 juin 2026 → 2 juin 2026 · Lyon" />
+            </article>
             <article id="avant" className="space-y-3 rounded-3xl border border-[var(--border)] bg-[#faf9f6] p-6">
               <h2 className="font-display text-lg font-bold text-[var(--admin-navy)]">Étapes du voyage</h2>
               <ServiceInsert bookingId="apercu" travelers={TRAVELERS} homeCity="Paris" hotel={HOTEL} side="avant" preview startOpen />

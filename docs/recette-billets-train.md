@@ -10,9 +10,11 @@ Au moins 3 trains par sens, 9 au plus (10 boutons avec Autres horaires). L’env
 
 ## Lancer la demande dans le CRM
 
-Même bouton que la fiche dossier. Avant et après chaque hôtel, une carte en pointillés : Ajouter une demande de train. Aperçu local, données fictives, sans écriture en base : `/apercu/demande-train`.
+Même bouton que la fiche dossier. Avant et après chaque hôtel, une carte en pointillés : + Ajouter une étape. Le clic propose Train, actif, et Avion, bientôt. Aperçu local, données fictives, sans écriture en base : `/apercu/demande-train`.
 
-![Carte d’ajout avant et après l’hôtel](recette-billets-train/crm-ajout.png)
+![Carte Ajouter une étape](recette-billets-train/crm-ajout.png)
+
+![Sélecteur d’étape](recette-billets-train/crm-selecteur.png)
 
 ![Demande avant l’hôtel](recette-billets-train/crm-avant.png)
 

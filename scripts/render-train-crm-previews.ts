@@ -9,6 +9,7 @@ const shots = [
   ["depart-inconnu", "crm-depart-inconnu.png"],
   ["suivi", "crm-suivi.png"],
   ["ajout", "crm-ajout.png"],
+  ["selecteur", "crm-selecteur.png"],
   ["avant", "crm-avant.png"],
   ["apres", "crm-apres.png"],
   ["fil", "crm-fil.png"],

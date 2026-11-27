@@ -11,6 +11,25 @@ export const SERVICE_KIND_LABEL: Record<ServiceKind, string> = {
   flight: "Demande d’avion",
 };
 
+/** Types proposés sur « Ajouter une étape ». Ajouter une ligne suffit pour un futur transfert ou une voiture. */
+export type ServiceStepOption = {
+  kind: string;
+  label: string;
+  enabled: boolean;
+  soon?: string;
+};
+
+export const SERVICE_STEP_OPTIONS: ServiceStepOption[] = [
+  { kind: "train", label: "Train", enabled: true },
+  { kind: "flight", label: "Avion", enabled: false, soon: "Bientôt" },
+];
+
+export function enabledServiceKind(kind: string): ServiceKind | null {
+  const option = SERVICE_STEP_OPTIONS.find((row) => row.kind === kind && row.enabled);
+  if (!option) return null;
+  return option.kind === "flight" ? "flight" : option.kind === "train" ? "train" : null;
+}
+
 export type ServiceNeighbor = {
   id: string;
   kind: string;
