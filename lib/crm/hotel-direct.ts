@@ -350,7 +350,55 @@ function refundClient(stay: DirectStay, effects: DirectEffect[], amountCents: nu
   return next;
 }
 
+const CLOSED_DESK_EVENTS = new Set(["mark_paid", "cancel_agency", "refund_now"]);
+
+/** Lien payé, Annuler et Rembourser ne rouvrent pas un séjour annulé. */
+export function refuseCancelledDirectStay(phase: string, event: string): string | null {
+  if (phase !== "cancelled" || !CLOSED_DESK_EVENTS.has(event)) return null;
+  return "Ce séjour est annulé. Cette action n’est plus possible.";
+}
+
+/**
+ * Paiement ou remboursement encore ouvert, d’après les statuts déjà suivis.
+ * Une autorisation non encaissée, un lien ou une carte envoyés à l’hôtel, un remboursement demandé,
+ * partiel, ou reçu sans remboursement client.
+ */
+export function directStayMoneyOpen(
+  stay: Pick<DirectStay, "stripe" | "hotelPay" | "clientRefunded">
+): boolean {
+  if (stay.stripe === "authorized") return true;
+  if (stay.hotelPay === "link_ready" || stay.hotelPay === "expired" || stay.hotelPay === "card_sent") return true;
+  if (stay.hotelPay === "refund_requested" || stay.hotelPay === "partial") return true;
+  if (stay.hotelPay === "refunded" && stay.clientRefunded !== true) return true;
+  return false;
+}
+
+/** Phases où le bureau a encore un geste. Un essai confirmé est clos. */
+export function directStayOnDesk(input: {
+  phase: string;
+  trial?: boolean | null;
+  state?: Partial<Pick<DirectStay, "stripe" | "hotelPay" | "clientRefunded">> | null;
+}): boolean {
+  if (input.phase === "cancelled") return false;
+  if (input.trial !== false && input.phase === "confirmed") return false;
+  if (input.phase === "transmitted" || input.phase === "confirming" || input.phase === "refunding") return true;
+  if (input.phase !== "confirmed") return false;
+  const state = input.state || {};
+  return directStayMoneyOpen({
+    stripe: state.stripe || "none",
+    hotelPay: state.hotelPay || "none",
+    clientRefunded: state.clientRefunded === true,
+  });
+}
+
+/** Boutons Lien payé, Annuler et Rembourser : pas sur une phase close. */
+export function directDeskMoneyActions(phase: string): boolean {
+  return phase === "transmitted" || phase === "confirming" || phase === "refunding" || phase === "confirmed";
+}
+
 export function applyStay(stay: DirectStay, event: StayEvent, now: string): StayStep | { error: string } {
+  const refused = refuseCancelledDirectStay(stay.phase, event.type);
+  if (refused) return { error: refused };
   const effects: DirectEffect[] = [];
   const audit: AuditLine[] = [];
   let next = stay;

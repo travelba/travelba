@@ -11,6 +11,7 @@ import { shellAdminBooking } from "@/lib/crm/admin-booking-shell";
 import { loadDiscountLines } from "@/lib/crm/booking-discounts-db";
 import type { DiscountLine } from "@/lib/crm/commercial-discount";
 import { repairCustomerDownloads } from "@/lib/crm/download-journal";
+import { loadHotelDirectDesk } from "@/lib/crm/hotel-direct-desk";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -76,12 +77,17 @@ export default async function AdminBookingPage({ params, searchParams }: Props) 
   } catch {
     discounts = null;
   }
+  const directStays = await loadHotelDirectDesk(createServiceClient(), {
+    bookingId: booking.id,
+    surface: "dossier",
+  }).catch(() => []);
 
   return (
     <BookingEditor
       {...shell.value}
       twinNames={twinNames}
       discounts={discounts}
+      directStays={directStays}
       panels={panels}
       deferredLedger={shell.reconcile.then((value) =>
         value ? { ...value, revision: shell.argentStamp, layer: 1 } : null

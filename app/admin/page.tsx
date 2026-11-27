@@ -26,6 +26,8 @@ import { siteConfig } from "@/lib/site";
 import { createServiceClient } from "@/lib/supabase/admin";
 import { loadAutonomousDesk } from "@/lib/crm/hotel-auto-run";
 import { HotelAutoDesk } from "@/components/admin/HotelAutoDesk";
+import { loadHotelDirectDesk } from "@/lib/crm/hotel-direct-desk";
+import { HotelDirectDesk } from "@/components/admin/HotelDirectDesk";
 
 /** Même segment que le layout : le modèle de titre ne s’applique pas ici. */
 export const metadata = { title: { absolute: `Accueil — ${siteConfig.shortName}` } };
@@ -106,7 +108,10 @@ export default async function AdminHomePage() {
   after(() => {
     void resolveListCovers(coverRows).catch(() => undefined);
   });
-  const autonomous = await loadAutonomousDesk(createServiceClient()).catch(() => []);
+  const [autonomous, hotelDesk] = await Promise.all([
+    loadAutonomousDesk(createServiceClient()).catch(() => []),
+    loadHotelDirectDesk(createServiceClient()).catch(() => []),
+  ]);
   const todo = adminTodoLines({
     whatsapp: whatsappOpen.error ? 0 : whatsappOpen.count ?? 0,
     unread: badges.whatsapp,
@@ -146,6 +151,8 @@ export default async function AdminHomePage() {
           <p className="mt-2 text-sm text-muted">Rien en attente. Bonne journée.</p>
         )}
       </section>
+
+      <HotelDirectDesk stays={hotelDesk} />
 
       <HotelAutoDesk lines={autonomous} />
 
