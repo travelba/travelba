@@ -3,18 +3,29 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import {
   airportRule,
+  checkinClientLine,
+  checkinReply,
   countryFromPlace,
+  describeSegment,
+  flightAnomaly,
   focusFlight,
   foldEngine,
   formalityForCountry,
   namesToHide,
+  nextSegment,
   normalizeDossier,
+  pastFlightsSentence,
   sanitizeWebQuery,
+  sortFlights,
+  terminalSentence,
   truncateHistory,
+  upcomingFlightSentence,
   type EngineCheckin,
+  type EngineFlight,
   type EngineStayView,
   type EngineTraveler,
 } from "@/lib/crm/concierge-engine-dossier";
+import { parisMoment } from "@/lib/crm/concierge-when";
 import {
   fixtureWebProvider,
   prepareWebHits,
@@ -82,11 +93,19 @@ export type EngineResult = {
 
 export type EngineCalls = {
   lire_sejour: () => { dit: string; sejours: EngineStayView[] };
-  lire_vols: () => { dit: string; absent: boolean };
+  lire_vols: () => {
+    dit: string;
+    absent: boolean;
+    prochain: EngineFlight | null;
+    tousPasses: boolean;
+    anomalie: string | null;
+    phrase: string;
+    terminalPhrase: string;
+  };
   lire_solde: () => { dit: string };
   formalites_pays: (pays: string) => { dit: string; action: boolean; url: string | null };
   regles_aeroport: () => { dit: string };
-  statut_checkin: () => { dit: string };
+  statut_checkin: () => { dit: string; reponse: string };
   ouvrir_demande: (resume: string, kind: string) => { accepted: boolean };
   recherche_web: (query: string) => Promise<{ dit: string; enabled: boolean; urls: string[] }>;
   lire_page: (url: string) => Promise<{ dit: string }>;
@@ -173,22 +192,32 @@ function systemPrompt() {
   return [
     "Tu es Le Concierge de Travel Business Agency. Vouvoiement, une ou deux phrases, trois lignes au plus. Tu ne signes pas.",
     "Tu réponds avec les outils. Un fait d’heure, de vol, de solde, d’hôtel ou de formalité ne se dit que s’il sort d’un outil.",
+    "Heure ou terminal : lire_vols, et seulement le prochain segment à venir. S’ils sont tous passés, dis-le. « Aujourd’hui » et « demain » seulement s’ils sont déjà dans la ligne du segment, et toujours avec la date absolue. Heure locale et heure de Paris, avec le fuseau. Une anomalie (retour daté avant l’aller) se signale telle quelle, sans l’interpréter.",
     "Si le vol demandé n’est pas dans lire_vols, dis que ce vol n’est pas encore dans le dossier.",
+    "Enregistrement : statut_checkin. Ne promets que ce que l’outil dit (prévu, fait, cartes déposées, fenêtre). Sinon propose de transmettre la demande à l’agence, sans engagement.",
+    "Restaurant : recherche_web, deux ou trois adresses près de l’hôtel, puis propose de transmettre la réservation à l’agence. Tu ne réserves pas.",
     "Une règle générale (aéroport, formalité, météo) se présente comme une règle générale. L’agence confirme les visas et les horaires critiques.",
-    "Une action (tarif, chambre, enregistrement, grève) passe par ouvrir_demande, avec un résumé. Tu ne paies pas, tu n’annules pas, tu n’écris à personne.",
+    "Une action (tarif, chambre, grève) passe par ouvrir_demande, avec un résumé. Tu ne paies pas, tu n’annules pas, tu n’écris à personne.",
     "Recherche web seulement si le dossier et les règles ne suffisent pas. La requête ne contient ni nom, ni téléphone, ni référence de dossier.",
     "Jamais de commission, de prix net, de nom de fournisseur, de prix d’un comparateur, de numéro de pièce ni de date de naissance.",
   ].join("\n");
 }
 
-function userPrompt(input: { message: string; history: ConciergeHistoryTurn[]; view: ReturnType<typeof normalizeDossier> }) {
+function userPrompt(input: {
+  message: string;
+  history: ConciergeHistoryTurn[];
+  view: ReturnType<typeof normalizeDossier>;
+  now: Date;
+}) {
   const history = input.history
     .map((row) => `${row.direction === "inbound" ? "Client" : "Concierge"}: ${row.body.slice(0, 400)}`)
     .join("\n");
   const index = input.view.sejours
     .map((stay) => `${stay.phase} ${stay.destination} ${stay.debut || ""} ${stay.alias || ""}`.trim())
     .join(" ; ");
+  const today = parisMoment(input.now);
   return [
+    `Maintenant : ${today.label} (Europe/Paris).`,
     `Séjours, sans les horaires (ils sont dans les outils) : ${index || "aucun"}.`,
     "Historique :",
     history || "(aucun)",
@@ -214,18 +243,30 @@ function createCalls(input: EngineInput, view: ReturnType<typeof normalizeDossie
     },
     lire_vols() {
       const absent = focusFlight(input.message, view.sejours);
-      const lines = view.sejours.flatMap((stay) =>
-        stay.vols.map((row) => {
-          const paris = row.heureParis && row.heureParis !== row.heureLocale ? `, ${row.heureParis} à Paris` : ", aussi l’heure de Paris";
-          const terminal = row.terminal ? `, terminal ${row.terminal}` : "";
-          return `${row.sens} ${row.numero} ${row.de} vers ${row.vers} le ${row.date || "date inconnue"} à ${row.heureLocale} heure locale${paris}${terminal}`.trim();
-        })
-      );
+      const now = input.now ?? new Date();
+      const flights = sortFlights(view.sejours.flatMap((stay) => stay.vols));
+      const prochain = nextSegment(flights);
+      const tousPasses = flights.length > 0 && !prochain;
+      const anomalie = flightAnomaly(flights);
+      const past = flights.filter((row) => row.etat === "passe");
+      const lines = [
+        prochain ? `Prochain segment : ${describeSegment(prochain, now)}${prochain.terminal ? `, terminal ${prochain.terminal}` : ""}.` : "",
+        past.length
+          ? `Segments passés, à ne pas donner pour l’heure ou le terminal : ${past.map((row) => `${describeSegment(row, now)}${row.terminal ? `, terminal ${row.terminal}` : ""}`).join(" ; ")}.`
+          : "",
+        anomalie ? `Anomalie : ${anomalie} À signaler sans l’interpréter.` : "",
+      ].filter(Boolean);
       const dit = absent
-        ? "Ce vol n’est pas encore dans votre dossier."
+        ? `Ce vol n’est pas encore dans votre dossier. ${lines.join(" ")}`.trim()
         : lines.join(" ") || "Aucun vol dans le dossier.";
-      note(session, "lire_vols", `${dit}\n${lines.join("\n")}`);
-      return { dit, absent };
+      const phrase = prochain
+        ? upcomingFlightSentence(prochain, now)
+        : tousPasses
+          ? pastFlightsSentence(flights, now)
+          : "Je n’ai pas l’heure de ce vol dans votre dossier.";
+      const terminalPhrase = flights.length ? terminalSentence(flights, now) : "Je n’ai pas le terminal dans votre dossier.";
+      note(session, "lire_vols", dit);
+      return { dit, absent, prochain, tousPasses, anomalie, phrase, terminalPhrase };
     },
     lire_solde() {
       const balance = view.solde;
@@ -257,15 +298,14 @@ function createCalls(input: EngineInput, view: ReturnType<typeof normalizeDossie
       return { dit };
     },
     statut_checkin() {
-      const lines = view.sejours.flatMap((stay) =>
-        stay.vols.map((row) => `${row.numero || "vol"} : ${row.enregistrement}. Cartes d’embarquement : ${row.cartes ? "déposées" : "pas encore déposées"}.`)
-      );
-      const dit = [
-        "C’est l’agence qui fait l’enregistrement et qui envoie les cartes d’embarquement.",
-        lines.join(" ") || "Aucun vol dans le dossier.",
-      ].join(" ");
-      note(session, "statut_checkin", dit);
-      return { dit };
+      const now = input.now ?? new Date();
+      const flights = view.sejours.flatMap((stay) => stay.vols);
+      const reponse = checkinReply(flights, now);
+      const dit = flights.length
+        ? flights.map((row) => `${row.etat === "passe" ? "Passé" : "À venir"} : ${checkinClientLine(row, now)}`).join(" ")
+        : reponse;
+      note(session, "statut_checkin", `${reponse}\n${dit}`);
+      return { dit, reponse };
     },
     ouvrir_demande(resume: string, kind: string) {
       const summary = resume.replace(/\s+/g, " ").trim().slice(0, 400);
@@ -331,7 +371,8 @@ function asyncTools(base: EngineCalls, web: WebProvider, session: Session, hidde
       execute: async () => base.lire_sejour(),
     }),
     lire_vols: tool({
-      description: "Vols aller et retour, heure locale et heure de Paris. Dit si le vol demandé n’est pas au dossier.",
+      description:
+        "Prochain segment à venir, puis les segments passés à part. Heure locale, heure de Paris, fuseau, date absolue. Aujourd’hui ou demain seulement si c’est exact.",
       inputSchema: z.object({}),
       execute: async () => base.lire_vols(),
     }),
@@ -351,7 +392,8 @@ function asyncTools(base: EngineCalls, web: WebProvider, session: Session, hidde
       execute: async () => base.regles_aeroport(),
     }),
     statut_checkin: tool({
-      description: "L’agence fait l’enregistrement et envoie les cartes. Statut du dossier.",
+      description:
+        "État réel de l’enregistrement : prévu, fait, cartes déposées, fenêtre. reponse est la phrase client. Ne promet pas au-delà.",
       inputSchema: z.object({}),
       execute: async () => base.statut_checkin(),
     }),
@@ -364,7 +406,8 @@ function asyncTools(base: EngineCalls, web: WebProvider, session: Session, hidde
       execute: async ({ resume, kind }) => base.ouvrir_demande(resume, kind),
     }),
     recherche_web: tool({
-      description: "Recherche publique si le dossier ne suffit pas. Sans nom, sans téléphone, sans référence.",
+      description:
+        "Recherche publique si le dossier ne suffit pas. Restaurants : deux ou trois adresses près de l’hôtel. Sans nom, sans téléphone, sans référence.",
       inputSchema: z.object({ query: z.string() }),
       execute: async ({ query }) => finishWeb(web, session, query, hidden),
     }),
@@ -374,6 +417,29 @@ function asyncTools(base: EngineCalls, web: WebProvider, session: Session, hidde
       execute: async ({ url }) => finishPage(web, session, url),
     }),
   };
+}
+
+function withAnomaly(text: string, anomaly: string | null) {
+  if (!anomaly || text.includes(anomaly)) return text;
+  return `${text} ${anomaly}`.replace(/\s+/g, " ").trim();
+}
+
+function timeReply(vols: ReturnType<EngineCalls["lire_vols"]>) {
+  return vols.phrase;
+}
+
+function terminalReply(vols: ReturnType<EngineCalls["lire_vols"]>) {
+  return vols.terminalPhrase;
+}
+
+function restaurantNames(dit: string) {
+  const names: string[] = [];
+  for (const line of dit.split("\n")) {
+    const title = line.split(" https://")[0]?.trim();
+    if (!title || /petit-d[ée]jeuner|m[ée]t[ée]o|conseil|visa|aucun r[ée]sultat/i.test(title)) continue;
+    if (!names.includes(title)) names.push(title);
+  }
+  return names;
 }
 
 export async function simulateEngineReply(input: {
@@ -418,9 +484,10 @@ export async function simulateEngineReply(input: {
   }
   if (/check-?in|enregistrement/.test(text)) {
     const status = input.tools.statut_checkin();
-    input.tools.ouvrir_demande("Le client demande l’enregistrement en ligne.", "question");
-    const line = status.dit.includes("à faire") ? " Le statut au dossier est : à faire." : "";
-    return { text: `C’est l’agence qui fait l’enregistrement et qui vous remet les cartes.${line} Je transmets votre demande.` };
+    if (/sans engagement|transmettre/.test(status.reponse)) {
+      input.tools.ouvrir_demande("Le client demande l’enregistrement. Aucun engagement au-delà du dossier.", "question");
+    }
+    return { text: status.reponse };
   }
   if (/chambre/.test(text) && /t[oô]t|plus t[oô]t|tot|avance/.test(text)) {
     input.tools.lire_sejour();
@@ -457,24 +524,36 @@ export async function simulateEngineReply(input: {
   }
   if (/terminal/.test(text)) {
     const vols = input.tools.lire_vols();
-    const terminal = vols.dit.match(/terminal ([A-Za-z0-9]{1,4})/)?.[1];
-    return { text: terminal ? `Le terminal est ${terminal}.` : "Le terminal n’est pas dans votre dossier." };
+    if (vols.absent) return { text: "Ce vol n’est pas encore dans votre dossier." };
+    return { text: withAnomaly(terminalReply(vols), vols.anomalie) };
   }
   if (/heure|horaire/.test(text) && /vol|depart|decoll/.test(text)) {
     const vols = input.tools.lire_vols();
-    const number = vols.dit.match(/\b[A-Z0-9]{2}\d{2,4}\b/);
-    const clock = vols.dit.match(/\d{2}h\d{2}/);
     if (vols.absent) return { text: "Ce vol n’est pas encore dans votre dossier." };
-    if (number && clock) return { text: `Votre vol ${number[0]} part à ${clock[0]}.` };
-    return { text: "Je n’ai pas l’heure de ce vol dans votre dossier." };
+    return { text: withAnomaly(timeReply(vols), vols.anomalie) };
   }
   if (/bagage/.test(text)) {
     input.tools.ouvrir_demande("Question sur les bagages.", "question");
     return { text: "Je n’ai pas le détail des bagages dans votre dossier. Je transmets à l’agence." };
   }
-  if (/restaurant|spa\b/.test(text)) {
-    input.tools.ouvrir_demande("Demande de restaurant ou de spa.", "question");
+  if (/\bspa\b/.test(text)) {
+    input.tools.ouvrir_demande("Demande de spa.", "question");
     return { text: "Je transmets à l’agence. Rien n’est réservé." };
+  }
+  if (/restaurant/.test(text)) {
+    const stay = input.tools.lire_sejour();
+    const place = stay.sejours.find((row) => row.hotel)?.hotel || stay.sejours[0]?.destination || "l’hôtel";
+    const web = await input.tools.recherche_web(`restaurants près de ${place}`);
+    const names = restaurantNames(web.dit);
+    if (names.length >= 2) {
+      const list = names.slice(0, 3).join(", ");
+      return {
+        text: `Près de l’hôtel : ${list}. Souhaitez-vous que je transmette la réservation à l’agence ? Rien n’est réservé.`,
+      };
+    }
+    return {
+      text: "Je n’ai pas trouvé d’adresse publiée près de l’hôtel. Souhaitez-vous que je transmette la demande à l’agence ? Rien n’est réservé.",
+    };
   }
   if (/transfert|chauffeur/.test(text)) {
     input.tools.lire_sejour();
@@ -486,9 +565,11 @@ export async function simulateEngineReply(input: {
     return { text: "Je transmets à l’agence. Personne n’est ajouté au dossier." };
   }
   if (/\b(s[uû]r|sure)\b/.test(text)) {
-    const clock = past.match(/\d{2}h\d{2}/);
-    const number = past.match(/\b[a-z0-9]{2}\d{2,4}\b/);
-    if (clock && number) return { text: `Oui. Votre vol ${number[0].toUpperCase()} part à ${clock[0]}.` };
+    const vols = input.tools.lire_vols();
+    if (vols.prochain || vols.tousPasses) {
+      const line = /terminal/.test(past) ? terminalReply(vols) : timeReply(vols);
+      return { text: `Oui. ${withAnomaly(line, vols.anomalie)}` };
+    }
     return { text: "Je m’en tiens à ce qui est écrit dans votre dossier." };
   }
   if (/gr[eè]ve|mouvement social/.test(text)) {
@@ -587,7 +668,7 @@ export async function runConciergeEngine(input: EngineInput): Promise<EngineResu
   const web = input.web || fixtureWebProvider();
   const session: Session = { called: [], corpus: [], handoff: null, summary: "", hosts: new Set() };
   const calls = createCalls({ ...input, now }, view, web, session);
-  const prompt = userPrompt({ message: input.message, history, view });
+  const prompt = userPrompt({ message: input.message, history, view, now });
   const hidden = namesToHide(input.dossier, input.travelers || []);
   let drafted = "";
   let tokens: EngineTokens | null = null;
@@ -715,7 +796,7 @@ export async function recordConciergeShadow(
         .order("created_at", { ascending: false })
         .limit(80),
       ids.length
-        ? admin.from("crm_flight_checkins").select("booking_item_id, status").in("booking_id", ids)
+        ? admin.from("crm_flight_checkins").select("booking_item_id, status, actor").in("booking_id", ids)
         : Promise.resolve({ data: [], error: null }),
       ids.length
         ? admin.from("crm_booking_items").select("id, kind, details").in("booking_id", ids)
@@ -734,10 +815,11 @@ export async function recordConciergeShadow(
     for (const row of (items.data || []) as { id?: string; kind?: string; details?: { flight_number?: string } }[]) {
       if (row.kind === "flight" && row.id && row.details?.flight_number) numbers.set(row.id, row.details.flight_number);
     }
-    checkins = ((checks.data || []) as { booking_item_id?: string; status?: string }[]).flatMap((row) => {
+    checkins = ((checks.data || []) as { booking_item_id?: string; status?: string; actor?: string }[]).flatMap((row) => {
       const flightNumber = numbers.get(row.booking_item_id || "") || "";
       if (!flightNumber || !row.status) return [];
-      return [{ flightNumber, status: row.status }];
+      const actor = row.actor === "agence" || row.actor === "bot" ? row.actor : "";
+      return [{ flightNumber, status: row.status, actor }];
     });
   } catch {
     history = [];

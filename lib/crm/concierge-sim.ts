@@ -170,6 +170,7 @@ export async function runScenario(scenario: ConciergeScenario, options: SimOptio
         now,
         expect: turn.expect,
         corpus: result.corpus,
+        checkins: scenario.checkins,
       });
       turns.push({
         position: turn.position,
@@ -225,6 +226,7 @@ export async function runScenario(scenario: ConciergeScenario, options: SimOptio
         history,
         now,
         expect: turn.expect,
+        checkins: scenario.checkins,
       });
     }
     turns.push({
