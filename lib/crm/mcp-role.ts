@@ -169,6 +169,7 @@ export const MCP_TOOL_GATES: Record<string, McpToolGate> = {
   enregistrer_commande_train: "edit_dossiers",
   annuler_demande_train: "edit_dossiers",
   reproposer_tarif_train: "message_client",
+  piloter_demande_train: "message_client",
   sejour_hotel: "admin",
   reprendre_formalite: "edit_dossiers",
   ratehawk: "edit_dossiers",

@@ -21,7 +21,7 @@ export async function GET(request: Request, ctx: Ctx) {
   const admin = createServiceClient();
   const { data, error } = await admin
     .from("crm_train_requests")
-    .select("status, step, created_at, updated_at, aller, retour, choix_aller, choix_retour, classe, tarif, reference_sncf, prix_paye, billets_envoyes, retour_date, depart_ville, arrivee_ville, customer_id")
+    .select("status, step, created_at, updated_at, aller, retour, choix_aller, choix_retour, classe, tarif, reference_sncf, prix_paye, billets_envoyes, retour_date, depart_ville, arrivee_ville, customer_id, pause, prise_en_main, ia, journal")
     .eq("id", demande)
     .eq("booking_id", id)
     .maybeSingle();
@@ -45,7 +45,13 @@ export async function GET(request: Request, ctx: Ctx) {
     depart_ville: string | null;
     arrivee_ville: string | null;
     customer_id: string | null;
+    pause?: boolean | null;
+    prise_en_main?: boolean | null;
+    ia?: boolean | null;
+    journal?: unknown;
   };
+  const globalIa = await admin.from("crm_integrations").select("extra").eq("provider", "train-ia").maybeSingle();
+  const iaGlobale = Boolean((globalIa.data as { extra?: { actif?: boolean } } | null)?.extra?.actif);
   const person = row.customer_id
     ? await admin.from("crm_customers").select("first_name").eq("id", row.customer_id).maybeSingle()
     : { data: null };
@@ -68,8 +74,18 @@ export async function GET(request: Request, ctx: Ctx) {
     depart: row.depart_ville,
     arrivee: row.arrivee_ville,
     prenom,
+    journal: row.journal,
   };
-  return NextResponse.json({ suivi: trainProgress(input) });
+  return NextResponse.json({
+    suivi: trainProgress(input),
+    bureau: {
+      pause: Boolean(row.pause),
+      prise_en_main: Boolean(row.prise_en_main),
+      ia: row.ia ?? null,
+      ia_globale: iaGlobale,
+      cle_openai: Boolean(process.env.OPENAI_API_KEY?.trim()),
+    },
+  });
 }
 
 export async function POST(request: Request, ctx: Ctx) {

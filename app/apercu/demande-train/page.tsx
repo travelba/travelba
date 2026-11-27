@@ -8,7 +8,7 @@ import { EMPTY_NAV_COUNTS } from "@/lib/crm/admin-nav";
 import { exampleSessionEnabled } from "@/lib/crm/example-session";
 import { TRAIN_DEFAULT_OUTBOUND, TRAIN_DEFAULT_RETURN, trainFormDefaults } from "@/lib/crm/train-request";
 import { trainProgress, type TrainProgressInput } from "@/lib/crm/train-progress";
-import { TrainRequestTrackView } from "@/components/admin/TrainRequestTrack";
+import { TrainRequestTrack, TrainRequestTrackView } from "@/components/admin/TrainRequestTrack";
 import type { TrainOffer } from "@/lib/crm/train-whatsapp";
 import { emptyDockSnapshot } from "@/lib/crm/whatsapp-dock-load";
 
@@ -263,6 +263,25 @@ export default function ApercuDemandeTrainPage() {
               titre="Demande de train · Combinaisons renvoyées"
               partial={{ ...TRAJET, status: "propositions", step: "tarif", aller: OFFRES, retour: RETOURS, choixAller: 0, choixRetour: 1 }}
             />
+            <article id="bureau" className="max-w-3xl rounded-3xl border border-[var(--border)] bg-white p-3">
+              <TrainRequestTrack
+                bookingId="apercu"
+                requestId="0acf8091-4101-4c7a-aabe-c0dd8756d2b5"
+                preview={suiviDe({
+                  ...TRAJET,
+                  status: "propositions",
+                  step: "accord",
+                  aller: OFFRES,
+                  retour: RETOURS,
+                  choixAller: 0,
+                  choixRetour: 1,
+                  classe: "2de",
+                  tarif: "non_remboursable",
+                  journal: [{ at: "2026-11-27T09:20:00.000Z", texte: "Tu veux rester sur le 08h52 ? Dis-moi.", ia: true, kind: "aucun" }],
+                })}
+                bureau={{ pause: false, prise_en_main: false, ia: null, ia_globale: false, cle_openai: false }}
+              />
+            </article>
             <Suivi
               id="suivi-commande"
               titre="Demande de train · Commandé"

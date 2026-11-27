@@ -1,5 +1,5 @@
-import { availableTrainFares } from "./train-fares";
-import { trainCombinationsBody } from "./train-fares";
+import { availableTrainFares, trainCombinationsBody } from "./train-fares";
+import { readTrainJournal } from "./train-journal";
 import type { TrainOffer } from "./train-whatsapp";
 
 /** Lecture du dossier. Aucune heure inventée : seulement created_at, updated_at et les jours de billet. */
@@ -22,6 +22,7 @@ export type TrainProgressInput = {
   arrivee?: string | null;
   prenom?: string | null;
   envoiAt?: string | null;
+  journal?: unknown;
 };
 
 export type TrainProgressState = "fait" | "cours" | "apres";
@@ -65,6 +66,7 @@ export type TrainProgress = {
   cartes: TrainProgressCard[];
   message: TrainProgressMessage | null;
   relance: { titre: string; combinaisons: string[] } | null;
+  journal: { texte: string; ia: boolean; quand: string | null }[];
 };
 
 const SENT = new Set(["propositions", "en_attente", "prix_a_reconfirmer", "choix", "commande"]);
@@ -337,5 +339,11 @@ export function trainProgress(input: TrainProgressInput): TrainProgress {
     ? { titre: relance ? "Combinaisons renvoyées" : "Tarif indisponible", combinaisons }
     : null;
 
-  return { etapes, branche: fareMissing ? null : branche, maintenant, cartes, message, relance: relanceCarte };
+  const journal = readTrainJournal(input.journal).slice(-8).map((line) => ({
+    texte: line.texte,
+    ia: line.ia,
+    quand: trainProgressStamp(line.at),
+  }));
+
+  return { etapes, branche: fareMissing ? null : branche, maintenant, cartes, message, relance: relanceCarte, journal };
 }

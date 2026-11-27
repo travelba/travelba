@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { runIfConfirmed } from "./mcp-preview";
 import { McpWriteError } from "./mcp-write";
 import { notifyTrainBot } from "./train-bot";
+import { TRAIN_DESK_ACTIONS, type TrainDeskAction } from "./train-desk";
+import { loadTrainDeskRow, runTrainDesk } from "./train-desk-run";
 import { ageOnDate, partyHasChild, seatingPreference, TRAIN_STATUS_LABEL, type TrainStatus } from "./train-request";
 import { availableTrainFares } from "./train-fares";
 import { parseTrainOffers, planTrainAccord, planTrainCombinations, planTrainLegQuestion, quoteTotal, trainChoiceSummary, trainGreeting, trainUnavailableBody, type TrainOffer } from "./train-whatsapp";
@@ -329,6 +331,36 @@ export async function enregistrerCommandeTrain(input: Record<string, unknown>) {
     }
     await admin.from("crm_train_requests").update({ status: "commande", reference_sncf: reference, prix_paye: prix, item_id: carteId, updated_at: new Date().toISOString() }).eq("id", id);
     return { ecrit: true, carte_id: carteId, document_id: documentId, statut: "commande", ...preview };
+  });
+}
+
+export async function piloterDemandeTrain(input: Record<string, unknown>) {
+  const id = text(input.demande_id);
+  const action = text(input.action);
+  if (!UUID.test(id) || !TRAIN_DESK_ACTIONS.includes(action as TrainDeskAction)) throw new McpWriteError("Action invalide.");
+  const admin = await db();
+  const loaded = await loadTrainDeskRow(admin, id);
+  if ("error" in loaded) throw new McpWriteError(loaded.error || "Demande introuvable.");
+  const preview = await runTrainDesk(admin, loaded.row, action as TrainDeskAction, {
+    envoyer: false,
+    texte: text(input.texte),
+    ia: input.ia === false ? false : input.ia === true ? true : null,
+    aller_date: text(input.aller_date),
+    retour_date: text(input.retour_date),
+    aller_creneau: text(input.aller_creneau),
+    retour_creneau: text(input.retour_creneau),
+  });
+  return runIfConfirmed(input, { demande_id: id, action, texte: preview.texte, envoie: preview.envoie !== "aucun" }, async () => {
+    const done = await runTrainDesk(admin, loaded.row, action as TrainDeskAction, {
+      envoyer: true,
+      texte: text(input.texte),
+      ia: input.ia === false ? false : input.ia === true ? true : null,
+      aller_date: text(input.aller_date),
+      retour_date: text(input.retour_date),
+      aller_creneau: text(input.aller_creneau),
+      retour_creneau: text(input.retour_creneau),
+    });
+    return { ecrit: true, demande_id: id, action, texte: done.texte, envoye: done.envoye, raison: "raison" in done ? done.raison : "" };
   });
 }
 

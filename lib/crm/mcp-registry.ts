@@ -156,6 +156,7 @@ import { deposerModelesTrainWhatsapp, statutModelesTrainWhatsapp } from "@/lib/c
 import {
   annulerDemandeTrain,
   reproposerTarifTrain,
+  piloterDemandeTrain,
   demandesTrain,
   deposerPropositionsTrain,
   enregistrerCommandeTrain,
@@ -170,7 +171,7 @@ import { societeDepense } from "@/lib/crm/mcp-expense-company";
 import { attachPostedCredit, payerKindFromInput } from "@/lib/crm/attach-credit";
 
 /** Plafond = nombre d’outils. Le relever dans le même changement qu’un outil nouveau. */
-export const MCP_TOOL_CAP = 168;
+export const MCP_TOOL_CAP = 169;
 
 async function attachCreditFromRegistry(args: Record<string, unknown>) {
   const id = [args.id, args.mouvement_id].find((value) => typeof value === "string" && value.trim());
@@ -3126,6 +3127,25 @@ export const MCP_TOOLS: ToolDef[] = [
       "Relance la question classe et tarif sur une demande déjà choisie (aller et retour gardés). Sans confirmer, aperçu des combinaisons chiffrées sur les deux trains, sans prix. confirmer true efface le tarif impossible et envoie les boutons. Un seul tarif n’est pas une question : il est indiqué au récapitulatif. Rien n’est acheté.",
     input: { demande_id: z.string().trim().max(80), confirmer: confirmOpt },
     run: (args) => reproposerTarifTrain(args),
+  },
+  {
+    name: "piloter_demande_train",
+    write: true,
+    openWorld: true,
+    description:
+      "Actions sur une demande de train : relancer, reverifier, horaires, tarifs, pause, reprendre, annuler, changer, billets, message, prendre, rendre, ia, ia_globale. Sans confirmer, aperçu, rien n’est envoyé. confirmer true écrit et peut envoyer. Pause et prise en main coupent l’automatique et l’IA. L’IA n’achète pas et ne confirme pas à la place du client.",
+    input: {
+      demande_id: z.string().trim().max(80),
+      action: z.string().trim().max(40),
+      texte: z.string().trim().max(400).optional(),
+      ia: z.boolean().optional(),
+      aller_date: z.string().trim().max(12).optional(),
+      retour_date: z.string().trim().max(12).optional(),
+      aller_creneau: z.string().trim().max(40).optional(),
+      retour_creneau: z.string().trim().max(40).optional(),
+      confirmer: confirmOpt,
+    },
+    run: (args) => piloterDemandeTrain(args),
   },
   {
     name: "sejour_hotel",
